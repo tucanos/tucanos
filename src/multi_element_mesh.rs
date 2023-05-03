@@ -283,7 +283,7 @@ fn hex2tets(hex: &[Idx]) -> ([Tetrahedron; 5], Option<Tetrahedron>) {
     ([tet1, tet2, tet3, tet4, tet5], Some(tet6))
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ElementType {
     Edge,
     Triangle,

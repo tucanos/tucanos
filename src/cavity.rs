@@ -454,7 +454,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
                     }
                 }
             }
-            return true;
+            true
         } else {
             unreachable!();
         }
