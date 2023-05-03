@@ -128,6 +128,7 @@ macro_rules! create_mesh {
                         mesh: SimplexMesh::<$dim, $etype>::new(coords, elems, etags, faces, ftags),
                     });
                 }
+                #[cfg(not(feature = "libmeshb-sys"))]
                 Err(PyRuntimeError::new_err(
                     "The meshb interface is not available",
                 ))
@@ -148,6 +149,7 @@ macro_rules! create_mesh {
 
                     return Ok(());
                 }
+                #[cfg(not(feature = "libmeshb-sys"))]
                 Err(PyRuntimeError::new_err(
                     "The meshb interface is not available",
                 ))
@@ -507,7 +509,7 @@ pub fn read_solb<'py>(py: Python<'py>, fname: &str) -> PyResult<&'py PyArray2<f6
         let (sol, m) = reader.read_solution();
         return Ok(to_numpy_2d(py, sol, m));
     }
-
+    #[cfg(not(feature = "libmeshb-sys"))]
     Err(PyRuntimeError::new_err(
         "The meshb interface is not available",
     ))
@@ -527,8 +529,9 @@ pub fn write_solb(fname: &str, dim: usize, arr: PyReadonlyArray2<f64>) -> PyResu
 
         writer.write_solution(&arr.to_vec().unwrap(), dim, arr.shape()[1]);
 
-        return Ok(());
+        Ok(())
     }
+    #[cfg(not(feature = "libmeshb-sys"))]
     Err(PyRuntimeError::new_err(
         "The meshb interface is not available",
     ))
