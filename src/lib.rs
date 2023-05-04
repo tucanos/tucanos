@@ -3,6 +3,7 @@ mod cavity;
 pub mod geom_elems;
 pub mod geometry;
 pub mod graph;
+mod linalg;
 #[allow(dead_code)]
 #[allow(clippy::enum_variant_names)]
 pub mod mesh;
