@@ -1,6 +1,7 @@
 use crate::{
     mesh::Point,
     metric::{min_metric, AnisoMetric2d, AnisoMetric3d, Metric},
+    Idx,
 };
 use nalgebra::{Matrix2, Matrix3, Matrix4, Vector1, Vector2, Vector3, Vector4};
 use std::fmt::Debug;
@@ -246,6 +247,16 @@ impl<const D: usize, M: Metric<D>> GTriangle<D, M> {
         let m = j * j.transpose();
         let m = m.try_inverse().unwrap();
         AnisoMetric2d::from_mat(&m)
+    }
+
+    // Get the edges
+    pub fn edge(&self, i: Idx) -> Point<D> {
+        match i {
+            0 => self.points[1] - self.points[0],
+            1 => self.points[2] - self.points[0],
+            2 => self.points[2] - self.points[1],
+            _ => unreachable!(),
+        }
     }
 }
 
