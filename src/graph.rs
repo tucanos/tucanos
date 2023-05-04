@@ -25,12 +25,10 @@ impl ElemGraph {
         }
     }
 
-    pub fn from<I: ExactSizeIterator<Item = Idx>>(n: Idx, els: I) -> Self {
-        debug_assert_eq!(els.len() % n as usize, 0);
-        Self {
-            n,
-            elems: els.collect(),
-        }
+    pub fn from<I: Iterator<Item = Idx>>(n: Idx, els: I) -> Self {
+        let elems = els.collect::<Vec<_>>();
+        debug_assert_eq!(elems.len() % n as usize, 0);
+        Self { n, elems }
     }
 
     pub fn add_elem(&mut self, e: &[Idx]) {
