@@ -8,6 +8,7 @@ use crate::{Error, Idx, Mesh, Result, Tag};
 use log::{debug, info, warn};
 use nalgebra::SVector;
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
 use std::marker::PhantomData;
 
@@ -425,8 +426,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Compute and orient the boundary faces
     /// the face-to-element connectivity must be available
     /// internal tagged faces are also returned
-    /// TODO: rename & find internal faces
-    pub fn boundary_faces(&self) -> Result<(Vec<Idx>, Vec<Tag>, Tag)> {
+    #[allow(clippy::type_complexity)]
+    pub fn boundary_faces(&self) -> Result<(Vec<Idx>, Vec<Tag>, Tag, HashMap<Tag, Vec<Tag>>)> {
         debug!("Compute and order the boundary faces");
         if self.faces_to_elems.is_none() {
             return Err(Error::from("face to element connectivity not computed"));
@@ -446,7 +447,13 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let mut bdy = Vec::with_capacity(E::Face::N_VERTS as usize * n_bdy);
         let mut bdy_tags = Vec::with_capacity(n_bdy);
 
-        let new_faces_tag = self.ftags.iter().max().unwrap() + 1;
+        let new_faces_tag = if self.ftags.is_empty() {
+            1
+        } else {
+            self.ftags.iter().max().unwrap() + 1
+        };
+        let mut next_internal_tag = new_faces_tag + 1;
+        let mut internal_faces_tags: HashMap<Tag, Vec<Tag>> = HashMap::new();
 
         for (k, v) in f2e.iter() {
             if v.len() == 1 {
@@ -475,11 +482,60 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     // This is a tagged internal face
                     bdy_tags.push(*tag);
                     bdy.extend(k.iter().copied());
+                    let mut etags = v
+                        .iter()
+                        .copied()
+                        .map(|i| self.etags[i as usize])
+                        .collect::<Vec<_>>();
+                    etags.sort();
+                    if let Some(etags_ref) = internal_faces_tags.get(tag) {
+                        // Check that the tags are the same
+                        let mut is_ok = etags.len() == etags_ref.len();
+                        for (t0, t1) in etags.iter().zip(etags_ref.iter()) {
+                            is_ok = is_ok && (t0 == t1);
+                        }
+                        if !is_ok {
+                            return Err(Error::from(&format!(
+                                "internal faces with tag {} belong to {:?} and {:?}",
+                                tag, etags, etags_ref
+                            )));
+                        }
+                    } else {
+                        internal_faces_tags.insert(*tag, etags);
+                    }
+                } else {
+                    let mut etags = v
+                        .iter()
+                        .copied()
+                        .map(|i| self.etags[i as usize])
+                        .collect::<Vec<_>>();
+                    etags.sort();
+                    if etags.len() > 2 || etags[0] != etags[1] {
+                        let mut new_tag = true;
+                        for (tag, etags_ref) in internal_faces_tags.iter() {
+                            let mut is_same = etags.len() == etags_ref.len();
+                            for (t0, t1) in etags.iter().zip(etags_ref.iter()) {
+                                is_same = is_same && (t0 == t1);
+                            }
+                            if is_same {
+                                new_tag = false;
+                                bdy_tags.push(*tag);
+                                bdy.extend(k.iter().copied());
+                                break;
+                            }
+                        }
+                        if new_tag {
+                            internal_faces_tags.insert(next_internal_tag, etags);
+                            bdy_tags.push(next_internal_tag);
+                            bdy.extend(k.iter().copied());
+                            next_internal_tag += 1;
+                        }
+                    }
                 }
             }
         }
 
-        Ok((bdy, bdy_tags, new_faces_tag))
+        Ok((bdy, bdy_tags, new_faces_tag, internal_faces_tags))
     }
 
     /// Add the missing boundary faces and make sure that boundary faces are oriented outwards
@@ -492,10 +548,18 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             self.compute_face_to_elems();
         }
 
-        let (faces, ftags, new_tag) = self.boundary_faces().unwrap();
+        let (faces, ftags, new_tag, internal_faces) = self.boundary_faces().unwrap();
         let n_untagged = ftags.iter().filter(|x| **x == new_tag).count();
         if n_untagged > 0 {
             warn!("Added {} untagged faces with tag={}", n_untagged, new_tag);
+        }
+        for (tag, etags) in internal_faces.iter() {
+            if *tag > new_tag {
+                warn!(
+                    "Added tag {} to internal faces belonging to elements with tags {:?}",
+                    *tag, etags
+                );
+            }
         }
         self.faces = faces;
         self.ftags = ftags;
@@ -548,7 +612,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Extract a sub-mesh containing all the elements with a specific tag
-    pub fn extract(&self, tag: Tag) -> (SimplexMesh<D, E>, Vec<Idx>) {
+    /// Return the sub-mesh and the indices of the vertices, elements and faces in the
+    /// parent mesh
+    pub fn extract(&self, tag: Tag) -> (SimplexMesh<D, E>, Vec<Idx>, Vec<Idx>, Vec<Idx>) {
         let els = self
             .elems()
             .zip(self.etags())
@@ -563,6 +629,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         let mut coords = vec![0.0; D * n_verts];
         let mut vert_ids = vec![0; n_verts];
+        let mut elem_ids = Vec::with_capacity(n_elems);
+        elem_ids.extend((0..self.n_elems()).filter(|i| self.etags[*i as usize] == tag));
 
         for (old, new) in &indices {
             let pt = self.vert(*old);
@@ -574,6 +642,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         let mut faces = Vec::new();
         let mut ftags = Vec::new();
+        let mut face_ids = Vec::new();
 
         for i_face in 0..self.n_faces() {
             let f = self.face(i_face);
@@ -581,12 +650,15 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             if is_in {
                 faces.extend(f.iter().map(|i| indices.get(i).unwrap()));
                 ftags.push(self.ftags[i_face as usize]);
+                face_ids.push(i_face);
             }
         }
 
         (
             SimplexMesh::<D, E>::new(coords, g.elems, etags, faces, ftags),
             vert_ids,
+            elem_ids,
+            face_ids,
         )
     }
 }
@@ -689,7 +761,7 @@ mod tests {
     fn test_extract_2d() {
         let mesh = test_mesh_2d().split();
 
-        let (smesh, ids) = mesh.extract(1);
+        let (smesh, ids, _, _) = mesh.extract(1);
 
         assert_eq!(smesh.n_verts(), 6);
         assert_eq!(smesh.n_elems(), 4);
