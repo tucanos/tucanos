@@ -1,51 +1,11 @@
-use crate::{mesh::SimplexMesh, topo_elems::Elem, Error, FieldType, Idx, Mesh, Result};
-#[cfg(any(feature = "accelerate", feature = "netlib", feature = "intel-mkl", feature = "openblas"))]
-extern crate lapack_src;
+use crate::{
+    linalg::lapack_qr_least_squares, mesh::SimplexMesh, topo_elems::Elem, Error, FieldType, Idx,
+    Mesh, Result,
+};
+
 use log::info;
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
-    /// Return x so that ||A.x-B|| is minimum, using Lapack QR factorization
-    /// Return None if the problem is too ill-conditioned
-    fn lapack_qr_least_squares<const N: usize>(
-        a: &mut [f64],
-        b: &mut [f64],
-        work: &mut [f64],
-    ) -> Option<[f64; N]> {
-        let mut info = 0;
-        let n = N as i32;
-        let nrows = b.len();
-        let nr32 = nrows as i32;
-        let lwork = work.len() as i32;
-        let mut tau = [0.; N];
-        unsafe {
-            // QR factorization
-            lapack::dgeqrf(nr32, n, a, nr32, &mut tau, work, lwork, &mut info);
-        }
-        assert!(info == 0, "lapack::dgeqrf info={info}");
-        // check for ill-conditioned system
-        let (mind, maxd) = (0..N)
-            .map(|i| a[i + nrows * i].abs())
-            .map(|x| (x, x))
-            .reduce(|(mi1, ma1), (mi2, ma2)| (mi1.min(mi2), ma1.max(ma2)))
-            .unwrap();
-        if maxd / mind > 1e8 {
-            return None;
-        }
-        unsafe {
-            // b <- Q^t.b
-            lapack::dormqr(
-                b'L', b'T', nr32, 1, n, a, nr32, &tau, b, nr32, work, lwork, &mut info,
-            );
-        }
-        assert!(info == 0, "lapack::dormqr info={info}");
-        unsafe {
-            // b <- R^-1.b
-            lapack::dtrtrs(b'U', b'N', b'N', n, 1, a, nr32, b, nr32, &mut info);
-        }
-        assert!(info == 0, "lapack::dtrtrs info={info}");
-        Some(b[0..N].try_into().unwrap())
-    }
-
     /// Compute a linear or quadratic approximation of a function defined at the mesh vertices
     ///
     /// A weighted least squares is used:
@@ -118,7 +78,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             b[irow] = weight * (f[others[irow - 1] as usize] - f0);
         }
         a[0] = max_weight * (2_f64).sqrt();
-        Self::lapack_qr_least_squares(a, b, work)
+        lapack_qr_least_squares(a, b, work)
     }
 
     /// Smooth a vertex field using a 1st order weighted least square approximation
