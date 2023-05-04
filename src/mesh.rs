@@ -522,10 +522,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         }
         let mut g = ElemGraph::from(1, self.faces.iter().copied());
         let indices = g.reindex();
-        let mut coords = Vec::new();
-
         let n_bdy_verts = g.max_node() as usize + 1;
-        coords.resize(D * n_bdy_verts, 0.);
+
+        let mut coords = vec![0.0; D * n_bdy_verts];
         let mut vert_ids = vec![0; n_bdy_verts];
 
         for (old, new) in &indices {
@@ -544,6 +543,49 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 Vec::new(),
                 Vec::new(),
             ),
+            vert_ids,
+        )
+    }
+
+    /// Extract a sub-mesh containing all the elements with a specific tag
+    pub fn extract(&self, tag: Tag) -> (SimplexMesh<D, E>, Vec<Idx>) {
+        let els = self
+            .elems()
+            .zip(self.etags())
+            .filter(|(_, t)| *t == tag)
+            .flat_map(|(e, _)| e);
+
+        let mut g = ElemGraph::from(E::N_VERTS, els);
+        let indices = g.reindex();
+        let n_verts = g.max_node() as usize + 1;
+        let n_elems = g.elems.len() / E::N_VERTS as usize;
+        let etags = vec![tag; n_elems];
+
+        let mut coords = vec![0.0; D * n_verts];
+        let mut vert_ids = vec![0; n_verts];
+
+        for (old, new) in &indices {
+            let pt = self.vert(*old);
+            for i in 0..D {
+                coords[D * (*new as usize) + i] = pt[i];
+            }
+            vert_ids[*new as usize] = *old;
+        }
+
+        let mut faces = Vec::new();
+        let mut ftags = Vec::new();
+
+        for i_face in 0..self.n_faces() {
+            let f = self.face(i_face);
+            let is_in = f.iter().all(|i| indices.get(i).is_some());
+            if is_in {
+                faces.extend(f.iter().map(|i| indices.get(i).unwrap()));
+                ftags.push(self.ftags[i_face as usize]);
+            }
+        }
+
+        (
+            SimplexMesh::<D, E>::new(coords, g.elems, etags, faces, ftags),
             vert_ids,
         )
     }
@@ -640,6 +682,24 @@ mod tests {
             assert!(f64::abs(v_e[3 * i_elem] - (pt[0] + pt[1])) < 1e-10);
             assert!(f64::abs(v_e[3 * i_elem + 1] - (pt[0] * pt[1])) < 0.1);
             assert!(f64::abs(v_e[3 * i_elem + 2] - (pt[0] - pt[1])) < 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_extract_2d() {
+        let mesh = test_mesh_2d().split();
+
+        let (smesh, ids) = mesh.extract(1);
+
+        assert_eq!(smesh.n_verts(), 6);
+        assert_eq!(smesh.n_elems(), 4);
+        assert_eq!(smesh.n_faces(), 4);
+        assert!(f64::abs(smesh.vol() - 0.5) < 1e-10);
+
+        assert_eq!(ids.len(), 6);
+        for i in ids {
+            let p = mesh.vert(i);
+            assert!(p[0] - p[1] > -1e-10);
         }
     }
 }
