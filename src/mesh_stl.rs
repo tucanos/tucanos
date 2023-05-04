@@ -45,7 +45,7 @@ pub fn orient_stl<const D: usize, E: Elem>(
 ) -> (Idx, f64) {
     info!("Orient the boundary mesh");
 
-    let bdy = mesh.boundary();
+    let (bdy, _) = mesh.boundary();
     let tree = Octree::new(&bdy);
 
     let mut dmin = 1.0;

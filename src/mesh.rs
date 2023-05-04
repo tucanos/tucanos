@@ -503,23 +503,49 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Return the mesh of the boundary
-    /// Vertices are reindexed
+    /// Vertices are reindexed, and the surface id to volume id is returned
+    /// together with the surface mesh
     #[must_use]
-    pub fn boundary(&self) -> SimplexMesh<D, E::Face> {
+    pub fn boundary(&self) -> (SimplexMesh<D, E::Face>, Vec<Idx>) {
         debug!("Extract the mesh boundary");
+        if self.faces.is_empty() {
+            return (
+                SimplexMesh::<D, E::Face>::new(
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                ),
+                Vec::new(),
+            );
+        }
         let mut g = ElemGraph::from(1, self.faces.iter().copied());
         let indices = g.reindex();
         let mut coords = Vec::new();
-        coords.resize(D * (g.max_node() as usize + 1), 0.);
+
+        let n_bdy_verts = g.max_node() as usize + 1;
+        coords.resize(D * n_bdy_verts, 0.);
+        let mut vert_ids = vec![0; n_bdy_verts];
 
         for (old, new) in &indices {
             let pt = self.vert(*old);
             for i in 0..D {
                 coords[D * (*new as usize) + i] = pt[i];
             }
+            vert_ids[*new as usize] = *old;
         }
 
-        SimplexMesh::<D, E::Face>::new(coords, g.elems, self.ftags.clone(), Vec::new(), Vec::new())
+        (
+            SimplexMesh::<D, E::Face>::new(
+                coords,
+                g.elems,
+                self.ftags.clone(),
+                Vec::new(),
+                Vec::new(),
+            ),
+            vert_ids,
+        )
     }
 }
 
