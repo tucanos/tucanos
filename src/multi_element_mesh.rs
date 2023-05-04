@@ -768,7 +768,7 @@ mod tests {
         assert_eq!(msh.n_elems(), 8);
         assert_eq!(msh.n_faces(), 14);
 
-        let bmsh = msh.boundary();
+        let (bmsh, _) = msh.boundary();
         assert_eq!(bmsh.n_verts(), 9);
         assert_eq!(bmsh.n_elems(), 14);
         assert_eq!(bmsh.n_faces(), 0);

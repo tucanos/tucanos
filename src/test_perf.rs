@@ -34,7 +34,7 @@ fn main() -> Result<()> {
     };
     let m: Vec<_> = mesh.verts().map(mfunc).collect();
 
-    let mut bdy = mesh.boundary();
+    let (mut bdy, _) = mesh.boundary();
     bdy.compute_octree();
     let geom = LinearGeometry::new(bdy)?;
 
