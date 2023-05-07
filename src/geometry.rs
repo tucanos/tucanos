@@ -1,7 +1,8 @@
 use crate::{
+    curvature::{compute_curvature_tensor, fix_curvature},
     geom_elems::GElem,
     mesh::{Point, SimplexMesh},
-    topo_elems::Elem,
+    topo_elems::{Elem, Triangle},
     topology::Topology,
     Dim, Error, Result, Tag, TopoTag,
 };
@@ -43,19 +44,53 @@ impl<const D: usize> Geometry<D> for NoGeometry<D> {
 /// Piecewise linear (stl-like) representation of a geometry
 pub struct LinearGeometry<const D: usize, E: Elem> {
     mesh: SimplexMesh<D, E>,
+    u: Option<Vec<Point<D>>>,
+    v: Option<Vec<Point<D>>>,
 }
 
 impl<const D: usize, E: Elem> LinearGeometry<D, E> {
     /// Create a `LinearGeometry` from a `SimplexMesh`
     /// compute_octree should be
-    pub fn new(mesh: SimplexMesh<D, E>) -> Result<Self> {
+    pub fn new(mut mesh: SimplexMesh<D, E>) -> Result<Self> {
         if mesh.tree.is_none() {
+            mesh.compute_octree();
+        }
+
+        Ok(Self {
+            mesh,
+            u: None,
+            v: None,
+        })
+    }
+}
+
+impl LinearGeometry<3, Triangle> {
+    pub fn compute_curvature(&mut self) {
+        self.mesh.add_boundary_faces();
+        if self.mesh.elem_to_elems.is_none() {
+            self.mesh.compute_elem_to_elems();
+        }
+
+        let (mut u, mut v) = compute_curvature_tensor(&self.mesh);
+        fix_curvature(&self.mesh, &mut u, &mut v).unwrap();
+
+        self.u = Some(u);
+        self.v = Some(v);
+    }
+
+    pub fn curvature(&self, pt: &Point<3>) -> Result<(Point<3>, Point<3>)> {
+        if self.u.is_none() {
             return Err(Error::from(
-                "compute_octree() not called before the LinearGeometry was created",
+                "LinearGeometry<3, Triangle>: compute_curvature not called",
             ));
         }
 
-        Ok(Self { mesh })
+        let tree = self.mesh.tree.as_ref().unwrap();
+        let i_elem = tree.nearest(pt) as usize;
+        let u = self.u.as_ref().unwrap();
+        let v = self.v.as_ref().unwrap();
+
+        Ok((u[i_elem], v[i_elem]))
     }
 }
 
