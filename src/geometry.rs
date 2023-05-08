@@ -7,7 +7,7 @@ use crate::{
     Dim, Error, Result, Tag, TopoTag,
 };
 use rustc_hash::FxHashSet;
-use std::{f64::consts::PI, hash::BuildHasherDefault};
+use std::{collections::HashMap, f64::consts::PI, hash::BuildHasherDefault};
 
 /// Representation of a D-dimensional geometry
 pub trait Geometry<const D: usize> {
@@ -91,6 +91,33 @@ impl LinearGeometry<3, Triangle> {
         let v = self.v.as_ref().unwrap();
 
         Ok((u[i_elem], v[i_elem]))
+    }
+
+    pub fn write_curvature(&self, fname: &str) -> Result<()> {
+        // Export the curvature
+        let u1 = self
+            .u
+            .as_ref()
+            .unwrap()
+            .iter()
+            .flatten()
+            .copied()
+            .collect::<Vec<_>>();
+        let v1 = self
+            .v
+            .as_ref()
+            .unwrap()
+            .iter()
+            .flatten()
+            .copied()
+            .collect::<Vec<_>>();
+        let mut data = HashMap::new();
+        data.insert(String::from("u"), u1.as_slice());
+        data.insert(String::from("v"), v1.as_slice());
+
+        self.mesh.write_vtk(fname, None, Some(data))?;
+
+        Ok(())
     }
 }
 
