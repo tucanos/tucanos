@@ -219,6 +219,50 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         Ok(res)
     }
 
+    /// Compute the gradation on an edge
+    fn edge_gradation<M: Metric<D>>(&self, m: &[M], i0: Idx, i1: Idx) -> f64 {
+        let m0 = &m[i0 as usize];
+        let m1 = &m[i1 as usize];
+        let e = self.vert(i1) - self.vert(i0);
+        let l0 = m0.length(&e);
+        let l1 = m1.length(&e);
+        let a = l0 / l1;
+        if l0 < 1e-16 || l1 < 1e-16 {
+            panic!("{:?} {:?} {:?} {} {}", e, m0, m1, l0, l1);
+        }
+        if f64::abs(a - 1.0) < 1e-3 {
+            1.0
+        } else {
+            let l = l0 * f64::ln(a) / (a - 1.0);
+            f64::max(a, 1.0 / a).powf(1. / l)
+        }
+    }
+
+    /// Compute the maximum metric gradation
+    pub fn gradation<M: Metric<D>>(&self, m: &[M], target: f64) -> Result<(f64, f64)> {
+        if self.edges.is_none() {
+            return Err(Error::from("edges not available"));
+        }
+
+        let edges = self.edges.as_ref().unwrap();
+
+        let n_edgs = edges.len() / 2;
+
+        let mut c_max = 0.0;
+        let mut n_larger_than_target = 0;
+        for edg in edges.chunks(2) {
+            let i0 = edg[0];
+            let i1 = edg[1];
+            let c = self.edge_gradation(m, i0, i1);
+            if c > target {
+                n_larger_than_target += 1;
+            }
+            c_max = f64::max(c_max, c);
+        }
+
+        Ok((c_max, n_larger_than_target as f64 / n_edgs as f64))
+    }
+
     /// Enforce a maximum gradiation on a metric field
     /// Algorithm taken from "Size gradation control of anisotropic meshes", F. Alauzet, 2010 assuming
     ///  - a linear interpolation on h
@@ -261,16 +305,19 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     n += 1;
                 }
             }
-            debug!("Iteration {}, {} edges modified", iter, n);
+            debug!("Iteration {}, {}/{} edges modified", iter, n, n_edgs);
             if n == 0 {
                 break;
             }
         }
 
         if n > 0 {
+            let (c_max, frac_large_gradation) = self.gradation(m, beta)?;
             warn!(
-                "gradation: {} / {} edges modified at the last iteration",
-                n, n_edgs
+                "gradation: target not achieved: max gradation: {}, {}% of edges have a gradation > {}",
+                c_max,
+                frac_large_gradation * 100.0,
+                beta
             );
         }
 
@@ -510,10 +557,17 @@ mod tests {
             .collect();
         m[0] = IsoMetric::<2>::from(0.0001);
 
-        let mut m2 = m;
+        let beta = 1.2;
+        let (c_max, frac_large_c) = mesh.gradation(&m, beta).unwrap();
+        assert!(c_max > beta);
+        assert!(frac_large_c > 0.0);
 
-        let (n, _n_edgs) = mesh.apply_metric_gradation(&mut m2, 1.2, 10).unwrap();
+        let (n, _n_edgs) = mesh.apply_metric_gradation(&mut m, beta, 10).unwrap();
         assert_eq!(n, 0);
+
+        let (c_max, frac_large_c) = mesh.gradation(&m, beta).unwrap();
+        assert!(c_max < 1.001 * beta);
+        assert!(frac_large_c < 1e-12);
 
         let edges = mesh.edges.as_ref().unwrap();
         let n_edgs = edges.len() / 2;
@@ -523,13 +577,13 @@ mod tests {
 
             let e = mesh.vert(i1 as Idx) - mesh.vert(i0 as Idx);
 
-            let l = m2[i0].length(&e);
-            let rmax = 1.0 + l * f64::ln(1.2);
-            assert!(m2[i1].h() < 1.0001 * m2[i0].h() * rmax);
+            let l = m[i0].length(&e);
+            let rmax = 1.0 + l * f64::ln(beta);
+            assert!(m[i1].h() < 1.0001 * m[i0].h() * rmax);
 
-            let l = m2[i1].length(&e);
-            let rmax = 1.0 + l * f64::ln(1.2);
-            assert!(m2[i0].h() < 1.0001 * m2[i1].h() * rmax);
+            let l = m[i1].length(&e);
+            let rmax = 1.0 + l * f64::ln(beta);
+            assert!(m[i0].h() < 1.0001 * m[i1].h() * rmax);
         }
     }
 
