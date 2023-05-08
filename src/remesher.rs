@@ -460,13 +460,9 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
         let etag = self.topo.elem_tag(&mut vtags).unwrap();
         assert!(etag.0 >= E::DIM as Dim, "Invalid tag, {etag:?}");
         let ge = self.gelem(&el);
-        self.elems.insert(
-            self.next_elem,
-            ElemInfo {
-                el,
-                q: ge.quality(),
-            },
-        );
+        let q = ge.quality();
+        assert!(q > 0.0);
+        self.elems.insert(self.next_elem, ElemInfo { el, q });
 
         // update the vertex-to-element info
         for idx in el.iter() {
