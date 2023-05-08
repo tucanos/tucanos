@@ -8,6 +8,11 @@ links = "tucanos"
 name = "test_perf"
 path = "src/test_perf.rs"
 
+[[bin]]
+name = "debug_from_meshb"
+path = "src/debug_from_meshb.rs"
+required-features = ["libmeshb-sys"]
+
 [dependencies]
 nalgebra = { version = "0.32", features = ["rand"] }
 env_logger = "0.10.0"
@@ -25,6 +30,7 @@ marechal-libol-sys = { git = "https://github.com/tucanos/marechal-libol-sys.git"
 lapack = "0.19.0"
 simba = "0.8.0"
 libmeshb-sys = {git = "https://github.com/tucanos/libmeshb-sys.git", optional = true}
+vtkio = {version = "0.6.3", optional = true}
 
 [features]
 accelerate = ["lapack-src/accelerate"]
