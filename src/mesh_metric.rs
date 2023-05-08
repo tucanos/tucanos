@@ -288,7 +288,20 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let mut n = 0;
         for iter in 0..max_iter {
             n = 0;
-            for i_edge in 0..n_edgs {
+            let mut c = Vec::with_capacity(n_edgs);
+            c.extend(
+                edges
+                    .chunks(2)
+                    .map(|edg| self.edge_gradation(m, edg[0], edg[1])),
+            );
+            // argsort
+            let mut indices = Vec::with_capacity(c.len());
+            indices.extend(0..c.len());
+            indices.sort_by(|j, i| c[*i].partial_cmp(&c[*j]).unwrap());
+            for i_edge in indices {
+                if c[i_edge] < beta {
+                    break;
+                }
                 let i0 = edges[2 * i_edge] as usize;
                 let i1 = edges[2 * i_edge + 1] as usize;
 
