@@ -5,6 +5,7 @@ use crate::{
     topo_elems::{Elem, Triangle},
     Error, Idx, Mesh, Result,
 };
+use log::{debug, warn};
 use nalgebra::{SMatrix, SymmetricEigen};
 
 /// Compute the surface normals at the mesh vertices
@@ -17,6 +18,8 @@ use nalgebra::{SMatrix, SymmetricEigen};
 /// accurate normal estimates than other weighting approaches,
 /// and is exact for vertices that lie on a sphere."
 pub fn compute_vertex_normals<const D: usize, E: Elem>(mesh: &SimplexMesh<D, E>) -> Vec<Point<D>> {
+    debug!("Compute the surface normals at the vertices");
+
     let mut normals = vec![Point::<D>::zeros(); mesh.n_verts() as usize];
 
     for (i_elem, e) in mesh.elems().enumerate() {
@@ -43,6 +46,7 @@ pub fn compute_vertex_normals<const D: usize, E: Elem>(mesh: &SimplexMesh<D, E>)
 pub fn compute_curvature_tensor(
     smesh: &SimplexMesh<3, Triangle>,
 ) -> (Vec<Point<3>>, Vec<Point<3>>) {
+    debug!("Compute curvature tensors");
     let vertex_normals = compute_vertex_normals(smesh);
 
     // arrays for the least squares problem
@@ -140,6 +144,8 @@ pub fn fix_curvature(
     u: &mut [Point<3>],
     v: &mut [Point<3>],
 ) -> Result<()> {
+    debug!("Fix curvature tensors near the patch boundaries");
+
     if smesh.elem_to_elems.is_none() {
         return Err(Error::from(
             "element to elements connectivity not available",
@@ -166,6 +172,7 @@ pub fn fix_curvature(
 
     let mut n_iter = 0;
     while to_fix > 0 {
+        debug!("iteration {}: {} elements to fix", n_iter + 1, to_fix);
         let mut fixed = Vec::with_capacity(to_fix);
         for i_elem in 0..smesh.n_elems() as usize {
             if flg[i_elem] {
@@ -209,11 +216,19 @@ pub fn fix_curvature(
                 }
             }
         }
+        if fixed.is_empty() {
+            // No element was fixed
+            if to_fix > 0 {
+                warn!(
+                    "stop at iteration {}, {} elements cannot be fixed",
+                    n_iter + 1,
+                    to_fix
+                );
+            }
+            break;
+        }
         fixed.iter().for_each(|&i| flg[i] = false);
         n_iter += 1;
-        if n_iter == 10 {
-            return Err(Error::from("unable to fix the curvatures in 10 iterations"));
-        }
     }
 
     Ok(())
