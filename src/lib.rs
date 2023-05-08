@@ -17,6 +17,8 @@ pub mod mesh_stl;
 mod mesh_xdmf;
 #[cfg(feature = "libmeshb-sys")]
 pub mod meshb_io;
+#[cfg(feature = "vtkio")]
+pub mod mesh_vtk;
 pub mod metric;
 mod metric_reduction;
 pub mod multi_element_mesh;
