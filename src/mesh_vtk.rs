@@ -19,7 +19,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     ) -> Result<()> {
         let connectivity = self.elems.iter().map(|&i| i as u64).collect();
         let offsets = (0..self.n_elems())
-            .map(|i| (E::N_VERTS * i) as u64)
+            .map(|i| (E::N_VERTS * (i + 1)) as u64)
             .collect();
         let cell_type = match E::N_VERTS {
             4 => CellType::Tetra,
