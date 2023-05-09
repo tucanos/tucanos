@@ -36,6 +36,9 @@ pub trait Metric<const D: usize>:
     fn span(&self, e: &Point<D>, beta: f64) -> Self;
     /// Check if metrics are different with a given tolerance
     fn differs_from(&self, other: &Self, tol: f64) -> bool;
+    /// Limit a metric so the required sizes between 1/f and f times those required by other
+    /// The directions are not changed
+    fn limit(&mut self, other: &Self, f: f64);
 }
 
 /// Compute the length of an edge in metric space, assuming a geometric variation of the metric sizes along the edge
@@ -154,6 +157,10 @@ impl<const D: usize> Metric<D> for IsoMetric<D> {
 
     fn differs_from(&self, other: &Self, tol: f64) -> bool {
         f64::abs(self.0 - other.0) > tol * self.0
+    }
+
+    fn limit(&mut self, other: &Self, f: f64) {
+        self.0 = f64::min(self.0, other.0 * f).max(other.0 / f);
     }
 }
 
@@ -368,6 +375,29 @@ impl Metric<2> for AnisoMetric2d {
         let a = self.m.iter().copied();
         let b = other.m.iter().copied();
         a.zip(b).any(|(x, y)| f64::abs(x - y) > tol * x)
+    }
+
+    fn limit(&mut self, other: &Self, f: f64) {
+        let f2 = f * f;
+        let mat = self.as_mat();
+        let mut eig = SymmetricEigen::new(mat);
+
+        let mut vol = 1.0;
+        for (l, v) in eig
+            .eigenvalues
+            .iter_mut()
+            .zip(eig.eigenvectors.column_iter())
+        {
+            let v = v.clone_owned();
+            let l_other = other.length(&v).powi(2);
+            *l = f64::min(*l, l_other * f2).max(l_other / f2);
+            vol *= *l;
+        }
+        let vol = 1. / f64::sqrt(vol);
+
+        let mat = eig.recompose();
+        self.m = Self::mat_to_slice(&mat);
+        self.v = vol;
     }
 }
 
@@ -613,6 +643,29 @@ impl Metric<3> for AnisoMetric3d {
         let a = self.m.iter().copied();
         let b = other.m.iter().copied();
         a.zip(b).any(|(x, y)| f64::abs(x - y) > tol * x)
+    }
+
+    fn limit(&mut self, other: &Self, f: f64) {
+        let f2 = f * f;
+        let mat = self.as_mat();
+        let mut eig = SymmetricEigen::new(mat);
+
+        let mut vol = 1.0;
+        for (l, v) in eig
+            .eigenvalues
+            .iter_mut()
+            .zip(eig.eigenvectors.column_iter())
+        {
+            let v = v.clone_owned();
+            let l_other = other.length(&v).powi(2);
+            *l = f64::min(*l, l_other * f2).max(l_other / f2);
+            vol *= *l;
+        }
+        let vol = 1. / f64::sqrt(vol);
+
+        let mat = eig.recompose();
+        self.m = Self::mat_to_slice(&mat);
+        self.v = vol;
     }
 }
 
@@ -888,5 +941,48 @@ mod tests {
 
         let l = m2.length(&e);
         assert!(f64::abs(1. / l - 0.5 * 2.38) < 0.01);
+    }
+
+    #[test]
+    fn test_limit_iso() {
+        let mut m0 = IsoMetric::<2>::from(1.0);
+        let m1 = IsoMetric::<2>::from(10.0);
+        m0.limit(&m1, 2.0);
+        assert!(f64::abs(m0.h() - 5.0) < 1e-12);
+
+        let mut m0 = IsoMetric::<2>::from(1.0);
+        let m1 = IsoMetric::<2>::from(0.1);
+        m0.limit(&m1, 2.0);
+        assert!(f64::abs(m0.h() - 0.2) < 1e-12);
+    }
+
+    #[test]
+    fn test_limit_aniso_2d() {
+        let ex = Point::<2>::new(1.0, 0.0);
+        let ey = Point::<2>::new(0.0, 1.0);
+
+        let mut m0 = AnisoMetric2d::from_sizes(&ex, &ey);
+        let m1 = AnisoMetric2d::from_sizes(&(10.0 * ex), &(0.1 * ey));
+
+        m0.limit(&m1, 2.0);
+
+        assert!(f64::abs(m0.sizes()[0] - 0.2) < 1e-12);
+        assert!(f64::abs(m0.sizes()[1] - 5.0) < 1e-12);
+    }
+
+    #[test]
+    fn test_limit_aniso_3d() {
+        let ex = Point::<3>::new(1.0, 0.0, 0.0);
+        let ey = Point::<3>::new(0.0, 1.0, 0.0);
+        let ez = Point::<3>::new(0.0, 0.0, 1.0);
+
+        let mut m0 = AnisoMetric3d::from_sizes(&ex, &ey, &ez);
+        let m1 = AnisoMetric3d::from_sizes(&(10.0 * ex), &(0.1 * ey), &(0.001 * ez));
+
+        m0.limit(&m1, 2.0);
+
+        assert!(f64::abs(m0.sizes()[0] - 0.002) < 1e-12);
+        assert!(f64::abs(m0.sizes()[1] - 0.2) < 1e-12);
+        assert!(f64::abs(m0.sizes()[2] - 5.0) < 1e-12);
     }
 }
