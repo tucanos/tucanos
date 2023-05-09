@@ -10,7 +10,10 @@ use crate::{
     topo_elems::Elem,
     Idx, Mesh, Tag,
 };
-use std::{convert::TryInto, ffi::c_int};
+use std::{
+    convert::TryInto,
+    ffi::{c_int, CString},
+};
 
 /// Reader for .mesh(b) / .sol(b) files (interface to libMeshb)
 pub struct GmfReader {
@@ -58,15 +61,9 @@ impl GmfReader {
         let dim = 0;
         let version = 0;
 
+        let fname = CString::new(fname).unwrap();
         Self {
-            file: unsafe {
-                GmfOpenMesh(
-                    fname.as_ptr() as *const i8,
-                    GmfRead as c_int,
-                    &version,
-                    &dim,
-                )
-            },
+            file: unsafe { GmfOpenMesh(fname.as_ptr(), GmfRead as c_int, &version, &dim) },
             dim,
             version,
         }
@@ -299,10 +296,9 @@ impl GmfWriter {
         let dim = dim as c_int;
         let version = 2;
 
+        let fname = CString::new(fname).unwrap();
         Self {
-            file: unsafe {
-                GmfOpenMesh(fname.as_ptr() as *const i8, GmfWrite as c_int, version, dim)
-            },
+            file: unsafe { GmfOpenMesh(fname.as_ptr(), GmfWrite as c_int, version, dim) },
         }
     }
 
@@ -437,14 +433,18 @@ impl GmfWriter {
             }
         }
     }
-}
 
-impl Drop for GmfWriter {
-    fn drop(&mut self) {
+    pub fn close(&mut self) {
         if self.is_valid() {
             unsafe {
                 GmfCloseMesh(self.file);
             }
         }
+    }
+}
+
+impl Drop for GmfWriter {
+    fn drop(&mut self) {
+        self.close();
     }
 }
