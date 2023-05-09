@@ -243,7 +243,6 @@ mod tests {
         topo_elems::Triangle,
         Idx, Mesh, Result,
     };
-    // use std::collections::HashMap;
 
     use super::{compute_curvature_tensor, fix_curvature};
 
@@ -276,14 +275,6 @@ mod tests {
             .for_each(|i| bdy_flag[i as usize] = true);
 
         let (u, v) = compute_curvature_tensor(&surf);
-
-        // // Export the curvature
-        // let u1 = u.iter().flatten().copied().collect::<Vec<_>>();
-        // let v1 = v.iter().flatten().copied().collect::<Vec<_>>();
-        // let mut data = HashMap::new();
-        // data.insert(String::from("u"), u1.as_slice());
-        // data.insert(String::from("v"), v1.as_slice());
-        // surf.write_xdmf("cylinder.xdmf", None, None, Some(data));
 
         for (i_elem, e) in surf.elems().enumerate() {
             let mut u = u[i_elem];
@@ -335,14 +326,6 @@ mod tests {
 
         let (mut u, mut v) = compute_curvature_tensor(&surf);
         fix_curvature(&surf, &mut u, &mut v)?;
-
-        // // Export the curvature
-        // let u1 = u.iter().flatten().copied().collect::<Vec<_>>();
-        // let v1 = v.iter().flatten().copied().collect::<Vec<_>>();
-        // let mut data = HashMap::new();
-        // data.insert(String::from("u"), u1.as_slice());
-        // data.insert(String::from("v"), v1.as_slice());
-        // surf.write_xdmf("cylinder.xdmf", None, None, Some(data));
 
         for i_elem in 0..surf.n_elems() as usize {
             let mut u = u[i_elem];

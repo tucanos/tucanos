@@ -14,11 +14,9 @@ pub mod mesh_metric;
 mod mesh_ordering;
 mod mesh_split;
 pub mod mesh_stl;
-mod mesh_xdmf;
+pub mod mesh_vtk;
 #[cfg(feature = "libmeshb-sys")]
 pub mod meshb_io;
-#[cfg(feature = "vtkio")]
-pub mod mesh_vtk;
 pub mod metric;
 mod metric_reduction;
 pub mod multi_element_mesh;

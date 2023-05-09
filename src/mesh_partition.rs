@@ -115,8 +115,6 @@ mod tests {
 
         mesh.partition_scotch(4)?;
 
-        // mesh.write_xdmf("test.xdmf", 0.0)?;
-
         let q = mesh.partition_quality()?;
         assert!(q < 0.03);
 
@@ -128,8 +126,6 @@ mod tests {
         let mut mesh = test_mesh_3d().split().split().split().split();
 
         mesh.partition_scotch(4)?;
-
-        // mesh.write_xdmf("test.xdmf", 0.0)?;
 
         let q = mesh.partition_quality()?;
         assert!(q < 0.025);
@@ -143,10 +139,7 @@ mod tests {
 
         mesh.partition_metis(4)?;
 
-        // mesh.write_xdmf("test.xdmf", 0.0)?;
-
         let q = mesh.partition_quality()?;
-        // println!("{}", q);
         assert!(q < 0.025);
 
         Ok(())
@@ -158,10 +151,7 @@ mod tests {
 
         mesh.partition_metis(4)?;
 
-        mesh.write_xdmf("test.xdmf", 0.0)?;
-
         let q = mesh.partition_quality()?;
-        // println!("{}", q);
         assert!(q < 0.02);
 
         Ok(())

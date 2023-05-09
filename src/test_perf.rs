@@ -44,7 +44,7 @@ fn main() -> Result<()> {
     remesher.check()?;
 
     let mesh = remesher.to_mesh(true);
-    mesh.write_xdmf("test_perf.xdmf", None, None, None)?;
+    mesh.write_vtk("test_perf.vtu", None, None)?;
 
     Ok(())
 }
