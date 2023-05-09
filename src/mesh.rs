@@ -170,6 +170,11 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         E::Geom::from_verts(e.iter().map(|i| (get_point::<D>(&self.coords, *i), metric)))
     }
 
+    /// Get an iterator through the geometric elements
+    pub fn gelems(&self) -> impl Iterator<Item = E::Geom<D, IsoMetric<D>>> + '_ {
+        (0..self.n_elems()).map(|i| self.gelem(i))
+    }
+
     /// Get the volume (area in 2D) of the i-th element
     #[must_use]
     pub fn elem_vol(&self, idx: Idx) -> f64 {
@@ -209,6 +214,13 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         <<E as Elem>::Face as Elem>::Geom::from_verts(
             f.iter().map(|i| (get_point::<D>(&self.coords, *i), metric)),
         )
+    }
+
+    /// Get an iterator through the geometric faces
+    pub fn gfaces(
+        &self,
+    ) -> impl Iterator<Item = <<E as Elem>::Face as Elem>::Geom<D, IsoMetric<D>>> + '_ {
+        (0..self.n_faces()).map(|i| self.gface(i))
     }
 
     /// Get the area (length in 2D) of the i-th face
