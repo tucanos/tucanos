@@ -102,9 +102,9 @@ mod tests {
         let mut mesh = test_mesh_3d().split().split();
         mesh.add_boundary_faces();
 
-        write_stl_file("cube.stl")?;
-        let mut geom = read_stl("cube.stl");
-        remove_file("cube.stl")?;
+        write_stl_file("cube1.stl")?;
+        let mut geom = read_stl("cube1.stl");
+        remove_file("cube1.stl")?;
         geom.elems.swap(4, 5);
 
         let (n, angle) = orient_stl(&mesh, &mut geom);

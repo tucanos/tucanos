@@ -175,10 +175,10 @@ mod tests {
 
     #[test]
     fn test_stl() -> Result<()> {
-        write_stl_file("cube.stl")?;
-        let mut geom = read_stl("cube.stl");
+        write_stl_file("cube2.stl")?;
+        let mut geom = read_stl("cube2.stl");
         geom.compute_octree();
-        remove_file("cube.stl")?;
+        remove_file("cube2.stl")?;
         let geom = LinearGeometry::new(geom)?;
 
         let mut p = Point::<3>::new(2., 0.5, 0.5);
