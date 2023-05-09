@@ -634,8 +634,6 @@ mod tests {
             0.,
         );
 
-        let n_elems = mesh.n_elems() as usize;
-
         let mut coords = Vec::with_capacity(mesh.coords.len());
         for mut pt in mesh.verts() {
             pt[0] *= h0;
