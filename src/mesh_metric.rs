@@ -1,6 +1,9 @@
 use crate::{
-    geom_elems::GElem, mesh::SimplexMesh, metric::Metric, topo_elems::Elem, Error, Idx, Mesh,
-    Result,
+    geom_elems::GElem,
+    mesh::SimplexMesh,
+    metric::{AnisoMetric2d, AnisoMetric3d, Metric},
+    topo_elems::{Elem, Tetrahedron, Triangle},
+    Error, Idx, Mesh, Result,
 };
 
 use log::{debug, info, warn};
@@ -9,7 +12,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Convert a metric field defined at the element centers (P0) to a field defined at the vertices (P1)
     /// using a weighted average. For metric fields, use `elem_data_to_vertex_data_metric`
     /// vertex-to-element connectivity and volumes are required
-    pub fn elem_data_to_vertex_data_metric<M: Metric<D>>(&self, v: &[f64]) -> Result<Vec<f64>> {
+    pub fn elem_data_to_vertex_data_metric<M: Metric<D>>(&self, v: &[M]) -> Result<Vec<M>> {
         debug!("Convert metric element data to vertex data");
         if self.vertex_to_elems.is_none() {
             return Err(Error::from("vertex to element connectivity not computed"));
@@ -25,10 +28,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let n_verts = self.n_verts() as usize;
         assert_eq!(v.len() % n_elems, 0);
 
-        let n_comp = v.len() / n_elems;
-        assert_eq!(n_comp, M::N);
-
-        let mut res = Vec::with_capacity(n_comp * n_verts);
+        let mut res = Vec::with_capacity(n_verts);
 
         let v2e = self.vertex_to_elems.as_ref().unwrap();
         let elem_vol = self.elem_vol.as_ref().unwrap();
@@ -48,10 +48,10 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             );
             metrics.reserve(n_elems);
             metrics.clear();
-            metrics.extend(elems.iter().map(|i| M::from_slice(v, *i)));
+            metrics.extend(elems.iter().map(|&i| v[i as usize]));
             let wm = weights.iter().copied().zip(metrics.iter());
             let m = M::interpolate(wm);
-            res.extend(m.into_iter());
+            res.push(m);
         }
 
         Ok(res)
@@ -60,17 +60,14 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Convert a metric field defined at the element centers (P0) to a field defined at the vertices (P1)
     /// using a weighted average. For metric fields, use `elem_data_to_vertex_data_metric`
     /// vertex-to-element connectivity and volumes are required
-    pub fn vertex_data_to_elem_data_metric<M: Metric<D>>(&self, v: &[f64]) -> Result<Vec<f64>> {
+    pub fn vertex_data_to_elem_data_metric<M: Metric<D>>(&self, v: &[M]) -> Result<Vec<M>> {
         debug!("Convert metric vertex data to element data");
 
         let n_elems = self.n_elems() as usize;
         let n_verts = self.n_verts() as usize;
         assert_eq!(v.len() % n_verts, 0);
 
-        let n_comp = v.len() / n_verts;
-        assert_eq!(n_comp, M::N);
-
-        let mut res = Vec::with_capacity(n_comp * n_elems);
+        let mut res = Vec::with_capacity(n_elems);
 
         let mut weights = Vec::new();
         let mut metrics = Vec::new();
@@ -82,10 +79,10 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             weights.resize(E::N_VERTS as usize, f);
             metrics.reserve(n_elems);
             metrics.clear();
-            metrics.extend(e.iter().map(|i| M::from_slice(v, *i)));
+            metrics.extend(e.iter().map(|&i| v[i as usize]));
             let wm = weights.iter().copied().zip(metrics.iter());
             let m = M::interpolate(wm);
-            res.extend(m.into_iter());
+            res.push(m);
         }
         Ok(res)
     }
