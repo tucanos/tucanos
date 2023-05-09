@@ -335,6 +335,22 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 }
 
+impl SimplexMesh<3, Tetrahedron> {
+    pub fn implied_metric(&self) -> Result<Vec<AnisoMetric3d>> {
+        let mut implied_metric = Vec::with_capacity(self.n_elems() as usize);
+        implied_metric.extend(self.gelems().map(|ge| ge.implied_metric()));
+        self.elem_data_to_vertex_data_metric(&implied_metric)
+    }
+}
+
+impl SimplexMesh<2, Triangle> {
+    pub fn implied_metric(&self) -> Result<Vec<AnisoMetric2d>> {
+        let mut implied_metric = Vec::with_capacity(self.n_elems() as usize);
+        implied_metric.extend(self.gelems().map(|ge| ge.implied_metric()));
+        self.elem_data_to_vertex_data_metric(&implied_metric)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use nalgebra::Matrix3;
@@ -619,7 +635,6 @@ mod tests {
         );
 
         let n_elems = mesh.n_elems() as usize;
-        let n_verts = mesh.n_verts() as usize;
 
         let mut coords = Vec::with_capacity(mesh.coords.len());
         for mut pt in mesh.verts() {
@@ -630,20 +645,12 @@ mod tests {
             coords.extend(pt.iter());
         }
         mesh.coords = coords;
-
-        let mut m = Vec::with_capacity(6 * n_elems);
-        for i_elem in 0..n_elems {
-            let ge = mesh.gelem(i_elem as Idx);
-            let tmp = ge.implied_metric();
-            m.extend(tmp.into_iter());
-        }
-
         mesh.compute_vertex_to_elems();
         mesh.compute_volumes();
-        let v_v = mesh.elem_data_to_vertex_data_metric::<AnisoMetric3d>(&m)?;
 
-        for i in 0..n_verts {
-            let m_i = AnisoMetric3d::from_slice(&v_v, i as Idx);
+        let m = mesh.implied_metric()?;
+
+        for m_i in m {
             let s = m_i.sizes();
 
             assert!(s[0] > 0.33 * h1 / 8. && s[0] < 3. * h1 / 8.);
