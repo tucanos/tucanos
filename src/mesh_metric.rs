@@ -1,6 +1,7 @@
 use crate::{
     geom_elems::GElem,
-    mesh::SimplexMesh,
+    geometry::LinearGeometry,
+    mesh::{Point, SimplexMesh},
     metric::{AnisoMetric2d, AnisoMetric3d, Metric},
     topo_elems::{Elem, Tetrahedron, Triangle},
     Error, Idx, Mesh, Result,
@@ -357,14 +358,129 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 }
 
 impl SimplexMesh<3, Tetrahedron> {
+    /// Compute the element-implied metric
     pub fn implied_metric(&self) -> Result<Vec<AnisoMetric3d>> {
         let mut implied_metric = Vec::with_capacity(self.n_elems() as usize);
         implied_metric.extend(self.gelems().map(|ge| ge.implied_metric()));
         self.elem_data_to_vertex_data_metric(&implied_metric)
     }
+
+    /// Compute an anisotropic metric based on the boundary curvature
+    /// - geom : the geometry on which the curvature is computed
+    /// - r_h: the curvature radius to element size ratio
+    /// - beta: the mesh gradation
+    /// - implied_metric / step: if provided, the resulting metric will be limited to (1/step, step)
+    ///   times the implied metric
+    pub fn curvature_metric(
+        &self,
+        geom: &LinearGeometry<3, Triangle>,
+        r_h: f64,
+        beta: f64,
+        implied_metric: Option<&[AnisoMetric3d]>,
+        step: Option<f64>,
+    ) -> Result<Vec<AnisoMetric3d>> {
+        info!(
+            "Compute the curvature metric with r/h = {} and gradation = {}",
+            r_h, beta
+        );
+        if implied_metric.is_some() {
+            info!("Limit the curvature metric: f = {} ", step.unwrap());
+        }
+
+        let (_, boundary_vertex_ids) = self.boundary();
+
+        // Initialize the metric field
+        let hx = Point::<3>::new(1.0, 0.0, 0.0);
+        let hy = Point::<3>::new(0.0, 1.0, 0.0);
+        let hz = Point::<3>::new(0.0, 0.0, 1.0);
+        let m = AnisoMetric3d::from_sizes(&hx, &hy, &hz);
+        let n_verts = self.n_verts() as usize;
+        let mut curvature_metric = vec![m; n_verts];
+        let mut flg = vec![false; n_verts];
+
+        // Set the metric at the boundary vertices
+        boundary_vertex_ids.iter().for_each(|&i_vert| {
+            let pt = self.vert(i_vert);
+            let (mut u, mut v) = geom.curvature(&pt).unwrap();
+            let hu = 1. / (r_h * u.norm());
+            let hv = 1. / (r_h * v.norm());
+            let hn = f64::min(hu, hv);
+            u.normalize_mut();
+            v.normalize_mut();
+            let n = hn * u.cross(&v);
+            u *= hu;
+            v *= hv;
+
+            curvature_metric[i_vert as usize] = AnisoMetric3d::from_sizes(&n, &u, &v);
+            if implied_metric.is_some() {
+                let m_i = implied_metric.as_ref().unwrap()[i_vert as usize];
+                curvature_metric[i_vert as usize].limit(&m_i, step.unwrap());
+            }
+            flg[i_vert as usize] = true;
+        });
+
+        // Extend the metric into the volume
+        let mut to_fix = n_verts - boundary_vertex_ids.len();
+        debug!("{} / {} internal vertices to fix", to_fix, n_verts);
+
+        let v2v = self.vertex_to_vertices.as_ref().unwrap();
+
+        let mut n_iter = 0;
+        loop {
+            let mut fixed = Vec::with_capacity(to_fix);
+            for (i_vert, pt) in self.verts().enumerate() {
+                if !flg[i_vert] {
+                    let neighbors = v2v.row(i_vert as Idx);
+                    let mut valid_neighbors =
+                        neighbors.iter().copied().filter(|&i| flg[i as usize]);
+                    if let Some(i) = valid_neighbors.next() {
+                        let m_i = curvature_metric[i as usize];
+                        let pt_i = self.vert(i);
+                        let e = pt - pt_i;
+                        let mut m = m_i.span(&e, beta);
+                        for i in valid_neighbors {
+                            let m_i = curvature_metric[i as usize];
+                            let pt_i = self.vert(i);
+                            let e = pt - pt_i;
+                            let m_i_spanned = m_i.span(&e, beta);
+                            m = m.intersect(&m_i_spanned);
+                        }
+                        if implied_metric.is_some() {
+                            let m_i = implied_metric.as_ref().unwrap()[i_vert];
+                            m.limit(&m_i, step.unwrap());
+                        }
+                        curvature_metric[i_vert] = m;
+                        to_fix -= 1;
+                        fixed.push(i_vert);
+                    }
+                }
+            }
+            if fixed.is_empty() {
+                // No element was fixed
+                if to_fix > 0 {
+                    warn!(
+                        "stop at iteration {}, {} elements cannot be fixed",
+                        n_iter + 1,
+                        to_fix
+                    );
+                }
+                break;
+            }
+            fixed.iter().for_each(|&i| flg[i] = true);
+            n_iter += 1;
+
+            debug!(
+                "iteration {}: {} / {} vertices remain to be fixed",
+                n_iter, to_fix, n_verts
+            );
+        }
+
+        Ok(curvature_metric)
+    }
 }
 
 impl SimplexMesh<2, Triangle> {
+    /// Compute the element-implied metric
     pub fn implied_metric(&self) -> Result<Vec<AnisoMetric2d>> {
         let mut implied_metric = Vec::with_capacity(self.n_elems() as usize);
         implied_metric.extend(self.gelems().map(|ge| ge.implied_metric()));
