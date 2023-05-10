@@ -8,7 +8,7 @@ use self::libmeshb_sys::{
 use crate::{
     mesh::{Point, SimplexMesh},
     topo_elems::Elem,
-    Idx, Mesh, Tag,
+    Error, Idx, Mesh, Result, Tag,
 };
 use std::{
     convert::TryInto,
@@ -447,4 +447,62 @@ impl Drop for GmfWriter {
     fn drop(&mut self) {
         self.close();
     }
+}
+
+impl<const D: usize, E: Elem> SimplexMesh<D, E> {
+    pub fn write_meshb(&self, file_name: &str) -> Result<()> {
+        let mut writer = GmfWriter::new(file_name, D);
+
+        if writer.is_invalid() {
+            return Err(Error::from("Cannot open the result file"));
+        }
+
+        writer.write_mesh(self);
+
+        Ok(())
+    }
+
+    pub fn write_solb(&self, arr: &[f64], file_name: &str) -> Result<()> {
+        let mut writer = GmfWriter::new(file_name, D);
+        if writer.is_invalid() {
+            return Err(Error::from(&format!("Cannot open {}", file_name)));
+        }
+
+        let n_comp = arr.len() / self.n_verts() as usize;
+        writer.write_solution(arr, D, n_comp);
+
+        Ok(())
+    }
+
+    pub fn read_meshb(file_name: &str) -> Result<Self> {
+        let reader = GmfReader::new(file_name);
+        if reader.is_invalid() {
+            return Err(Error::from(&format!("Cannot open {}", file_name)));
+        }
+        if reader.dim() != D {
+            return Err(Error::from("Invalid dimension"));
+        }
+
+        let coords = reader.read_vertices();
+        let (etype, ftype) = match E::N_VERTS {
+            4 => (GmfElementTypes::Tetrahedron, GmfElementTypes::Triangle),
+            3 => (GmfElementTypes::Triangle, GmfElementTypes::Edge),
+            _ => unreachable!(),
+        };
+        let (elems, etags) = reader.read_elements(etype);
+        let (faces, ftags) = reader.read_elements(ftype);
+
+        Ok(SimplexMesh::<D, E>::new(coords, elems, etags, faces, ftags))
+    }
+}
+
+pub fn read_solb(file_name: &str) -> Result<Vec<f64>> {
+    let reader = GmfReader::new(file_name);
+    if reader.is_invalid() {
+        return Err(Error::from(&format!("Cannot open {}", file_name)));
+    }
+
+    let (sol, _) = reader.read_solution();
+
+    Ok(sol)
 }
