@@ -76,6 +76,23 @@ impl<const D: usize, E: Elem> LinearGeometry<D, E> {
         }
         d_max
     }
+
+    /// Compute the max angle between the face normals and the geometry normals
+    pub fn max_normal_angle<E2: Elem>(&self, mesh: &SimplexMesh<D, E2>) -> f64 {
+        assert_eq!(E2::Face::N_VERTS, E::N_VERTS);
+
+        let mut a_max = 0.0;
+        for i_face in 0..mesh.n_faces() {
+            let mut c = mesh.face_center(i_face);
+            let n = mesh.gface(i_face).normal();
+            let a = self.angle(&mut c, &n, &(E::DIM as Dim, 1));
+            if a > 45. {
+                warn!("Angle between the face normals and the geometry is {a_max} at {c}");
+            }
+            a_max = f64::max(a_max, a);
+        }
+        a_max
+    }
 }
 
 impl LinearGeometry<3, Triangle> {
@@ -132,20 +149,6 @@ impl LinearGeometry<3, Triangle> {
         self.mesh.write_vtk(fname, None, Some(data))?;
 
         Ok(())
-    }
-
-    pub fn max_face_angle<E: Elem>(&self, mesh: &SimplexMesh<3, E>) -> f64 {
-        let mut a_max = 0.0;
-        for i_face in 0..mesh.n_faces() {
-            let mut c = mesh.face_center(i_face);
-            let n = mesh.gface(i_face).normal();
-            let a = self.angle(&mut c, &n, &(2, 1));
-            if a > 45. {
-                warn!("Angle between the face normals and the geometry is {a_max} at {c}");
-            }
-            a_max = f64::max(a_max, a);
-        }
-        a_max
     }
 }
 
