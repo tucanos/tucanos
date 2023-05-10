@@ -4,8 +4,9 @@ use crate::{
     mesh::{Point, SimplexMesh},
     topo_elems::{Elem, Triangle},
     topology::Topology,
-    Dim, Error, Result, Tag, TopoTag,
+    Dim, Error, Mesh, Result, Tag, TopoTag,
 };
+use log::warn;
 use rustc_hash::FxHashSet;
 use std::{collections::HashMap, f64::consts::PI, hash::BuildHasherDefault};
 
@@ -118,6 +119,20 @@ impl LinearGeometry<3, Triangle> {
         self.mesh.write_vtk(fname, None, Some(data))?;
 
         Ok(())
+    }
+
+    pub fn max_face_angle<E: Elem>(&self, mesh: &SimplexMesh<3, E>) -> f64 {
+        let mut a_max = 0.0;
+        for i_face in 0..mesh.n_faces() {
+            let mut c = mesh.face_center(i_face);
+            let n = mesh.gface(i_face).normal();
+            let a = self.angle(&mut c, &n, &(2, 1));
+            if a > 45. {
+                warn!("Angle between the face normals and the geometry is {a_max} at {c}");
+            }
+            a_max = f64::max(a_max, a);
+        }
+        a_max
     }
 }
 

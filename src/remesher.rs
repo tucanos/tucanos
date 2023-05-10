@@ -135,6 +135,8 @@ pub struct RemesherParams {
     pub smooth_iter: u32,
     /// Type of smoothing used
     pub smooth_type: SmoothingType,
+    /// Max angle between the normals of the new faces and the geometry (in degrees)
+    pub max_angle: f64,
 }
 
 impl Default for RemesherParams {
@@ -152,6 +154,7 @@ impl Default for RemesherParams {
             swap_constrain_l: 0.5,
             smooth_iter: 1,
             smooth_type: SmoothingType::Laplacian,
+            max_angle: 20.0,
         }
     }
 }
@@ -219,21 +222,6 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
             res.insert_elem(e);
         }
         assert_eq!(n_elems, res.n_elems());
-
-        let mut a_max = 0.0;
-        for i_face in 0..mesh.n_faces() {
-            let f = mesh.face(i_face);
-            let mut c = mesh.face_center(i_face);
-            let n = mesh.gface(i_face).normal();
-            let tags = f.iter().map(|i| vtag[*i as usize]);
-            let ftag = res.topo.elem_tag(tags).unwrap();
-            let a = res.geom.angle(&mut c, &n, &ftag);
-            if a > 45. {
-                warn!("Angle between the face normals and the geometry is {a_max} at {c}");
-            }
-            a_max = f64::max(a_max, a);
-        }
-        info!("Max. angle between the face normals and the geometry: {a_max}");
 
         res.print_stats();
 
@@ -745,6 +733,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
         q_min: f64,
         l_min: f64,
         l_max: f64,
+        max_angle: f64,
         cavity: &mut Cavity<D, E, M>,
     ) -> TrySwapResult {
         trace!("Try to swap edge {:?}", edg);
@@ -794,7 +783,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                 continue;
             }
 
-            if !filled_cavity.check_boundary_normals(&self.topo, &self.geom, 20.0) {
+            if !filled_cavity.check_boundary_normals(&self.topo, &self.geom, max_angle) {
                 trace!("Cannot swap, would create a non smooth surface");
                 continue;
             }
@@ -834,7 +823,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
     ///   - no edge smaller that `constrain_l` * `l_min` or larger than lmax / `constrain_l` is created
     ///      (`l_min` / `l_max` are the minimum : maximum edge length in the mesh)
     ///   - the edge swap increases the minimum quality of the adjacent elements
-    pub fn swap(&mut self, q_target: f64, max_iter: u32, constrain_l: f64) -> u32 {
+    pub fn swap(&mut self, q_target: f64, max_iter: u32, constrain_l: f64, max_angle: f64) -> u32 {
         info!("Swap edges: target quality = {}", q_target);
 
         let (lmin, lmax) = min_max_iter(self.lengths_iter());
@@ -854,7 +843,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
             let mut n_fails = 0;
             let mut n_ok = 0;
             for edg in edges {
-                let res = self.try_swap(edg, q_target, lmin, lmax, &mut cavity);
+                let res = self.try_swap(edg, q_target, lmin, lmax, max_angle, &mut cavity);
                 match res {
                     TrySwapResult::CouldNotSwap => n_fails += 1,
                     TrySwapResult::CouldSwap => n_swaps += 1,
@@ -1272,8 +1261,18 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                         params.split_constrain_l,
                         params.split_constrain_q,
                     );
-                    self.swap(0.4, params.swap_max_iter, params.swap_constrain_l);
-                    self.swap(0.8, params.swap_max_iter, params.swap_constrain_l);
+                    self.swap(
+                        0.4,
+                        params.swap_max_iter,
+                        params.swap_constrain_l,
+                        params.max_angle,
+                    );
+                    self.swap(
+                        0.8,
+                        params.swap_max_iter,
+                        params.swap_constrain_l,
+                        params.max_angle,
+                    );
                     self.smooth(params.smooth_type, params.smooth_iter);
                 }
             }
@@ -1291,13 +1290,33 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                 params.split_constrain_l,
                 params.split_constrain_q,
             );
-            self.swap(0.4, params.swap_max_iter, params.swap_constrain_l);
-            self.swap(0.8, params.swap_max_iter, params.swap_constrain_l);
+            self.swap(
+                0.4,
+                params.swap_max_iter,
+                params.swap_constrain_l,
+                params.max_angle,
+            );
+            self.swap(
+                0.8,
+                params.swap_max_iter,
+                params.swap_constrain_l,
+                params.max_angle,
+            );
             self.smooth(params.smooth_type, params.smooth_iter);
         }
 
-        self.swap(0.4, params.swap_max_iter, params.swap_constrain_l);
-        self.swap(0.8, params.swap_max_iter, params.swap_constrain_l);
+        self.swap(
+            0.4,
+            params.swap_max_iter,
+            params.swap_constrain_l,
+            params.max_angle,
+        );
+        self.swap(
+            0.8,
+            params.swap_max_iter,
+            params.swap_constrain_l,
+            params.max_angle,
+        );
 
         info!("Done in {}s", now.elapsed().as_secs_f32());
         self.print_stats();
@@ -1494,7 +1513,7 @@ mod tests {
         let h = vec![IsoMetric::<2>::from(2.); mesh.n_verts() as usize];
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
 
-        let n_iter = remesher.swap(0.8, 10, 0.5);
+        let n_iter = remesher.swap(0.8, 10, 0.5, 20.0);
         assert!(n_iter < 10);
         let mesh = remesher.to_mesh(true);
         assert!(f64::abs(mesh.vol() - 1.) < 1e-12);
@@ -1804,7 +1823,7 @@ mod tests {
         assert!(f64::abs(mesh.vol() - 2.0 * 0.1 / 6.) < 1e-12);
 
         // swap
-        let n_iter = remesher.swap(0.8, 10, 0.5);
+        let n_iter = remesher.swap(0.8, 10, 0.5, 20.0);
         assert!(n_iter < 10);
         let mesh = remesher.to_mesh(true);
         assert!(f64::abs(mesh.vol() - 2.0 * 0.1 / 6.) < 1e-12);
@@ -1834,7 +1853,7 @@ mod tests {
         let h = vec![IsoMetric::<3>::from(2.); mesh.n_verts() as usize];
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
 
-        let n_iter = remesher.swap(0.8, 10, 0.5);
+        let n_iter = remesher.swap(0.8, 10, 0.5, 20.0);
         assert!(n_iter < 10);
         let mesh = remesher.to_mesh(true);
         assert!(f64::abs(mesh.vol() - 1.) < 1e-12);
