@@ -9,6 +9,27 @@ use crate::{
 use log::{debug, info, warn};
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
+    /// Get the metric information (min/max size, max anisotropy, complexity)
+    pub fn metric_info<M: Metric<D>>(&self, m: &[M]) -> (f64, f64, f64, f64) {
+        let (h_min, h_max, aniso_max) =
+            m.iter()
+                .map(|m| m.sizes())
+                .fold((f64::MAX, 0.0, 0.0), |(a, b, c), d| {
+                    (
+                        f64::min(a, d[0]),
+                        f64::max(b, d[2]),
+                        f64::max(c, d[2] / d[0]),
+                    )
+                });
+
+        (
+            h_min,
+            h_max,
+            aniso_max,
+            self.complexity(m.iter().copied(), 0.0, f64::MAX),
+        )
+    }
+
     /// Convert a metric field defined at the element centers (P0) to a field defined at the vertices (P1)
     /// using a weighted average. For metric fields, use `elem_data_to_vertex_data_metric`
     /// vertex-to-element connectivity and volumes are required
