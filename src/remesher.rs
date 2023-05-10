@@ -867,7 +867,13 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
     ///   - their length is smaller that 1/sqrt(2)
     ///   - no edge larger than sqrt(2.0) / `constrain_l` is created
     ///   - no element with a quality < than `constrain_q` * `q_min` is created
-    pub fn collapse(&mut self, max_iter: u32, constrain_l: f64, constrain_q: f64) -> u32 {
+    pub fn collapse(
+        &mut self,
+        max_iter: u32,
+        constrain_l: f64,
+        constrain_q: f64,
+        max_angle: f64,
+    ) -> u32 {
         info!("Collapse elements");
 
         let l_max = f64::sqrt(2.0) / constrain_l; //crate::max_iter(self.lengths_iter()) / constrain_l;
@@ -937,6 +943,11 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
 
                     if !filled_cavity.check_tags(&self.topo) {
                         trace!("Cannot collapse, would create an element/face with an invalid tag");
+                        continue;
+                    }
+
+                    if !filled_cavity.check_boundary_normals(&self.topo, &self.geom, max_angle) {
+                        trace!("Cannot collapse, would create a non smooth surface");
                         continue;
                     }
 
@@ -1254,6 +1265,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                         params.collapse_max_iter,
                         params.collapse_constrain_l,
                         params.collapse_constrain_q,
+                        params.max_angle,
                     );
                     self.split(
                         l_0,
@@ -1283,6 +1295,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                 params.collapse_max_iter,
                 params.collapse_constrain_l,
                 params.collapse_constrain_q,
+                params.max_angle,
             );
             self.split(
                 f64::sqrt(2.0),
@@ -1502,7 +1515,7 @@ mod tests {
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
         remesher.check()?;
 
-        let n_iter = remesher.collapse(10, 0.5, 0.75);
+        let n_iter = remesher.collapse(10, 0.5, 0.75, 20.0);
         assert!(n_iter < 10);
         let mesh = remesher.to_mesh(true);
         assert!(f64::abs(mesh.vol() - 1.) < 1e-12);
@@ -1533,7 +1546,7 @@ mod tests {
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
         remesher.check()?;
 
-        let n_iter = remesher.collapse(10, 0.5, 0.75);
+        let n_iter = remesher.collapse(10, 0.5, 0.75, 20.0);
         assert!(n_iter < 10);
 
         remesher.check()?;
@@ -1799,7 +1812,7 @@ mod tests {
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
         remesher.check()?;
 
-        let n_iter = remesher.collapse(10, 0.5, 0.75);
+        let n_iter = remesher.collapse(10, 0.5, 0.75, 20.);
         assert!(n_iter < 10);
 
         remesher.check()?;
@@ -1842,7 +1855,7 @@ mod tests {
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
         remesher.check()?;
 
-        let n_iter = remesher.collapse(10, 0.5, 0.75);
+        let n_iter = remesher.collapse(10, 0.5, 0.75, 20.);
         assert!(n_iter < 10);
         let mesh = remesher.to_mesh(true);
         assert!(f64::abs(mesh.vol() - 1.) < 1e-12);

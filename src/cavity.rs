@@ -424,13 +424,18 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
         if D < 3 {
             // No issue in 2d
             true
-        } else if let CavityType::Edge(edg) = self.cavity.ctype {
-            // Only for swaps --> edge cavity
+        } else {
             // when both the edge & reconstruction vertex are on a boundary
-            let edg_on_bdy = self.cavity.tags[edg[0] as usize].0 < E::DIM as Dim
-                && self.cavity.tags[edg[1] as usize].0 < E::DIM as Dim;
+            let check = match self.cavity.ctype {
+                CavityType::Edge(edg) => {
+                    self.cavity.tags[edg[0] as usize].0 < E::DIM as Dim
+                        && self.cavity.tags[edg[1] as usize].0 < E::DIM as Dim
+                }
+                CavityType::Vertex(vx) => self.cavity.tags[vx as usize].0 < E::DIM as Dim,
+                _ => unreachable!(),
+            };
             let node_on_bdy = self.cavity.tags[self.id.unwrap() as usize].0 < E::DIM as Dim;
-            if edg_on_bdy && node_on_bdy {
+            if check && node_on_bdy {
                 // Check for boundary faces
                 for f in self.faces() {
                     for i_edge in 0..E::Face::N_EDGES {
@@ -455,8 +460,6 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
                 }
             }
             true
-        } else {
-            unreachable!();
         }
     }
 }
