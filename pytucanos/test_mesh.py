@@ -5,8 +5,6 @@ from .mesh import (
     Mesh22,
     Mesh32,
     Mesh33,
-    get_boundary_2d,
-    get_boundary_3d,
     get_square,
     get_cube,
 )
@@ -113,10 +111,7 @@ class TestMeshes(unittest.TestCase):
         msh = Mesh22(coords, elems, etags, faces, ftags)
         msh = msh.split().split()
 
-        with self.assertRaises(TypeError):
-            bdy = get_boundary_3d(msh)
-
-        bdy = get_boundary_2d(msh)
+        bdy, _ = msh.boundary()
 
         self.assertEqual(bdy.n_elems(), 2**2 * faces.shape[0])
         self.assertEqual(bdy.n_faces(), 0)
@@ -128,10 +123,7 @@ class TestMeshes(unittest.TestCase):
         msh = Mesh33(coords, elems, etags, faces, ftags)
         msh = msh.split().split()
 
-        with self.assertRaises(TypeError):
-            bdy = get_boundary_2d(msh)
-
-        bdy = get_boundary_3d(msh)
+        bdy, _ = msh.boundary()
 
         self.assertEqual(bdy.n_elems(), 4**2 * faces.shape[0])
         self.assertEqual(bdy.n_faces(), 0)
@@ -241,7 +233,7 @@ class TestMeshes(unittest.TestCase):
         self.assertEqual(n, 2 * 2**5)
 
         faces_after, ftags_after = msh.get_faces(), msh.get_ftags()
-        self.assertTrue(np.array_equal(np.unique(ftags_after), [1, 2, 3]))
+        self.assertTrue(np.array_equal(np.unique(ftags_after), [1, 2, 3, 4]))
         self.assertEqual(np.nonzero(ftags_after == 3)[0].size, 2 * 2**5)
 
     def test_boundary_faces_3d(self):

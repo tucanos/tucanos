@@ -5,10 +5,6 @@ from ._pytucanos import (
     Mesh22,
     Mesh32,
     Mesh33,
-    get_boundary_2d,
-    get_boundary_3d,
-    implied_metric_2d,
-    implied_metric_3d,
 )
 from .metric import sym2mat
 
@@ -26,7 +22,7 @@ def create_mesh(coords, elems, etags, faces, ftags):
 
 def __plot_boundary(ax, msh, normals):
 
-    bdy = get_boundary_2d(msh)
+    bdy, _ = msh.boundary()
     xy = bdy.get_coords()
     edgs = bdy.get_elems()
     etags = bdy.get_etags()

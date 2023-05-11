@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from pytucanos.mesh import get_square, Mesh22, plot_mesh, implied_metric_2d, plot_metric
+from pytucanos.mesh import get_square, Mesh22, plot_mesh, plot_metric
 from pytucanos.remesh import Remesher2dAniso
 
 
@@ -33,16 +33,7 @@ if __name__ == "__main__":
     msh.compute_vertex_to_elems()
     msh.compute_volumes()
 
-    print(msh.n_elems())
-
-    m_i = implied_metric_2d(msh)
-
-    fig, ax = plt.subplots()
-    plot_mesh(ax, msh)
-    plot_metric(ax, msh, m_i, loc="elem")
-    ax.set_title("Implied metric - elem")
-
-    m_i = Remesher2dAniso.elem_data_to_vertex_data_metric(msh, m_i)
+    m_i = msh.implied_metric()
     fig, ax = plt.subplots()
     plot_mesh(ax, msh)
     plot_metric(ax, msh, m_i, loc="vertex")

@@ -1,7 +1,8 @@
 import os
 import numpy as np
 import unittest
-from .field import read_solb, write_solb
+from .mesh import Mesh22, get_square, Mesh33, get_cube
+from .field import read_solb
 from . import HAVE_MESHB
 
 
@@ -15,9 +16,10 @@ class TestField(unittest.TestCase):
 
     def test_2d_scalar(self):
 
-        f = np.random.rand(10, 1)
-
-        write_solb("tmp.solb", 2, f)
+        coords, elems, etags, faces, ftags = get_square()
+        msh = Mesh22(coords, elems, etags, faces, ftags)
+        f = np.random.rand(msh.n_verts(), 1)
+        msh.write_solb("tmp.solb", f)
         g = read_solb("tmp.solb")
         self.assertTrue(np.allclose(f, g))
 
@@ -25,9 +27,10 @@ class TestField(unittest.TestCase):
 
     def test_2d_vector(self):
 
-        f = np.random.rand(10, 2)
-
-        write_solb("tmp.solb", 2, f)
+        coords, elems, etags, faces, ftags = get_square()
+        msh = Mesh22(coords, elems, etags, faces, ftags)
+        f = np.random.rand(msh.n_verts(), 2)
+        msh.write_solb("tmp.solb", f)
         g = read_solb("tmp.solb")
         self.assertTrue(np.allclose(f, g))
 
@@ -35,9 +38,10 @@ class TestField(unittest.TestCase):
 
     def test_2d_tensor(self):
 
-        f = np.random.rand(10, 3)
-
-        write_solb("tmp.solb", 2, f)
+        coords, elems, etags, faces, ftags = get_square()
+        msh = Mesh22(coords, elems, etags, faces, ftags)
+        f = np.random.rand(msh.n_verts(), 3)
+        msh.write_solb("tmp.solb", f)
         g = read_solb("tmp.solb")
         self.assertTrue(np.allclose(f, g))
 
@@ -45,9 +49,10 @@ class TestField(unittest.TestCase):
 
     def test_3d_scalar(self):
 
-        f = np.random.rand(10, 1)
-
-        write_solb("tmp.solb", 3, f)
+        coords, elems, etags, faces, ftags = get_cube()
+        msh = Mesh33(coords, elems, etags, faces, ftags)
+        f = np.random.rand(msh.n_verts(), 1)
+        msh.write_solb("tmp.solb", f)
         g = read_solb("tmp.solb")
         self.assertTrue(np.allclose(f, g))
 
@@ -55,9 +60,10 @@ class TestField(unittest.TestCase):
 
     def test_3d_vector(self):
 
-        f = np.random.rand(10, 3)
-
-        write_solb("tmp.solb", 3, f)
+        coords, elems, etags, faces, ftags = get_cube()
+        msh = Mesh33(coords, elems, etags, faces, ftags)
+        f = np.random.rand(msh.n_verts(), 3)
+        msh.write_solb("tmp.solb", f)
         g = read_solb("tmp.solb")
         self.assertTrue(np.allclose(f, g))
 
@@ -65,9 +71,10 @@ class TestField(unittest.TestCase):
 
     def test_3d_tensor(self):
 
-        f = np.random.rand(10, 6)
-
-        write_solb("tmp.solb", 3, f)
+        coords, elems, etags, faces, ftags = get_cube()
+        msh = Mesh33(coords, elems, etags, faces, ftags)
+        f = np.random.rand(msh.n_verts(), 6)
+        msh.write_solb("tmp.solb", f)
         g = read_solb("tmp.solb")
         self.assertTrue(np.allclose(f, g))
 

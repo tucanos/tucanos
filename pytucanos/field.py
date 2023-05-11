@@ -1,1 +1,1 @@
-from ._pytucanos import read_solb, write_solb
+from ._pytucanos import read_solb

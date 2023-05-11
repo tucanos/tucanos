@@ -6,8 +6,6 @@ use pyo3::{
     types::{PyModule, PyType},
     wrap_pyfunction, PyResult, Python,
 };
-#[cfg(feature = "libmeshb-sys")]
-use tucanos::meshb_io::{GmfElementTypes, GmfReader, GmfWriter};
 use tucanos::{
     geometry::LinearGeometry,
     mesh::SimplexMesh,
@@ -97,62 +95,25 @@ macro_rules! create_mesh {
 
             #[doc = concat!("Read a ", stringify!($name), " from a .mesh(b) file")]
             #[classmethod]
-            #[allow(unused_variables)]
+            #[cfg(feature = "libmeshb-sys")]
             pub fn from_meshb(_cls: &PyType, fname: &str) -> PyResult<Self> {
-                #[cfg(feature = "libmeshb-sys")]
-                {
-                    let reader = GmfReader::new(fname);
-                    if reader.is_invalid() {
-                        return Err(PyRuntimeError::new_err("Cannot open the file"));
-                    }
-                    if reader.dim() != $dim {
-                        return Err(PyRuntimeError::new_err("Invalid dimension"));
-                    }
-
-                    let coords = reader.read_vertices();
-                    let etype = match <$etype as Elem>::N_VERTS {
-                        3 => GmfElementTypes::Triangle,
-                        4 => GmfElementTypes::Tetrahedron,
-                        _ => unreachable!(),
-                    };
-                    let (elems, etags) = reader.read_elements(etype);
-
-                    let etype = match <$etype as Elem>::Face::N_VERTS {
-                        2 => GmfElementTypes::Edge,
-                        3 => GmfElementTypes::Triangle,
-                        _ => unreachable!(),
-                    };
-                    let (faces, ftags) = reader.read_elements(etype);
-
-                    return Ok(Self {
-                        mesh: SimplexMesh::<$dim, $etype>::new(coords, elems, etags, faces, ftags),
-                    });
+                let res = SimplexMesh::<$dim, $etype>::read_meshb(fname);
+                match res {
+                    Ok(mesh) => Ok(Self{mesh}),
+                    Err(err) => Err(PyRuntimeError::new_err(err.to_string())),
                 }
-                #[cfg(not(feature = "libmeshb-sys"))]
-                Err(PyRuntimeError::new_err(
-                    "The meshb interface is not available",
-                ))
             }
 
             /// Write the mesh to a .mesh(b) file
-            #[allow(unused_variables)]
+            #[cfg(feature = "libmeshb-sys")]
             pub fn write_meshb(&self, fname: &str) -> PyResult<()> {
-                #[cfg(feature = "libmeshb-sys")]
-                {
-                    let mut writer = GmfWriter::new(fname, $dim);
+                self.mesh.write_meshb(fname).map_err(|e| PyRuntimeError::new_err(e.to_string()))
+            }
 
-                    if writer.is_invalid() {
-                        return Err(PyRuntimeError::new_err("Cannot write the meshb file"));
-                    }
-
-                    writer.write_mesh(&self.mesh);
-
-                    return Ok(());
-                }
-                #[cfg(not(feature = "libmeshb-sys"))]
-                Err(PyRuntimeError::new_err(
-                    "The meshb interface is not available",
-                ))
+            /// Write a solution to a .sol(b) file
+            #[cfg(feature = "libmeshb-sys")]
+            pub fn write_solb(&self, fname: &str, arr: PyReadonlyArray2<f64>) -> PyResult<()> {
+                self.mesh.write_solb(&arr.to_vec().unwrap(), fname).map_err(|e| PyRuntimeError::new_err(e.to_string()))
             }
 
             /// Get the number of vertices in the mesh
@@ -273,10 +234,18 @@ macro_rules! create_mesh {
                 self.mesh.add_boundary_faces()
             }
 
-            /// Write an ascii xdmf file containing the mesh and the vertex and element data
-            /// time : a time stamp that will be used to display animations in Paraview
-            pub fn write_xdmf(&self, file_name: &str, time: Option<f64>) -> PyResult<()> {
-                let res = self.mesh.write_xdmf(file_name, time, None, None);
+            /// Write a vtk file containing the mesh
+            pub fn write_vtk(&self, file_name: &str) -> PyResult<()> {
+                let res = self.mesh.write_vtk(file_name, None, None);
+                if let Err(res) = res {
+                    return Err(PyRuntimeError::new_err(res.to_string()));
+                }
+                Ok(())
+            }
+
+            /// Write a vtk file containing the boundary
+            pub fn write_boundary_vtk(&self, file_name: &str) -> PyResult<()> {
+                let res = self.mesh.boundary().0.write_vtk(file_name, None, None);
                 if let Err(res) = res {
                     return Err(PyRuntimeError::new_err(res.to_string()));
                 }
@@ -461,80 +430,162 @@ create_mesh!(Mesh31, 3, Edge);
 create_mesh!(Mesh22, 2, Triangle);
 create_mesh!(Mesh21, 2, Edge);
 
-#[pyfunction]
-/// Extract the boundary mesh from a Mesh with tetrahedra in 3D
-pub fn get_boundary_3d(m: &Mesh33) -> Mesh32 {
-    Mesh32 {
-        mesh: m.mesh.boundary(),
+macro_rules! create_geometry {
+    ($name: ident, $dim: expr, $etype: ident, $mesh: ident, $geom: ident) => {
+        #[doc = concat!("Piecewise linear geometry consisting of ", stringify!($etype), " in ", stringify!($dim), "D")]
+        #[pyclass]
+        // #[derive(Clone)]
+        pub struct $name {
+            geom: Option<LinearGeometry<$dim, $etype>>,
+        }
+        #[pymethods]
+        impl $name {
+            /// Create a new geometry
+            #[new]
+            pub fn new(
+                mesh: &$mesh,
+                geom: Option<&$geom>,
+            ) -> Self {
+
+                let mut gmesh = if let Some(geom) = geom {
+                    geom.mesh.clone()
+                } else {
+                    mesh.mesh.boundary().0
+                };
+                orient_stl(&mesh.mesh, &mut gmesh);
+                gmesh.compute_octree();
+                let geom = LinearGeometry::new(gmesh).unwrap();
+
+                Self{geom: Some(geom)}
+            }
+
+            /// Compute the max distance between the face centers and the geometry normals
+            pub fn max_distance(&self, mesh: &$mesh) -> f64 {
+                self.geom.as_ref().unwrap().max_distance(&mesh.mesh)
+            }
+
+            /// Compute the max angle between the face normals and the geometry normals
+            pub fn max_normal_angle(&self, mesh: &$mesh) -> f64 {
+                self.geom.as_ref().unwrap().max_normal_angle(&mesh.mesh)
+            }
+        }
     }
 }
 
-/// Extract the boundary mesh from a Mesh with tetrahedra in 3D
-#[pyfunction]
-pub fn implied_metric_3d<'py>(py: Python<'py>, m: &Mesh33) -> PyResult<&'py PyArray2<f64>> {
-    let m: Vec<_> = (0..m.mesh.n_elems())
-        .flat_map(|i| m.mesh.gelem(i).implied_metric().into_iter())
-        .collect();
-    Ok(to_numpy_2d(py, m, 6))
-}
+create_geometry!(LinearGeometry3d, 3, Triangle, Mesh33, Mesh32);
+create_geometry!(LinearGeometry2d, 2, Edge, Mesh22, Mesh21);
 
-/// Extract the boundary mesh from a Mesh with triangles in 2D
-#[pyfunction]
-pub fn get_boundary_2d(m: &Mesh22) -> Mesh21 {
-    Mesh21 {
-        mesh: m.mesh.boundary(),
+#[pymethods]
+impl LinearGeometry3d {
+    pub fn compute_curvature(&mut self) -> PyResult<()> {
+        match &mut self.geom {
+            Some(geom) => {
+                geom.compute_curvature();
+                Ok(())
+            }
+            None => Err(PyRuntimeError::new_err("Invalid object")),
+        }
+    }
+
+    pub fn write_curvature_vtk(&self, fname: &str) -> PyResult<()> {
+        match &self.geom {
+            Some(geom) => geom
+                .write_curvature(fname)
+                .map_err(|e| PyRuntimeError::new_err(e.to_string())),
+            None => Err(PyRuntimeError::new_err("Invalid object")),
+        }
     }
 }
 
-/// Extract the boundary mesh from a Mesh with triangles in 2D
-#[pyfunction]
-pub fn implied_metric_2d<'py>(py: Python<'py>, m: &Mesh22) -> PyResult<&'py PyArray2<f64>> {
-    let m: Vec<_> = (0..m.mesh.n_elems())
-        .flat_map(|i| m.mesh.gelem(i).implied_metric().into_iter())
-        .collect();
-    Ok(to_numpy_2d(py, m, 3))
+#[pymethods]
+impl Mesh33 {
+    /// Extract the boundary faces into a Mesh, and return the indices of the vertices in the
+    /// parent mesh
+    pub fn boundary<'py>(&self, py: Python<'py>) -> (Mesh32, &'py PyArray1<Idx>) {
+        let (bdy, ids) = self.mesh.boundary();
+        (Mesh32 { mesh: bdy }, to_numpy_1d(py, ids))
+    }
+
+    pub fn implied_metric<'py>(&self, py: Python<'py>) -> PyResult<&'py PyArray2<f64>> {
+        let res = self.mesh.implied_metric();
+
+        if let Err(res) = res {
+            return Err(PyRuntimeError::new_err(res.to_string()));
+        }
+
+        let m: Vec<f64> = res.unwrap().iter().flat_map(|m| m.into_iter()).collect();
+        Ok(to_numpy_2d(py, m, 6))
+    }
+
+    /// Get a metric defined on all the mesh vertices such that
+    ///  - for boundary vertices, the principal directions are aligned with the principal curvature directions
+    ///    and the sizes to curvature radius ratio is r_h
+    ///  - the metric is entended into the volume with gradation beta
+    ///  - if an implied metric is provided, the result is limited to (1/step,step) times the implied metric
+    pub fn curvature_metric<'py>(
+        &self,
+        py: Python<'py>,
+        geom: &LinearGeometry3d,
+        r_h: f64,
+        beta: f64,
+        implied_metric: Option<PyReadonlyArray2<f64>>,
+        step: Option<f64>,
+    ) -> PyResult<&'py PyArray2<f64>> {
+        let res = if let Some(implied_metric) = implied_metric {
+            let implied_metric: Vec<_> = (0..self.mesh.n_verts())
+                .map(|i| AnisoMetric3d::from_slice(implied_metric.as_slice().unwrap(), i))
+                .collect();
+            self.mesh.curvature_metric(
+                geom.geom.as_ref().unwrap(),
+                r_h,
+                beta,
+                Some(&implied_metric),
+                step,
+            )
+        } else {
+            self.mesh
+                .curvature_metric(geom.geom.as_ref().unwrap(), r_h, beta, None, None)
+        };
+
+        if let Err(res) = res {
+            return Err(PyRuntimeError::new_err(res.to_string()));
+        }
+
+        let m: Vec<f64> = res.unwrap().iter().flat_map(|m| m.into_iter()).collect();
+        Ok(to_numpy_2d(py, m, 6))
+    }
+}
+
+#[pymethods]
+impl Mesh22 {
+    /// Extract the boundary faces into a Mesh, and return the indices of the vertices in the
+    /// parent mesh
+    pub fn boundary<'py>(&self, py: Python<'py>) -> (Mesh21, &'py PyArray1<Idx>) {
+        let (bdy, ids) = self.mesh.boundary();
+        (Mesh21 { mesh: bdy }, to_numpy_1d(py, ids))
+    }
+
+    pub fn implied_metric<'py>(&self, py: Python<'py>) -> PyResult<&'py PyArray2<f64>> {
+        let res = self.mesh.implied_metric();
+
+        if let Err(res) = res {
+            return Err(PyRuntimeError::new_err(res.to_string()));
+        }
+
+        let m: Vec<f64> = res.unwrap().iter().flat_map(|m| m.into_iter()).collect();
+        Ok(to_numpy_2d(py, m, 3))
+    }
 }
 
 /// Read a solution stored in a .sol(b) file
 #[pyfunction]
-#[allow(unused_variables)]
+#[cfg(feature = "libmeshb-sys")]
 pub fn read_solb<'py>(py: Python<'py>, fname: &str) -> PyResult<&'py PyArray2<f64>> {
-    #[cfg(feature = "libmeshb-sys")]
-    {
-        let reader = GmfReader::new(fname);
-        if reader.is_invalid() {
-            return Err(PyRuntimeError::new_err("Cannot open the file"));
-        }
-
-        let (sol, m) = reader.read_solution();
-        return Ok(to_numpy_2d(py, sol, m));
+    let res = tucanos::meshb_io::read_solb(fname);
+    match res {
+        Ok((sol, m)) => Ok(to_numpy_2d(py, sol, m)),
+        Err(err) => Err(PyRuntimeError::new_err(err.to_string())),
     }
-    #[cfg(not(feature = "libmeshb-sys"))]
-    Err(PyRuntimeError::new_err(
-        "The meshb interface is not available",
-    ))
-}
-
-/// Write a solution to a .sol(b) file
-#[pyfunction]
-#[allow(unused_variables)]
-pub fn write_solb(fname: &str, dim: usize, arr: PyReadonlyArray2<f64>) -> PyResult<()> {
-    #[cfg(feature = "libmeshb-sys")]
-    {
-        let mut writer = GmfWriter::new(fname, dim);
-
-        if writer.is_invalid() {
-            return Err(PyRuntimeError::new_err("Cannot write the solb file"));
-        }
-
-        writer.write_solution(&arr.to_vec().unwrap(), dim, arr.shape()[1]);
-
-        Ok(())
-    }
-    #[cfg(not(feature = "libmeshb-sys"))]
-    Err(PyRuntimeError::new_err(
-        "The meshb interface is not available",
-    ))
 }
 
 macro_rules! create_remesher {
@@ -553,8 +604,8 @@ macro_rules! create_remesher {
             #[new]
             pub fn new(
                 mesh: &$mesh,
+                geometry: &mut $geom,
                 m: PyReadonlyArray2<f64>,
-                geometry: Option<&$geom>,
             ) -> PyResult<Self> {
                 if m.shape()[0] != mesh.mesh.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
@@ -568,22 +619,11 @@ macro_rules! create_remesher {
                     .map(|i| $metric::from_slice(&m, i))
                     .collect();
 
-                let mut gmesh = if let Some(geometry) = geometry {
-                    geometry.mesh.clone()
-                } else {
-                    mesh.mesh.boundary()
-                };
-                orient_stl(&mesh.mesh, &mut gmesh);
-                gmesh.compute_octree();
-                let geom = LinearGeometry::new(gmesh).unwrap();
-
-                let remesher = Remesher::new(&mesh.mesh, &m, geom);
+                let remesher = Remesher::new(&mesh.mesh, &m, geometry.geom.take().unwrap());
                 if let Err(res) = remesher {
                     return Err(PyRuntimeError::new_err(res.to_string()));
                 }
-                Ok(Self {
-                    remesher: remesher.unwrap(),
-                })
+                Ok(Self {remesher: remesher.unwrap()})
             }
 
             /// Convert a Hessian to the optimal metric using a Lp norm.
@@ -635,6 +675,7 @@ macro_rules! create_remesher {
                 h_max: f64,
                 n_elems: Idx,
                 max_iter: Option<Idx>,
+                fixed_m: Option<PyReadonlyArray2<f64>>,
             ) -> PyResult<&'py PyArray2<f64>> {
                 if m.shape()[0] != mesh.mesh.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
@@ -648,10 +689,21 @@ macro_rules! create_remesher {
                 let mut m: Vec<_> = (0..mesh.mesh.n_verts())
                     .map(|i| $metric::from_slice(m, i))
                     .collect();
-                mesh.mesh
-                    .scale_metric(&mut m, h_min, h_max, n_elems, max_iter.unwrap_or(10));
-                let m: Vec<_> = m.iter().cloned().flatten().collect();
+                let res = if let Some(fixed_m) = fixed_m {
+                    let fixed_m = (0..mesh.mesh.n_verts())
+                        .map(|i| $metric::from_slice(fixed_m.as_slice().unwrap(), i))
+                        .collect::<Vec<_>>();
+                    mesh.mesh
+                        .scale_metric(&mut m, Some(&fixed_m), h_min, h_max, n_elems, max_iter.unwrap_or(10))
+                } else {
+                    mesh.mesh
+                        .scale_metric(&mut m, None, h_min, h_max, n_elems, max_iter.unwrap_or(10))
+                };
+                if let Err(res) = res {
+                    return Err(PyRuntimeError::new_err(res.to_string()));
+                }
 
+                let m: Vec<_> = m.iter().cloned().flatten().collect();
                 return Ok(to_numpy_2d(py, m, <$metric as Metric<$dim>>::N));
             }
 
@@ -735,9 +787,13 @@ macro_rules! create_remesher {
                 }
 
                 let m = m.as_slice().unwrap();
+                let m: Vec<_> = (0..mesh.mesh.n_verts())
+                    .map(|i| $metric::from_slice(m, i))
+                    .collect();
                 let res = mesh.mesh.elem_data_to_vertex_data_metric::<$metric>(&m);
                 match res {
                     Ok(res) => {
+                        let res: Vec<_> = res.iter().cloned().flatten().collect();
                         return Ok(to_numpy_2d(py, res, <$metric as Metric<$dim>>::N));
                     }
                     Err(res) => {
@@ -763,9 +819,13 @@ macro_rules! create_remesher {
                 }
 
                 let m = m.as_slice().unwrap();
+                let m: Vec<_> = (0..mesh.mesh.n_verts())
+                    .map(|i| $metric::from_slice(m, i))
+                    .collect();
                 let res = mesh.mesh.vertex_data_to_elem_data_metric::<$metric>(&m);
                 match res {
                     Ok(res) => {
+                        let res: Vec<_> = res.iter().cloned().flatten().collect();
                         return Ok(to_numpy_2d(py, res, <$metric as Metric<$dim>>::N));
                     }
                     Err(res) => {
@@ -831,6 +891,7 @@ macro_rules! create_remesher {
                 swap_constrain_l: Option<f64>,
                 smooth_type: Option<&str>,
                 smooth_iter: Option<u32>,
+                max_angle: Option<f64>,
             ) {
                 let smooth_type = smooth_type.unwrap_or("laplacian");
                 let smooth_type = if smooth_type == "laplacian" {
@@ -854,6 +915,7 @@ macro_rules! create_remesher {
                     swap_constrain_l: swap_constrain_l.unwrap_or(0.5),
                     smooth_type,
                     smooth_iter: smooth_iter.unwrap_or(1),
+                    max_angle: max_angle.unwrap_or(20.0)
                 };
                 self.remesher.remesh(params);
             }
@@ -880,16 +942,37 @@ macro_rules! create_remesher {
 
 type IsoMetric2d = IsoMetric<2>;
 type IsoMetric3d = IsoMetric<3>;
-create_remesher!(Remesher2dIso, 2, Triangle, IsoMetric2d, Mesh22, Mesh21);
-create_remesher!(Remesher2dAniso, 2, Triangle, AnisoMetric2d, Mesh22, Mesh21);
-create_remesher!(Remesher3dIso, 3, Tetrahedron, IsoMetric3d, Mesh33, Mesh32);
+create_remesher!(
+    Remesher2dIso,
+    2,
+    Triangle,
+    IsoMetric2d,
+    Mesh22,
+    LinearGeometry2d
+);
+create_remesher!(
+    Remesher2dAniso,
+    2,
+    Triangle,
+    AnisoMetric2d,
+    Mesh22,
+    LinearGeometry2d
+);
+create_remesher!(
+    Remesher3dIso,
+    3,
+    Tetrahedron,
+    IsoMetric3d,
+    Mesh33,
+    LinearGeometry3d
+);
 create_remesher!(
     Remesher3dAniso,
     3,
     Tetrahedron,
     AnisoMetric3d,
     Mesh33,
-    Mesh32
+    LinearGeometry3d
 );
 
 /// Python bindings for pytucanos
@@ -902,12 +985,10 @@ fn pytucanos(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<Mesh31>()?;
     m.add_class::<Mesh22>()?;
     m.add_class::<Mesh21>()?;
-    m.add_function(wrap_pyfunction!(get_boundary_3d, m)?)?;
-    m.add_function(wrap_pyfunction!(get_boundary_2d, m)?)?;
+    m.add_class::<LinearGeometry2d>()?;
+    m.add_class::<LinearGeometry3d>()?;
+    #[cfg(feature = "libmeshb-sys")]
     m.add_function(wrap_pyfunction!(read_solb, m)?)?;
-    m.add_function(wrap_pyfunction!(write_solb, m)?)?;
-    m.add_function(wrap_pyfunction!(implied_metric_3d, m)?)?;
-    m.add_function(wrap_pyfunction!(implied_metric_2d, m)?)?;
     m.add_class::<Remesher2dIso>()?;
     m.add_class::<Remesher2dAniso>()?;
     m.add_class::<Remesher3dIso>()?;

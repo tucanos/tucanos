@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from pytucanos.mesh import get_square, Mesh22, plot_mesh, plot_field
+from pytucanos.geometry import LinearGeometry2d
 from pytucanos.remesh import Remesher2dIso
 
 
@@ -55,7 +56,8 @@ if __name__ == "__main__":
 
     for _ in range(3):
         h = get_h(msh)
-        remesher = Remesher2dIso(msh, h.reshape((-1, 1)))
+        geom = LinearGeometry2d(msh)
+        remesher = Remesher2dIso(msh, geom, h.reshape((-1, 1)))
         remesher.remesh(
             collapse_constrain_q=0.5,
             split_constrain_q=0.5,

@@ -4,7 +4,6 @@ import subprocess
 import numpy as np
 import matplotlib.pyplot as plt
 from ._pytucanos import Remesher2dIso, Remesher2dAniso, Remesher3dIso, Remesher3dAniso
-from .field import write_solb
 from .mesh import Mesh22, Mesh33
 
 
@@ -63,10 +62,10 @@ def __write_tmp_meshb(msh, h):
 
     if isinstance(msh, Mesh22):
         msh.write_meshb("tmp.meshb")
-        write_solb("tmp.solb", 2, h)
+        msh.write_solb("tmp.solb", 2, h)
     elif isinstance(msh, Mesh33):
         msh.write_meshb("tmp.meshb")
-        write_solb("tmp.solb", 3, h)
+        msh.write_solb("tmp.solb", 3, h)
     else:
         raise NotImplementedError()
 

@@ -11,9 +11,9 @@ crate-type = ["cdylib"]
 log = "0.4.17"
 ndarray = "0.15.6"
 numpy = "0.18.0"
-pyo3 = { version = "0.18.0", features = ["extension-module"] }
+pyo3 = { version = "0.18.0", features = ["extension-module", "multiple-pymethods"] }
 pyo3-log = "0.8.1"
-tucanos = { git = "https://github.com/tucanos/tucanos.git", rev = "caaf55d" }
+tucanos = { git = "https://github.com/tucanos/tucanos.git", rev = "4da70e1" }
 
 [features]
 accelerate = ["tucanos/accelerate"]

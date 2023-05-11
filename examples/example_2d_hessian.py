@@ -2,6 +2,7 @@ import logging
 import numpy as np
 import matplotlib.pyplot as plt
 from pytucanos.mesh import get_square, Mesh22, plot_mesh
+from pytucanos.geometry import LinearGeometry2d
 from pytucanos.remesh import Remesher2dAniso
 
 
@@ -39,7 +40,9 @@ if __name__ == "__main__":
             m = Remesher2dAniso.apply_metric_gradation(msh, m, beta=1.5, n_iter=3)
 
         assert np.isfinite(m).all()
-        remesher = Remesher2dAniso(msh, m)
+
+        geom = LinearGeometry2d(msh)
+        remesher = Remesher2dAniso(msh, geom, m)
         remesher.remesh()
         msh = remesher.to_mesh()
 

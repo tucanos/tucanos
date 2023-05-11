@@ -3,13 +3,9 @@ import unittest
 from .mesh import (
     Mesh21,
     Mesh22,
-    Mesh32,
-    Mesh33,
-    get_boundary_2d,
-    get_boundary_3d,
     get_square,
-    get_cube,
 )
+from .geometry import LinearGeometry2d
 from .remesh import Remesher2dIso, Remesher2dAniso
 
 
@@ -25,9 +21,11 @@ class TestRemesh(unittest.TestCase):
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh22(coords, elems, etags, faces, ftags)
 
+        geom = LinearGeometry2d(msh)
+
         h = 0.1 * np.ones(msh.n_verts()).reshape((-1, 1))
 
-        remesher = Remesher2dIso(msh, h)
+        remesher = Remesher2dIso(msh, geom, h)
         remesher.remesh()
 
         msh = remesher.to_mesh()
@@ -88,11 +86,11 @@ class TestRemesh(unittest.TestCase):
 
         faces = np.zeros((0, 1), dtype=np.uint32)
         ftags = np.zeros(0, dtype=np.int16)
-        geom = Mesh21(coords, elems, etags, faces, ftags)
+        geom = LinearGeometry2d(msh, Mesh21(coords, elems, etags, faces, ftags))
 
         h = 0.1 * np.ones(msh.n_verts()).reshape((-1, 1))
 
-        remesher = Remesher2dIso(msh, h, geometry=geom)
+        remesher = Remesher2dIso(msh, geom, h)
         remesher.remesh()
 
         msh = remesher.to_mesh()
@@ -115,13 +113,15 @@ class TestRemesh(unittest.TestCase):
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh22(coords, elems, etags, faces, ftags)
 
+        geom = LinearGeometry2d(msh)
+
         hx = 0.3
         hy = 0.03
         m = np.zeros((msh.n_verts(), 3))
         m[:, 0] = 1.0 / hx**2
         m[:, 1] = 1.0 / hy**2
 
-        remesher = Remesher2dAniso(msh, m)
+        remesher = Remesher2dAniso(msh, geom, m)
         remesher.remesh(num_iter=4, split_constrain_q=0.5)
 
         msh = remesher.to_mesh()
