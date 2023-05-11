@@ -522,6 +522,7 @@ impl Mesh33 {
     ///    and the sizes to curvature radius ratio is r_h
     ///  - the metric is entended into the volume with gradation beta
     ///  - if an implied metric is provided, the result is limited to (1/step,step) times the implied metric
+    #[allow(clippy::too_many_arguments)]
     pub fn curvature_metric<'py>(
         &self,
         py: Python<'py>,
@@ -530,6 +531,7 @@ impl Mesh33 {
         beta: f64,
         implied_metric: Option<PyReadonlyArray2<f64>>,
         step: Option<f64>,
+        h_min: Option<f64>,
     ) -> PyResult<&'py PyArray2<f64>> {
         let res = if let Some(implied_metric) = implied_metric {
             let implied_metric: Vec<_> = (0..self.mesh.n_verts())
@@ -550,8 +552,15 @@ impl Mesh33 {
         if let Err(res) = res {
             return Err(PyRuntimeError::new_err(res.to_string()));
         }
+        let mut m = res.unwrap();
 
-        let m: Vec<f64> = res.unwrap().iter().flat_map(|m| m.into_iter()).collect();
+        if let Some(h_min) = h_min {
+            m.iter_mut()
+                .for_each(|x| x.scale_with_bounds(1.0, h_min, f64::MAX));
+        }
+
+        let m: Vec<f64> = m.iter().flat_map(|m| m.into_iter()).collect();
+
         Ok(to_numpy_2d(py, m, 6))
     }
 }
