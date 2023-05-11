@@ -843,6 +843,20 @@ macro_rules! create_remesher {
                 }
             }
 
+            /// Compute the min/max sizes, max anisotropy and complexity of a metric
+            #[classmethod]
+            pub fn metric_info<'py>(
+                _cls: &PyType,
+                mesh: &$mesh,
+                m: PyReadonlyArray2<f64>,
+            ) -> (f64, f64, f64, f64) {
+                let m = m.as_slice().unwrap();
+                let m: Vec<_> = (0..mesh.mesh.n_verts())
+                    .map(|i| $metric::from_slice(m, i))
+                    .collect();
+                mesh.mesh.metric_info(&m)
+            }
+
             /// Check that the mesh is valid
             pub fn check(&self) -> PyResult<()> {
                 let res = self.remesher.check();
