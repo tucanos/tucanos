@@ -496,13 +496,13 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 }
 
-pub fn read_solb(file_name: &str) -> Result<Vec<f64>> {
+pub fn read_solb(file_name: &str) -> Result<(Vec<f64>, usize)> {
     let reader = GmfReader::new(file_name);
     if reader.is_invalid() {
         return Err(Error::from(&format!("Cannot open {}", file_name)));
     }
 
-    let (sol, _) = reader.read_solution();
+    let (sol, m) = reader.read_solution();
 
-    Ok(sol)
+    Ok((sol, m))
 }
