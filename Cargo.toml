@@ -8,11 +8,6 @@ links = "tucanos"
 name = "test_perf"
 path = "src/test_perf.rs"
 
-[[bin]]
-name = "debug_from_meshb"
-path = "src/debug_from_meshb.rs"
-required-features = ["libmeshb-sys"]
-
 [dependencies]
 nalgebra = { version = "0.32", features = ["rand"] }
 env_logger = "0.10.0"
