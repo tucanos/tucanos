@@ -63,6 +63,19 @@ impl<const D: usize, E: Elem> LinearGeometry<D, E> {
             v: None,
         })
     }
+
+    /// Compute the max distance between the face centers and the geometry normals
+    pub fn max_distance<E2: Elem>(&self, mesh: &SimplexMesh<D, E2>) -> f64 {
+        assert_eq!(E2::Face::N_VERTS, E::N_VERTS);
+
+        let mut d_max = 0.0;
+        for i_face in 0..mesh.n_faces() {
+            let mut c = mesh.face_center(i_face);
+            let d = self.project(&mut c, &(E::DIM as Dim, 1));
+            d_max = f64::max(d_max, d);
+        }
+        d_max
+    }
 }
 
 impl LinearGeometry<3, Triangle> {
