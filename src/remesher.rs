@@ -1228,7 +1228,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
 
                 trace!("Smooth, update vertex");
                 {
-                    let mut vert = self.verts.get_mut(&i0).unwrap();
+                    let vert = self.verts.get_mut(&i0).unwrap();
                     vert.vx = p0_new;
                     assert!(h0_new.vol() > 0.0);
                     vert.m = h0_new;
@@ -1237,8 +1237,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                 for (i_local, i_global) in cavity.global_elem_ids.iter().enumerate() {
                     // update the quality
                     let ge = cavity.gelem(i_local as Idx); // todo: precompute all ge
-                    let mut el = self.elems.get_mut(i_global).unwrap();
-                    el.q = ge.quality();
+                    self.elems.get_mut(i_global).unwrap().q = ge.quality();
                 }
                 n_smooth += 1;
             }
