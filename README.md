@@ -1,4 +1,4 @@
-[![cargo test](https://github.com/tucanos/tucanos/actions/workflows/rust.yml/badge.svg)](https://github.com/tucanos/tucanos/actions/workflows/rust.yml)
+[![cargo test](https://github.com/tucanos/tucanos/actions/workflows/test.yml/badge.svg)](https://github.com/tucanos/tucanos/actions/workflows/test.yml)
 
 # About
 
