@@ -1,0 +1,144 @@
+name: Install and test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+  LIBOL_DIR: /opt/libOL
+  LIBOL_COMMIT: 976b9b2
+  LIBMESHB_DIR: /opt/libMeshB
+  LIBMESHB_COMMIT: v7.60
+  REMESH_LIBRARIES: lapack
+
+permissions:
+  contents: read
+  packages: read
+  pull-requests: read
+  checks: write
+
+jobs:
+  libol:
+    runs-on: ubuntu-latest
+    steps:
+    - id: cache
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.LIBOL_DIR }}
+        key: libol-${{ env.LIBOL_COMMIT }}
+    - if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+      name: build
+      run: |
+        curl -Ls https://github.com/LoicMarechal/libOL/archive/${{ env.LIBOL_COMMIT }}.tar.gz | tar xz
+        cd libOL*
+        cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DCMAKE_INSTALL_PREFIX=${{ env.LIBOL_DIR }} .
+        make -j$(nproc) install
+  libmeshb:
+    runs-on: ubuntu-latest
+    steps:
+    - id: cache
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.LIBMESHB_DIR }}
+        key: libmeshb-${{ env.LIBMESHB_COMMIT }}
+    - if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+      name: build
+      run: |
+        curl -Ls https://github.com/LoicMarechal/libMeshb/archive/${{ env.LIBMESHB_COMMIT }}.tar.gz | tar xz
+        cd libMeshb*
+        cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DCMAKE_INSTALL_PREFIX=${{ env.LIBMESHB_DIR }} .
+        make -j$(nproc) install
+  nightly:
+    needs: [libmeshb, libol]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: libOL cache
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.LIBOL_DIR }}
+        key: libol-${{ env.LIBOL_COMMIT }}
+    - name: libMeshB cache
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.LIBMESHB_DIR }}
+        key: libmeshb-${{ env.LIBMESHB_COMMIT }}
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        components: clippy
+        toolchain: nightly
+        override: true
+    - name: Rust cache
+      uses: actions/cache@v3
+      with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-nightly-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-nightly-
+    - name: Run clippy
+      uses: actions-rs/clippy-check@v1
+      with:
+        token: ${{ github.token }}
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    - name: Run pip install
+      run: |
+        pip install .
+        cd
+        python -m unittest discover pytucanos -v
+  stable:
+    needs: [libmeshb, libol]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: libOL cache
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.LIBOL_DIR }}
+        key: libol-${{ env.LIBOL_COMMIT }}
+    - name: libMeshB cache
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.LIBMESHB_DIR }}
+        key: libmeshb-${{ env.LIBMESHB_COMMIT }}
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        components: clippy
+        # because of https://github.com/actions-rs/toolchain/pull/209
+        toolchain: stable
+        override: true
+    - name: Rust cache
+      uses: actions/cache@v3
+      with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-stable-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-stable-
+    - name: Run clippy
+      uses: actions-rs/clippy-check@v1
+      with:
+        token: ${{ github.token }}
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    - name: Run pip install
+      run: |
+        pip install .
+        cd
+        python -m unittest discover pytucanos -v
