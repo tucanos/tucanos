@@ -1,4 +1,4 @@
-name: Rust
+name: Cargo test
 
 on:
   push:
@@ -56,16 +56,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - uses: actions/cache@v3
+    - name: libOL cache
+      uses: actions/cache@v3
       with:
         path: ${{ env.LIBOL_DIR }}
         key: libol-${{ env.LIBOL_COMMIT }}
+    - name: libMeshB cache
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.LIBMESHB_DIR }}
+        key: libmeshb-${{ env.LIBMESHB_COMMIT }}
     - name: Install Rust
       uses: actions-rs/toolchain@v1
       with:
         components: clippy
         toolchain: nightly
         override: true
+    - name: Rust cache
+      uses: actions/cache@v3
+      with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-nightly-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-nightly-
     - name: Run clippy
       uses: actions-rs/clippy-check@v1
       with:
@@ -74,15 +91,26 @@ jobs:
       uses: actions-rs/cargo@v1
       with:
         command: test
+    - name: Run cargo test --release
+      uses: actions-rs/cargo@v1
+      with:
+        command: test
+        args: --release --features libmeshb-sys
   stable:
     needs: [libmeshb, libol]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - uses: actions/cache@v3
+    - name: libOL cache
+      uses: actions/cache@v3
       with:
         path: ${{ env.LIBOL_DIR }}
         key: libol-${{ env.LIBOL_COMMIT }}
+    - name: libMeshB cache
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.LIBMESHB_DIR }}
+        key: libmeshb-${{ env.LIBMESHB_COMMIT }}
     - name: Install Rust
       uses: actions-rs/toolchain@v1
       with:
@@ -90,6 +118,17 @@ jobs:
         # because of https://github.com/actions-rs/toolchain/pull/209
         toolchain: stable
         override: true
+    - name: Rust cache
+      uses: actions/cache@v3
+      with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-stable-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-stable-
     - name: Run clippy
       uses: actions-rs/clippy-check@v1
       with:
