@@ -1,3 +1,5 @@
+[![cargo test](https://github.com/tucanos/tucanos/actions/workflows/rust.yml/badge.svg)](https://github.com/tucanos/tucanos/actions/workflows/rust.yml)
+
 # About
 
 This is a 2D and 3D anisotropic mesh adaptation library based on [*Four-Dimensional Anisotropic Mesh Adaptation for
