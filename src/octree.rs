@@ -327,6 +327,26 @@ mod tests {
         // msh.write_vtk("dbg.vtu", None, None);
 
         let tree = Octree::new(&msh);
+        let pt = Point::<3>::new(-360., -105., 0.);
+        assert_eq!(tree.nearest(&pt), 109);
+
+        let pt = Point::<3>::new(41.905, -7.933, 0.);
+        assert_eq!(tree.nearest(&pt), 194);
+
+        let pt = Point::<3>::new(977.405_622_304_933_2, -193.219_725_123_763_82, 0.);
+        assert_eq!(tree.nearest(&pt), 193);
+        let (d, _) = tree.project(&pt);
+        assert!(f64::abs(d) < 1e-12, "{d} vs 0");
+
+        let pt = Point::<3>::new(732.254_535_699_460_3, 628.314_474_637_604_1, 0.);
+        assert_eq!(tree.nearest(&pt), 23);
+        let (d, _) = tree.project(&pt);
+        assert!(f64::abs(d) < 1e-12, "{d} vs 0");
+
+        let pt = Point::<3>::new(41.905_036_870_164_33, -7.932_967_693_525_678, 0.);
+        assert_eq!(tree.nearest(&pt), 194);
+        let (d, _) = tree.project(&pt);
+        assert!(f64::abs(d) < 1e-12, "{d} vs 0");
 
         let mut rng = StdRng::seed_from_u64(0);
         for _ in 0..1000 {
