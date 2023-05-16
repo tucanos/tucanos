@@ -257,9 +257,12 @@ impl Drop for Octree {
 
 #[cfg(test)]
 mod tests {
+    use nalgebra::SVector;
+    use std::f64::consts::PI;
+
     use crate::{
         mesh::{Point, SimplexMesh},
-        topo_elems::Edge,
+        topo_elems::{Edge, Triangle},
         Idx, Tag,
     };
 
@@ -281,5 +284,63 @@ mod tests {
         let (dist, p) = tree.project(&pt);
         assert!(f64::abs(dist - 0.5) < 1e-12);
         assert!((p - Point::<2>::new(1., 0.25)).norm() < 1e-12);
+    }
+
+    #[test]
+    fn test_proj() {
+        let r_in = 1.;
+        let r_out = 1000.;
+        let n = 100;
+        let dim = 3;
+
+        let mut coords = Vec::with_capacity(2 * (n as usize) * dim);
+        for i in 0..n {
+            let theta = 2.0 * PI * i as f64 / n as f64;
+            coords.push(r_in * f64::cos(theta));
+            coords.push(r_in * f64::sin(theta));
+            coords.push(0.0);
+            coords.push(r_out * f64::cos(theta));
+            coords.push(r_out * f64::sin(theta));
+            coords.push(0.0);
+        }
+
+        let mut tris = Vec::with_capacity(2 * (n as usize) * 3);
+        for i in 0..n - 1 {
+            tris.push(2 * i);
+            tris.push(2 * i + 1);
+            tris.push(2 * i + 2);
+            tris.push(2 * i + 2);
+            tris.push(2 * i + 1);
+            tris.push(2 * i + 3);
+        }
+        tris.push(2 * n - 2);
+        tris.push(2 * n - 1);
+        tris.push(0);
+        tris.push(0);
+        tris.push(2 * n - 1);
+        tris.push(1);
+
+        let tri_tags = vec![1; 2 * (n as usize)];
+
+        let msh = SimplexMesh::<3, Triangle>::new(coords, tris, tri_tags, Vec::new(), Vec::new());
+        // msh.write_vtk("dbg.vtu", None, None);
+
+        let tree = Octree::new(&msh);
+
+        for _ in 0..1000 {
+            let tmp = SVector::<f64, 3>::new_random();
+            let theta = 2.0 * PI * tmp[0];
+            let r = r_in + tmp[1] * (r_out - r_in);
+            let x = r * f64::cos(theta);
+            let y = r * f64::sin(theta);
+            let z = r_out * (tmp[2] - 0.5);
+            let pt = Point::<3>::new(x, y, z);
+            let (d, pt_proj) = tree.project(&pt);
+            println!("{:?} -> {:?}, {}", pt, pt_proj, d);
+            assert!(f64::abs(d - z.abs()) < 1e-12);
+            assert!(f64::abs(pt_proj[0] - x) < 1e-12);
+            assert!(f64::abs(pt_proj[1] - y) < 1e-12);
+            assert!(f64::abs(pt_proj[2] - 0.0) < 1e-12);
+        }
     }
 }
