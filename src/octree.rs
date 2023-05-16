@@ -258,6 +258,7 @@ impl Drop for Octree {
 #[cfg(test)]
 mod tests {
     use nalgebra::SVector;
+    use rand::{rngs::StdRng, SeedableRng, Rng};
     use std::f64::consts::PI;
 
     use crate::{
@@ -327,8 +328,9 @@ mod tests {
 
         let tree = Octree::new(&msh);
 
+        let mut rng = StdRng::seed_from_u64(0);
         for _ in 0..1000 {
-            let tmp = SVector::<f64, 3>::new_random();
+            let tmp = SVector::<f64, 3>::from_fn(|_, _| rng.gen());
             let theta = 2.0 * PI * tmp[0];
             let r = r_in + tmp[1] * (r_out - r_in);
             let x = r * f64::cos(theta);
