@@ -845,7 +845,7 @@ macro_rules! create_remesher {
 
             /// Compute the min/max sizes, max anisotropy and complexity of a metric
             #[classmethod]
-            pub fn metric_info<'py>(
+            pub fn metric_info(
                 _cls: &PyType,
                 mesh: &$mesh,
                 m: PyReadonlyArray2<f64>,
