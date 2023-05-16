@@ -4,7 +4,7 @@ use crate::{
     mesh::Point,
     metric::{edge_length, Metric},
     remesher::Remesher,
-    topo_elems::{edge_in_elem, elem_from_vertex_and_face, vertex_in_elem, Elem},
+    topo_elems::Elem,
     topology::Topology,
     Dim, Idx, TopoTag,
 };
@@ -188,7 +188,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
         self.faces.extend(self.elems.iter().flat_map(|e| {
             (0..E::N_FACES)
                 .map(|i| e.face(i))
-                .filter(|f| !vertex_in_elem(f, i0_local))
+                .filter(|f| !f.contains_vertex(i0_local))
         }));
         self.ctype = CavityType::Vertex(i0_local);
     }
@@ -202,7 +202,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
         for e in &self.elems {
             for idxf in 0..E::N_FACES {
                 let f = e.face(idxf);
-                if !edge_in_elem(&f, edg_local) {
+                if !f.contains_edge(edg_local) {
                     self.faces.push(f);
                 }
             }
@@ -274,14 +274,14 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
     /// Return an iterator through the cavity faces
     pub fn faces(&self) -> impl Iterator<Item = E::Face> + '_ {
         self.cavity.faces().filter(|f| {
-            if self.id.is_some() && vertex_in_elem(f, self.id.unwrap()) {
+            if self.id.is_some() && f.contains_vertex(self.id.unwrap()) {
                 return false;
             }
             if let CavityType::Edge(edg) = self.cavity.ctype {
-                assert!(!edge_in_elem(f, edg));
+                assert!(!f.contains_edge(edg));
             }
             if let CavityType::Vertex(v) = self.cavity.ctype {
-                assert!(!vertex_in_elem(f, v));
+                assert!(!f.contains_vertex(v));
             }
             true
         })
@@ -290,7 +290,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
     /// Return an iterator through the cavity faces and the corresponding new elements
     pub fn elems_and_faces(&self) -> impl Iterator<Item = (E, E::Face)> + '_ {
         self.faces()
-            .map(|f| (elem_from_vertex_and_face::<E>(self.id.unwrap(), &f), f))
+            .map(|f| (E::from_vertex_and_face(self.id.unwrap(), &f), f))
     }
 
     /// Get the location and metric for the reconstruction vertex
@@ -399,7 +399,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
                     } else {
                         // otherwise, check that all parent tags are present
                         for (e, _f) in self.elems_and_faces() {
-                            let fj_in_e = fj.iter().all(|i| vertex_in_elem(&e, *i));
+                            let fj_in_e = fj.iter().all(|i| e.contains_vertex(*i));
                             if fj_in_e {
                                 let vtags = e.iter().map(|i| self.cavity.tags[*i as usize]);
                                 let etag = topo.elem_tag(vtags).unwrap();

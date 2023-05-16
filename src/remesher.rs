@@ -7,9 +7,7 @@ use crate::{
     metric::{edge_length, Metric},
     min_iter, min_max_iter,
     stats::{CollapseStats, InitStats, SmoothStats, SplitStats, Stats, StepStats, SwapStats},
-    topo_elems::{
-        edge_in_elem, elem_from_vertex_and_face, get_elem, get_face_to_elem, vertex_in_elem, Elem,
-    },
+    topo_elems::{get_elem, get_face_to_elem, Elem},
     topology::Topology,
     Dim, Error, Idx, Mesh, Result, Tag, TopoTag,
 };
@@ -277,7 +275,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                 // filter the elements containing the face
                 let mut els = self.verts.get(&f[0]).unwrap().els.iter().filter(|i| {
                     let other = self.elems.get(i).unwrap().el;
-                    *i != i_elem && f.iter().all(|j| vertex_in_elem(&other, *j))
+                    *i != i_elem && f.iter().all(|j| other.contains_vertex(*j))
                 });
                 if let Some(other) = els.next() {
                     // At least 3 elements
@@ -324,7 +322,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                 let v2e = &vert.unwrap().els;
                 for i_elem in v2e.iter() {
                     let e = &self.elems.get(i_elem).unwrap().el;
-                    if !edge_in_elem(e, *edg) && vert.is_none() {
+                    if !e.contains_edge(*edg) && vert.is_none() {
                         return Err(Error::from("Invalid edge"));
                     }
                 }
@@ -703,8 +701,8 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                         let ip = self.insert_vertex(new_p, &tag, &new_m);
                         for face in cavity.faces() {
                             let f = cavity.global_face(&face);
-                            assert!(!edge_in_elem(&f, edg));
-                            let e = elem_from_vertex_and_face::<E>(ip, &f);
+                            assert!(!f.contains_edge(edg));
+                            let e = E::from_vertex_and_face(ip, &f);
                             self.insert_elem(e);
                         }
                         n_splits += 1;
@@ -810,9 +808,9 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
             for f in filled_cavity.faces() {
                 let global_vx = cavity.local2global[vx as usize];
                 let f = cavity.global_face(&f);
-                assert!(!vertex_in_elem(&f, global_vx));
-                assert!(!edge_in_elem(&f, edg));
-                let e = elem_from_vertex_and_face::<E>(global_vx, &f);
+                assert!(!f.contains_vertex(global_vx));
+                assert!(!f.contains_edge(edg));
+                let e = E::from_vertex_and_face(global_vx, &f);
                 self.insert_elem(e);
             }
 
@@ -966,8 +964,8 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
 
                         for f in filled_cavity.faces() {
                             let f = cavity.global_face(&f);
-                            assert!(!vertex_in_elem(&f, i1));
-                            let e = elem_from_vertex_and_face::<E>(i1, &f);
+                            assert!(!f.contains_vertex(i1));
+                            let e = E::from_vertex_and_face(i1, &f);
                             self.insert_elem(e);
                         }
                         n_collapses += 1;

@@ -47,6 +47,32 @@ pub trait Elem:
     fn face(&self, i: Idx) -> Self::Face;
     /// Get the i-the edge
     fn edge(&self, i: Idx) -> [Idx; 2];
+    /// Get the local index of vertex i in element e
+    fn vertex_index(&self, i: Idx) -> Idx {
+        for j in 0..(Self::N_VERTS as usize) {
+            if self[j] == i {
+                return j as Idx;
+            }
+        }
+        unreachable!();
+    }
+    /// Create an element from a vertex Id and the opposite face
+    fn from_vertex_and_face(i: Idx, f: &Self::Face) -> Self {
+        let mut e = Self::default();
+        e[0] = i;
+        for i in 1..(Self::N_VERTS as usize) {
+            e[i] = f[i - 1];
+        }
+        e
+    }
+    /// Check if an element contains a vertex
+    fn contains_vertex(&self, i: Idx) -> bool {
+        self.iter().any(|x| *x == i)
+    }
+    /// Check if an element contains an edge
+    fn contains_edge(&self, edg: [Idx; 2]) -> bool {
+        self.contains_vertex(edg[0]) && self.contains_vertex(edg[1])
+    }
 }
 
 /// Get the i-th element in a global connectivity array
@@ -55,26 +81,6 @@ pub fn get_elem<E: Elem>(conn: &[Idx], idx: Idx) -> E {
     let start = (idx * E::N_VERTS) as usize;
     let end = start + E::N_VERTS as usize;
     E::from_slice(&conn[start..end])
-}
-
-/// Get the local index of vertex i in element e
-pub fn vertex_index<E: Elem>(e: &E, i: Idx) -> Idx {
-    for j in 0..(E::N_VERTS as usize) {
-        if e[j] == i {
-            return j as Idx;
-        }
-    }
-    unreachable!();
-}
-
-/// Create an element from a vertex Id and the opposite face
-pub fn elem_from_vertex_and_face<E: Elem>(i: Idx, f: &E::Face) -> E {
-    let mut e = E::default();
-    e[0] = i;
-    for i in 1..(E::N_VERTS as usize) {
-        e[i] = f[i - 1];
-    }
-    e
 }
 
 /// Tetrahedron
@@ -374,18 +380,6 @@ pub fn get_face_to_elem<E: Elem>(elems: &[Idx]) -> FxHashMap<E::Face, twovec::Ve
     }
 
     map
-}
-
-/// Check if an element contains a vertex
-/// TODO: move as a method of Elem?
-pub fn vertex_in_elem<E: Elem>(e: &E, i: Idx) -> bool {
-    e.iter().any(|x| *x == i)
-}
-
-/// Check if an element contains an edge
-/// TODO: move as a method of Elem?
-pub fn edge_in_elem<E: Elem>(e: &E, edg: [Idx; 2]) -> bool {
-    vertex_in_elem(e, edg[0]) && vertex_in_elem(e, edg[1])
 }
 
 #[cfg(test)]
