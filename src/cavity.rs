@@ -1,12 +1,6 @@
 use crate::{
-    geom_elems::GElem,
-    geometry::Geometry,
-    mesh::Point,
-    metric::{edge_length, Metric},
-    remesher::Remesher,
-    topo_elems::Elem,
-    topology::Topology,
-    Dim, Idx, TopoTag,
+    geom_elems::GElem, geometry::Geometry, mesh::Point, metric::Metric, remesher::Remesher,
+    topo_elems::Elem, topology::Topology, Dim, Idx, TopoTag,
 };
 use core::fmt;
 use log::trace;
@@ -313,7 +307,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
             for i in f.iter() {
                 let pi = &self.cavity.points[*i as usize];
                 let mi = &self.cavity.metrics[*i as usize];
-                let l = edge_length(p0, m0, pi, mi);
+                let l = M::edge_length(p0, m0, pi, mi);
                 if l < l_min {
                     trace!("cavity check failed: short edge");
                     return -1.0;

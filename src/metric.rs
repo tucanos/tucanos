@@ -39,45 +39,36 @@ pub trait Metric<const D: usize>:
     /// Limit a metric so the required sizes between 1/f and f times those required by other
     /// The directions are not changed
     fn limit(&mut self, other: &Self, f: f64);
-}
+    /// Compute the length of an edge in metric space, assuming a geometric variation of the metric sizes along the edge
+    /// NB: this is consistent with metric interpolation, but a linear variation of the sizes is assumed when it comes to gradation
+    fn edge_length(p0: &Point<D>, m0: &Self, p1: &Point<D>, m1: &Self) -> f64 {
+        let e = p1 - p0;
+        let l0 = m0.length(&e);
+        let l1 = m1.length(&e);
 
-/// Compute the length of an edge in metric space, assuming a geometric variation of the metric sizes along the edge
-/// NB: this is consistent with metric interpolation, but a linear variation of the sizes is assumed when it comes to gradation
-pub fn edge_length<const D: usize, M: Metric<D>>(
-    p0: &Point<D>,
-    m0: &M,
-    p1: &Point<D>,
-    m1: &M,
-) -> f64 {
-    let e = p1 - p0;
-    let l0 = m0.length(&e);
-    let l1 = m1.length(&e);
+        let r = l0 / l1;
 
-    let r = l0 / l1;
-
-    if f64::abs(r - 1.0) > 0.01 {
-        l0 * (r - 1.0) / r / f64::ln(r)
-    } else {
-        l0
-    }
-}
-
-/// Find the metric with the minimum volume
-pub fn min_metric<'a, const D: usize, M: Metric<D>, I: Iterator<Item = &'a M>>(
-    mut metrics: I,
-) -> &'a M {
-    let m = metrics.next().unwrap();
-    let mut vol = m.vol();
-    let mut res = m;
-    for m in metrics {
-        let volm = m.vol();
-        if volm < vol {
-            res = m;
-            vol = volm;
+        if f64::abs(r - 1.0) > 0.01 {
+            l0 * (r - 1.0) / r / f64::ln(r)
+        } else {
+            l0
         }
     }
+    /// Find the metric with the minimum volume
+    fn min_metric<'a, I: Iterator<Item = &'a Self>>(mut metrics: I) -> &'a Self {
+        let m = metrics.next().unwrap();
+        let mut vol = m.vol();
+        let mut res = m;
+        for m in metrics {
+            let volm = m.vol();
+            if volm < vol {
+                res = m;
+                vol = volm;
+            }
+        }
 
-    res
+        res
+    }
 }
 
 /// Isotropic metric in D dimensions
