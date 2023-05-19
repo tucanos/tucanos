@@ -354,7 +354,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
 
         let mut faces = FxHashMap::with_hasher(BuildHasherDefault::default());
 
-        // Build the cavity internal faces
+        // Build the cavity internal & boundary faces
         for (e, mut f) in self.elems_and_faces() {
             let vtags = e.iter().map(|i| self.cavity.tags[*i as usize]);
             let etag = topo.elem_tag(vtags).unwrap();
@@ -393,19 +393,22 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
 
                     if parents.len() == 1 {
                         // a boundary face shound belong to only one element
-                        return *n == 1;
-                    }
-                    // otherwise, check that all parent tags are present
-                    for (e, _f) in self.elems_and_faces() {
-                        let fj_in_e = fj.iter().all(|i| vertex_in_elem(&e, *i));
-                        if fj_in_e {
-                            let vtags = e.iter().map(|i| self.cavity.tags[*i as usize]);
-                            let etag = topo.elem_tag(vtags).unwrap();
-                            let _ok = parents.remove(&etag.1);
+                        if *n != 1 {
+                            return false;
                         }
-                    }
-                    if !parents.is_empty() {
-                        return false;
+                    } else {
+                        // otherwise, check that all parent tags are present
+                        for (e, _f) in self.elems_and_faces() {
+                            let fj_in_e = fj.iter().all(|i| vertex_in_elem(&e, *i));
+                            if fj_in_e {
+                                let vtags = e.iter().map(|i| self.cavity.tags[*i as usize]);
+                                let etag = topo.elem_tag(vtags).unwrap();
+                                let _ok = parents.remove(&etag.1);
+                            }
+                        }
+                        if !parents.is_empty() {
+                            return false;
+                        }
                     }
                 }
             }
