@@ -4,7 +4,7 @@ use crate::{
     geometry::Geometry,
     max_iter,
     mesh::{Point, SimplexMesh},
-    metric::{edge_length, Metric},
+    metric::Metric,
     min_iter, min_max_iter,
     stats::{CollapseStats, InitStats, SmoothStats, SplitStats, Stats, StepStats, SwapStats},
     topo_elems::{get_elem, get_face_to_elem, Elem},
@@ -584,7 +584,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
         let p0 = self.verts.get(&edg[0]).unwrap();
         let p1 = self.verts.get(&edg[1]).unwrap();
 
-        edge_length(&p0.vx, &p0.m, &p1.vx, &p1.m)
+        M::edge_length(&p0.vx, &p0.m, &p1.vx, &p1.m)
     }
 
     /// Compute the length of an edge in metric space and the dimension of its topo entity
@@ -594,7 +594,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
 
         (
             self.topo.parent(p0.tag, p1.tag).unwrap().0,
-            edge_length(&p0.vx, &p0.m, &p1.vx, &p1.m),
+            M::edge_length(&p0.vx, &p0.m, &p1.vx, &p1.m),
         )
     }
 

@@ -1,6 +1,6 @@
 use crate::{
     mesh::Point,
-    metric::{min_metric, AnisoMetric2d, AnisoMetric3d, Metric},
+    metric::{AnisoMetric2d, AnisoMetric3d, Metric},
     Idx,
 };
 use nalgebra::{Matrix2, Matrix3, Matrix4, Vector1, Vector2, Vector3, Vector4};
@@ -148,7 +148,7 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GTetrahedron<D, M> {
     }
 
     fn quality(&self) -> f64 {
-        let m = min_metric(self.metrics.iter());
+        let m = M::min_metric(self.metrics.iter());
 
         let mut e1 = self.points[1] - self.points[0];
         let e2 = self.points[2] - self.points[0];
@@ -297,7 +297,7 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GTriangle<D, M> {
     }
 
     fn quality(&self) -> f64 {
-        let m = min_metric(self.metrics.iter());
+        let m = M::min_metric(self.metrics.iter());
 
         let mut e1 = self.points[1] - self.points[0];
         let e2 = self.points[2] - self.points[0];
