@@ -87,7 +87,7 @@ impl<const D: usize, E: Elem> LinearGeometry<D, E> {
             let n = mesh.gface(i_face).normal();
             let a = self.angle(&mut c, &n, &(E::DIM as Dim, 1));
             if a > 45. {
-                warn!("Angle between the face normals and the geometry is {a_max} at {c}");
+                warn!("Angle between the face normals and the geometry is {a} at {c}");
             }
             a_max = f64::max(a_max, a);
         }
