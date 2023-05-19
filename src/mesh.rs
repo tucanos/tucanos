@@ -673,6 +673,81 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             face_ids,
         )
     }
+
+    pub fn check(&self) -> Result<()> {
+        self.check_volumes()?;
+        self.check_boundary_faces()?;
+        Ok(())
+    }
+
+    pub fn check_volumes(&self) -> Result<()> {
+        debug!("Check the element volumes");
+        for (i_elem, v) in self.elem_vols().enumerate() {
+            if v < 0.0 {
+                return Err(Error::from(&format!(
+                    "The volume of element {} is {}",
+                    i_elem, v,
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn check_boundary_faces(&self) -> Result<()> {
+        debug!("Check the boundary faces");
+        if self.faces_to_elems.is_none() {
+            return Err(Error::from("face to element connectivity not computed"));
+        }
+
+        let mut tagged_faces: FxHashMap<E::Face, Tag> =
+            FxHashMap::with_hasher(BuildHasherDefault::default());
+        for (i_face, ftag) in self.ftags.iter().enumerate() {
+            let mut face = self.face(i_face as Idx);
+            face.sort();
+            tagged_faces.insert(face, *ftag);
+        }
+
+        let f2e = self.faces_to_elems.as_ref().unwrap();
+        for (f, els) in f2e.iter() {
+            let tmp = tagged_faces.get(f);
+            match els.len() {
+                1 => {
+                    if tmp.is_none() {
+                        return Err(Error::from(&format!(
+                            "face {:?} belongs to 1 element ({:?}) but is not tagged",
+                            f,
+                            self.elem(els[0])
+                        )));
+                    }
+                }
+                2 => {
+                    let should_be_tagged =
+                        self.etags[els[0] as usize] != self.etags[els[1] as usize];
+                    if tmp.is_none() && should_be_tagged {
+                        return Err(Error::from(&format!(
+                            "face {:?} belongs to 2 element ({:?} / {:?} and {:?}/ {:?})  but is not tagged",
+                            f,
+                            self.elem(els[0]),
+                            self.etags[els[0] as usize],
+                            self.elem(els[1]),
+                            self.etags[els[1] as usize],
+                        )));
+                    } else if tmp.is_some() && !should_be_tagged {
+                        return Err(Error::from(&format!(
+                            "face {:?} belongs to 2 element ({:?} and {:?}) but is tagged {}",
+                            f,
+                            self.elem(els[0]),
+                            self.elem(els[1]),
+                            tmp.unwrap()
+                        )));
+                    }
+                }
+                _ => todo!(),
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
