@@ -280,9 +280,9 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                     *i != i_elem && f.iter().all(|j| vertex_in_elem(&other, *j))
                 });
                 if let Some(other) = els.next() {
-                    // At least 2 elements
+                    // At least 3 elements
                     if els.next().is_some() {
-                        return Err(Error::from("A face belongs to o more than 2 elements"));
+                        return Err(Error::from("A face belongs to more than 2 elements"));
                     }
                     let other = self.elems.get(other).unwrap().el;
                     let vtags = other.iter().map(|i| self.verts.get(i).unwrap().tag);
@@ -296,6 +296,10 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                             "A face belonging to 2 element with the same tags is not tagged correctly",
                         ));
                     }
+                } else if ftag.0 != E::Face::DIM as Dim {
+                    return Err(Error::from(
+                        "A face belonging to 1 element is not tagged correctly",
+                    ));
                 }
             }
         }
