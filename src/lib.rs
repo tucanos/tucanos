@@ -6,6 +6,7 @@ use pyo3::{
     types::{PyModule, PyType},
     wrap_pyfunction, PyResult, Python,
 };
+use std::collections::HashMap;
 use tucanos::{
     geometry::LinearGeometry,
     mesh::SimplexMesh,
@@ -235,8 +236,16 @@ macro_rules! create_mesh {
             }
 
             /// Write a vtk file containing the mesh
-            pub fn write_vtk(&self, file_name: &str) -> PyResult<()> {
-                let res = self.mesh.write_vtk(file_name, None, None);
+            pub fn write_vtk(&self, file_name: &str, vert_data : Option<HashMap<String, PyReadonlyArray2<f64>>> ) -> PyResult<()> {
+                let res = if let Some(data) = vert_data {
+                    let mut vdata = HashMap::new();
+                    for (name, arr) in data.iter() {
+                        vdata.insert(name.to_string(), arr.as_slice().unwrap());
+                    }
+                    self.mesh.write_vtk(file_name, Some(vdata), None)
+                } else {
+                    self.mesh.write_vtk(file_name, None, None)
+                };
                 if let Err(res) = res {
                     return Err(PyRuntimeError::new_err(res.to_string()));
                 }
