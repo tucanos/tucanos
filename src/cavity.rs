@@ -443,10 +443,12 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
                 for f in self.faces() {
                     for i_edge in 0..E::Face::N_EDGES {
                         let e = f.edge(i_edge);
-                        let new_f = [self.id.unwrap(), e[0], e[1]];
-                        let vtags = f.iter().map(|i| self.cavity.tags[*i as usize]);
+                        let new_f = E::Face::from_slice(&[self.id.unwrap(), e[0], e[1]]);
+                        let vtags = new_f.iter().map(|i| self.cavity.tags[*i as usize]);
                         let ftag = topo.elem_tag(vtags).unwrap();
-                        if ftag.0 == E::Face::DIM as Dim {
+                        let topo_node = topo.get(ftag).unwrap();
+                        let parents = &topo_node.parents;
+                        if ftag.0 == E::Face::DIM as Dim && parents.len() == 1 {
                             // boundary face.
                             let p0 = &self.cavity.points[new_f[0] as usize];
                             let p1 = &self.cavity.points[new_f[1] as usize];
