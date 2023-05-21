@@ -429,6 +429,15 @@ macro_rules! create_mesh {
                     self.mesh.n_comps(FieldType::SymTensor) as usize,
                 ))
             }
+
+            /// Check that the mesh is valid
+            ///  - all elements have a >0 volume
+            ///  - all boundary faces are tagged
+            ///  - all the faces between different element tags are tagged
+            ///  - no other face is tagged
+            pub fn check(&self) -> PyResult<()> {
+                self.mesh.check().map_err(|e| PyRuntimeError::new_err(e.to_string()))
+            }
         }
     };
 }
