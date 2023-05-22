@@ -349,7 +349,7 @@ mod tests {
         assert!(f64::abs(d) < 1e-12, "{d} vs 0");
 
         let mut rng = StdRng::seed_from_u64(0);
-        for _ in 0..1000 {
+        for _ in 0..10000 {
             let tmp = SVector::<f64, 3>::from_fn(|_, _| rng.gen());
             let theta = 2.0 * PI * tmp[0];
             let r = r_in + tmp[1] * (r_out * 0.999 - r_in);
@@ -358,7 +358,7 @@ mod tests {
             let z = r_out * (tmp[2] - 0.5);
             let pt = Point::<3>::new(x, y, z);
             let (d, pt_proj) = tree.project(&pt);
-            println!("{:?} -> {:?}, {}", pt, pt_proj, d);
+            println!("{pt:?} -> {pt_proj:?}, {d}");
             assert!(f64::abs(d - z.abs()) < 1e-12);
             assert!(f64::abs(pt_proj[0] - x) < 1e-12);
             assert!(f64::abs(pt_proj[1] - y) < 1e-12);
