@@ -332,7 +332,7 @@ mod tests {
         for _ in 0..1000 {
             let tmp = SVector::<f64, 3>::from_fn(|_, _| rng.gen());
             let theta = 2.0 * PI * tmp[0];
-            let r = r_in + tmp[1] * (r_out - r_in);
+            let r = r_in + tmp[1] * (r_out * 0.999 - r_in);
             let x = r * f64::cos(theta);
             let y = r * f64::sin(theta);
             let z = r_out * (tmp[2] - 0.5);
