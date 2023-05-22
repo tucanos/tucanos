@@ -1,6 +1,6 @@
 use crate::{
     mesh::Point,
-    metric::{AnisoMetric2d, AnisoMetric3d, Metric},
+    metric::{AnisoMetric, AnisoMetric2d, AnisoMetric3d, Metric},
     Idx,
 };
 use nalgebra::{Matrix2, Matrix3, Matrix4, Vector1, Vector2, Vector3, Vector4};
@@ -109,7 +109,7 @@ impl<const D: usize, M: Metric<D>> GTetrahedron<D, M> {
         let j = self.jacobian() * Self::J_EQ;
         let m = j * j.transpose();
         let m = m.try_inverse().unwrap();
-        AnisoMetric3d::from_mat(&m)
+        AnisoMetric3d::from_mat(m)
     }
 }
 
@@ -246,7 +246,7 @@ impl<const D: usize, M: Metric<D>> GTriangle<D, M> {
         let j = self.jacobian() * Self::J_EQ;
         let m = j * j.transpose();
         let m = m.try_inverse().unwrap();
-        AnisoMetric2d::from_mat(&m)
+        AnisoMetric2d::from_mat(m)
     }
 
     // Get the edges
