@@ -209,9 +209,37 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     fixed_c, n_elems
                 )));
             }
+            let mut scale_high = 1.5 * scale;
+            for iter in 0..max_iter {
+                let vols = self.vert_vol.as_ref().unwrap();
+
+                let c = vols
+                    .iter()
+                    .zip(m.iter())
+                    .zip(fixed_m.iter())
+                    .map(|((v, m0), m1)| {
+                        let mut m = *m0;
+                        m.scale_with_bounds(scale_high, h_min, h_max);
+                        let m = m.intersect(m1);
+                        v / (E::Geom::<D, M>::IDEAL_VOL * m.vol())
+                    })
+                    .sum::<f64>();
+                debug!(
+                    "Iteration {}: scale_high = {}, complexity = {}",
+                    iter, scale_high, c
+                );
+
+                if iter == max_iter - 1 {
+                    return Err(Error::from("Unable to scale the metric (bisection)"));
+                }
+
+                if c < n_elems as f64 {
+                    break;
+                }
+                scale_high *= 1.5;
+            }
+
             let mut scale_low = scale;
-            let mut scale_high =
-                self.scale_metric_simple(m, h_min, f64::MAX, n_elems - fixed_c as Idx, max_iter);
 
             // bisection
             for iter in 0..max_iter {
