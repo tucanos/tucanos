@@ -9,7 +9,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   LIBOL_DIR: /opt/libOL
-  LIBOL_COMMIT: 976b9b2
+  LIBOL_COMMIT: ceb112c
   LIBMESHB_DIR: /opt/libMeshB
   LIBMESHB_COMMIT: v7.60
   REMESH_LIBRARIES: lapack
@@ -32,7 +32,7 @@ jobs:
     - if: ${{ steps.cache.outputs.cache-hit != 'true' }}
       name: build
       run: |
-        curl -Ls https://github.com/LoicMarechal/libOL/archive/${{ env.LIBOL_COMMIT }}.tar.gz | tar xz
+        curl -Ls https://github.com/tucanos/libOL/archive/${{ env.LIBOL_COMMIT }}.tar.gz | tar xz
         cd libOL*
         cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DCMAKE_INSTALL_PREFIX=${{ env.LIBOL_DIR }} .
         make -j$(nproc) install
