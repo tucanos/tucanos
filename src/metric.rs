@@ -26,7 +26,7 @@ pub trait Metric<const D: usize>:
     /// Return the D characteristic sizes of the metric (sorted)
     fn sizes(&self) -> [f64; D];
     // /// Scale the metric
-    // fn scale(&mut self, s: f64);
+    fn scale(&mut self, s: f64);
     /// Scale the metric, applying bounds on the characteristic sizes
     fn scale_with_bounds(&mut self, s: f64, h_min: f64, h_max: f64);
     /// Intersect with another metric, i.e. return the "largest" metric that is both "smaller" that self and other
@@ -129,9 +129,9 @@ impl<const D: usize> Metric<D> for IsoMetric<D> {
         [self.0; D]
     }
 
-    // fn scale(&mut self, s: f64) {
-    //     self.0 *= s;
-    // }
+    fn scale(&mut self, s: f64) {
+        self.0 *= s;
+    }
 
     fn scale_with_bounds(&mut self, s: f64, h_min: f64, h_max: f64) {
         self.0 = f64::min(h_max, f64::max(h_min, s * self.0));
@@ -211,7 +211,7 @@ where
     /// Get a matrix representation of the metric
     fn as_mat(&self) -> SMatrix<f64, D, D>;
 
-    fn get_vol(&self) -> f64;
+    fn vol_aniso(&self) -> f64;
 
     fn from_mat(mat: SMatrix<f64, D, D>) -> Self {
         let mut eig = mat.symmetric_eigen();
@@ -232,6 +232,8 @@ where
     }
 
     fn from_diagonal(s: &[f64]) -> Self;
+
+    fn scale_aniso(&mut self, s: f64);
 }
 
 impl<const D: usize, T: AnisoMetric<D>> Metric<D> for T
@@ -371,12 +373,12 @@ where
     }
 
     fn vol(&self) -> f64 {
-        self.get_vol()
+        self.vol_aniso()
     }
 
-    // fn scale(&mut self, s: f64) {
-    //     todo!()
-    // }
+    fn scale(&mut self, s: f64) {
+        self.scale_aniso(s);
+    }
 }
 
 /// Anisotropic metric in 2D, represented with 3 scalars (x0,x1,x2)
@@ -415,13 +417,6 @@ impl AnisoMetric2d {
 
         Self::from_mat(mat)
     }
-
-    // fn scale(&mut self, s: f64) {
-    //     for i in 0..3 {
-    //         self.m[i] *= s;
-    //     }
-    //     self.v /= f64::sqrt(f64::powi(s, 2));
-    // }
 }
 
 impl AnisoMetric<2> for AnisoMetric2d {
@@ -454,8 +449,15 @@ impl AnisoMetric<2> for AnisoMetric2d {
         }
     }
 
-    fn get_vol(&self) -> f64 {
+    fn vol_aniso(&self) -> f64 {
         self.v
+    }
+
+    fn scale_aniso(&mut self, s: f64) {
+        for i in 0..3 {
+            self.m[i] *= s;
+        }
+        self.v /= f64::sqrt(f64::powi(s, 2));
     }
 }
 
@@ -570,17 +572,17 @@ impl AnisoMetric<3> for AnisoMetric3d {
         }
     }
 
-    fn get_vol(&self) -> f64 {
+    fn vol_aniso(&self) -> f64 {
         self.v
     }
-}
 
-// fn scale(&mut self, s: f64) {
-//     for i in 0..Self::N {
-//         self.m[i] *= s;
-//     }
-//     self.v /= f64::sqrt(f64::powi(s, 3));
-// }
+    fn scale_aniso(&mut self, s: f64) {
+        for i in 0..6 {
+            self.m[i] *= s;
+        }
+        self.v /= f64::sqrt(f64::powi(s, 3));
+    }
+}
 
 impl IntoIterator for AnisoMetric3d {
     type Item = f64;
