@@ -226,8 +226,10 @@ where
     }
 
     fn is_diagonal(&self, tol: f64) -> bool {
-        let on_diag = (0..D).map(|i| self[i]).sum::<f64>();
-        let off_diag = (D..<Self as Metric<D>>::N).map(|i| self[i]).sum::<f64>();
+        let on_diag = (0..D).map(|i| self[i].abs()).sum::<f64>();
+        let off_diag = (D..<Self as Metric<D>>::N)
+            .map(|i| self[i].abs())
+            .sum::<f64>();
         tol * on_diag > off_diag
     }
 
@@ -319,7 +321,7 @@ where
             for i in 0..D {
                 s[i] = f64::max(self[i], other[i]);
             }
-            return Self::from_slice(&s, 0);
+            return Self::from_diagonal(&s);
         }
 
         let res = simultaneous_reduction(self.as_mat(), other.as_mat());
