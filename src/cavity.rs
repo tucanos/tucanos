@@ -466,9 +466,9 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
             if check && node_on_bdy {
                 // Check for boundary faces
                 for f in self.faces() {
-                    for i_edge in 0..E::Face::N_EDGES {
-                        let e = f.edge(i_edge);
-                        let new_f = E::Face::from_slice(&[self.id.unwrap(), e[0], e[1]]);
+                    for i_edge in 0..E::Face::N_FACES {
+                        let e = f.face(i_edge);
+                        let new_f = E::Face::from_vertex_and_face(self.id.unwrap(), &e);
                         let vtags = new_f.iter().map(|i| self.cavity.tags[*i as usize]);
                         let ftag = topo.elem_tag(vtags).unwrap();
                         let topo_node = topo.get(ftag).unwrap();
@@ -478,11 +478,24 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
                             let p0 = &self.cavity.points[new_f[0] as usize];
                             let p1 = &self.cavity.points[new_f[1] as usize];
                             let p2 = &self.cavity.points[new_f[2] as usize];
-                            let mut n = (p1 - p0).cross(&(p2 - p0));
+                            let mut n = (p2 - p0).cross(&(p1 - p0));
                             n.normalize_mut();
                             let mut c = (p0 + p1 + p2) / 3.0;
                             let a = geom.angle(&mut c, &n, &ftag);
                             if a > threshold_degrees {
+                                // let area = (p2 - p0).cross(&(p1 - p0)).norm();
+                                // if area > 1e-12 {
+                                //     self.cavity.to_mesh().write_vtk("cavity.vtu", None, None);
+                                //     self.to_mesh().write_vtk("debug.vtu", None, None);
+                                //     println!("{:?}", (p2 - p0).cross(&(p1 - p0)).norm());
+                                //     println!("{:?}", f);
+                                //     println!("{:?}", e);
+                                //     println!("{}", i_edge);
+                                //     println!("{:?}", new_f);
+                                //     println!("{:?}", n);
+                                //     println!("{} {}", a, threshold_degrees);
+                                //     panic!();
+                                // }
                                 return false;
                             }
                         }
