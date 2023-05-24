@@ -492,6 +492,10 @@ impl SimplexMesh<3, Tetrahedron> {
             info!("Limit the curvature metric: f = {} ", step.unwrap());
         }
 
+        if self.vertex_to_vertices.is_none() {
+            return Err(Error::from("vertex to vertices connectivity not available"));
+        }
+
         let (_, boundary_vertex_ids) = self.boundary();
 
         // Initialize the metric field
