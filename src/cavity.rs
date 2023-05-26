@@ -1,6 +1,12 @@
 use crate::{
-    geom_elems::GElem, geometry::Geometry, mesh::Point, metric::Metric, remesher::Remesher,
-    topo_elems::Elem, topology::Topology, Dim, Idx, TopoTag,
+    geom_elems::GElem,
+    geometry::Geometry,
+    mesh::{Point, SimplexMesh},
+    metric::Metric,
+    remesher::Remesher,
+    topo_elems::Elem,
+    topology::Topology,
+    Dim, Idx, TopoTag,
 };
 use core::fmt;
 use log::trace;
@@ -208,6 +214,17 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
     pub fn faces(&self) -> impl Iterator<Item = E::Face> + '_ {
         (0..(self.n_faces())).map(|i_face| self.faces[i_face as usize])
     }
+
+    /// Convert the filled cavity to a SimplexMesh to export it (for debug)
+    #[allow(dead_code)]
+    pub fn to_mesh(&self) -> SimplexMesh<D, E> {
+        let elems: Vec<_> = self.elems.iter().flat_map(|x| x.into_iter()).collect();
+        let etags = vec![1; elems.len() / E::N_VERTS as usize];
+        let faces = Vec::new();
+        let ftags = Vec::new();
+        let coords: Vec<_> = self.points.iter().flatten().copied().collect();
+        SimplexMesh::<D, E>::new(coords, elems, etags, faces, ftags)
+    }
 }
 
 impl<const D: usize, E: Elem, M: Metric<D>> fmt::Display for Cavity<D, E, M> {
@@ -285,6 +302,20 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
     pub fn elems_and_faces(&self) -> impl Iterator<Item = (E, E::Face)> + '_ {
         self.faces()
             .map(|f| (E::from_vertex_and_face(self.id.unwrap(), &f), f))
+    }
+
+    /// Convert the filled cavity to a SimplexMesh to export it (for debug)
+    #[allow(dead_code)]
+    pub fn to_mesh(&self) -> SimplexMesh<D, E> {
+        let mut elems = Vec::new();
+        for (e, _) in self.elems_and_faces() {
+            elems.extend(e.into_iter());
+        }
+        let etags = vec![1; elems.len() / E::N_VERTS as usize];
+        let faces = Vec::new();
+        let ftags = Vec::new();
+        let coords: Vec<_> = self.cavity.points.iter().flatten().copied().collect();
+        SimplexMesh::<D, E>::new(coords, elems, etags, faces, ftags)
     }
 
     /// Get the location and metric for the reconstruction vertex
