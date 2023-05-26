@@ -218,7 +218,7 @@ where
         // Ensure that the metric is valid, i.e. that all the eigenvalues are >0
         eig.eigenvalues
             .iter_mut()
-            .for_each(|i| *i = f64::max(f64::MIN_POSITIVE, f64::abs(*i)));
+            .for_each(|i| *i = i.abs().max(f64::MIN_POSITIVE));
         let mat = eig.recompose();
         let vol = 1. / eig.eigenvalues.iter().product::<f64>().sqrt();
         assert!(vol > 0.0);
@@ -273,12 +273,19 @@ where
 
         for (w, m) in weights_and_metrics {
             let mut eig = m.as_mat().symmetric_eigen();
-            eig.eigenvalues.iter_mut().for_each(|i| *i = w * (*i).ln());
+            eig.eigenvalues
+                .iter_mut()
+                .for_each(|i| *i = w * (*i).max(f64::MIN_POSITIVE).ln());
+            assert!(eig.eigenvalues.iter().all(|&x| f64::is_finite(x)));
             mat += eig.recompose();
         }
 
         let mut eig = mat.symmetric_eigen();
-        eig.eigenvalues.iter_mut().for_each(|i| *i = (*i).exp());
+        eig.eigenvalues
+            .iter_mut()
+            .for_each(|i| *i = (*i).exp().max(f64::MIN_POSITIVE));
+        assert!(eig.eigenvalues.iter().all(|&x| f64::is_finite(x)));
+        assert!(eig.eigenvalues.iter().all(|&x| x > 0.0));
         mat = eig.recompose();
         let vol = 1. / eig.eigenvalues.iter().product::<f64>().sqrt();
 
@@ -291,8 +298,7 @@ where
         eig.eigenvalues
             .iter()
             .enumerate()
-            .for_each(|(i, e)| s[i] = 1. / e.sqrt());
-
+            .for_each(|(i, e)| s[i] = 1. / e.max(f64::MIN_POSITIVE).sqrt());
         s.sort_by(|a, b| a.partial_cmp(b).unwrap());
         s
     }
@@ -309,7 +315,7 @@ where
             .for_each(|i| *i = f64::min(s_max, f64::max(s_min, s * (*i))));
 
         let mat = eig.recompose();
-        let vol = 1. / eig.eigenvalues.iter().fold(1.0, |v, &e| v * e).sqrt();
+        let vol = 1. / eig.eigenvalues.iter().product::<f64>().sqrt();
 
         self.update_from_mat_and_vol(mat, vol);
     }
@@ -361,7 +367,7 @@ where
             .for_each(|(l, v)| {
                 let v = v.clone_owned();
                 let l_other = other.length(&v).powi(2);
-                *l = f64::min(*l, l_other * f2).max(l_other / f2);
+                *l = l.min(l_other * f2).max(l_other / f2);
             });
 
         let vol = 1. / eig.eigenvalues.iter().fold(1.0, |v, &e| v * e).sqrt();
