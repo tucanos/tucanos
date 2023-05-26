@@ -21,6 +21,32 @@ pub trait Geometry<const D: usize> {
 
     /// Compute the angle between a vector n and the normal at the projection of pt onto the geometry
     fn angle(&self, pt: &mut Point<D>, n: &Point<D>, tag: &TopoTag) -> f64;
+
+    /// Compute the max distance between the face centers and the geometry normals
+    fn max_distance<E2: Elem>(&self, mesh: &SimplexMesh<D, E2>) -> f64 {
+        let mut d_max = 0.0;
+        for i_face in 0..mesh.n_faces() {
+            let mut c = mesh.face_center(i_face);
+            let d = self.project(&mut c, &(E2::Face::DIM as Dim, 1));
+            d_max = f64::max(d_max, d);
+        }
+        d_max
+    }
+
+    /// Compute the max angle between the face normals and the geometry normals
+    fn max_normal_angle<E2: Elem>(&self, mesh: &SimplexMesh<D, E2>) -> f64 {
+        let mut a_max = 0.0;
+        for i_face in 0..mesh.n_faces() {
+            let mut c = mesh.face_center(i_face);
+            let n = mesh.gface(i_face).normal();
+            let a = self.angle(&mut c, &n, &(E2::Face::DIM as Dim, 1));
+            if a > 45. {
+                warn!("Angle between the face normals and the geometry is {a} at {c}");
+            }
+            a_max = f64::max(a_max, a);
+        }
+        a_max
+    }
 }
 
 /// No geometric model
@@ -45,6 +71,7 @@ impl<const D: usize> Geometry<D> for NoGeometry<D> {
 /// Piecewise linear (stl-like) representation of a geometry
 pub struct LinearGeometry<const D: usize, E: Elem> {
     mesh: SimplexMesh<D, E>,
+    bmesh: Option<SimplexMesh<D, E::Face>>,
     u: Option<Vec<Point<D>>>,
     v: Option<Vec<Point<D>>>,
 }
@@ -56,42 +83,23 @@ impl<const D: usize, E: Elem> LinearGeometry<D, E> {
         if mesh.tree.is_none() {
             mesh.compute_octree();
         }
+        mesh.add_boundary_faces();
+
+        let (mut bmesh, _) = mesh.boundary();
+
+        let bmesh = if bmesh.n_verts() > 0 {
+            bmesh.compute_octree();
+            Some(bmesh)
+        } else {
+            None
+        };
 
         Ok(Self {
             mesh,
+            bmesh,
             u: None,
             v: None,
         })
-    }
-
-    /// Compute the max distance between the face centers and the geometry normals
-    pub fn max_distance<E2: Elem>(&self, mesh: &SimplexMesh<D, E2>) -> f64 {
-        assert_eq!(E2::Face::N_VERTS, E::N_VERTS);
-
-        let mut d_max = 0.0;
-        for i_face in 0..mesh.n_faces() {
-            let mut c = mesh.face_center(i_face);
-            let d = self.project(&mut c, &(E::DIM as Dim, 1));
-            d_max = f64::max(d_max, d);
-        }
-        d_max
-    }
-
-    /// Compute the max angle between the face normals and the geometry normals
-    pub fn max_normal_angle<E2: Elem>(&self, mesh: &SimplexMesh<D, E2>) -> f64 {
-        assert_eq!(E2::Face::N_VERTS, E::N_VERTS);
-
-        let mut a_max = 0.0;
-        for i_face in 0..mesh.n_faces() {
-            let mut c = mesh.face_center(i_face);
-            let n = mesh.gface(i_face).normal();
-            let a = self.angle(&mut c, &n, &(E::DIM as Dim, 1));
-            if a > 45. {
-                warn!("Angle between the face normals and the geometry is {a} at {c}");
-            }
-            a_max = f64::max(a_max, a);
-        }
-        a_max
     }
 }
 
@@ -179,7 +187,12 @@ impl<const D: usize, E: Elem> Geometry<D> for LinearGeometry<D, E> {
     fn project(&self, pt: &mut Point<D>, tag: &TopoTag) -> f64 {
         assert!(tag.0 < D as Dim);
         // TODO: check that the tag is consistent
-        let tree = self.mesh.tree.as_ref().unwrap();
+        let tree = if self.bmesh.is_some() && tag.0 < D as Dim - 1 {
+            self.bmesh.as_ref().unwrap().tree.as_ref().unwrap()
+        } else {
+            self.mesh.tree.as_ref().unwrap()
+        };
+
         let (dist, p) = tree.project(pt);
         *pt = p;
         dist
