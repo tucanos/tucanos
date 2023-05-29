@@ -4,10 +4,11 @@ use crate::{
     mesh::{Point, SimplexMesh},
     metric::{AnisoMetric2d, AnisoMetric3d, Metric},
     topo_elems::{Elem, Tetrahedron, Triangle},
-    Error, Idx, Mesh, Result,
+    Error, Idx, Mesh, Result, Tag,
 };
 
 use log::{debug, info, warn};
+use rustc_hash::FxHashSet;
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Get the metric information (min/max size, max anisotropy, complexity)
@@ -496,7 +497,8 @@ impl SimplexMesh<3, Tetrahedron> {
             return Err(Error::from("vertex to vertices connectivity not available"));
         }
 
-        let (_, boundary_vertex_ids) = self.boundary();
+        let (bdy, boundary_vertex_ids) = self.boundary();
+        let bdy_tags: FxHashSet<Tag> = bdy.etags().collect();
 
         // Initialize the metric field
         let hx = Point::<3>::new(1.0, 0.0, 0.0);
@@ -508,25 +510,30 @@ impl SimplexMesh<3, Tetrahedron> {
         let mut flg = vec![false; n_verts];
 
         // Set the metric at the boundary vertices
-        boundary_vertex_ids.iter().for_each(|&i_vert| {
-            let pt = self.vert(i_vert);
-            let (mut u, mut v) = geom.curvature(&pt).unwrap();
-            let hu = 1. / (r_h * u.norm());
-            let hv = 1. / (r_h * v.norm());
-            let hn = f64::min(hu, hv);
-            u.normalize_mut();
-            v.normalize_mut();
-            let n = hn * u.cross(&v);
-            u *= hu;
-            v *= hv;
+        for tag in bdy_tags {
+            let (_, ids, _, _) = bdy.extract(tag);
+            ids.iter()
+                .map(|&i| boundary_vertex_ids[i as usize])
+                .for_each(|i_vert| {
+                    let pt = self.vert(i_vert);
+                    let (mut u, mut v) = geom.curvature(&pt, tag).unwrap();
+                    let hu = 1. / (r_h * u.norm());
+                    let hv = 1. / (r_h * v.norm());
+                    let hn = f64::min(hu, hv);
+                    u.normalize_mut();
+                    v.normalize_mut();
+                    let n = hn * u.cross(&v);
+                    u *= hu;
+                    v *= hv;
 
-            curvature_metric[i_vert as usize] = AnisoMetric3d::from_sizes(&n, &u, &v);
-            if implied_metric.is_some() {
-                let m_i = implied_metric.as_ref().unwrap()[i_vert as usize];
-                curvature_metric[i_vert as usize].limit(&m_i, step.unwrap());
-            }
-            flg[i_vert as usize] = true;
-        });
+                    curvature_metric[i_vert as usize] = AnisoMetric3d::from_sizes(&n, &u, &v);
+                    if implied_metric.is_some() {
+                        let m_i = implied_metric.as_ref().unwrap()[i_vert as usize];
+                        curvature_metric[i_vert as usize].limit(&m_i, step.unwrap());
+                    }
+                    flg[i_vert as usize] = true;
+                });
+        }
 
         // Extend the metric into the volume
         let mut to_fix = n_verts - boundary_vertex_ids.len();
