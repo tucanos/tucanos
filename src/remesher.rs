@@ -250,8 +250,10 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                 let mut p_proj = p;
                 let d = res.geom.project(&mut p_proj, tag);
                 dmax = f64::max(dmax, d);
+                res.insert_vertex(p_proj, tag, &m[i_vert]);
+            } else {
+                res.insert_vertex(p, tag, &m[i_vert]);
             }
-            res.insert_vertex(p, tag, &m[i_vert]);
         }
         warn!("Max. distance to the geometry: {dmax:.2e}");
 
@@ -1356,6 +1358,29 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
         }
     }
 
+    /// Function run after each remeshing step (for debug)
+    fn check_step(&self) {
+        let mut msh = self.to_mesh(false);
+        msh.compute_face_to_elems();
+        let max_angle = self.geom.max_normal_angle(&msh);
+        if max_angle > 45. {
+            msh.write_vtk("debug.vtu", None, None).unwrap();
+            msh.boundary()
+                .0
+                .write_vtk("debug_bdy.vtu", None, None)
+                .unwrap();
+            msh.check().unwrap();
+            panic!("max_angle = {}", max_angle);
+        } else {
+            msh.write_vtk("debug_ok.vtu", None, None).unwrap();
+            msh.boundary()
+                .0
+                .write_vtk("debug_bdy_ok.vtu", None, None)
+                .unwrap();
+            msh.check().unwrap();
+        }
+    }
+
     /// Perform a remeshing iteration
     pub fn remesh(&mut self, params: RemesherParams) {
         info!("Adapt the mesh");
@@ -1373,14 +1398,19 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                 };
                 for _ in 0..params.num_iter {
                     self.collapse(&first_step_params);
+                    self.check_step();
 
                     self.split(l_0, &first_step_params);
+                    self.check_step();
 
                     self.swap(0.4, &first_step_params);
+                    self.check_step();
 
                     self.swap(0.8, &first_step_params);
+                    self.check_step();
 
                     self.smooth(&first_step_params);
+                    self.check_step();
                 }
             } else {
                 info!("l_max = {l_max}, no first step required");
@@ -1389,19 +1419,26 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
 
         for _ in 0..params.num_iter {
             self.collapse(&params);
+            self.check_step();
 
             self.split(f64::sqrt(2.0), &params);
+            self.check_step();
 
             self.swap(0.4, &params);
+            self.check_step();
 
             self.swap(0.8, &params);
+            self.check_step();
 
             self.smooth(&params);
+            self.check_step();
         }
 
         self.swap(0.4, &params);
+        self.check_step();
 
         self.swap(0.8, &params);
+        self.check_step();
 
         info!("Done in {}s", now.elapsed().as_secs_f32());
         self.print_stats();
