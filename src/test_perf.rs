@@ -18,7 +18,8 @@ fn main() -> Result<()> {
     init_log("debug");
 
     // Initial mesh
-    let mesh = test_mesh_3d().split();
+    let mut mesh = test_mesh_3d().split();
+    mesh.compute_topology();
 
     // Analytical metric
     let mfunc = |p: Point<3>| {
@@ -36,7 +37,7 @@ fn main() -> Result<()> {
 
     let (mut bdy, _) = mesh.boundary();
     bdy.compute_octree();
-    let geom = LinearGeometry::new(bdy)?;
+    let geom = LinearGeometry::new(&mesh, bdy)?;
 
     let mut remesher = Remesher::new(&mesh, &m, geom)?;
 
