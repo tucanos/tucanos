@@ -1,10 +1,12 @@
-use crate::geom_elems::GElem;
-use crate::graph::{CSRGraph, Connectivity, ElemGraph, ElemGraphInterface};
-use crate::metric::IsoMetric;
-use crate::octree::Octree;
-use crate::topo_elems::{get_elem, get_face_to_elem, Elem};
-use crate::twovec;
-use crate::{Error, Idx, Mesh, Result, Tag};
+use crate::{
+    geom_elems::GElem,
+    graph::{CSRGraph, Connectivity, ElemGraph, ElemGraphInterface},
+    metric::IsoMetric,
+    octree::Octree,
+    topo_elems::{get_elem, get_face_to_elem, Elem},
+    topology::Topology,
+    twovec, TopoTag, Error, Idx, Mesh, Result, Tag,
+};
 use log::{debug, info, warn};
 use nalgebra::SVector;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -45,8 +47,12 @@ pub struct SimplexMesh<const D: usize, E: Elem> {
     /// It can be seen as the volume of a dual cell
     /// sum(elem_vol) = sum(vert_vol)
     pub vert_vol: Option<Vec<f64>>,
-    // Octree
+    /// Octree
     pub tree: Option<Octree>,
+    /// Topology
+    pub topo: Option<Topology>,
+    /// Vertex tags
+    pub vtags: Option<Vec<TopoTag>>,
 }
 
 pub type Point<const D: usize> = SVector<f64, D>;
@@ -115,6 +121,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             elem_vol: None,
             vert_vol: None,
             tree: None,
+            topo: None,
+            vtags: None,
         }
     }
 
@@ -747,6 +755,23 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         }
 
         Ok(())
+    }
+
+    /// Compute the mesh topology
+    pub fn compute_topology(&mut self) {
+        let (topo, vtags) = Topology::from_mesh(self);
+        if self.topo.is_none() {
+            self.topo = Some(topo);
+            self.vtags = Some(vtags);
+        } else {
+            warn!("Topology already computed");
+        }
+    }
+
+    /// Clear the mesh topology
+    pub fn clear_topology(&mut self) {
+        self.topo = None;
+        self.vtags = None;
     }
 }
 
