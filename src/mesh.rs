@@ -5,7 +5,7 @@ use crate::{
     octree::Octree,
     topo_elems::{get_elem, get_face_to_elem, Elem},
     topology::Topology,
-    twovec, TopoTag, Error, Idx, Mesh, Result, Tag,
+    twovec, Error, Idx, Mesh, Result, Tag, TopoTag,
 };
 use log::{debug, info, warn};
 use nalgebra::SVector;
@@ -253,7 +253,11 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Compute the face-to-element connectivity
     pub fn compute_face_to_elems(&mut self) {
         debug!("Compute the face to element connectivity");
-        self.faces_to_elems = Some(get_face_to_elem::<E>(&self.elems));
+        if self.faces_to_elems.is_none() {
+            self.faces_to_elems = Some(get_face_to_elem::<E>(&self.elems));
+        } else {
+            warn!("Face to element connectivity already computed");
+        }
     }
 
     /// Clear the face-to-element connectivity
@@ -266,7 +270,11 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn compute_vertex_to_elems(&mut self) {
         debug!("Compute the vertex to element connectivity");
         let g = ElemGraphInterface::new(E::N_VERTS, &self.elems);
-        self.vertex_to_elems = Some(CSRGraph::transpose(&g));
+        if self.vertex_to_elems.is_none() {
+            self.vertex_to_elems = Some(CSRGraph::transpose(&g));
+        } else {
+            warn!("Vertex to element connectivity already computed");
+        }
     }
 
     /// Clear the vertex-to-element connectivity
@@ -279,20 +287,24 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// face-to-element connectivity is computed if not available
     pub fn compute_elem_to_elems(&mut self) {
         debug!("Compute the element to element connectivity");
-        if self.faces_to_elems.is_none() {
-            self.compute_face_to_elems();
-        }
-        let f2e = self.faces_to_elems.as_ref().unwrap();
+        if self.elem_to_elems.is_none() {
+            if self.faces_to_elems.is_none() {
+                self.compute_face_to_elems();
+            }
+            let f2e = self.faces_to_elems.as_ref().unwrap();
 
-        let mut g = ElemGraph::new(2, f2e.len() as Idx);
-        for (_, val) in f2e.iter() {
-            for (i, i_elem) in val.iter().copied().enumerate() {
-                for j_elem in val.iter().skip(i + 1).copied() {
-                    g.add_elem(&[i_elem, j_elem]);
+            let mut g = ElemGraph::new(2, f2e.len() as Idx);
+            for (_, val) in f2e.iter() {
+                for (i, i_elem) in val.iter().copied().enumerate() {
+                    for j_elem in val.iter().skip(i + 1).copied() {
+                        g.add_elem(&[i_elem, j_elem]);
+                    }
                 }
             }
+            self.elem_to_elems = Some(CSRGraph::new(&g));
+        } else {
+            warn!("Element to element connectivity already computed");
         }
-        self.elem_to_elems = Some(CSRGraph::new(&g));
     }
 
     /// Clear the element-to-element connectivity
@@ -304,16 +316,20 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Compute the edges
     pub fn compute_edges(&mut self) {
         debug!("Compute the edges");
-        let mut edgs = FxHashSet::with_hasher(BuildHasherDefault::default());
-        for e in self.elems() {
-            for i_edg in 0..E::N_EDGES {
-                let mut edg = e.edge(i_edg);
-                edg.sort_unstable();
-                edgs.insert(edg);
+        if self.edges.is_none() {
+            let mut edgs = FxHashSet::with_hasher(BuildHasherDefault::default());
+            for e in self.elems() {
+                for i_edg in 0..E::N_EDGES {
+                    let mut edg = e.edge(i_edg);
+                    edg.sort_unstable();
+                    edgs.insert(edg);
+                }
             }
+            let edgs: Vec<_> = edgs.iter().flatten().copied().collect();
+            self.edges = Some(edgs);
+        } else {
+            warn!("Edges already computed");
         }
-        let edgs: Vec<_> = edgs.iter().flatten().copied().collect();
-        self.edges = Some(edgs);
     }
 
     /// Clear the edges
@@ -326,11 +342,15 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Edges are computed if not available
     pub fn compute_vertex_to_vertices(&mut self) {
         debug!("Compute the vertex to vertex connectivity");
-        if self.edges.is_none() {
-            self.compute_edges();
+        if self.vertex_to_vertices.is_none() {
+            if self.edges.is_none() {
+                self.compute_edges();
+            }
+            let g = ElemGraphInterface::new(2, self.edges.as_ref().unwrap());
+            self.vertex_to_vertices = Some(CSRGraph::new(&g));
+        } else {
+            warn!("Vertex to vertex connectivity already computed");
         }
-        let g = ElemGraphInterface::new(2, self.edges.as_ref().unwrap());
-        self.vertex_to_vertices = Some(CSRGraph::new(&g));
     }
 
     /// Clear the vertex-to-vertex connectivity
@@ -342,18 +362,22 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Compute the volume and vertex volumes
     pub fn compute_volumes(&mut self) {
         debug!("Compute the vertex & element volumes");
-        let mut elem_vol = vec![0.0; self.n_elems() as usize];
-        let mut node_vol = vec![0.0; self.n_verts() as usize];
-        let fac = 1.0 / f64::from(E::N_VERTS);
-        for (i_elem, e) in self.elems().enumerate() {
-            let v = self.gelem(i_elem as Idx).vol();
-            elem_vol[i_elem] = v;
-            for i in e.iter().copied() {
-                node_vol[i as usize] += fac * v;
+        if self.elem_vol.is_none() {
+            let mut elem_vol = vec![0.0; self.n_elems() as usize];
+            let mut node_vol = vec![0.0; self.n_verts() as usize];
+            let fac = 1.0 / f64::from(E::N_VERTS);
+            for (i_elem, e) in self.elems().enumerate() {
+                let v = self.gelem(i_elem as Idx).vol();
+                elem_vol[i_elem] = v;
+                for i in e.iter().copied() {
+                    node_vol[i as usize] += fac * v;
+                }
             }
+            self.elem_vol = Some(elem_vol);
+            self.vert_vol = Some(node_vol);
+        } else {
+            warn!("Volumes already computed");
         }
-        self.elem_vol = Some(elem_vol);
-        self.vert_vol = Some(node_vol);
     }
 
     /// Clear the volume and vertex volumes
@@ -366,8 +390,11 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Compute an octree
     pub fn compute_octree(&mut self) {
         debug!("Compute an octree");
-
-        self.tree = Some(Octree::new(self));
+        if self.tree.is_none() {
+            self.tree = Some(Octree::new(self));
+        } else {
+            warn!("Octree already computed");
+        }
     }
 
     /// Clear the octree
@@ -571,11 +598,11 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let (faces, ftags, new_tag, internal_faces) = self.boundary_faces().unwrap();
         let n_untagged = ftags.iter().filter(|x| **x == new_tag).count();
         if n_untagged > 0 {
-            warn!("Added {} untagged faces with tag={}", n_untagged, new_tag);
+            info!("Added {} untagged faces with tag={}", n_untagged, new_tag);
         }
         for (tag, etags) in internal_faces.iter() {
             if *tag > new_tag {
-                warn!(
+                info!(
                     "Added tag {} to internal faces belonging to elements with tags {:?}",
                     *tag, etags
                 );
