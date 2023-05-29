@@ -169,14 +169,18 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
         );
         assert_eq!(m.len(), mesh.n_verts() as usize);
 
-        // Compute the topology based on the element and face tags, and return vertex tags
-        let (topo, vtag) = Topology::from_mesh(mesh);
+        // Get the topology
+        if mesh.topo.is_none() {
+            return Err(Error::from("Mesh topology not computed"));
+        }
+        let topo = mesh.topo.as_ref().unwrap();
+        let vtag = mesh.vtags.as_ref().unwrap();
 
         // Check that the geometry and topology are consistent
-        geom.check(&topo)?;
+        geom.check(topo)?;
 
         let mut res = Self {
-            topo,
+            topo: topo.clone(),
             verts: FxHashMap::with_capacity_and_hasher(
                 mesh.n_verts() as usize,
                 BuildHasherDefault::default(),
@@ -1392,7 +1396,8 @@ mod tests {
 
     #[test]
     fn test_init() -> Result<()> {
-        let mesh = test_mesh_2d();
+        let mut mesh = test_mesh_2d();
+        mesh.compute_topology();
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
         let remesher = Remesher::new(&mesh, &h, NoGeometry())?;
 
@@ -1440,7 +1445,8 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_remove_vertex_error() {
-        let mesh = test_mesh_2d();
+        let mut mesh = test_mesh_2d();
+        mesh.compute_topology();
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
 
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry()).unwrap();
@@ -1451,7 +1457,9 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_remove_vertex_error_2() {
-        let mesh = test_mesh_2d();
+        let mut mesh = test_mesh_2d();
+        mesh.compute_topology();
+
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
 
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry()).unwrap();
@@ -1461,7 +1469,9 @@ mod tests {
 
     #[test]
     fn test_remove_elem() -> Result<()> {
-        let mesh = test_mesh_2d();
+        let mut mesh = test_mesh_2d();
+        mesh.compute_topology();
+
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
 
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
@@ -1479,7 +1489,9 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_remove_elem_2() {
-        let mesh = test_mesh_2d();
+        let mut mesh = test_mesh_2d();
+        mesh.compute_topology();
+
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
 
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry()).unwrap();
@@ -1489,7 +1501,8 @@ mod tests {
 
     #[test]
     fn test_split_2d() -> Result<()> {
-        let mesh = test_mesh_2d().split().split();
+        let mut mesh = test_mesh_2d().split().split();
+        mesh.compute_topology();
 
         let h: Vec<_> = mesh
             .verts()
@@ -1509,7 +1522,8 @@ mod tests {
 
     #[test]
     fn test_swap_2d() -> Result<()> {
-        let mesh = test_mesh_2d().split().split();
+        let mut mesh = test_mesh_2d().split().split();
+        mesh.compute_topology();
 
         // collapse to lower the quality
         let h = vec![IsoMetric::<2>::from(2.); mesh.n_verts() as usize];
@@ -1523,7 +1537,8 @@ mod tests {
         remesher.check()?;
 
         // swap
-        let mesh = remesher.to_mesh(true);
+        let mut mesh = remesher.to_mesh(true);
+        mesh.compute_topology();
         let h = vec![IsoMetric::<2>::from(2.); mesh.n_verts() as usize];
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
 
@@ -1541,7 +1556,8 @@ mod tests {
 
     #[test]
     fn test_collapse_2d() -> Result<()> {
-        let mesh = test_mesh_2d().split().split();
+        let mut mesh = test_mesh_2d().split().split();
+        mesh.compute_topology();
 
         let h = vec![IsoMetric::<2>::from(2.); mesh.n_verts() as usize];
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
@@ -1566,7 +1582,8 @@ mod tests {
         let faces: Vec<Idx> = vec![0, 1, 1, 2, 2, 3, 3, 0];
         let ftags: Vec<Tag> = vec![1, 2, 3, 4];
 
-        let mesh = SimplexMesh::<2, Triangle>::new(coords, elems, etags, faces, ftags);
+        let mut mesh = SimplexMesh::<2, Triangle>::new(coords, elems, etags, faces, ftags);
+        mesh.compute_topology();
 
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
@@ -1592,7 +1609,8 @@ mod tests {
         let faces: Vec<Idx> = vec![0, 1, 1, 2, 2, 3, 3, 0];
         let ftags: Vec<Tag> = vec![1, 2, 3, 4];
 
-        let mesh = SimplexMesh::<2, Triangle>::new(coords, elems, etags, faces, ftags);
+        let mut mesh = SimplexMesh::<2, Triangle>::new(coords, elems, etags, faces, ftags);
+        mesh.compute_topology();
 
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
@@ -1617,7 +1635,8 @@ mod tests {
         let faces: Vec<Idx> = vec![0, 1, 1, 2, 2, 3, 3, 0];
         let ftags: Vec<Tag> = vec![1, 2, 3, 4];
 
-        let mesh = SimplexMesh::<2, Triangle>::new(coords, elems, etags, faces, ftags);
+        let mut mesh = SimplexMesh::<2, Triangle>::new(coords, elems, etags, faces, ftags);
+        mesh.compute_topology();
 
         let h = vec![
             AnisoMetric2d::from_slice(&[1., 100., 0.], 0),
@@ -1648,7 +1667,8 @@ mod tests {
         let faces: Vec<Idx> = vec![0, 1, 1, 2, 2, 3, 3, 0];
         let ftags: Vec<Tag> = vec![1, 2, 3, 4];
 
-        let mesh = SimplexMesh::<2, Triangle>::new(coords, elems, etags, faces, ftags);
+        let mut mesh = SimplexMesh::<2, Triangle>::new(coords, elems, etags, faces, ftags);
+        mesh.compute_topology();
 
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
@@ -1673,7 +1693,8 @@ mod tests {
         let faces: Vec<Idx> = vec![0, 1, 1, 2, 2, 3, 3, 0];
         let ftags: Vec<Tag> = vec![1, 2, 3, 4];
 
-        let mesh = SimplexMesh::<2, Triangle>::new(coords, elems, etags, faces, ftags);
+        let mut mesh = SimplexMesh::<2, Triangle>::new(coords, elems, etags, faces, ftags);
+        mesh.compute_topology();
 
         let h = vec![
             AnisoMetric2d::from_slice(&[1., 100., 0.], 0),
@@ -1698,9 +1719,8 @@ mod tests {
 
     #[test]
     fn test_adapt_2d() -> Result<()> {
-        let mesh = test_mesh_2d();
-
-        let mut mesh = mesh.split().split();
+        let mut mesh = test_mesh_2d().split().split();
+        mesh.compute_topology();
 
         for _iter in 0..2 {
             let h: Vec<_> = (0..mesh.n_verts())
@@ -1712,6 +1732,7 @@ mod tests {
             remesher.check()?;
 
             mesh = remesher.to_mesh(true);
+            mesh.compute_topology();
         }
 
         Ok(())
@@ -1721,6 +1742,7 @@ mod tests {
     fn test_adapt_aniso_2d() -> Result<()> {
         let mut mesh = test_mesh_2d();
         mesh.etags[1] = 1;
+        mesh.compute_topology();
 
         let mfunc = |pt: Point<2>| {
             let y = pt[1];
@@ -1744,6 +1766,7 @@ mod tests {
     #[test]
     fn test_adapt_2d_geom() -> Result<()> {
         let mut mesh = test_mesh_moon_2d();
+        mesh.compute_topology();
 
         let ref_vol = 0.5 * PI - 2.0 * (0.5 * 1.25 * 1.25 * f64::atan2(1., 0.75) - 0.5 * 0.75);
 
@@ -1758,6 +1781,7 @@ mod tests {
             remesher.check()?;
 
             mesh = remesher.to_mesh(true);
+            mesh.compute_topology();
 
             let vol = mesh.vol();
             assert!(f64::abs(vol - ref_vol) < 0.05);
@@ -1768,7 +1792,8 @@ mod tests {
 
     #[test]
     fn test_split_tet_3d() -> Result<()> {
-        let mesh = test_mesh_3d_single_tet();
+        let mut mesh = test_mesh_3d_single_tet();
+        mesh.compute_topology();
 
         let h = vec![IsoMetric::<3>::from(0.25); mesh.n_verts() as usize];
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
@@ -1785,7 +1810,8 @@ mod tests {
 
     #[test]
     fn test_split_3d() -> Result<()> {
-        let mesh = test_mesh_3d().split().split();
+        let mut mesh = test_mesh_3d().split().split();
+        mesh.compute_topology();
 
         let h: Vec<_> = mesh
             .verts()
@@ -1807,7 +1833,8 @@ mod tests {
 
     #[test]
     fn test_collapse_3d() -> Result<()> {
-        let mesh = test_mesh_3d().split().split();
+        let mut mesh = test_mesh_3d().split().split();
+        mesh.compute_topology();
 
         let h = vec![IsoMetric::<3>::from(2.); mesh.n_verts() as usize];
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
@@ -1826,7 +1853,8 @@ mod tests {
 
     #[test]
     fn test_swap_twotets_3d() -> Result<()> {
-        let mesh = test_mesh_3d_two_tets();
+        let mut mesh = test_mesh_3d_two_tets();
+        mesh.compute_topology();
 
         // collapse to lower the quality
         let h = vec![IsoMetric::<3>::from(2.); mesh.n_verts() as usize];
@@ -1849,7 +1877,8 @@ mod tests {
 
     #[test]
     fn test_swap_3d() -> Result<()> {
-        let mesh = test_mesh_3d().split().split();
+        let mut mesh = test_mesh_3d().split().split();
+        mesh.compute_topology();
 
         // collapse to lower the quality
         let h = vec![IsoMetric::<3>::from(2.); mesh.n_verts() as usize];
@@ -1863,7 +1892,9 @@ mod tests {
         remesher.check()?;
 
         // swap
-        let mesh = remesher.to_mesh(true);
+        let mut mesh = remesher.to_mesh(true);
+        mesh.compute_topology();
+
         let h = vec![IsoMetric::<3>::from(2.); mesh.n_verts() as usize];
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
 
@@ -1881,9 +1912,8 @@ mod tests {
 
     #[test]
     fn test_adapt_3d() -> Result<()> {
-        let mesh = test_mesh_3d();
-
-        let mesh = mesh.split().split();
+        let mut mesh = test_mesh_3d().split().split();
+        mesh.compute_topology();
 
         let h: Vec<_> = mesh
             .verts()
@@ -1903,7 +1933,8 @@ mod tests {
 
     #[test]
     fn test_adapt_aniso_3d() -> Result<()> {
-        let mesh = test_mesh_3d();
+        let mut mesh = test_mesh_3d();
+        mesh.compute_topology();
 
         let mfunc = |_p| {
             let v0 = Point::<3>::new(0.5, 0., 0.);
@@ -1927,6 +1958,7 @@ mod tests {
     #[test]
     fn test_complexity_2d() -> Result<()> {
         let mut mesh = test_mesh_2d().split().split();
+        mesh.compute_topology();
         mesh.compute_volumes();
 
         let mfunc = |_p| {
@@ -1951,6 +1983,7 @@ mod tests {
     #[test]
     fn test_complexity_3d() -> Result<()> {
         let mut mesh = test_mesh_3d().split().split();
+        mesh.compute_topology();
         mesh.compute_volumes();
 
         let mfunc = |_p| {
