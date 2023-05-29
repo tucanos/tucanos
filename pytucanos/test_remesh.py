@@ -20,7 +20,7 @@ class TestRemesh(unittest.TestCase):
 
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh22(coords, elems, etags, faces, ftags)
-
+        msh.compute_topology()
         geom = LinearGeometry2d(msh)
 
         h = 0.1 * np.ones(msh.n_verts()).reshape((-1, 1))
@@ -86,6 +86,7 @@ class TestRemesh(unittest.TestCase):
 
         faces = np.zeros((0, 1), dtype=np.uint32)
         ftags = np.zeros(0, dtype=np.int16)
+        msh.compute_topology()
         geom = LinearGeometry2d(msh, Mesh21(coords, elems, etags, faces, ftags))
 
         h = 0.1 * np.ones(msh.n_verts()).reshape((-1, 1))
@@ -112,7 +113,7 @@ class TestRemesh(unittest.TestCase):
 
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh22(coords, elems, etags, faces, ftags)
-
+        msh.compute_topology()
         geom = LinearGeometry2d(msh)
 
         hx = 0.3

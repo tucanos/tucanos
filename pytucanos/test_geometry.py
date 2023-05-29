@@ -16,17 +16,20 @@ class TestGeometry3d(unittest.TestCase):
 
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh22(coords, elems, etags, faces, ftags)
+        msh.compute_topology()
         geom = LinearGeometry2d(msh)
 
     def test_init_3d(self):
 
         coords, elems, etags, faces, ftags = get_cube()
         msh = Mesh33(coords, elems, etags, faces, ftags)
+        msh.compute_topology()
         geom = LinearGeometry3d(msh)
 
     def test_curvature_3d(self):
 
         coords, elems, etags, faces, ftags = get_cube()
         msh = Mesh33(coords, elems, etags, faces, ftags)
+        msh.compute_topology()
         geom = LinearGeometry3d(msh)
         geom.compute_curvature()

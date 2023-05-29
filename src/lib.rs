@@ -8,7 +8,7 @@ use pyo3::{
 };
 use std::collections::HashMap;
 use tucanos::{
-    geometry::LinearGeometry,
+    geometry::{Geometry, LinearGeometry},
     mesh::SimplexMesh,
     mesh_stl::orient_stl,
     metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
@@ -438,6 +438,16 @@ macro_rules! create_mesh {
             pub fn check(&self) -> PyResult<()> {
                 self.mesh.check().map_err(|e| PyRuntimeError::new_err(e.to_string()))
             }
+
+            /// Compute the topology
+            pub fn compute_topology(&mut self) {
+                self.mesh.compute_topology();
+            }
+
+            /// Clear the topology
+            pub fn clear_topology(&mut self) {
+                self.mesh.clear_topology();
+            }
         }
     };
 }
@@ -472,7 +482,7 @@ macro_rules! create_geometry {
                 };
                 orient_stl(&mesh.mesh, &mut gmesh);
                 gmesh.compute_octree();
-                let geom = LinearGeometry::new(gmesh).unwrap();
+                let geom = LinearGeometry::new(&mesh.mesh, gmesh).unwrap();
 
                 Self{geom: Some(geom)}
             }
