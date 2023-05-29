@@ -18,7 +18,7 @@ pub struct TopoNode {
     pub parents: HashSet<Tag>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Topology {
     dim: Dim,
     entities: Vec<Vec<TopoNode>>,
