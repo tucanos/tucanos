@@ -115,20 +115,34 @@ pub struct RemesherParams {
     pub two_steps: bool,
     /// Max. number of loops through the mesh edges during the split step
     pub split_max_iter: u32,
-    /// Constraint the length of the newly created edges to be > split_constrain_l/sqrt(2) during split
-    pub split_constrain_l: f64,
-    /// Constraint the quality of the newly created elements to be > split_constrain_q during split
-    pub split_constrain_q: f64,
+    /// Constraint the length of the newly created edges to be > split_min_l_rel * min(l) during split
+    pub split_min_l_rel: f64,
+    /// Constraint the length of the newly created edges to be > split_min_l_abs during split
+    pub split_min_l_abs: f64,
+    /// Constraint the quality of the newly created elements to be > split_min_q_rel * min(q) during split
+    pub split_min_q_rel: f64,
+    /// Constraint the quality of the newly created elements to be > split_min_q_abs during split
+    pub split_min_q_abs: f64,
     /// Max. number of loops through the mesh edges during the collapse step
     pub collapse_max_iter: u32,
-    /// Constraint the quality of the newly created elements to be > split_constrain_q during collapse
-    pub collapse_constrain_l: f64,
-    /// Constraint the length of the newly created edges to be < split_constrain_l * sqrt(2) during collapse
-    pub collapse_constrain_q: f64,
+    /// Constraint the length of the newly created edges to be < collapse_max_l_rel * max(l) during collapse
+    pub collapse_max_l_rel: f64,
+    /// Constraint the length of the newly created edges to be < collapse_max_l_abs during collapse
+    pub collapse_max_l_abs: f64,
+    /// Constraint the quality of the newly created elements to be > collapse_min_q_rel * min(q) during collapse
+    pub collapse_min_q_rel: f64,
+    /// Constraint the quality of the newly created elements to be > collapse_min_q_abs during collapse
+    pub collapse_min_q_abs: f64,
     /// Max. number of loops through the mesh edges during the swap step
     pub swap_max_iter: u32,
-    /// Constraint the length of the newly created edges to be < split_constrain_l * sqrt(2) and > split_constrain_l/sqrt(2) during swap
-    pub swap_constrain_l: f64,
+    /// Constraint the length of the newly created edges to be < swap_max_l_rel * max(l) during swap
+    pub swap_max_l_rel: f64,
+    /// Constraint the length of the newly created edges to be < swap_max_l_abs during swap
+    pub swap_max_l_abs: f64,
+    /// Constraint the length of the newly created edges to be > swap_min_l_rel * min(l) during swap
+    pub swap_min_l_rel: f64,
+    /// Constraint the length of the newly created edges to be > swap_min_l_abs during swap
+    pub swap_min_l_abs: f64,
     /// Number of smoothing steps
     pub smooth_iter: u32,
     /// Type of smoothing used
@@ -143,13 +157,20 @@ impl Default for RemesherParams {
             num_iter: 2,
             two_steps: false,
             split_max_iter: 2,
-            split_constrain_l: 1.0,
-            split_constrain_q: 0.75,
+            split_min_l_rel: 1.0,
+            split_min_l_abs: 1. / f64::sqrt(2.0),
+            split_min_q_rel: 1.0,
+            split_min_q_abs: 0.2,
             collapse_max_iter: 2,
-            collapse_constrain_l: 1.0,
-            collapse_constrain_q: 0.75,
+            collapse_max_l_rel: 1.0,
+            collapse_max_l_abs: f64::sqrt(2.0),
+            collapse_min_q_rel: 1.0,
+            collapse_min_q_abs: 0.2,
             swap_max_iter: 2,
-            swap_constrain_l: 0.5,
+            swap_max_l_rel: 1.0,
+            swap_max_l_abs: f64::sqrt(2.0),
+            swap_min_l_rel: 1.0,
+            swap_min_l_abs: 1. / f64::sqrt(2.0),
             smooth_iter: 1,
             smooth_type: SmoothingType::Laplacian,
             max_angle: 20.0,
@@ -636,19 +657,25 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
 
     /// Loop over the edges and split them if
     ///   - their length is larger that `l_0`
-    ///   - no edge smaller that `min(constrain_l` * `l_min`, `f64::sqrt(0.5`)) is created
-    ///      (`l_min` is the minimum edge length in the mesh)
-    ///   - no element with a quality < than `constrain_q` * `q_min` is created
-    pub fn split(&mut self, l_0: f64, max_iter: u32, constrain_l: f64, constrain_q: f64) -> u32 {
+    ///   - no edge smaller than
+    ///       min(1/sqrt(2), max(params.split_min_l_abs, params.collapse_min_l_rel * min(l)))
+    ///   - no element with a quality lower than
+    ///       max(params.collapse_min_q_abs, params.collapse_min_q_rel * min(q)))
+    ///   where min(l) and min(q) as the max edge length and min quality over the entire mesh
+    pub fn split(&mut self, l_0: f64, params: &RemesherParams) -> u32 {
         info!("Split edges with length > {:?}", l_0);
 
-        let l_min = min_iter(self.lengths_iter());
-        let q_min = min_iter(self.qualities_iter());
-
-        let l_min = f64::min(constrain_l * l_min, f64::sqrt(0.5));
-
-        let q_min = constrain_q * q_min;
-        debug!("min. allowed quality = {:.2}", q_min);
+        let mesh_l_min = min_iter(self.lengths_iter());
+        let l_min = params
+            .split_min_l_abs
+            .max(params.split_min_l_rel * mesh_l_min)
+            .min(1. / f64::sqrt(2.0));
+        debug!("min. allowed length: {:.2}", l_min);
+        let mesh_q_min = min_iter(self.qualities_iter());
+        let q_min = params
+            .split_min_q_abs
+            .max(params.split_min_q_rel * mesh_q_min);
+        debug!("min. allowed quality: {:.2}", q_min);
 
         let mut n_iter = 0;
         let mut cavity = Cavity::new();
@@ -723,7 +750,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
             self.stats
                 .push(StepStats::Split(SplitStats::new(n_splits, n_fails, self)));
 
-            if n_splits == 0 || n_iter == max_iter {
+            if n_splits == 0 || n_iter == params.split_max_iter {
                 return n_iter;
             }
         }
@@ -826,17 +853,32 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
 
     /// Loop over the edges and perform edge swaps if
     ///   - the quality of an adjacent element is < `q_target`
-    ///   - no edge smaller that `constrain_l` * `l_min` or larger than lmax / `constrain_l` is created
-    ///      (`l_min` / `l_max` are the minimum : maximum edge length in the mesh)
+    ///   - no edge smaller than
+    ///       min(1/sqrt(2), max(params.swap_min_l_abs, params.cswap_min_l_rel * min(l)))
+    ///   - no edge larger than
+    ///       max(sqrt(2), min(params.swap_max_l_abs, params.swap_max_l_rel * max(l)))
+    ///   - no new boundary face is created if its normal forms an angle > than
+    ///       params.max_angle with the normal of the geometry at the face center
     ///   - the edge swap increases the minimum quality of the adjacent elements
-    pub fn swap(&mut self, q_target: f64, max_iter: u32, constrain_l: f64, max_angle: f64) -> u32 {
+    ///   where min(l) and max(l) as the min/max edge length over the entire mesh
+    pub fn swap(&mut self, q_target: f64, params: &RemesherParams) -> u32 {
         info!("Swap edges: target quality = {}", q_target);
 
-        let (lmin, lmax) = min_max_iter(self.lengths_iter());
+        let (mesh_l_min, mesh_l_max) = min_max_iter(self.lengths_iter());
+        let l_min = params
+            .swap_min_l_abs
+            .max(params.swap_min_l_rel * mesh_l_min)
+            .min(1. / f64::sqrt(2.0));
 
-        let lmin = f64::min(lmin * constrain_l, f64::sqrt(0.5));
-        let lmax = f64::max(lmax / constrain_l, f64::sqrt(2.0));
-        debug!("min. / max. allowed edge length = {:.2}, {:.2}", lmin, lmax);
+        let l_max = params
+            .swap_max_l_abs
+            .min(params.swap_max_l_rel * mesh_l_max)
+            .max(f64::sqrt(2.0));
+
+        debug!(
+            "min. / max. allowed edge length = {:.2}, {:.2}",
+            l_min, l_max
+        );
 
         let mut n_iter = 0;
         let mut cavity = Cavity::new();
@@ -849,7 +891,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
             let mut n_fails = 0;
             let mut n_ok = 0;
             for edg in edges {
-                let res = self.try_swap(edg, q_target, lmin, lmax, max_angle, &mut cavity);
+                let res = self.try_swap(edg, q_target, l_min, l_max, params.max_angle, &mut cavity);
                 match res {
                     TrySwapResult::CouldNotSwap => n_fails += 1,
                     TrySwapResult::CouldSwap => n_swaps += 1,
@@ -863,7 +905,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
             );
             self.stats
                 .push(StepStats::Swap(SwapStats::new(n_swaps, n_fails, self)));
-            if n_swaps == 0 || n_iter == max_iter {
+            if n_swaps == 0 || n_iter == params.swap_max_iter {
                 return n_iter;
             }
         }
@@ -871,20 +913,26 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
 
     /// Loop over the edges and collapse them if
     ///   - their length is smaller that 1/sqrt(2)
-    ///   - no edge larger than sqrt(2.0) / `constrain_l` is created
-    ///   - no element with a quality < than `constrain_q` * `q_min` is created
-    pub fn collapse(
-        &mut self,
-        max_iter: u32,
-        constrain_l: f64,
-        constrain_q: f64,
-        max_angle: f64,
-    ) -> u32 {
+    ///   - no edge larger than
+    ///       max(sqrt(2), min(params.collapse_max_l_abs, params.collapse_max_l_rel * max(l)))
+    ///   - no new boundary face is created if its normal forms an angle > than
+    ///       params.max_angle with the normal of the geometry at the face center
+    ///   - no element with a quality lower than
+    ///       max(params.collapse_min_q_abs, params.collapse_min_q_rel * min(q)))
+    ///   where max(l) and min(q) as the max edge length and min quality over the entire mesh
+    pub fn collapse(&mut self, params: &RemesherParams) -> u32 {
         info!("Collapse elements");
 
-        let l_max = f64::sqrt(2.0) / constrain_l; //crate::max_iter(self.lengths_iter()) / constrain_l;
+        let mesh_l_max = max_iter(self.lengths_iter());
+        let l_max = params
+            .collapse_max_l_abs
+            .min(params.collapse_max_l_rel * mesh_l_max)
+            .max(f64::sqrt(2.0));
         debug!("max. allowed length: {:.2}", l_max);
-        let q_min = constrain_q * min_iter(self.qualities_iter());
+        let mesh_q_min = min_iter(self.qualities_iter());
+        let q_min = params
+            .collapse_min_q_abs
+            .max(params.collapse_min_q_rel * mesh_q_min);
         debug!("min. allowed quality: {:.2}", q_min);
 
         let mut n_iter = 0;
@@ -952,7 +1000,11 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                         continue;
                     }
 
-                    if !filled_cavity.check_boundary_normals(&self.topo, &self.geom, max_angle) {
+                    if !filled_cavity.check_boundary_normals(
+                        &self.topo,
+                        &self.geom,
+                        params.max_angle,
+                    ) {
                         trace!("Cannot collapse, would create a non smooth surface");
                         continue;
                     }
@@ -988,7 +1040,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                 n_fails,
                 self,
             )));
-            if n_collapses == 0 || n_iter == max_iter {
+            if n_collapses == 0 || n_iter == params.collapse_max_iter {
                 return n_iter;
             }
         }
@@ -1142,7 +1194,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
     }
 
     /// Perform mesh smoothing
-    pub fn smooth(&mut self, stype: SmoothingType, n_iter: u32) {
+    pub fn smooth(&mut self, params: &RemesherParams) {
         info!("Smooth vertices");
 
         // We modify the vertices while iterating over them so we must copy
@@ -1151,7 +1203,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
         let verts = self.verts.keys().copied().collect::<Vec<_>>();
 
         let mut cavity = Cavity::new();
-        for iter in 0..n_iter {
+        for iter in 0..params.smooth_iter {
             let mut n_fails = 0;
             let mut n_min = 0;
             let mut n_smooth = 0;
@@ -1179,7 +1231,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                 let t0 = &cavity.tags[i0_local as usize];
 
                 let mut h0_new = Default::default();
-                let mut p0_new = match stype {
+                let mut p0_new = match params.smooth_type {
                     SmoothingType::Laplacian => Self::smooth_laplacian(&cavity, &neighbors),
                     SmoothingType::Laplacian2 => Self::smooth_laplacian_2(&cavity, &neighbors),
                     SmoothingType::Avro => Self::smooth_avro(&cavity, &neighbors),
@@ -1266,75 +1318,34 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
             let l_0 = 0.5 * l_max;
             if l_0 > f64::sqrt(2.0) {
                 for _ in 0..params.num_iter {
-                    self.collapse(
-                        params.collapse_max_iter,
-                        params.collapse_constrain_l,
-                        params.collapse_constrain_q,
-                        params.max_angle,
-                    );
-                    self.split(
-                        l_0,
-                        params.split_max_iter,
-                        params.split_constrain_l,
-                        params.split_constrain_q,
-                    );
-                    self.swap(
-                        0.4,
-                        params.swap_max_iter,
-                        params.swap_constrain_l,
-                        params.max_angle,
-                    );
-                    self.swap(
-                        0.8,
-                        params.swap_max_iter,
-                        params.swap_constrain_l,
-                        params.max_angle,
-                    );
-                    self.smooth(params.smooth_type, params.smooth_iter);
+                    self.collapse(&params);
+
+                    self.split(l_0, &params);
+
+                    self.swap(0.4, &params);
+
+                    self.swap(0.8, &params);
+
+                    self.smooth(&params);
                 }
             }
         }
 
         for _ in 0..params.num_iter {
-            self.collapse(
-                params.collapse_max_iter,
-                params.collapse_constrain_l,
-                params.collapse_constrain_q,
-                params.max_angle,
-            );
-            self.split(
-                f64::sqrt(2.0),
-                params.split_max_iter,
-                params.split_constrain_l,
-                params.split_constrain_q,
-            );
-            self.swap(
-                0.4,
-                params.swap_max_iter,
-                params.swap_constrain_l,
-                params.max_angle,
-            );
-            self.swap(
-                0.8,
-                params.swap_max_iter,
-                params.swap_constrain_l,
-                params.max_angle,
-            );
-            self.smooth(params.smooth_type, params.smooth_iter);
+            self.collapse(&params);
+
+            self.split(f64::sqrt(2.0), &params);
+
+            self.swap(0.4, &params);
+
+            self.swap(0.8, &params);
+
+            self.smooth(&params);
         }
 
-        self.swap(
-            0.4,
-            params.swap_max_iter,
-            params.swap_constrain_l,
-            params.max_angle,
-        );
-        self.swap(
-            0.8,
-            params.swap_max_iter,
-            params.swap_constrain_l,
-            params.max_angle,
-        );
+        self.swap(0.4, &params);
+
+        self.swap(0.8, &params);
 
         info!("Done in {}s", now.elapsed().as_secs_f32());
         self.print_stats();
@@ -1510,7 +1521,11 @@ mod tests {
             .collect();
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
 
-        let n_iter = remesher.split(f64::sqrt(2.0), 10, 0.5, 0.5);
+        let params = RemesherParams {
+            split_max_iter: 10,
+            ..Default::default()
+        };
+        let n_iter = remesher.split(f64::sqrt(2.0), &params);
         assert!(n_iter < 10);
 
         remesher.check()?;
@@ -1530,7 +1545,12 @@ mod tests {
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
         remesher.check()?;
 
-        let n_iter = remesher.collapse(10, 0.5, 0.75, 20.0);
+        let params = RemesherParams {
+            collapse_max_iter: 10,
+            swap_max_iter: 10,
+            ..Default::default()
+        };
+        let n_iter = remesher.collapse(&params);
         assert!(n_iter < 10);
         let mesh = remesher.to_mesh(true);
         assert!(f64::abs(mesh.vol() - 1.) < 1e-12);
@@ -1542,7 +1562,7 @@ mod tests {
         let h = vec![IsoMetric::<2>::from(2.); mesh.n_verts() as usize];
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
 
-        let n_iter = remesher.swap(0.8, 10, 0.5, 20.0);
+        let n_iter = remesher.swap(0.8, &params);
         assert!(n_iter < 10);
         let mesh = remesher.to_mesh(true);
         assert!(f64::abs(mesh.vol() - 1.) < 1e-12);
@@ -1563,7 +1583,11 @@ mod tests {
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
         remesher.check()?;
 
-        let n_iter = remesher.collapse(10, 0.5, 0.75, 20.0);
+        let params = RemesherParams {
+            collapse_max_iter: 10,
+            ..Default::default()
+        };
+        let n_iter = remesher.collapse(&params);
         assert!(n_iter < 10);
 
         remesher.check()?;
@@ -1588,7 +1612,12 @@ mod tests {
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
 
-        remesher.smooth(SmoothingType::Laplacian, 1);
+        let params = RemesherParams {
+            smooth_type: SmoothingType::Laplacian,
+            smooth_iter: 1,
+            ..Default::default()
+        };
+        remesher.smooth(&params);
         let pt = remesher.verts.get(&4).unwrap().vx;
         let center = Point::<2>::new(0.5, 0.5);
         assert!((pt - center).norm() < 1e-12);
@@ -1615,7 +1644,12 @@ mod tests {
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
 
-        remesher.smooth(SmoothingType::NLOpt, 1);
+        let params = RemesherParams {
+            smooth_type: SmoothingType::NLOpt,
+            smooth_iter: 1,
+            ..Default::default()
+        };
+        remesher.smooth(&params);
         let pt = remesher.verts.get(&4).unwrap().vx;
         let center = Point::<2>::new(0.5, 0.5);
         assert!((pt - center).norm() < 0.05);
@@ -1647,7 +1681,12 @@ mod tests {
         ];
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
 
-        remesher.smooth(SmoothingType::Laplacian, 1);
+        let params = RemesherParams {
+            smooth_type: SmoothingType::Laplacian,
+            smooth_iter: 1,
+            ..Default::default()
+        };
+        remesher.smooth(&params);
         let pt = remesher.verts.get(&4).unwrap().vx;
         let center = Point::<2>::new(0.5, 0.05);
         assert!((pt - center).norm() < 1e-12);
@@ -1673,7 +1712,12 @@ mod tests {
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
 
-        remesher.smooth(SmoothingType::Avro, 10);
+        let params = RemesherParams {
+            smooth_type: SmoothingType::Avro,
+            smooth_iter: 10,
+            ..Default::default()
+        };
+        remesher.smooth(&params);
         let pt = remesher.verts.get(&4).unwrap().vx;
         let center = Point::<2>::new(0.5, 0.5);
         assert!((pt - center).norm() < 0.01);
@@ -1705,7 +1749,12 @@ mod tests {
         ];
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
 
-        remesher.smooth(SmoothingType::Avro, 10);
+        let params = RemesherParams {
+            smooth_type: SmoothingType::Avro,
+            smooth_iter: 10,
+            ..Default::default()
+        };
+        remesher.smooth(&params);
         let pt = remesher.verts.get(&4).unwrap().vx;
         let center = Point::<2>::new(0.5, 0.05);
         assert!((pt - center).norm() < 0.01);
@@ -1799,7 +1848,12 @@ mod tests {
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
         remesher.check()?;
 
-        let n_iter = remesher.split(f64::sqrt(2.0), 10, 0.5, 0.5);
+        let params = RemesherParams {
+            split_max_iter: 10,
+            ..Default::default()
+        };
+
+        let n_iter = remesher.split(f64::sqrt(2.0), &params);
         assert!(n_iter < 10);
         remesher.check()?;
 
@@ -1820,7 +1874,11 @@ mod tests {
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
         remesher.check()?;
 
-        let n_iter = remesher.split(f64::sqrt(2.0), 10, 0.5, 0.5);
+        let params = RemesherParams {
+            split_max_iter: 10,
+            ..Default::default()
+        };
+        let n_iter = remesher.split(f64::sqrt(2.0), &params);
         assert!(n_iter < 10);
 
         remesher.check()?;
@@ -1840,7 +1898,11 @@ mod tests {
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
         remesher.check()?;
 
-        let n_iter = remesher.collapse(10, 0.5, 0.75, 20.);
+        let params = RemesherParams {
+            collapse_max_iter: 10,
+            ..Default::default()
+        };
+        let n_iter = remesher.collapse(&params);
         assert!(n_iter < 10);
 
         remesher.check()?;
@@ -1865,7 +1927,12 @@ mod tests {
         assert!(f64::abs(mesh.vol() - 2.0 * 0.1 / 6.) < 1e-12);
 
         // swap
-        let n_iter = remesher.swap(0.8, 10, 0.5, 20.0);
+        let params = RemesherParams {
+            swap_max_iter: 10,
+            ..Default::default()
+        };
+
+        let n_iter = remesher.swap(0.8, &params);
         assert!(n_iter < 10);
         let mesh = remesher.to_mesh(true);
         assert!(f64::abs(mesh.vol() - 2.0 * 0.1 / 6.) < 1e-12);
@@ -1885,7 +1952,13 @@ mod tests {
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
         remesher.check()?;
 
-        let n_iter = remesher.collapse(10, 0.5, 0.75, 20.);
+        let params = RemesherParams {
+            collapse_max_iter: 10,
+            swap_max_iter: 10,
+            ..Default::default()
+        };
+
+        let n_iter = remesher.collapse(&params);
         assert!(n_iter < 10);
         let mesh = remesher.to_mesh(true);
         assert!(f64::abs(mesh.vol() - 1.) < 1e-12);
@@ -1898,7 +1971,7 @@ mod tests {
         let h = vec![IsoMetric::<3>::from(2.); mesh.n_verts() as usize];
         let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
 
-        let n_iter = remesher.swap(0.8, 10, 0.5, 20.0);
+        let n_iter = remesher.swap(0.8, &params);
         assert!(n_iter < 10);
         let mesh = remesher.to_mesh(true);
         assert!(f64::abs(mesh.vol() - 1.) < 1e-12);
