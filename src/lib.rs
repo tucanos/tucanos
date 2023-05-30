@@ -930,19 +930,26 @@ macro_rules! create_remesher {
             #[allow(clippy::too_many_arguments)]
             pub fn remesh(
                 &mut self,
-                num_iter: Option<u32>,
+                num_iter:Option< u32>,
                 two_steps: Option<bool>,
-                split_constrain_l: Option<f64>,
-                split_constrain_q: Option<f64>,
-                split_max_iter: Option<u32>,
-                collapse_max_iter: Option<u32>,
-                collapse_constrain_l: Option<f64>,
-                collapse_constrain_q: Option<f64>,
-                swap_max_iter: Option<u32>,
-                swap_constrain_l: Option<f64>,
+                split_max_iter:Option< u32>,
+                split_min_l_rel:Option< f64>,
+                split_min_l_abs:Option< f64>,
+                split_min_q_rel:Option< f64>,
+                split_min_q_abs:Option< f64>,
+                collapse_max_iter:Option< u32>,
+                collapse_max_l_rel:Option< f64>,
+                collapse_max_l_abs:Option< f64>,
+                collapse_min_q_rel:Option< f64>,
+                collapse_min_q_abs:Option< f64>,
+                swap_max_iter:Option< u32>,
+                swap_max_l_rel:Option< f64>,
+                swap_max_l_abs:Option< f64>,
+                swap_min_l_rel:Option< f64>,
+                swap_min_l_abs:Option< f64>,
+                smooth_iter:Option< u32>,
                 smooth_type: Option<&str>,
-                smooth_iter: Option<u32>,
-                max_angle: Option<f64>,
+                max_angle:Option< f64>,
             ) {
                 let smooth_type = smooth_type.unwrap_or("laplacian");
                 let smooth_type = if smooth_type == "laplacian" {
@@ -953,20 +960,29 @@ macro_rules! create_remesher {
                     SmoothingType::Avro
                 };
 
+                let default_params = RemesherParams::default();
+
                 let params = RemesherParams {
-                    num_iter: num_iter.unwrap_or(2),
-                    two_steps: two_steps.unwrap_or(false),
-                    split_constrain_l: split_constrain_l.unwrap_or(1.0),
-                    split_constrain_q: split_constrain_q.unwrap_or(0.75),
-                    split_max_iter: split_max_iter.unwrap_or(2),
-                    collapse_max_iter: collapse_max_iter.unwrap_or(2),
-                    collapse_constrain_l: collapse_constrain_l.unwrap_or(1.0),
-                    collapse_constrain_q: collapse_constrain_q.unwrap_or(0.75),
-                    swap_max_iter: swap_max_iter.unwrap_or(2),
-                    swap_constrain_l: swap_constrain_l.unwrap_or(0.5),
+                    num_iter: num_iter.unwrap_or(default_params.num_iter),
+                    two_steps: two_steps.unwrap_or(default_params.two_steps),
+                    split_max_iter: split_max_iter.unwrap_or(default_params.split_max_iter),
+                    split_min_l_rel: split_min_l_rel.unwrap_or(default_params.split_min_l_rel),
+                    split_min_l_abs: split_min_l_abs.unwrap_or(default_params.split_min_l_abs),
+                    split_min_q_rel: split_min_q_rel.unwrap_or(default_params.split_min_q_rel),
+                    split_min_q_abs: split_min_q_abs.unwrap_or(default_params.split_min_q_abs),
+                    collapse_max_iter: collapse_max_iter.unwrap_or(default_params.collapse_max_iter),
+                    collapse_max_l_rel: collapse_max_l_rel.unwrap_or(default_params.collapse_max_l_rel),
+                    collapse_max_l_abs: collapse_max_l_abs.unwrap_or(default_params.collapse_max_l_abs),
+                    collapse_min_q_rel: collapse_min_q_rel.unwrap_or(default_params.collapse_min_q_rel),
+                    collapse_min_q_abs: collapse_min_q_abs.unwrap_or(default_params.collapse_min_q_abs),
+                    swap_max_iter: swap_max_iter.unwrap_or(default_params.swap_max_iter),
+                    swap_max_l_rel: swap_max_l_rel.unwrap_or(default_params.swap_max_l_rel),
+                    swap_max_l_abs: swap_max_l_abs.unwrap_or(default_params.swap_max_l_abs),
+                    swap_min_l_rel: swap_min_l_rel.unwrap_or(default_params.swap_min_l_rel),
+                    swap_min_l_abs: swap_min_l_abs.unwrap_or(default_params.swap_min_l_abs),
+                    smooth_iter: smooth_iter.unwrap_or(default_params.smooth_iter),
                     smooth_type,
-                    smooth_iter: smooth_iter.unwrap_or(1),
-                    max_angle: max_angle.unwrap_or(20.0)
+                    max_angle: max_angle.unwrap_or(default_params.max_angle),
                 };
                 self.remesher.remesh(params);
             }
