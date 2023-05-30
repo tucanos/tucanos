@@ -952,7 +952,10 @@ macro_rules! create_remesher {
                 max_angle:Option< f64>,
             ) {
                 let smooth_type = smooth_type.unwrap_or("laplacian");
+
                 let smooth_type = if smooth_type == "laplacian" {
+                    SmoothingType::Laplacian
+                } else if smooth_type == "laplacian2" {
                     SmoothingType::Laplacian2
                 } else if smooth_type == "nlopt" {
                     unreachable!()
