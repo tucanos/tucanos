@@ -663,7 +663,8 @@ macro_rules! create_remesher {
                 Ok(Self {remesher: remesher.unwrap()})
             }
 
-            /// Convert a Hessian to the optimal metric using a Lp norm.
+            /// Convert a Hessian $H$ to the optimal metric for a Lp norm, i.e.
+            ///  $$ m = det(|H|)^{-1/(2p+dim)}|H| $$
             #[classmethod]
             pub fn hessian_to_metric<'py>(
                 _cls: &PyType,
@@ -683,7 +684,7 @@ macro_rules! create_remesher {
                 let m = m.as_slice().unwrap();
 
                 let exponent = if let Some(p) = p {
-                    -2.0 / (2.0 * p as f64 + $dim as f64)
+                    2.0 / (2.0 * p as f64 + $dim as f64)
                 } else {
                     0.0
                 };
