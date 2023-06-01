@@ -108,13 +108,27 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             }
         }
 
+        let coords = if D == 3 {
+            self.coords.clone()
+        } else if D == 2 {
+            let mut res = Vec::with_capacity(3 * self.n_verts() as usize);
+            for pt in self.verts() {
+                res.push(pt[0]);
+                res.push(pt[1]);
+                res.push(0.0);
+            }
+            res
+        } else {
+            unreachable!()
+        };
+
         let vtk = Vtk {
             version: Version { major: 1, minor: 0 },
             title: String::new(),
             byte_order: ByteOrder::LittleEndian,
             file_path: None,
             data: DataSet::inline(UnstructuredGridPiece {
-                points: IOBuffer::F64(self.coords.clone()),
+                points: IOBuffer::F64(coords),
                 cells: Cells {
                     cell_verts: VertexNumbers::XML {
                         connectivity,
