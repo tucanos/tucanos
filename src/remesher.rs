@@ -724,6 +724,8 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                     let filled_cavity =
                         FilledCavity::from_cavity_and_vertex(&cavity, &new_p, &new_m);
 
+                    // lower the min quality threshold if the min quality in the cavity increases
+                    let q_min = q_min.min(cavity.q_min);
                     if filled_cavity.check(l_min, f64::MAX, q_min) > 0. {
                         trace!("Edge split");
                         for i in &cavity.global_elem_ids {
@@ -1010,6 +1012,9 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                     }
 
                     // proposition 1?
+
+                    // lower the min quality threshold if the min quality in the cavity increases
+                    let q_min = q_min.min(cavity.q_min);
                     if filled_cavity.check(0.0, l_max, q_min) > 0.0 {
                         trace!("Collapse edge");
                         for i in &cavity.global_elem_ids {
