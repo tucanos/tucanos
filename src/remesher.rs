@@ -30,9 +30,9 @@ use std::{
 pub fn argsort_edges_increasing_length(f: &Vec<(Dim, f64)>) -> Vec<usize> {
     let mut indices = Vec::with_capacity(f.len());
     indices.extend(0..f.len());
-    indices.sort_by(|i, j| match f[*j].0.cmp(&f[*i].0) {
+    indices.sort_by(|i, j| match f[*i].0.cmp(&f[*j].0) {
         Ordering::Less => Ordering::Less,
-        Ordering::Equal => f[*j].1.partial_cmp(&f[*i].1).unwrap(),
+        Ordering::Equal => f[*i].1.partial_cmp(&f[*j].1).unwrap(),
         Ordering::Greater => Ordering::Greater,
     });
     indices
@@ -42,9 +42,9 @@ pub fn argsort_edges_increasing_length(f: &Vec<(Dim, f64)>) -> Vec<usize> {
 pub fn argsort_edges_decreasing_length(f: &Vec<(Dim, f64)>) -> Vec<usize> {
     let mut indices = Vec::with_capacity(f.len());
     indices.extend(0..f.len());
-    indices.sort_by(|i, j| match f[*j].0.cmp(&f[*i].0) {
+    indices.sort_by(|i, j| match f[*i].0.cmp(&f[*j].0) {
         Ordering::Less => Ordering::Less,
-        Ordering::Equal => f[*i].1.partial_cmp(&f[*j].1).unwrap(),
+        Ordering::Equal => f[*j].1.partial_cmp(&f[*i].1).unwrap(),
         Ordering::Greater => Ordering::Greater,
     });
     indices
@@ -689,7 +689,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
             dims_and_lengths.extend(self.dims_and_lengths_iter());
 
             // loop through the edges by increasing dimension and decreasing length
-            let indices = argsort_edges_increasing_length(&dims_and_lengths);
+            let indices = argsort_edges_decreasing_length(&dims_and_lengths);
 
             let mut n_splits = 0;
             let mut n_fails = 0;
@@ -946,7 +946,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
             let mut dims_and_lengths = Vec::with_capacity(self.edges.len());
             dims_and_lengths.extend(self.dims_and_lengths_iter());
 
-            let indices = argsort_edges_decreasing_length(&dims_and_lengths);
+            let indices = argsort_edges_increasing_length(&dims_and_lengths);
 
             let mut n_collapses = 0;
             let mut n_fails = 0;
