@@ -1320,19 +1320,27 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
 
         if params.two_steps {
             let l_max = max_iter(self.lengths_iter());
-            let l_0 = 0.5 * l_max;
-            if l_0 > f64::sqrt(2.0) {
+            if l_max > 2.0 * f64::sqrt(2.0) {
+                let l_0 = f64::max(0.5 * l_max, 2.0 * f64::sqrt(2.0));
+                info!("Perform a first step with l_0 = {l_0}");
+                let first_step_params = RemesherParams {
+                    split_min_q_abs: 0.0,
+                    split_min_l_abs: 0.0,
+                    ..params
+                };
                 for _ in 0..params.num_iter {
-                    self.collapse(&params);
+                    self.collapse(&first_step_params);
 
-                    self.split(l_0, &params);
+                    self.split(l_0, &first_step_params);
 
-                    self.swap(0.4, &params);
+                    self.swap(0.4, &first_step_params);
 
-                    self.swap(0.8, &params);
+                    self.swap(0.8, &first_step_params);
 
-                    self.smooth(&params);
+                    self.smooth(&first_step_params);
                 }
+            } else {
+                info!("l_max = {l_max}, no first step required");
             }
         }
 
