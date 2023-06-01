@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from ._pytucanos import Remesher2dIso, Remesher2dAniso, Remesher3dIso, Remesher3dAniso
 from .mesh import Mesh22, Mesh33
+from .geometry import LinearGeometry2d, LinearGeometry3d
 
 
 def plot_stats(remesher):
@@ -62,10 +63,10 @@ def __write_tmp_meshb(msh, h):
 
     if isinstance(msh, Mesh22):
         msh.write_meshb("tmp.meshb")
-        msh.write_solb("tmp.solb", 2, h)
+        msh.write_solb("tmp.solb", h)
     elif isinstance(msh, Mesh33):
         msh.write_meshb("tmp.meshb")
-        msh.write_solb("tmp.solb", 3, h)
+        msh.write_solb("tmp.solb", h)
     else:
         raise NotImplementedError()
 
@@ -90,6 +91,45 @@ def __iso_to_aniso_3d(h):
             m[:, i] = 1.0 / h[:, 0] ** 2
         return m
     return h
+
+
+def remesh(msh, h, bdy=None, step=None, **remesh_params):
+
+    if isinstance(msh, Mesh33):
+        LinearGeometry = LinearGeometry3d
+        Remesher = Remesher3dIso if h.shape[1] == 1 else Remesher3dAniso
+    elif isinstance(msh, Mesh22):
+        LinearGeometry = LinearGeometry2d
+        Remesher = Remesher2dIso if h.shape[1] == 1 else Remesher2dAniso
+    else:
+        raise NotImplementedError
+
+    msh.compute_topology()
+    geom = LinearGeometry(msh, bdy)
+
+    if step is not None:
+        # limit the metric sizes to 1/step -> 4 times the those given by the element implied
+        # metric
+        msh.compute_vertex_to_elems()
+        msh.compute_volumes()
+        m_implied = msh.implied_metric()
+        h = Remesher.limit_metric(msh, h, m_implied, step)
+
+    remesher = Remesher(msh, geom, h)
+    remesher.remesh(
+        two_steps=True,
+        num_iter=2,
+        split_min_q_rel=0.5,
+        split_min_q_abs=0.1,
+        collapse_min_q_rel=0.5,
+        collapse_min_q_abs=0.1,
+        swap_min_l_abs=0.25,
+        swap_max_l_abs=4.0,
+        smooth_iter=4,
+        smooth_type="laplacian",
+    )
+
+    return remesher.to_mesh()
 
 
 def remesh_mmg(msh, h, hgrad=10.0, hausd=10.0):
