@@ -696,7 +696,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
             for i_edge in indices {
                 let edg = edges[i_edge];
                 let length = dims_and_lengths[i_edge].1;
-                if length > f64::sqrt(2.0) {
+                if length > l_0 {
                     trace!("Try to split edge {:?}, l = {}", edg, length);
                     self.compute_cavity_edge(edg, &mut cavity);
                     // TODO: move to Cavity?
