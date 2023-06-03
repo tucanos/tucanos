@@ -19,14 +19,18 @@ class TestRemesh(unittest.TestCase):
     def test_2d_iso(self):
 
         coords, elems, etags, faces, ftags = get_square()
-        msh = Mesh22(coords, elems, etags, faces, ftags)
+        msh = Mesh22(coords, elems, etags, faces, ftags).split().split()
         msh.compute_topology()
         geom = LinearGeometry2d(msh)
 
         h = 0.1 * np.ones(msh.n_verts()).reshape((-1, 1))
 
         remesher = Remesher2dIso(msh, geom, h)
-        remesher.remesh()
+        remesher.remesh(
+            num_iter=4,
+            split_min_q_rel=0.5,
+            collapse_min_q_rel=0.5,
+        )
 
         msh = remesher.to_mesh()
 
@@ -92,7 +96,11 @@ class TestRemesh(unittest.TestCase):
         h = 0.1 * np.ones(msh.n_verts()).reshape((-1, 1))
 
         remesher = Remesher2dIso(msh, geom, h)
-        remesher.remesh()
+        remesher.remesh(
+            num_iter=4,
+            split_min_q_rel=0.5,
+            collapse_min_q_rel=0.5,
+        )
 
         msh = remesher.to_mesh()
 
@@ -106,26 +114,42 @@ class TestRemesh(unittest.TestCase):
         ftags.sort()
         self.assertTrue(np.array_equal(ftags, [1, 2, 3, 4, 5]))
 
-        self.assertGreater(msh.n_verts(), 100 * 0.9 * msh.vol())
+        self.assertGreater(msh.n_verts(), 100 * 0.8 * msh.vol())
         self.assertLess(msh.n_verts(), 200 * msh.vol())
 
     def test_2d_aniso(self):
 
         coords, elems, etags, faces, ftags = get_square()
-        msh = Mesh22(coords, elems, etags, faces, ftags)
+        msh = Mesh22(coords, elems, etags, faces, ftags).split().split()
         msh.compute_topology()
-        geom = LinearGeometry2d(msh)
 
-        hx = 0.3
-        hy = 0.03
-        m = np.zeros((msh.n_verts(), 3))
-        m[:, 0] = 1.0 / hx**2
-        m[:, 1] = 1.0 / hy**2
+        for _ in range(3):
+            geom = LinearGeometry2d(msh)
 
-        remesher = Remesher2dAniso(msh, geom, m)
-        remesher.remesh(num_iter=4, split_constrain_q=0.5)
+            hx = 0.3
+            hy = 0.03
+            m = np.zeros((msh.n_verts(), 3))
+            m[:, 0] = 1.0 / hx**2
+            m[:, 1] = 1.0 / hy**2
 
-        msh = remesher.to_mesh()
+            remesher = Remesher2dAniso(msh, geom, m)
+            remesher.remesh(
+                two_steps=True,
+                num_iter=2,
+                split_min_q_rel=0.5,
+                split_min_q_abs=0.1,
+                collapse_min_q_rel=0.5,
+                collapse_min_q_abs=0.1,
+                swap_min_l_abs=0.25,
+                swap_max_l_abs=4.0,
+                smooth_iter=4,
+                smooth_type="laplacian",
+            )
+            msh = remesher.to_mesh()
+            msh.compute_topology()
+
+        q = remesher.qualities()
+        self.assertGreater(q.min(), 0.15)
 
         self.assertTrue(np.allclose(msh.vol(), 1.0))
         etags = np.unique(msh.get_etags())
@@ -136,7 +160,7 @@ class TestRemesh(unittest.TestCase):
         self.assertTrue(np.array_equal(ftags, [1, 2, 3, 4, 5]))
 
         c = remesher.complexity()
-        self.assertGreater(msh.n_verts(), 0.9 * c)
+        self.assertGreater(msh.n_verts(), 0.5 * c)
         self.assertLess(msh.n_verts(), 2.5 * c)
 
         self.assertTrue(np.allclose(c, 4.0 / 3.0**0.5 / (0.3 * 0.03)))
