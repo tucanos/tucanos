@@ -872,6 +872,46 @@ macro_rules! create_remesher {
                 }
             }
 
+            /// Scale a metric field to reach the desired (ideal) number of elements using min / max bounds on the cell size
+            #[classmethod]
+            #[allow(clippy::too_many_arguments)]
+            pub fn limit_metric<'py>(
+                _cls: &PyType,
+                py: Python<'py>,
+                mesh: &$mesh,
+                m: PyReadonlyArray2<f64>,
+                m_other: PyReadonlyArray2<f64>,
+                step: f64,
+            ) -> PyResult<&'py PyArray2<f64>> {
+                if m.shape()[0] != mesh.mesh.n_verts() as usize {
+                    return Err(PyValueError::new_err("Invalid dimension 0"));
+                }
+                if m.shape()[1] != <$metric as Metric<$dim>>::N {
+                    return Err(PyValueError::new_err("Invalid dimension 1"));
+                }
+
+                if m_other.shape()[0] != mesh.mesh.n_verts() as usize {
+                    return Err(PyValueError::new_err("Invalid dimension 0"));
+                }
+                if m_other.shape()[1] != <$metric as Metric<$dim>>::N {
+                    return Err(PyValueError::new_err("Invalid dimension 1"));
+                }
+
+                let m = m.as_slice().unwrap();
+                let m_other = m_other.as_slice().unwrap();
+
+                let mut res = Vec::with_capacity(mesh.mesh.n_verts() as usize * <$metric as Metric<$dim>>::N);
+
+                for i_vert in 0..mesh.mesh.n_verts() {
+                    let mut m_i = $metric::from_slice(m, i_vert);
+                    let m_other_i = $metric::from_slice(m_other, i_vert);
+                    m_i.limit(&m_other_i, step);
+                    res.extend(m_i.into_iter());
+                }
+
+                return Ok(to_numpy_2d(py, res, <$metric as Metric<$dim>>::N));
+            }
+
             /// Compute the min/max sizes, max anisotropy and complexity of a metric
             #[classmethod]
             pub fn metric_info(
