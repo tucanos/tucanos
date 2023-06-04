@@ -42,4 +42,6 @@ make -j install
 ](benchmarks/cube_iso/README.md)
 - [Anisotropic remeshing in a 3D cubic domain
 ](benchmarks/cube_linear/README.md)
+- [polar-1 benchmark from the UGAWG
+](benchmarks/cube_cylinder/README.md)
 

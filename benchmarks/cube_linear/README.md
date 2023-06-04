@@ -2,14 +2,9 @@
 
 ## Configuration
 
-The geometry is an unit square with two different tags above and below the diagonal, so there is an internal surface.
+This is the [linear](https://github.com/UGAWG/adapt-benchmarks/tree/master/cube) benchmark from the Unstructured Grid Adaptation Working Group.
 
-The target anisotropic cell size are 
-- $h_x = 0.5$
-- $h_y = 0.1$
-- $h_y =  h_0 + 2 (0.1 - h_0)|z - 0.5|$ with $h_0 = 0.001$
-
-![Config](mesh.png)
+![mesh](mesh.png)
 
 ## Start mesh
 
