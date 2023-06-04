@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use tucanos::{
     geometry::{Geometry, LinearGeometry},
     mesh::SimplexMesh,
-    mesh_stl::orient_stl,
+    mesh_stl::{orient_stl, read_stl},
     metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
     remesher::{Remesher, RemesherParams, SmoothingType},
     topo_elems::{Edge, Elem, Tetrahedron, Triangle},
@@ -590,6 +590,17 @@ impl Mesh33 {
         let m: Vec<f64> = m.iter().flat_map(|m| m.into_iter()).collect();
 
         Ok(to_numpy_2d(py, m, 6))
+    }
+}
+
+#[pymethods]
+impl Mesh32 {
+    #[doc = concat!("Read a ", stringify!($name), " from a .stl file")]
+    #[classmethod]
+    pub fn from_stl(_cls: &PyType, fname: &str) -> PyResult<Self> {
+        Ok(Self {
+            mesh: read_stl(fname),
+        })
     }
 }
 
