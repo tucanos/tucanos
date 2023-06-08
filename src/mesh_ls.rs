@@ -8,21 +8,33 @@ use log::info;
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Compute a linear or quadratic approximation of a function defined at the mesh vertices
     ///
-    /// A weighted least squares is used:
+    /// A weighted least squares is used: the function $`f`$ is approximated as around $`x_i`$
+    /// ```math
+    /// f(x) \approx \alpha + a_j \delta_j + a_{j,k} \delta_j \delta_k
+    /// ```
+    /// with $`\delta = x - x_i`$. Ffor a 1st order approximation, the $`a_{j, k}`$ are
+    /// set to 0. The coefficients are then chosen to minimize
+    /// ```math
+    /// W_0 (\alpha)^2 + \sum_{j \in N(i)} W_i ((f_j - f_i) - (\alpha + a_k \delta_k^{(j)} + a_{k,l} \delta_k^{(j)} \delta_l^{(j)}))^2
+    /// ```
+    /// with $`\delta^{(j)} = x_j - x_i`$ for a neighborhood $`N(i) = {j_0, \cdots, j_N}`$ of vertex
+    /// $`i`$ and a weighting $`W_i=\frac{1}{\left \| \delta_i \right \|^P}`$.
+    /// P is `weight_exp` and typically $`P \in \left \{ 0,1,2 \right \}`$.
+    /// $`W_0`$ is set here to $`\sqrt{2} \max(W_j)`$.
     ///
+    /// Numerically the following least squares problem is solved using a QR factorization
     /// ```math
     /// min \left \|
     /// \begin{bmatrix}
     /// W_0 & 0 & \cdots  & 0 \\
-    /// W_1 & W_1.\delta_{1} & \cdots & W_1.\delta_{d}\\
+    /// W_{j_0} & W_{j_0}.\delta_0^{(j_0)} & \cdots & W_{j_0}.\delta_d^{(j_0)}\delta_d^{(j_0)}\\
     /// \vdots \\
-    /// W_N & W_N.\delta_{1} & \cdots & W_N.\delta_{d}.\delta_{d}
+    /// W_{j_N} & W_{j_N}.\delta_0^{(j_N)} & \cdots & W_{j_N}.\delta_d^{(j_N)}.\delta_d^{(j_N)}
     /// \end{bmatrix}.
-    /// \begin{bmatrix} \alpha \\ a_0 \\ \vdots \\ a_{dd}\end{bmatrix}-
-    /// \begin{bmatrix} 0 \\ \vdots \\ \widetilde{f}_N \end{bmatrix} \right \|^2
+    /// \begin{bmatrix} \alpha \\ a_0 \\ \vdots \\ a_{d,d}\end{bmatrix}-
+    /// \begin{bmatrix} 0 \\ \widetilde{f}_{j_0} \\ \vdots \\ \widetilde{f}_{j_N} \end{bmatrix} \right \|^2
     /// ```
-    /// with $`W_i=\frac{1}{\left \| \delta_i \right \|^P}`$. P is `weight_exp` and $`P \in \left \{ 0,1,2 \right \}`$.
-    /// $`\delta_i`$ is the distance between the computation point and the neighbor points.
+    ///
     fn least_squares<const N: usize>(
         &self,
         i_vert: Idx,

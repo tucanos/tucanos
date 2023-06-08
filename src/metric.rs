@@ -25,7 +25,7 @@ pub trait Metric<const D: usize>:
         Self: 'a;
     /// Return the D characteristic sizes of the metric (sorted)
     fn sizes(&self) -> [f64; D];
-    // /// Scale the metric
+    /// Scale the metric
     fn scale(&mut self, s: f64);
     /// Scale the metric, applying bounds on the characteristic sizes
     fn scale_with_bounds(&mut self, s: f64, h_min: f64, h_max: f64);
@@ -41,7 +41,27 @@ pub trait Metric<const D: usize>:
     /// The directions are not changed
     fn limit(&mut self, other: &Self, f: f64);
     /// Compute the length of an edge in metric space, assuming a geometric variation of the metric sizes along the edge
-    /// NB: this is consistent with metric interpolation, but a linear variation of the sizes is assumed when it comes to gradation
+    ///
+    /// The length of $`e = v_1 - v_0`$ in metric space is
+    /// ```math
+    /// l_\mathcal M(e) = ||e||_\mathcal M = \int_e \sqrt{e^T \mathcal M e} ds
+    /// ```
+    /// Assuming a geometric progression of the size along the edge:
+    /// ```math
+    /// h(t) = h_0^{1 - t} h_1^t
+    /// ```
+    /// yields
+    /// ```math
+    /// l_\mathcal M(e) = l_0 \frac{a - 1} { a \ln(a)}
+    /// ```
+    /// with $`l_0 = \sqrt{e^T \mathcal M_0 e}`$, $`l_1 = \sqrt{e^T \mathcal M_1 e}`$ and $`a = l_1 / l_0`$
+    ///
+    /// NB: this is consistent with metric interpolation, but a linear variation of the sizes, $`h(t) = (1 - t) h_0^{1 - t} + th_1`$ is assumed
+    /// when it comes to gradation. With this assumtion, the metric-space length would be
+    /// ```math
+    /// l_\mathcal M(e) = l_0 \frac{\ln(a)} { a  - 1}
+    /// ```
+    ///
     fn edge_length(p0: &Point<D>, m0: &Self, p1: &Point<D>, m1: &Self) -> f64 {
         let e = p1 - p0;
         let l0 = m0.length(&e);
@@ -104,10 +124,18 @@ impl<const D: usize> Metric<D> for IsoMetric<D> {
         Self(m[i as usize])
     }
 
+    /// For an isotropic metric, the metric space length is
+    /// ```math
+    /// l_\mathcal M(e) = \frac{||e||_2}{h}
+    /// ```
     fn length(&self, e: &Point<D>) -> f64 {
         e.norm() / self.0
     }
 
+    /// For an isotropic metric in $`d`$ dimensions, the volume is
+    /// ```math
+    /// V(\mathcal M) = h^d
+    /// ```
     fn vol(&self) -> f64 {
         self.0.powi(D as i32)
     }
@@ -119,6 +147,13 @@ impl<const D: usize> Metric<D> for IsoMetric<D> {
         Ok(())
     }
 
+    /// Linear interpolation is used for isotropic metrics
+    /// ```math
+    /// h(\sum \alpha_i v_i) = \sum \alpha _i h(v_i)
+    /// ```
+    ///
+    /// NB: this is not consistent with the edge length computation, and different from
+    /// what is used for anisotropic metrics
     fn interpolate<'a, I: Iterator<Item = (f64, &'a Self)>>(weights_and_metrics: I) -> Self {
         // Use linear interpolation
         let res = weights_and_metrics.map(|(w, h)| w * h.0).sum();
@@ -154,35 +189,6 @@ impl<const D: usize> Metric<D> for IsoMetric<D> {
     fn limit(&mut self, other: &Self, f: f64) {
         self.0 = f64::min(self.0, other.0 * f).max(other.0 / f);
     }
-
-    fn edge_length(p0: &Point<D>, m0: &Self, p1: &Point<D>, m1: &Self) -> f64 {
-        let e = p1 - p0;
-        let l0 = m0.length(&e);
-        let l1 = m1.length(&e);
-
-        let r = l0 / l1;
-
-        if f64::abs(r - 1.0) > 0.01 {
-            l0 * (r - 1.0) / r / f64::ln(r)
-        } else {
-            l0
-        }
-    }
-
-    fn min_metric<'a, I: Iterator<Item = &'a Self>>(mut metrics: I) -> &'a Self {
-        let m = metrics.next().unwrap();
-        let mut vol = m.vol();
-        let mut res = m;
-        for m in metrics {
-            let volm = m.vol();
-            if volm < vol {
-                res = m;
-                vol = volm;
-            }
-        }
-
-        res
-    }
 }
 
 impl<const D: usize> IntoIterator for IsoMetric<D> {
@@ -213,15 +219,22 @@ where
 
     fn vol_aniso(&self) -> f64;
 
+    /// Initialise an isotropic metric from a symmetric matrix $`M`$ as
+    /// ```math
+    /// \mathcal M = |M|
+    /// ```
+    ///
+    /// NB: A threshold is applied to the eigenvalues of $\mathcal M$.
     fn from_mat(mat: SMatrix<f64, D, D>) -> Self {
         let mut eig = mat.symmetric_eigen();
         // Ensure that the metric is valid, i.e. that all the eigenvalues are >0
+        // TODO: use a value of e.g. 1e-12 instead of f64::MIN_POSITIVE to increase robustness?
         eig.eigenvalues
             .iter_mut()
             .for_each(|i| *i = i.abs().max(f64::MIN_POSITIVE));
         let mat = eig.recompose();
         let vol = 1. / eig.eigenvalues.iter().product::<f64>().sqrt();
-        assert!(vol > 0.0);
+        debug_assert!(vol > 0.0);
         Self::from_mat_and_vol(mat, vol)
     }
 
@@ -254,6 +267,22 @@ where
         Self::from_mat(mat)
     }
 
+    /// For an anisotropic metric, the metric space length is
+    /// ```math
+    /// l_\mathcal M(e) =  \sqrt{e^T \mathcal M e}
+    /// ```
+    fn length(&self, e: &Point<D>) -> f64 {
+        (self.as_mat() * e).dot(e).sqrt()
+    }
+
+    /// For an anisotropic metric, the volume is
+    /// ```math
+    /// V(\mathcal M) =  \frac{1}{\sqrt{\det(\mathcal M)}}
+    /// ```
+    fn vol(&self) -> f64 {
+        self.vol_aniso()
+    }
+
     fn check(&self) -> Result<()> {
         let eig = self.as_mat().symmetric_eigen();
 
@@ -263,12 +292,15 @@ where
         Ok(())
     }
 
+    /// In order to ensure that the resulting matrix is >0, we compute the interpolation as
+    /// ```math
+    /// \mathcal M(\sum \alpha_i v_i) = \exp\left(\sum \alpha _i \ln(\mathcal M(v_i))\right)
+    /// ```
+    ///
     fn interpolate<'a, I: Iterator<Item = (f64, &'a Self)>>(weights_and_metrics: I) -> Self
     where
         Self: 'a,
     {
-        // In order to ensure that the resulting matrix is >0, we compute the interpolation as
-        // exp(sum(w_i ln(m_i)))
         let mut mat = Self::slice_to_mat(&[0.0; 6]);
 
         for (w, m) in weights_and_metrics {
@@ -292,6 +324,8 @@ where
         Self::from_mat_and_vol(mat, vol)
     }
 
+    /// The sizes associated with metric $`\mathcal M`$ are given by $`\lambda_i ^{-1/2}`$ where
+    /// the $`\lambda_i`$ are the eigenvalues of $`\mathcal M`$
     fn sizes(&self) -> [f64; D] {
         let eig = self.as_mat().symmetric_eigen();
         let mut s = [0.; D];
@@ -320,6 +354,8 @@ where
         self.update_from_mat_and_vol(mat, vol);
     }
 
+    /// The intersection of metrics $`\mathcal M_0`$ and $`\mathcal M_1`$ is obtained
+    /// using the simulataneous reduction algorithm
     fn intersect(&self, other: &Self) -> Self {
         let tol = 1e-8;
         if self.is_diagonal(tol) && other.is_diagonal(tol) {
@@ -335,8 +371,9 @@ where
         Self::from_mat(res)
     }
 
+    /// Span a metric using progression $`\beta`$ using physical-space-gradation
+    /// (see "Size gradation control of anisotropic meshes", F. Alauzet, 2010)
     fn span(&self, e: &Point<D>, beta: f64) -> Self {
-        // use physical-space-gradation
         let nrm = e.norm();
         let mat = self.as_mat();
         let mut eig = mat.symmetric_eigen();
@@ -356,6 +393,20 @@ where
             .any(|(x, y)| f64::abs(x - y) > tol * x)
     }
 
+    /// Apply bounds on the metric sizes while keeping the directions unchanged:
+    /// if
+    /// ```math
+    /// \mathcal M_0 = \mathcal P ^T \Lambda \mathcal P
+    /// ```
+    /// with $`\mathcal P = (e_0 | ... | e_d)`$
+    /// then the limited metric is
+    /// ```math
+    /// \mathcal L(\mathcal M_0, \mathcal M_1, f) = \mathcal P ^T \tilde \Lambda \mathcal P
+    /// ```
+    /// with
+    /// ```math
+    /// \tilde \Lambda_{ii} = min(max(\Lambda_{ii}, \sqrt{e_i^T \mathcal M_1 e_i }) / f^2), \sqrt{e_i^T \mathcal M_1 e_i })  f^2)
+    /// ```
     fn limit(&mut self, other: &Self, f: f64) {
         let f2 = f * f;
         let mat = self.as_mat();
@@ -376,26 +427,21 @@ where
         self.update_from_mat_and_vol(mat, vol);
     }
 
-    fn length(&self, e: &Point<D>) -> f64 {
-        (self.as_mat() * e).dot(e).sqrt()
-    }
-
-    fn vol(&self) -> f64 {
-        self.vol_aniso()
-    }
-
     fn scale(&mut self, s: f64) {
         self.scale_aniso(s);
     }
 }
 
-/// Anisotropic metric in 2D, represented with 3 scalars (x0,x1,x2)
+/// Anisotropic metric in 2D, represented with 3 scalars $`(x_0,x_1,x_2)`$
 /// For the storage, we follow VTK: the symmetric matrix is
-/// x0 x2
-/// x2 x1
+/// ```math
+/// \begin{bmatrix}
+/// x_0 & x_2\\
+/// x_2 & x_1\\
+/// \end{bmatrix}
+/// ```
 /// NB: the matrix must be positive definite for the metric to be valid
-/// The metric volume 1/sqrt(det(M)) is stored to avoid multiple recomputations
-/// TODO: reuse the eigenvalue solvers
+/// TODO: reuse the eigenvalue solvers ?
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AnisoMetric2d {
     m: [f64; 3],
@@ -486,14 +532,17 @@ impl Index<usize> for AnisoMetric2d {
     }
 }
 
-/// Anisotropic metric in 3D, represented with 6 scalars (x0,x1,x2,x3,x4,x5)
+/// Anisotropic metric in 3D, represented with 6 scalars $`(x_0,..., x_5)`$
 /// For the storage, we follow VTK: the symmetric matrix is
-/// x0 x3 x5
-/// x3 x1 x4
-/// x5 x4 x2
+/// ```math
+/// \begin{bmatrix}
+/// x_0& x_3& x_5\\
+/// x_3& x_1& x_4\\
+/// x_5& x_4& x_2\\
+/// \end{bmatrix}
+/// ```
 /// NB: the matrix must be positive definite for the metric to be valid
-/// The metric volume 1/sqrt(det(M)) is stored to avoid multiple recomputations
-/// TODO: reuse the eigenvalue solvers
+/// TODO: reuse the eigenvalue solvers?
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AnisoMetric3d {
     m: [f64; 6],
