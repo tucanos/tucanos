@@ -97,6 +97,28 @@ enum TrySwapResult {
     CouldSwap,
 }
 
+/// Smoothing methods
+/// For all methods except NLOpt, a set of valid neighbors $`N(i)`$ is built as a subset
+/// if the neighbors of vertex $`i`$ that are tagged on the same entity of one of its children
+/// The new vertex location $`\tilde v_i`$ is then computed as (where $`||v_j - v_i||_M`$ is the
+/// edge length in metric space):
+///  - for `Laplacian`
+/// ```math
+/// \tilde v_i = v_i + \sum_{j \in N(i)} (v_j - v_i)
+/// ```
+///  - for `Laplacian2`
+/// ```math
+/// \tilde v_i = \frac{\sum_{j \in N(i)} ||v_j - v_i||_M (v_j + v_i)}{2 \sum_{j \in N(i)} ||v_j - v_i||_M}
+/// ```
+///  - for `Avro`
+/// ```math
+/// \tilde v_i = v_i + \omega \sum_{j \in N(i)} (1 − ||v_j - v_i||_M^4) \exp(−||v_j - v_i||_M^4)(v_j - v_i)
+/// ```
+/// - another:
+/// ```math
+/// \tilde v_i = (1 - \omega) v_i + \omega \frac{\sum_{j \in N(i)} ||v_j - v_i||_M v_j}{\sum_{j \in N(i)} ||v_j - v_i||_M}
+/// ```
+/// with $`\omega = {1, 1/2, 1/4, ...}`$
 #[derive(Clone, Copy)]
 pub enum SmoothingType {
     Laplacian,

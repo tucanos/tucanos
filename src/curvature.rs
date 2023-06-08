@@ -14,7 +14,7 @@ use nalgebra::{SMatrix, SymmetricEigen};
 /// "This contrasts with the weights used for
 /// estimating normals, for which we take wf,p to be the area of
 /// f divided by the squares of the lengths of the two edges that
-/// touch vertex p. As shown by Max [1999], this produces more
+/// touch vertex p. As shown by Max (1999), this produces more
 /// accurate normal estimates than other weighting approaches,
 /// and is exact for vertices that lie on a sphere."
 pub fn compute_vertex_normals<const D: usize, E: Elem>(mesh: &SimplexMesh<D, E>) -> Vec<Point<D>> {
@@ -40,7 +40,7 @@ pub fn compute_vertex_normals<const D: usize, E: Elem>(mesh: &SimplexMesh<D, E>)
 
 /// Compute the curvature of a surface mesh and return the principal direction of the
 /// curvature tensor (scaled with the principal curvature) for each element
-/// the algorithm is taken from https://gfx.cs.princeton.edu/pubs/Rusinkiewicz_2004_ECA/curvpaper.pdf
+/// the algorithm is taken from <https://gfx.cs.princeton.edu/pubs/Rusinkiewicz_2004_ECA/curvpaper.pdf>
 /// NB: curvature should not be computed across non smooth patches
 /// NB: curvature estimation is not accurate near the boundaires
 pub fn compute_curvature_tensor(

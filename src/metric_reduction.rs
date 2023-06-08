@@ -2,7 +2,23 @@ use nalgebra::{SMatrix, SVector};
 
 use crate::linalg::lapack_generalized_symmetric_eigenvalues;
 
-/// Compute the simulaneous reduction of two metric tensors using a generalized symmetric eigenvalue solver
+/// Compute the simulaneous reduction of two metric tensors
+/// Let $`\mathcal P = (e_0 | ... | e_d)`$ be the generalized eigenvectors of $`(\mathcal M_0, \mathcal M_1)`$:
+/// ```math
+/// \mathcal M_0 \mathcal P = \Lambda \mathcal M_1 \mathcal P
+/// ```
+/// then
+/// ```math
+/// \mathcal M_i = \mathcal P^{-1, T} \Lambda^{(i)} \mathcal P^{(-1)}
+/// ```
+/// with $`\Lambda^{(i)}_{jk} = e_j^T \mathcal M_i e_k \delta_{jk}`$
+/// The intersection is then
+/// ```math
+/// \mathcal M_0 \cap \mathcal M_1 = \mathcal P^{-1, T} \Lambda^{(i,j)} \mathcal P^{(-1)}
+/// ```
+/// with $`\Lambda^{(i,j)}_{jk} = max(\Lambda^{(i)}_{jk}, \Lambda^{(j)}_{jk})`$.
+///
+/// NB: the generalized eigenvalue problem is solved using the `dsygv` function in Lapack
 pub fn simultaneous_reduction<const D: usize>(
     mat_a: SMatrix<f64, D, D>,
     mat_b: SMatrix<f64, D, D>,

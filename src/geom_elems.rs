@@ -55,13 +55,47 @@ pub trait GElem<const D: usize, M: Metric<D>>: Clone + Copy + Debug {
     /// Get the element's center
     fn center(&self) -> Point<D>;
 
-    /// Get the element's quality
+    /// Get the quality of element $`K`$, defined as
+    /// ```math
+    /// q(K) = \beta_d \frac{|K|_{\mathcal M}^{2/d}}{\sum_e ||e||_{\mathcal M}^2}
+    /// ```
+    /// where
+    ///  - $`|K|_{\mathcal M}`$ is the volume element in metric space. It is computed
+    /// on a discrete mesh as the ratio of the volume in physical space to the minimum
+    /// of the volumes of the metrics at each vertex
+    ///  - the sum on the denominator is performed over all the edges of the element
+    ///  - $`\beta_d`$ is a normalization factor such that $`q = 1`$ of equilateral elements
+    ///     - $`\beta_2 = 1 / (6\sqrt{2}) `$
+    ///     - $`\beta_3 = \sqrt{3}/ 4 `$
     fn quality(&self) -> f64;
 
     /// Get the coordinates of a vertex given its barycentric coordnates
     fn point(&self, x: &[f64]) -> Point<D>;
 
-    /// Get the barycentric coordinates of a vertex
+    /// Get the barycentric coordinates of a vertex in the element
+    /// For a triangle in 3d, the barycentric coordinates are those of the projection
+    /// of the vertex onto the plane of the triangle
+    ///
+    /// If the vertices are $`(x_0, \cdots, x_{d+1})`$ then the barycentric coordinates are
+    /// $`(b_0, \cdot, b_{d+1})`$ such that
+    /// ```math
+    /// x = \sum_{i = 0}^d b_i x_i  
+    /// ```
+    /// with $`\sum_{i = 0}^d b_i = 1`$
+    ///
+    /// Numerically the following least squares problem is solved using a QR factorization
+    /// ```math
+    /// \begin{bmatrix}
+    /// 1 & \cdots  & 1 \\
+    /// x_{0, 0}& \cdots & x_{d+1, 0} \\
+    /// \vdots \\
+    /// x_{0, d}& \cdots & x_{d+1, d} \\
+    /// \end{bmatrix}
+    /// \begin{bmatrix} b_0  \\ \vdots \\ b_{d+1}\end{bmatrix}
+    ///  =
+    /// \begin{bmatrix} 1 \\ x_0 \\ \vdots \\ x_d\end{bmatrix}
+    /// ```
+
     fn bcoords(&self, p: &Point<D>) -> Self::BCoords; // todo: improve
 
     /// Get the element normal
@@ -105,6 +139,14 @@ impl<const D: usize, M: Metric<D>> GTetrahedron<D, M> {
     }
 
     /// Compute the implied metric
+    /// It can be computed using the Jacobian $`J`$ of the transformation from the
+    /// reference unit-length element to the physical element as $`(J J^T)^{-1}`$ .
+    /// $`J`$ can be decomposed as the product of
+    ///  - the Jacobian $`J_0`$ of the transformation from the reference unit-length
+    /// element to the orthogonal element, stored as `Self::J_EQ`
+    ///  - the Jacobian $`J_1`$ of the transformation from the orthogonal element to
+    /// the physical element
+    /// (reference: PhD P. Caplan, p. 35)
     pub fn implied_metric(&self) -> AnisoMetric3d {
         let j = self.jacobian() * Self::J_EQ;
         let m = j * j.transpose();
@@ -242,6 +284,14 @@ impl<const D: usize, M: Metric<D>> GTriangle<D, M> {
     }
 
     /// Compute the implied metric
+    /// It can be computed using the Jacobian $`J`$ of the transformation from the
+    /// reference unit-length element to the physical element as $`(J J^T)^{-1}`$ .
+    /// $`J`$ can be decomposed as the product of
+    ///  - the Jacobian $`J_0`$ of the transformation from the reference unit-length
+    /// element to the orthogonal element, stored as `Self::J_EQ`
+    ///  - the Jacobian $`J_1`$ of the transformation from the orthogonal element to
+    /// the physical element
+    /// (reference: PhD P. Caplan, p. 35)
     pub fn implied_metric(&self) -> AnisoMetric2d {
         let j = self.jacobian() * Self::J_EQ;
         let m = j * j.transpose();

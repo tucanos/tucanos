@@ -33,7 +33,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Convert a metric field defined at the element centers (P0) to a field defined at the vertices (P1)
-    /// using a weighted average. For metric fields, use `elem_data_to_vertex_data_metric`
+    /// using the interpolation method appropriate for the metric type.
     /// vertex-to-element connectivity and volumes are required
     pub fn elem_data_to_vertex_data_metric<M: Metric<D>>(&self, v: &[M]) -> Result<Vec<M>> {
         debug!("Convert metric element data to vertex data");
@@ -81,7 +81,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Convert a metric field defined at the element centers (P0) to a field defined at the vertices (P1)
-    /// using a weighted average. For metric fields, use `elem_data_to_vertex_data_metric`
+    /// using the interpolation method appropriate for the metric type.
     /// vertex-to-element connectivity and volumes are required
     pub fn vertex_data_to_elem_data_metric<M: Metric<D>>(&self, v: &[M]) -> Result<Vec<M>> {
         debug!("Convert metric vertex data to element data");
@@ -129,6 +129,21 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Compute the number of elements corresponding to a metric field taking into account min/max size constraints
+    /// The volume, in euclidian space, of an element that is ideal (i.e. equilateral) in metric space is
+    /// ```math
+    /// v(\mathcal M) = v_\Delta V(M)
+    /// ```
+    /// where
+    /// ```math
+    /// v_\Delta \equiv \frac{1}{d!}\sqrt{\frac{d+1}{2^n}}
+    /// ```
+    /// is the volume of an ideal element in dimension $`d`$ and
+    /// $`V(\mathcal M) = \det(\mathcal M)^{-1/2}`$ is the metric volume
+    /// The ideal number of elements to fill the domain is therefore
+    /// ```math
+    /// \mathcal C = \int \frac{1}{v(\mathcal M)} dx = \frac{1}{v_\Delta} \int \sqrt{\det(\mathcal M)} dx
+    /// ```
+    /// TODO: the complexity is actually $`\int \sqrt{\det(\mathcal M)} dx`$
     pub fn complexity<I: Iterator<Item = M>, M: Metric<D>>(
         &self,
         m: I,
@@ -139,7 +154,22 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         self.complexity_from_sizes::<M>(&sizes, h_min, h_max)
     }
 
-    /// Scale a metric field and apply min/max size constraints to achieve a given number of elements
+    /// Compute the scaling factor $`\alpha`$ such that complexity of the bounded metric field
+    /// equals a target number of elements
+    /// ```math
+    /// \mathcal C(\mathcal T(\alpha \mathcal M, h_{min}, h_{max})) = N
+    /// ```
+    /// where the bounded metric is given by
+    ///  ```math
+    /// \mathcal T(\mathcal M, h_{min}, h_{max}) = \mathcal P ^T \tilde \Lambda \mathcal P
+    /// ```
+    /// with
+    /// ```math
+    /// \tilde \Lambda_{ii} = \min(\max(\Lambda_{ii}, h_{max}^{-2}), h_{min}^{-2})
+    /// ```
+    /// and
+    /// ```math
+    /// \mathcal M = \mathcal P ^T \Lambda \mathcal P
     pub fn scale_metric_simple<M: Metric<D>>(
         &self,
         m: &[M],
@@ -178,9 +208,17 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         -1.0
     }
 
-    /// Scale a metric field to have a given complexity with the following constraints
-    /// - min/max size
-    /// - intersection with a fixed metric
+    /// Find the scaling factor $`\alpha`$ such that the complexity
+    /// ```math
+    /// \mathcal C(\mathcal T(\alpha \mathcal M, h_{min}, h_{max}) \cap \mathcal M_f)
+    /// ```
+    /// equals a target number of elements. The metric field is modified in-place to
+    /// ```math
+    /// \mathcal T(\alpha \mathcal M, h_{min}, h_{max}) \cap \mathcal M_f
+    /// ```
+    /// An error is returned if $`\mathcal C(\mathcal M_f)`$ is larger than the target
+    /// number of elements
+    ///
     pub fn scale_metric<M: Metric<D>>(
         &self,
         m: &mut [M],
@@ -284,7 +322,14 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Smooth a metric field to avoid numerical artifacts
-    /// For each mesh vertex, the metric is replaced by the average on its neighbors ignoring the metrics with the minimum and maximum volumes
+    /// For each mesh vertex $`i`$, a set a suitable neighbors $`N(i)`$ is built as
+    /// a subset of the neighbors of $`i`$ ($`i`$ is included) ignoring the vertices with the metrics with
+    /// the smallest and largest metric volume.
+    /// The smoothed metric field is then computed as the average (i.e. interpolation
+    /// with equal weights) of the metrics in $`N(i)`$
+    /// , the metric is replaced by the average
+    /// on its neighbors ignoring the metrics with the minimum and maximum volumes
+    /// TODO: doc
     pub fn smooth_metric<M: Metric<D>>(&self, m: &[M]) -> Result<Vec<M>> {
         if self.vertex_to_vertices.is_none() {
             return Err(Error::from("vertex to vertex connection not available"));
@@ -363,7 +408,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         }
     }
 
-    /// Compute the maximum metric gradation
+    /// Compute the maximum metric gradation and the fraction of edges with a gradation
+    /// higher than an threshold
     pub fn gradation<M: Metric<D>>(&self, m: &[M], target: f64) -> Result<(f64, f64)> {
         if self.edges.is_none() {
             return Err(Error::from("edges not available"));
