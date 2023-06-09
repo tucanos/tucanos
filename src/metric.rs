@@ -1,7 +1,8 @@
 use crate::metric_reduction::simultaneous_reduction;
 use crate::{mesh::Point, Error, Idx, Result};
+use crate::{H_MAX, S_MAX, S_MIN, S_RATIO_MAX};
 use nalgebra::allocator::Allocator;
-use nalgebra::{Const, DefaultAllocator, SMatrix};
+use nalgebra::{Const, DefaultAllocator, SMatrix, SVector};
 use std::array::IntoIter;
 use std::fmt;
 use std::fmt::Debug;
@@ -115,7 +116,7 @@ impl<const D: usize> IsoMetric<D> {
 
 impl<const D: usize> Default for IsoMetric<D> {
     fn default() -> Self {
-        Self(0.)
+        Self(H_MAX)
     }
 }
 
@@ -209,7 +210,7 @@ impl<const D: usize> Display for IsoMetric<D> {
     }
 }
 
-pub trait AnisoMetric<const D: usize>: Metric<D> + Index<usize, Output = f64>
+pub trait AnisoMetric<const D: usize>: Metric<D> + Index<usize, Output = f64> + Default
 where
     Const<D>: nalgebra::ToTypenum,
     Const<D>: nalgebra::DimSub<nalgebra::U1>,
@@ -228,19 +229,30 @@ where
 
     fn vol_aniso(&self) -> f64;
 
+    fn bound_eigenvalues(eigs: &mut SVector<f64, D>) {
+        let mut s_max: f64 = 0.0;
+        eigs.iter_mut().for_each(|s| {
+            *s = s.min(S_MAX).max(S_MIN);
+            s_max = s_max.max(*s);
+        });
+
+        let s_min = s_max / S_RATIO_MAX;
+        eigs.iter_mut().for_each(|s| {
+            *s = s.max(s_min);
+        });
+    }
+
     /// Initialise an isotropic metric from a symmetric matrix $`M`$ as
     /// ```math
     /// \mathcal M = |M|
     /// ```
     ///
-    /// NB: A threshold is applied to the eigenvalues of $\mathcal M$.
+    /// NB: A threshold is applied to the eigenvalues of $`\mathcal M`$.
     fn from_mat(mat: SMatrix<f64, D, D>) -> Self {
         let mut eig = mat.symmetric_eigen();
         // Ensure that the metric is valid, i.e. that all the eigenvalues are >0
-        // TODO: use a value of e.g. 1e-12 instead of f64::MIN_POSITIVE to increase robustness?
-        eig.eigenvalues
-            .iter_mut()
-            .for_each(|i| *i = i.abs().max(f64::MIN_POSITIVE));
+        eig.eigenvalues.iter_mut().for_each(|i| *i = i.abs());
+        Self::bound_eigenvalues(&mut eig.eigenvalues);
         let mat = eig.recompose();
         let vol = 1. / eig.eigenvalues.iter().product::<f64>().sqrt();
         debug_assert!(vol > 0.0);
@@ -252,7 +264,11 @@ where
         let off_diag = (D..<Self as Metric<D>>::N)
             .map(|i| self[i].abs())
             .sum::<f64>();
-        tol * on_diag > off_diag
+        off_diag < 1e10 * f64::MIN_POSITIVE || tol * on_diag > off_diag
+    }
+
+    fn is_near_zero(&self, tol: f64) -> bool {
+        self.into_iter().map(|x| x.abs()).sum::<f64>() < tol
     }
 
     fn from_diagonal(s: &[f64]) -> Self;
@@ -316,9 +332,20 @@ where
     fn check(&self) -> Result<()> {
         let eig = self.as_mat().symmetric_eigen();
 
-        if eig.eigenvalues.iter().any(|&x| x < f64::MIN_POSITIVE) {
-            return Err(Error::from("Negative metric"));
+        let eps = 1e-8;
+        let mut s_max: f64 = 0.0;
+        let mut s_min: f64 = S_MAX;
+
+        for s in eig.eigenvalues.iter().cloned() {
+            assert!(s > (1.0 - eps) * S_MIN, "s < S_MIN");
+            assert!(s < (1.0 + eps) * S_MAX, "s > S_MAX");
+            s_max = s_max.max(s);
+            s_min = s_min.min(s);
         }
+        assert!(
+            s_max / s_min < (1.0 + eps) * S_RATIO_MAX,
+            "aniso > ANISO_MAX"
+        );
         Ok(())
     }
 
@@ -337,16 +364,19 @@ where
             let mut eig = m.as_mat().symmetric_eigen();
             eig.eigenvalues
                 .iter_mut()
-                .for_each(|i| *i = w * (*i).max(f64::MIN_POSITIVE).ln());
+                .for_each(|i| *i = w * (*i).max(S_MIN).ln());
             assert!(eig.eigenvalues.iter().all(|&x| f64::is_finite(x)));
             mat += eig.recompose();
         }
 
         let mut eig = mat.symmetric_eigen();
-        eig.eigenvalues
-            .iter_mut()
-            .for_each(|i| *i = (*i).exp().max(f64::MIN_POSITIVE));
-        assert!(eig.eigenvalues.iter().all(|&x| f64::is_finite(x)));
+        eig.eigenvalues.iter_mut().for_each(|i| *i = (*i).exp());
+        Self::bound_eigenvalues(&mut eig.eigenvalues);
+        assert!(
+            eig.eigenvalues.iter().all(|&x| f64::is_finite(x)),
+            "{:?}",
+            eig.eigenvalues
+        );
         assert!(eig.eigenvalues.iter().all(|&x| x > 0.0));
         mat = eig.recompose();
         let vol = 1. / eig.eigenvalues.iter().product::<f64>().sqrt();
@@ -362,7 +392,7 @@ where
         eig.eigenvalues
             .iter()
             .enumerate()
-            .for_each(|(i, e)| s[i] = 1. / e.max(f64::MIN_POSITIVE).sqrt());
+            .for_each(|(i, e)| s[i] = 1. / e.max(S_MIN).sqrt());
         s.sort_by(|a, b| a.partial_cmp(b).unwrap());
         s
     }
@@ -393,12 +423,15 @@ where
             for i in 0..D {
                 s[i] = f64::max(self[i], other[i]);
             }
-            return Self::from_diagonal(&s);
+            Self::from_diagonal(&s)
+        } else if self.is_near_zero(1e-16) {
+            *other
+        } else if other.is_near_zero(1e-16) {
+            *self
+        } else {
+            let res = simultaneous_reduction(self.as_mat(), other.as_mat());
+            Self::from_mat(res)
         }
-
-        let res = simultaneous_reduction(self.as_mat(), other.as_mat());
-
-        Self::from_mat(res)
     }
 
     /// Span a metric using progression $`\beta`$ using physical-space-gradation
@@ -408,9 +441,12 @@ where
         let mat = self.as_mat();
         let mut eig = mat.symmetric_eigen();
         eig.eigenvalues.iter_mut().for_each(|s| {
+            // *s = s.max(S_MIN);
             let eta = 1.0 + f64::sqrt(*s) * nrm * f64::ln(beta);
             *s /= eta * eta;
+            // *s = s.max(S_MIN);
         });
+        Self::bound_eigenvalues(&mut eig.eigenvalues);
         let mat = eig.recompose();
         let vol = 1. / eig.eigenvalues.iter().fold(1.0, |v, &e| v * e).sqrt();
 
@@ -450,6 +486,7 @@ where
                 let l_other = other.length(&v).powi(2);
                 *l = l.min(l_other * f2).max(l_other / f2);
             });
+        Self::bound_eigenvalues(&mut eig.eigenvalues);
 
         let vol = 1. / eig.eigenvalues.iter().fold(1.0, |v, &e| v * e).sqrt();
 
@@ -472,7 +509,7 @@ where
 /// ```
 /// NB: the matrix must be positive definite for the metric to be valid
 /// TODO: reuse the eigenvalue solvers ?
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub struct AnisoMetric2d {
     m: [f64; 3],
     v: f64,
@@ -494,12 +531,23 @@ impl AnisoMetric2d {
         let s1 = s1 / n1;
         assert!(s0.dot(&s1) < 1e-12);
 
-        let eigvals = SMatrix::<f64, 2, 2>::new(1. / n0.powi(2), 0., 0., 1. / n1.powi(2));
+        let mut eigvals = SVector::<f64, 2>::new(1. / n0.powi(2), 1. / n1.powi(2));
+        Self::bound_eigenvalues(&mut eigvals);
+        let eigvals = SMatrix::<f64, 2, 2>::from_diagonal(&eigvals);
         let eigvecs = SMatrix::<f64, 2, 2>::new(s0[0], s0[1], s1[0], s1[1]);
         let mat = eigvals * eigvecs;
         let mat = eigvecs.tr_mul(&mat);
 
         Self::from_mat(mat)
+    }
+}
+
+impl Default for AnisoMetric2d {
+    fn default() -> Self {
+        Self {
+            m: [S_MIN, S_MIN, 0.],
+            v: (S_MIN.powi(2)),
+        }
     }
 }
 
@@ -594,7 +642,7 @@ impl fmt::Display for AnisoMetric2d {
 /// ```
 /// NB: the matrix must be positive definite for the metric to be valid
 /// TODO: reuse the eigenvalue solvers?
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub struct AnisoMetric3d {
     m: [f64; 6],
     v: f64,
@@ -628,17 +676,10 @@ impl AnisoMetric3d {
         assert!(s0.dot(&s2) < 1e-12);
         assert!(s1.dot(&s2) < 1e-12);
 
-        let eigvals = SMatrix::<f64, 3, 3>::new(
-            1. / n0.powi(2),
-            0.,
-            0.,
-            0.,
-            1. / n1.powi(2),
-            0.,
-            0.,
-            0.,
-            1. / n2.powi(2),
-        );
+        let mut eigvals = SVector::<f64, 3>::new(1. / n0.powi(2), 1. / n1.powi(2), 1. / n2.powi(2));
+        Self::bound_eigenvalues(&mut eigvals);
+        let eigvals = SMatrix::<f64, 3, 3>::from_diagonal(&eigvals);
+
         let eigvecs = SMatrix::<f64, 3, 3>::new(
             s0[0], s0[1], s0[2], s1[0], s1[1], s1[2], s2[0], s2[1], s2[2],
         );
@@ -648,6 +689,16 @@ impl AnisoMetric3d {
         Self::from_mat(mat)
     }
 }
+
+impl Default for AnisoMetric3d {
+    fn default() -> Self {
+        Self {
+            m: [S_MIN, S_MIN, S_MIN, 0.0, 0.0, 0.0],
+            v: (S_MIN.powi(3)),
+        }
+    }
+}
+
 impl AnisoMetric<3> for AnisoMetric3d {
     const N: usize = 6;
 
@@ -712,7 +763,7 @@ impl Index<usize> for AnisoMetric3d {
 #[cfg(test)]
 mod tests {
     use super::{AnisoMetric, AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric};
-    use crate::{mesh::Point, Result};
+    use crate::{mesh::Point, Result, S_RATIO_MAX};
     use nalgebra::{SMatrix, SVector};
 
     #[test]
@@ -742,6 +793,27 @@ mod tests {
 
         m.check()?;
         assert!(f64::abs(m.vol() - 1.0 / f64::sqrt(3.0)) < 1e-12);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_check_2d() -> Result<()> {
+        let m = AnisoMetric2d::from_slice(&[1.0, 10.0 * S_RATIO_MAX, 0.0], 0);
+
+        m.check()?;
+        assert!(f64::abs(m[0] - 10.0) < 1e-12);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_check_3d() -> Result<()> {
+        let m = AnisoMetric3d::from_slice(&[1.0, 2.0, 10.0 * S_RATIO_MAX, 0.0, 0.0, 0.0], 0);
+
+        m.check()?;
+        assert!(f64::abs(m[0] - 10.0) < 1e-12);
+        assert!(f64::abs(m[1] - 10.0) < 1e-12);
 
         Ok(())
     }
