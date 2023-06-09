@@ -220,7 +220,8 @@ impl<const D: usize, E: Elem> LinearGeometry<D, E> {
 
 impl LinearGeometry<3, Triangle> {
     pub fn compute_curvature(&mut self) {
-        for (_, patch) in self.patches.iter_mut() {
+        for (&i, patch) in self.patches.iter_mut() {
+            info!("Compute curvature for patch {i}");
             patch.compute_curvature();
         }
     }
