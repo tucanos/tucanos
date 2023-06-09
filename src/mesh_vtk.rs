@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use log::{debug, info};
 use vtkio::{
     model::{
         Attribute, Attributes, ByteOrder, CellType, Cells, DataArrayBase, DataSet, ElementType,
@@ -17,6 +18,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         vertex_data: Option<HashMap<String, &[f64]>>,
         elem_data: Option<HashMap<String, &[f64]>>,
     ) -> Result<()> {
+        info!("Write {file_name}");
         let connectivity = self.elems.iter().map(|&i| i as u64).collect();
         let offsets = (0..self.n_elems())
             .map(|i| (E::N_VERTS * (i + 1)) as u64)
@@ -30,6 +32,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let mut point_data = Vec::new();
         if let Some(vertex_data) = vertex_data {
             for (name, arr) in vertex_data.iter() {
+                debug!("Write vertex data {name}");
                 let ftype = self.field_type(arr, FieldLocation::Vertex).unwrap();
                 match ftype {
                     FieldType::Scalar => {
@@ -75,6 +78,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         if let Some(elem_data) = elem_data {
             for (name, arr) in elem_data.iter() {
+                debug!("Write element data {name}");
                 let ftype = self.field_type(arr, FieldLocation::Element).unwrap();
                 match ftype {
                     FieldType::Scalar => {
