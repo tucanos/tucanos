@@ -3,12 +3,14 @@ use crate::{mesh::Point, Error, Idx, Result};
 use nalgebra::allocator::Allocator;
 use nalgebra::{Const, DefaultAllocator, SMatrix};
 use std::array::IntoIter;
+use std::fmt;
 use std::fmt::Debug;
+use std::fmt::Display;
 use std::ops::Index;
 
 /// Metric in D-dimensions (iso or anisotropic)
 pub trait Metric<const D: usize>:
-    Debug + Clone + Copy + IntoIterator<Item = f64> + Default
+    Debug + Clone + Copy + IntoIterator<Item = f64> + Default + Display
 {
     const N: usize;
     /// Create a metric from m[start..end]
@@ -200,6 +202,13 @@ impl<const D: usize> IntoIterator for IsoMetric<D> {
     }
 }
 
+impl<const D: usize> Display for IsoMetric<D> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "h = {:?}", self.0)?;
+        Ok(())
+    }
+}
+
 pub trait AnisoMetric<const D: usize>: Metric<D> + Index<usize, Output = f64>
 where
     Const<D>: nalgebra::ToTypenum,
@@ -249,6 +258,27 @@ where
     fn from_diagonal(s: &[f64]) -> Self;
 
     fn scale_aniso(&mut self, s: f64);
+}
+
+impl fmt::Display for AnisoMetric3d {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mat = self.as_mat();
+        writeln!(f, "M = {:?}", mat)?;
+
+        let eig = mat.symmetric_eigen();
+        for i in 0..3 {
+            writeln!(
+                f,
+                "--> h = {}, {:?}",
+                1. / eig.eigenvalues[i].sqrt(),
+                eig.eigenvectors.row(i).to_owned()
+            )?;
+        }
+
+        let vol = 1. / eig.eigenvalues.iter().product::<f64>().sqrt();
+        writeln!(f, "vol = {}", vol)?;
+        Ok(())
+    }
 }
 
 impl<const D: usize, T: AnisoMetric<D>> Metric<D> for T
@@ -529,6 +559,27 @@ impl Index<usize> for AnisoMetric2d {
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.m[index]
+    }
+}
+
+impl fmt::Display for AnisoMetric2d {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mat = self.as_mat();
+        writeln!(f, "M = {:?}", mat)?;
+
+        let eig = mat.symmetric_eigen();
+        for i in 0..2 {
+            writeln!(
+                f,
+                "--> h = {}, {:?}",
+                1. / eig.eigenvalues[i].sqrt(),
+                eig.eigenvectors.row(i).to_owned()
+            )?;
+        }
+
+        let vol = 1. / eig.eigenvalues.iter().product::<f64>().sqrt();
+        writeln!(f, "vol = {}", vol)?;
+        Ok(())
     }
 }
 
