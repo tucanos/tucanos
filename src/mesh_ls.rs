@@ -12,12 +12,12 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// ```math
     /// f(x) \approx \alpha + a_j \delta_j + a_{j,k} \delta_j \delta_k
     /// ```
-    /// with $`\delta = x - x_i`$. Ffor a 1st order approximation, the $`a_{j, k}`$ are
+    /// with $`\delta = x - x_i`$. For a 1st order approximation, the $`a_{j, k}`$ are
     /// set to 0. The coefficients are then chosen to minimize
     /// ```math
     /// W_0 (\alpha)^2 + \sum_{j \in N(i)} W_i ((f_j - f_i) - (\alpha + a_k \delta_k^{(j)} + a_{k,l} \delta_k^{(j)} \delta_l^{(j)}))^2
     /// ```
-    /// with $`\delta^{(j)} = x_j - x_i`$ for a neighborhood $`N(i) = {j_0, \cdots, j_N}`$ of vertex
+    /// with $`\delta^{(j)} = x_j - x_i`$ for a neighborhood $`N(i) = \{j_0, \cdots, j_N\}`$ of vertex
     /// $`i`$ and a weighting $`W_i=\frac{1}{\left \| \delta_i \right \|^P}`$.
     /// P is `weight_exp` and typically $`P \in \left \{ 0,1,2 \right \}`$.
     /// $`W_0`$ is set here to $`\sqrt{2} \max(W_j)`$.
@@ -35,6 +35,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// \begin{bmatrix} 0 \\ \widetilde{f}_{j_0} \\ \vdots \\ \widetilde{f}_{j_N} \end{bmatrix} \right \|^2
     /// ```
     ///
+    /// If the number of neighbors is not sufficient for this problem to be solved, or if the problem is
+    /// too ill-conditioned, None is returned
     fn least_squares<const N: usize>(
         &self,
         i_vert: Idx,
