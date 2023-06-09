@@ -28,6 +28,13 @@ pub mod topo_elems;
 mod topology;
 mod twovec;
 
+const H_MAX: f64 = 1e8;
+const H_MIN: f64 = 1e-8;
+const ANISO_MAX: f64 = 1e5;
+
+const S_MIN: f64 = 1. / (H_MAX * H_MAX);
+const S_MAX: f64 = 1. / (H_MIN * H_MIN);
+const S_RATIO_MAX: f64 = ANISO_MAX * ANISO_MAX;
 // Errors
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 #[derive(Debug)]

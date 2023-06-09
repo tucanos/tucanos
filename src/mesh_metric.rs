@@ -397,14 +397,11 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let l0 = m0.length(&e);
         let l1 = m1.length(&e);
         let a = l0 / l1;
-        if l0 < 1e-16 || l1 < 1e-16 {
-            panic!("{:?} {:?} {:?} {} {}", e, m0, m1, l0, l1);
-        }
         if f64::abs(a - 1.0) < 1e-3 {
             1.0
         } else {
             let l = l0 * f64::ln(a) / (a - 1.0);
-            f64::max(a, 1.0 / a).powf(1. / l)
+            f64::max(a, 1.0 / a).powf(1. / l).min(100.0)
         }
     }
 
