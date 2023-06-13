@@ -658,6 +658,13 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         )
     }
 
+    /// Return a bool vector that indicates wether a vertex in on a face
+    pub fn boundary_flag(&self) -> Vec<bool> {
+        let mut res = vec![false; self.n_verts() as usize];
+        self.faces.iter().for_each(|&i| res[i as usize] = true);
+        res
+    }
+
     /// Extract a sub-mesh containing all the elements with a specific tag
     /// Return the sub-mesh and the indices of the vertices, elements and faces in the
     /// parent mesh
