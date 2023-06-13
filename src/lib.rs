@@ -9,6 +9,7 @@ mod linalg;
 #[allow(clippy::enum_variant_names)]
 pub mod mesh;
 mod mesh_interpolate;
+mod mesh_l2proj;
 mod mesh_ls;
 pub mod mesh_metric;
 mod mesh_ordering;
