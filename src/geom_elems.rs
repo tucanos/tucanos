@@ -99,7 +99,17 @@ pub trait GElem<const D: usize, M: Metric<D>>: Clone + Copy + Debug {
     fn bcoords(&self, p: &Point<D>) -> Self::BCoords; // todo: improve
 
     /// Get the element normal
-    fn normal(&self) -> Point<D>;
+    fn scaled_normal(&self) -> Point<D>;
+
+    /// Get the element normal
+    fn normal(&self) -> Point<D> {
+        let mut n = self.scaled_normal();
+        n.normalize_mut();
+        n
+    }
+
+    /// Get the i-th geometric face
+    fn gface(&self, i: Idx) -> Self::Face;
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -257,8 +267,30 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GTetrahedron<D, M> {
         decomp.solve(&b).unwrap()
     }
 
-    fn normal(&self) -> Point<D> {
+    fn scaled_normal(&self) -> Point<D> {
         unreachable!();
+    }
+
+    fn gface(&self, i: Idx) -> Self::Face {
+        match i {
+            0 => GTriangle {
+                points: [self.points[1], self.points[2], self.points[3]],
+                metrics: [self.metrics[1], self.metrics[2], self.metrics[3]],
+            },
+            1 => GTriangle {
+                points: [self.points[2], self.points[0], self.points[3]],
+                metrics: [self.metrics[2], self.metrics[0], self.metrics[3]],
+            },
+            2 => GTriangle {
+                points: [self.points[0], self.points[1], self.points[3]],
+                metrics: [self.metrics[0], self.metrics[1], self.metrics[3]],
+            },
+            3 => GTriangle {
+                points: [self.points[0], self.points[2], self.points[1]],
+                metrics: [self.metrics[0], self.metrics[2], self.metrics[1]],
+            },
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -401,15 +433,31 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GTriangle<D, M> {
         }
     }
 
-    fn normal(&self) -> Point<D> {
+    fn scaled_normal(&self) -> Point<D> {
         if D == 3 {
             let e0 = self.points[1] - self.points[0];
             let e1 = self.points[2] - self.points[0];
-            let mut n = e0.cross(&e1);
-            n.normalize_mut();
-            n
+            0.5 * e0.cross(&e1)
         } else {
             unreachable!();
+        }
+    }
+
+    fn gface(&self, i: Idx) -> Self::Face {
+        match i {
+            0 => GEdge {
+                points: [self.points[1], self.points[2]],
+                metrics: [self.metrics[1], self.metrics[2]],
+            },
+            1 => GEdge {
+                points: [self.points[2], self.points[0]],
+                metrics: [self.metrics[2], self.metrics[0]],
+            },
+            2 => GEdge {
+                points: [self.points[0], self.points[1]],
+                metrics: [self.metrics[0], self.metrics[1]],
+            },
+            _ => unreachable!(),
         }
     }
 }
@@ -473,17 +521,20 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GEdge<D, M> {
         unreachable!();
     }
 
-    fn normal(&self) -> Point<D> {
+    fn scaled_normal(&self) -> Point<D> {
         if D == 2 {
             let e0 = self.points[1] - self.points[0];
             let mut n = Point::<D>::zeros();
-            n[0] = -e0[1];
-            n[1] = e0[0];
-            n.normalize_mut();
+            n[0] = e0[1];
+            n[1] = -e0[0];
             n
         } else {
             unreachable!();
         }
+    }
+
+    fn gface(&self, _i: Idx) -> Self::Face {
+        unreachable!();
     }
 }
 
@@ -536,7 +587,11 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GVertex<D, M> {
         unreachable!();
     }
 
-    fn normal(&self) -> Point<D> {
+    fn scaled_normal(&self) -> Point<D> {
+        unreachable!();
+    }
+
+    fn gface(&self, _i: Idx) -> Self::Face {
         unreachable!();
     }
 }
