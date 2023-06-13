@@ -1,9 +1,12 @@
 use crate::{
-    linalg::lapack_qr_least_squares, mesh::SimplexMesh, topo_elems::Elem, Error, FieldType, Idx,
-    Mesh, Result,
+    linalg::lapack_qr_least_squares,
+    mesh::{Point, SimplexMesh},
+    topo_elems::Elem,
+    Error, FieldType, Idx, Mesh, Result,
 };
 
 use log::info;
+use rustc_hash::FxHashSet;
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Compute a linear or quadratic approximation of a function defined at the mesh vertices
@@ -18,9 +21,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// W_0 (\alpha)^2 + \sum_{j \in N(i)} W_i ((f_j - f_i) - (\alpha + a_k \delta_k^{(j)} + a_{k,l} \delta_k^{(j)} \delta_l^{(j)}))^2
     /// ```
     /// with $`\delta^{(j)} = x_j - x_i`$ for a neighborhood $`N(i) = \{j_0, \cdots, j_N\}`$ of vertex
-    /// $`i`$ and a weighting $`W_i=\frac{1}{\left \| \delta_i \right \|^P}`$.
-    /// P is `weight_exp` and typically $`P \in \left \{ 0,1,2 \right \}`$.
-    /// $`W_0`$ is set here to $`\sqrt{2} \max(W_j)`$.
+    /// $`i`$
     ///
     /// Numerically the following least squares problem is solved using a QR factorization
     /// ```math
@@ -35,67 +36,63 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// \begin{bmatrix} 0 \\ \widetilde{f}_{j_0} \\ \vdots \\ \widetilde{f}_{j_N} \end{bmatrix} \right \|^2
     /// ```
     ///
+    /// `dx_df_w` is an iterator that yields $`(\delta^{(j)}, \widetilde{f}_{j}, W_{j})`$ for $`j \in N(i)`$
+    ///
     /// If the number of neighbors is not sufficient for this problem to be solved, or if the problem is
     /// too ill-conditioned, None is returned
-    fn least_squares<const N: usize>(
-        &self,
-        i_vert: Idx,
-        weight_exp: i32,
-        f: &[f64],
+    fn least_squares<const N: usize, I: ExactSizeIterator<Item = (Point<D>, f64, f64)>>(
+        dx_df_w: I,
+        w0: Option<f64>,
     ) -> Option<[f64; N]> {
         debug_assert!(D != 2 || N == 3 || N == 6);
         debug_assert!(D != 3 || N == 4 || N == 10);
-        let others = self.vertex_to_vertices.as_ref().unwrap().row(i_vert);
-        let n_others = others.len();
+        let n_others = dx_df_w.len();
         if n_others < N {
             return None;
         }
         let nrows = 1 + n_others;
-        let p0 = self.vert(i_vert);
-        let f0 = f[i_vert as usize];
-        let mut max_weight = 0.0;
         // One allocation to rule them all. An extra N for b and 2 extra N for work.
         let mut buf = vec![0.; nrows * (N + 3)];
         let (a, b) = buf.split_at_mut(nrows * N);
         let (b, work) = b.split_at_mut(nrows);
-        for irow in 1..nrows {
-            let dp = self.vert(others[irow - 1]) - p0;
+
+        let mut w_max = 0.0;
+        for (irow, (dp, df, w)) in dx_df_w.enumerate() {
+            let irow = irow + 1;
             let row = &mut a[irow..];
-            row[0] = 1.0;
-            row[nrows] = dp[0];
-            row[2 * nrows] = dp[1];
+            row[0] = w * 1.0;
+            row[nrows] = w * dp[0];
+            row[2 * nrows] = w * dp[1];
             if D == 2 && N == 6 {
-                row[3 * nrows] = 0.5 * dp[0] * dp[0];
-                row[4 * nrows] = 0.5 * dp[1] * dp[1];
-                row[5 * nrows] = dp[0] * dp[1];
+                row[3 * nrows] = w * 0.5 * dp[0] * dp[0];
+                row[4 * nrows] = w * 0.5 * dp[1] * dp[1];
+                row[5 * nrows] = w * dp[0] * dp[1];
             } else if D == 3 {
-                row[3 * nrows] = dp[2];
+                row[3 * nrows] = w * dp[2];
                 if N == 10 {
-                    row[4 * nrows] = 0.5 * dp[0] * dp[0];
-                    row[5 * nrows] = 0.5 * dp[1] * dp[1];
-                    row[6 * nrows] = 0.5 * dp[2] * dp[2];
-                    row[7 * nrows] = dp[0] * dp[1];
-                    row[8 * nrows] = dp[1] * dp[2];
-                    row[9 * nrows] = dp[0] * dp[2];
+                    row[4 * nrows] = w * 0.5 * dp[0] * dp[0];
+                    row[5 * nrows] = w * 0.5 * dp[1] * dp[1];
+                    row[6 * nrows] = w * 0.5 * dp[2] * dp[2];
+                    row[7 * nrows] = w * dp[0] * dp[1];
+                    row[8 * nrows] = w * dp[1] * dp[2];
+                    row[9 * nrows] = w * dp[0] * dp[2];
                 }
             }
-            let weight = if weight_exp > 0 {
-                1. / f64::powi(dp.norm(), weight_exp)
-            } else {
-                1.
-            };
-            max_weight = f64::max(weight, max_weight);
-            for i in 0..N {
-                row[i * nrows] *= weight;
-            }
 
-            b[irow] = weight * (f[others[irow - 1] as usize] - f0);
+            b[irow] = w * df;
+            w_max = f64::max(w_max, w);
         }
-        a[0] = max_weight * (2_f64).sqrt();
+        a[0] = w0.unwrap_or(f64::sqrt(2.0) * w_max);
         lapack_qr_least_squares(a, b, work)
     }
 
     /// Smooth a vertex field using a 1st order weighted least square approximation
+    ///
+    /// $`N(i)`$ is the set of 1st order neighbors of $`i`$ (i.e. the vertices connected
+    /// to $`i`$ by an edge), and a weighting $`W_i=\frac{1}{\left \| \delta_i \right \|^P}`$ is used.
+    ///
+    /// P is `weight_exp` and typically $`P \in \left \{ 0,1,2 \right \}`$.
+    /// $`W_0`$ is set here to $`\sqrt{2} \max(W_j)`$.
     pub fn smooth(&self, f: &[f64], weight_exp: i32) -> Result<Vec<f64>> {
         info!(
             "Compute smoothing using 1st order LS (weight = {})",
@@ -108,9 +105,22 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let m = self.n_comps(FieldType::Scalar);
         let mut res = Vec::with_capacity((m * self.n_verts()) as usize);
 
+        let v2v = self.vertex_to_vertices.as_ref().unwrap();
         for i_vert in 0..self.n_verts() {
+            let neighbors = v2v.row(i_vert);
+            let dx_df_w = neighbors.iter().map(|&i| {
+                let dx = self.vert(i) - self.vert(i_vert);
+                let df = f[i as usize] - f[i_vert as usize];
+                let w = if weight_exp > 0 {
+                    1. / dx.norm().powi(weight_exp)
+                } else {
+                    1.0
+                };
+                (dx, df, w)
+            });
+
             if D == 2 {
-                let sol = self.least_squares::<3>(i_vert, weight_exp, f);
+                let sol = Self::least_squares::<3, _>(dx_df_w, None);
                 if let Some(sol) = sol {
                     res.push(f[i_vert as usize] + sol[0]);
                 } else {
@@ -118,7 +128,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     res.push(f[i_vert as usize]);
                 }
             } else if D == 3 {
-                let sol = self.least_squares::<4>(i_vert, weight_exp, f);
+                let sol = Self::least_squares::<4, _>(dx_df_w, None);
                 if let Some(sol) = sol {
                     res.push(f[i_vert as usize] + sol[0]);
                 } else {
@@ -176,6 +186,12 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Compute the gradient of a vertex field using a 1st order weighted least square approximation
+    ///
+    /// $`N(i)`$ is the set of 1st order neighbors of $`i`$ (i.e. the vertices connected
+    /// to $`i`$ by an edge), and a weighting $`W_i=\frac{1}{\left \| \delta_i \right \|^P}`$ is used.
+    ///
+    /// P is `weight_exp` and typically $`P \in \left \{ 0,1,2 \right \}`$.
+    /// $`W_0`$ is set here to $`\sqrt{2} \max(W_j)`$.
     pub fn gradient(&self, f: &[f64], weight_exp: i32) -> Result<Vec<f64>> {
         info!(
             "Compute gradient using 1st order LS (weight = {})",
@@ -190,22 +206,43 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         let mut failed = vec![false; self.n_verts() as usize];
 
+        let flg = self.boundary_flag();
+
+        let v2v = self.vertex_to_vertices.as_ref().unwrap();
         for i_vert in 0..self.n_verts() {
-            if D == 2 {
-                let sol = self.least_squares::<3>(i_vert, weight_exp, f);
-                if let Some(sol) = sol {
-                    res.extend(sol.iter().skip(1).take(D));
-                } else {
-                    failed[i_vert as usize] = true;
-                    res.resize(res.len() + m, 0.0);
-                }
-            } else if D == 3 {
-                let sol = self.least_squares::<4>(i_vert, weight_exp, f);
-                if let Some(sol) = sol {
-                    res.extend(sol.iter().skip(1).take(D));
-                } else {
-                    failed[i_vert as usize] = true;
-                    res.resize(res.len() + m, 0.0);
+            // Don't use a LS scheme for boundary vertices
+            if flg[i_vert as usize] {
+                failed[i_vert as usize] = true;
+                res.resize(res.len() + m, 0.0);
+            } else {
+                let neighbors = v2v.row(i_vert);
+                let dx_df_w = neighbors.iter().map(|&i| {
+                    let dx = self.vert(i) - self.vert(i_vert);
+                    let df = f[i as usize] - f[i_vert as usize];
+                    let w = if weight_exp > 0 {
+                        1. / dx.norm().powi(weight_exp)
+                    } else {
+                        1.0
+                    };
+                    (dx, df, w)
+                });
+
+                if D == 2 {
+                    let sol = Self::least_squares::<3, _>(dx_df_w, None);
+                    if let Some(sol) = sol {
+                        res.extend(sol.iter().skip(1).take(D));
+                    } else {
+                        failed[i_vert as usize] = true;
+                        res.resize(res.len() + m, 0.0);
+                    }
+                } else if D == 3 {
+                    let sol = Self::least_squares::<4, _>(dx_df_w, None);
+                    if let Some(sol) = sol {
+                        res.extend(sol.iter().skip(1).take(D));
+                    } else {
+                        failed[i_vert as usize] = true;
+                        res.resize(res.len() + m, 0.0);
+                    }
                 }
             }
         }
@@ -222,11 +259,30 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Compute the hessian of a vertex field using a 2nd order weighted least square approximation
-    pub fn hessian(&self, f: &[f64], weight_exp: i32) -> Result<Vec<f64>> {
-        info!(
-            "Compute hessian using 2nd order LS (weight = {})",
-            weight_exp
-        );
+    ///
+    /// $`N(i)`$ is the set of 1st order or second order (i.e. the 1st order neighbors of the
+    /// 1st order neighbors that are not $`i`$) depending on `use_second_order_neighbors`
+    ///
+    /// if `weight_exp` is `None` the weights are chosen as $W_0 = 10$, $W_i = 1$ for 1st order neighbors
+    /// and $W_i = 0.1$ for 2nd order neighbors (see the PhD of L. Frazza, p. 206). Otherwise, a
+    /// weighting $`W_i=\frac{1}{\left \| \delta_i \right \|^P}`$ is used with typical values
+    /// $`P \in \left \{ 0,1,2 \right \}`$. In this case, $`W_0`$ is set here to $`\sqrt{2} \max(W_j)`$.
+    pub fn hessian(
+        &self,
+        f: &[f64],
+        weight_exp: Option<i32>,
+        use_second_order_neighbors: bool,
+    ) -> Result<Vec<f64>> {
+        info!("Compute hessian using 2nd order LS");
+        if let Some(weight_exp) = weight_exp {
+            info!("  using weight_exp = {weight_exp}");
+        } else {
+            info!("  using weights = (10.0, 1.0, 0.1)");
+        }
+        if use_second_order_neighbors {
+            info!("  using second order neighbors");
+        }
+
         if self.vertex_to_vertices.is_none() {
             return Err(Error::from("vertex to vertex connection not available"));
         }
@@ -236,9 +292,44 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         let mut failed = vec![false; self.n_verts() as usize];
 
+        let v2v = self.vertex_to_vertices.as_ref().unwrap();
         for i_vert in 0..self.n_verts() {
+            let first_order_neighbors = v2v.row(i_vert);
+            let mut neighbors = first_order_neighbors
+                .iter()
+                .map(|&i| (i, 1))
+                .collect::<FxHashSet<_>>();
+            if use_second_order_neighbors {
+                first_order_neighbors
+                    .iter()
+                    .for_each(|&i| neighbors.extend(v2v.row(i).iter().map(|&i| (i, 2))));
+                neighbors.remove(&(i_vert, 2));
+            }
+
+            let dx_df_w = neighbors.iter().map(|&(i, order)| {
+                let dx = self.vert(i) - self.vert(i_vert);
+                let df = f[i as usize] - f[i_vert as usize];
+                let w = if let Some(weight_exp) = weight_exp {
+                    if weight_exp > 0 {
+                        1. / dx.norm().powi(weight_exp)
+                    } else {
+                        1.0
+                    }
+                } else if order == 1 {
+                    1.0
+                } else {
+                    0.1
+                };
+                (dx, df, w)
+            });
+            let w0 = if weight_exp.is_some() {
+                None
+            } else {
+                Some(10.0)
+            };
+
             if D == 2 {
-                let sol = self.least_squares::<6>(i_vert, weight_exp, f);
+                let sol = Self::least_squares::<6, _>(dx_df_w, w0);
                 if let Some(sol) = sol {
                     res.extend(sol.iter().skip(D + 1));
                 } else {
@@ -246,7 +337,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     res.resize(res.len() + m, 0.0);
                 }
             } else if D == 3 {
-                let sol = self.least_squares::<10>(i_vert, weight_exp, f);
+                let sol = Self::least_squares::<10, _>(dx_df_w, w0);
                 if let Some(sol) = sol {
                     res.extend(sol.iter().skip(D + 1));
                 } else {
@@ -440,7 +531,17 @@ mod tests {
             .verts()
             .map(|p| p[0] * p[0] + 2.0 * p[1] * p[1] + 3.0 * p[0] * p[1])
             .collect();
-        let res = mesh.hessian(&f, 2)?;
+
+        // with only the 1st order neighbors
+        let res = mesh.hessian(&f, Some(2), false)?;
+        for i_vert in 0..mesh.n_verts() as usize {
+            assert!(f64::abs(res[3 * i_vert] - 2.) < 1e-10);
+            assert!(f64::abs(res[3 * i_vert + 1] - 4.) < 1e-10);
+            assert!(f64::abs(res[3 * i_vert + 2] - 3.) < 1e-10);
+        }
+
+        // with the 2nd order neighbors
+        let res = mesh.hessian(&f, Some(2), true)?;
         for i_vert in 0..mesh.n_verts() as usize {
             assert!(f64::abs(res[3 * i_vert] - 2.) < 1e-10);
             assert!(f64::abs(res[3 * i_vert + 1] - 4.) < 1e-10);
@@ -468,7 +569,20 @@ mod tests {
                     + 6.0 * p[0] * p[2]
             })
             .collect();
-        let res = mesh.hessian(&f, 2)?;
+
+        // with only the 1st order neighbors
+        let res = mesh.hessian(&f, Some(2), false)?;
+        for i_vert in 0..mesh.n_verts() as usize {
+            assert!(f64::abs(res[6 * i_vert] - 2.) < 1e-10);
+            assert!(f64::abs(res[6 * i_vert + 1] - 4.) < 1e-10);
+            assert!(f64::abs(res[6 * i_vert + 2] - 6.) < 1e-10);
+            assert!(f64::abs(res[6 * i_vert + 3] - 4.) < 1e-10);
+            assert!(f64::abs(res[6 * i_vert + 4] - 5.) < 1e-10);
+            assert!(f64::abs(res[6 * i_vert + 5] - 6.) < 1e-10);
+        }
+
+        // with the 2nd order neighbors
+        let res = mesh.hessian(&f, Some(2), true)?;
         for i_vert in 0..mesh.n_verts() as usize {
             assert!(f64::abs(res[6 * i_vert] - 2.) < 1e-10);
             assert!(f64::abs(res[6 * i_vert + 1] - 4.) < 1e-10);
@@ -481,7 +595,11 @@ mod tests {
         Ok(())
     }
 
-    fn run_hessian_2d(n: u32) -> Result<f64> {
+    fn run_hessian_2d(
+        n: u32,
+        weight_exp: Option<i32>,
+        use_second_order_neighbors: bool,
+    ) -> Result<f64> {
         let mut mesh = test_mesh_2d();
         for _ in 0..n {
             mesh = mesh.split();
@@ -496,7 +614,7 @@ mod tests {
             .verts()
             .map(|p| p[0] * p[0] * p[1] + 2.0 * p[0] * p[1] * p[1])
             .collect();
-        let res = mesh.hessian(&f, 2)?;
+        let res = mesh.hessian(&f, weight_exp, use_second_order_neighbors)?;
         let mut nrm = 0.0;
         for (i_vert, (p, w)) in mesh.verts().zip(v.iter()).enumerate() {
             nrm += w
@@ -510,16 +628,42 @@ mod tests {
 
     #[test]
     fn test_hessian_2d() -> Result<()> {
+        // with only the 1st order neighbors & classical weights
+        for w in 0..3 {
+            let mut prev = f64::MAX;
+            for n in 3..7 {
+                let nrm = run_hessian_2d(n, Some(w), false)?;
+                assert!(nrm < 0.5 * prev);
+                prev = nrm;
+            }
+        }
+
+        // with only the 2nd order neighbors & classical weights
+        for w in 0..3 {
+            let mut prev = f64::MAX;
+            for n in 3..7 {
+                let nrm = run_hessian_2d(n, Some(w), true)?;
+                assert!(nrm < 0.5 * prev);
+                prev = nrm;
+            }
+        }
+
+        // with only the 2nd order neighbors & the weights given by Frazza
         let mut prev = f64::MAX;
         for n in 3..7 {
-            let nrm = run_hessian_2d(n)?;
+            let nrm = run_hessian_2d(n, None, true)?;
             assert!(nrm < 0.5 * prev);
             prev = nrm;
         }
+
         Ok(())
     }
 
-    fn run_hessian_3d(num_split: u32) -> Result<f64> {
+    fn run_hessian_3d(
+        num_split: u32,
+        weight_exp: Option<i32>,
+        use_second_order_neighbors: bool,
+    ) -> Result<f64> {
         let mut mesh = test_mesh_3d();
         for _ in 0..num_split {
             mesh = mesh.split();
@@ -539,7 +683,7 @@ mod tests {
                 x * x * y * z + 2.0 * x * y * y * z + 3.0 * x * y * z * z
             })
             .collect();
-        let res = mesh.hessian(&test_f, 2)?;
+        let res = mesh.hessian(&test_f, weight_exp, use_second_order_neighbors)?;
         let mut nrm = 0.0;
         for (i_vert, (p, w)) in mesh.verts().zip(vols.iter()).enumerate() {
             let x = p[0];
@@ -559,12 +703,34 @@ mod tests {
 
     #[test]
     fn test_hessian_3d() -> Result<()> {
+        // with only the 1st order neighbors & classical weights
+        for w in 0..3 {
+            let mut prev = f64::MAX;
+            for n in 2..5 {
+                let nrm = run_hessian_3d(n, Some(w), false)?;
+                assert!(nrm < 0.5 * prev);
+                prev = nrm;
+            }
+        }
+
+        // with only the 2nd order neighbors & classical weights
+        for w in 0..3 {
+            let mut prev = f64::MAX;
+            for n in 2..5 {
+                let nrm = run_hessian_3d(n, Some(w), true)?;
+                assert!(nrm < 0.5 * prev);
+                prev = nrm;
+            }
+        }
+
+        // with only the 2nd order neighbors & the weights given by Frazza
         let mut prev = f64::MAX;
         for n in 2..5 {
-            let nrm = run_hessian_3d(n)?;
-            assert!(nrm < 0.5 * prev);
+            let nrm = run_hessian_3d(n, None, true)?;
+            assert!(nrm < 0.55 * prev);
             prev = nrm;
         }
+
         Ok(())
     }
 }
