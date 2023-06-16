@@ -114,7 +114,7 @@ class TestRemesh(unittest.TestCase):
         ftags.sort()
         self.assertTrue(np.array_equal(ftags, [1, 2, 3, 4, 5]))
 
-        self.assertGreater(msh.n_verts(), 100 * 0.8 * msh.vol())
+        self.assertGreater(msh.n_verts(), 100 * 0.75 * msh.vol())
         self.assertLess(msh.n_verts(), 200 * msh.vol())
 
     def test_2d_aniso(self):

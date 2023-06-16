@@ -56,14 +56,10 @@ if __name__ == "__main__":
 
     for _ in range(3):
         h = get_h(msh)
+        msh.compute_topology()
         geom = LinearGeometry2d(msh)
         remesher = Remesher2dIso(msh, geom, h.reshape((-1, 1)))
-        remesher.remesh(
-            collapse_constrain_q=0.5,
-            split_constrain_q=0.5,
-            smooth_type="laplacian",
-            smooth_iter=2,
-        )
+        remesher.remesh()
 
         msh = remesher.to_mesh()
 

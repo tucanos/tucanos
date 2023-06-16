@@ -229,7 +229,9 @@ if __name__ == "__main__":
     ax1.set_xlim([-0.5, 1.5])
     ax1.set_ylim([-0.5, 0.5])
 
-    for it in range(4):
+    msh.write_vtk(f"naca_0.vtu")
+
+    for it in range(6):
         msh.compute_topology()
         geom = LinearGeometry2d(msh, bmsh)
         geom.compute_curvature()
@@ -239,25 +241,25 @@ if __name__ == "__main__":
 
         msh.compute_vertex_to_vertices()
         m_curv = msh.curvature_metric(
-            geom, 4.0, 2.0, 1e-5, h_n, np.array([1, 2], dtype=np.int16)
+            geom, 4.0, 1.5, 1e-5, h_n, np.array([1, 2], dtype=np.int16)
         )
 
         msh.compute_vertex_to_elems()
         msh.compute_volumes()
         m_implied = msh.implied_metric()
 
-        fig, (ax0, ax1) = plt.subplots(
-            1, 2, sharex=True, sharey=True, tight_layout=True
-        )
-        plot_mesh(ax0, msh, False, False, False)
-        plot_metric(ax0, msh, m_curv)
-        ax0.set_title("Curvature metric")
-        plot_mesh(ax1, msh, False, False, False)
-        plot_metric(ax1, msh, m_implied)
-        ax1.set_title("Implied metric")
+        # fig, (ax0, ax1) = plt.subplots(
+        #     1, 2, sharex=True, sharey=True, tight_layout=True
+        # )
+        # plot_mesh(ax0, msh, False, False, False)
+        # plot_metric(ax0, msh, m_curv)
+        # ax0.set_title("Curvature metric")
+        # plot_mesh(ax1, msh, False, False, False)
+        # plot_metric(ax1, msh, m_implied)
+        # ax1.set_title("Implied metric")
 
-        ax1.set_xlim([-0.5, 1.5])
-        ax1.set_ylim([-0.5, 0.5])
+        # ax1.set_xlim([-0.5, 1.5])
+        # ax1.set_ylim([-0.5, 0.5])
 
         h = 1.0
         m = np.zeros((msh.n_verts(), 3))
@@ -271,16 +273,18 @@ if __name__ == "__main__":
             1,
             fixed_m=m_curv,
             implied_m=m_implied,
-            step=4.0,
+            step=2.0,
             max_iter=0,
         )
 
-        fig, (ax0, ax1) = plt.subplots(
-            1, 2, sharex=True, sharey=True, tight_layout=True
-        )
-        plot_mesh(ax0, msh, False, False, False)
-        plot_metric(ax0, msh, m)
-        ax0.set_title("Metric")
+        m = Remesher2dAniso.apply_metric_gradation(msh, m, 1.5, n_iter=10)
+
+        # fig, (ax0, ax1) = plt.subplots(
+        #     1, 2, sharex=True, sharey=True, tight_layout=True
+        # )
+        # plot_mesh(ax0, msh, False, False, False)
+        # plot_metric(ax0, msh, m)
+        # ax0.set_title("Metric")
 
         remesher = Remesher2dAniso(msh, geom, m)
         remesher.remesh(two_steps=True, num_iter=3)
@@ -288,12 +292,13 @@ if __name__ == "__main__":
         l = remesher.lengths()
 
         msh = remesher.to_mesh()
-        cax = plot_field(ax1, msh, q, "element")
-        fig.colorbar(cax, ax=ax1)
-        ax1.set_title("Adapted mesh")
 
-        ax1.set_xlim([-0.5, 1.5])
-        ax1.set_ylim([-0.5, 0.5])
+        # cax = plot_field(ax1, msh, q, "element")
+        # fig.colorbar(cax, ax=ax1)
+        # ax1.set_title("Adapted mesh")
+
+        # ax1.set_xlim([-0.5, 1.5])
+        # ax1.set_ylim([-0.5, 0.5])
 
         fig, ax = plt.subplots(2, 1, tight_layout=True)
         ax[0].hist(
@@ -317,6 +322,6 @@ if __name__ == "__main__":
         ax[1].set_xlabel("edge lengths")
         ax[1].legend()
 
-        msh.write_vtk(f"naca_{it}.vtu", {}, {"q": q.reshape((-1, 1))})
+        msh.write_vtk(f"naca_{it+1}.vtu", {}, {"q": q.reshape((-1, 1))})
 
     plt.show()

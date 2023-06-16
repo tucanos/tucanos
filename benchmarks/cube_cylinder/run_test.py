@@ -54,11 +54,11 @@ def get_metric(msh):
     return m
 
 
-def run_loop(remesh, name):
+def run_loop(remesh, name, with_geom):
 
     pth = os.path.dirname(__file__)
     msh = Mesh33.from_meshb(os.path.join(pth, "cube-cylinder.mesh"))
-    if name == "tucanos":
+    if with_geom:
         bdy = Mesh32.from_meshb(os.path.join(pth, "cube-cylinder-boundary.mesh"))
     else:
         print(f"WARNING: geometry not used for {name}")
@@ -66,8 +66,8 @@ def run_loop(remesh, name):
     t0 = time()
     for _ in range(5):
         h = get_metric(msh)
-        if name == "tucanos":
-            msh = remesh(msh, h, bdy=bdy)
+        if with_geom:
+            msh = remesh(msh, h, bdy)
         else:
             msh = remesh(msh, h)
     t1 = time()
@@ -75,7 +75,7 @@ def run_loop(remesh, name):
     return msh, t1 - t0
 
 
-def run():
+def run(cases):
 
     print("Cube - cylinder")
 
@@ -88,12 +88,12 @@ def run():
     fns = [remesh, remesh_mmg, remesh_omega_h, remesh_refine]
 
     perf = []
-    for name, fn in zip(names, fns):
+    for name, (with_geom, fn) in cases.items():
         if name == "Omega_h":
             continue
         print("Running %s" % name)
         try:
-            msh, t = run_loop(fn, name)
+            msh, t = run_loop(fn, name, with_geom)
             perf.append((name, t, msh.n_elems()))
             print("%s: %d elems, %f s" % (name, msh.n_elems(), t))
 
@@ -145,6 +145,53 @@ if __name__ == "__main__":
     # logging.basicConfig(format=FORMAT)
     # logging.getLogger().setLevel(logging.DEBUG)
 
-    run()
+    cases_tucanos = {
+        "Laplacian": (
+            True,
+            lambda mesh, h, bdy: remesh(
+                mesh,
+                h,
+                bdy=bdy,
+                two_steps=True,
+                smooth_type="laplacian",
+            ),
+        ),
+        "Laplacian2": (
+            True,
+            lambda mesh, h, bdy: remesh(
+                mesh,
+                h,
+                bdy=bdy,
+                two_steps=True,
+                smooth_type="laplacian2",
+            ),
+        ),
+        "Avro": (
+            True,
+            lambda mesh, h, bdy: remesh(
+                mesh,
+                h,
+                bdy=bdy,
+                two_steps=True,
+                smooth_type="avro",
+            ),
+        ),
+    }
+
+    cases_benchmark = {
+        "tucanos": (
+            True,
+            lambda mesh, h, bdy: remesh(
+                mesh,
+                h,
+                bdy,
+                step=4.0,
+            ),
+        ),
+        "MMG": (False, remesh_mmg),
+        "refine": (False, remesh_refine),
+    }
+
+    run(cases_benchmark)
 
     plt.show()

@@ -116,18 +116,7 @@ def remesh(msh, h, bdy=None, step=None, **remesh_params):
         h = Remesher.limit_metric(msh, h, m_implied, step)
 
     remesher = Remesher(msh, geom, h)
-    remesher.remesh(
-        two_steps=True,
-        num_iter=2,
-        split_min_q_rel=0.5,
-        split_min_q_abs=0.1,
-        collapse_min_q_rel=0.5,
-        collapse_min_q_abs=0.1,
-        swap_min_l_abs=0.25,
-        swap_max_l_abs=4.0,
-        smooth_iter=4,
-        smooth_type="laplacian",
-    )
+    remesher.remesh(**remesh_params)
 
     return remesher.to_mesh()
 

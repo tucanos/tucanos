@@ -32,15 +32,16 @@ def run_loop(remesh):
     msh = Mesh33(coords, elems, etags, faces, ftags)
     msh = msh.split().split().split()
 
-    h = get_metric(msh)
     t0 = time()
-    msh = remesh(msh, h)
+    for _ in range(3):
+        h = get_metric(msh)
+        msh = remesh(msh, h)
     t1 = time()
 
     return msh, t1 - t0
 
 
-def run():
+def run(cases):
 
     print("Cube - iso")
 
@@ -49,11 +50,8 @@ def run():
     fig_q, axs_q = plt.subplots(2, 1, tight_layout=True)
     fig_p, axs_p = plt.subplots(2, 1, tight_layout=True, sharex=True)
 
-    names = ["tucanos", "MMG", "Omega_h", "refine"]
-    fns = [remesh, remesh_mmg, remesh_omega_h, remesh_refine]
-
     perf = []
-    for name, fn in zip(names, fns):
+    for name, fn in cases.items():
         print("Running %s" % name)
         try:
             msh, t = run_loop(fn)
@@ -98,6 +96,36 @@ if __name__ == "__main__":
     # logging.basicConfig(format=FORMAT)
     # logging.getLogger().setLevel(logging.INFO)
 
-    run()
+    cases_tucanos = {
+        "Laplacian": lambda mesh, h: remesh(
+            mesh,
+            h,
+            two_steps=True,
+            smooth_type="laplacian",
+        ),
+        "Laplacian2": lambda mesh, h: remesh(
+            mesh,
+            h,
+            two_steps=True,
+            smooth_type="laplacian2",
+        ),
+        "Avro": lambda mesh, h: remesh(
+            mesh,
+            h,
+            two_steps=True,
+            smooth_type="avro",
+        ),
+    }
+
+    cases_benchmark = {
+        "tucanos": lambda mesh, h: remesh(
+            mesh,
+            h,
+        ),
+        "MMG": remesh_mmg,
+        "refine": remesh_refine,
+    }
+
+    run(cases_benchmark)
 
     plt.show()

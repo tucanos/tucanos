@@ -41,6 +41,7 @@ if __name__ == "__main__":
 
         assert np.isfinite(m).all()
 
+        msh.compute_topology()
         geom = LinearGeometry2d(msh)
         remesher = Remesher2dAniso(msh, geom, m)
         remesher.remesh()

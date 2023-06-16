@@ -47,7 +47,7 @@ def run_loop(remesh):
     return msh, t1 - t0
 
 
-def run():
+def run(cases):
 
     print("Cube - linear")
 
@@ -56,11 +56,8 @@ def run():
     fig_q, axs_q = plt.subplots(2, 1, tight_layout=True)
     fig_p, axs_p = plt.subplots(2, 1, tight_layout=True, sharex=True)
 
-    names = ["tucanos", "MMG", "Omega_h", "refine"]
-    fns = [remesh, remesh_mmg, remesh_omega_h, remesh_refine]
-
     perf = []
-    for name, fn in zip(names, fns):
+    for name, fn in cases.items():
         print("Running %s" % name)
         try:
             msh, t = run_loop(fn)
@@ -81,6 +78,7 @@ def run():
             axs_q[1].hist(l, bins=50, alpha=0.25, density=True)
         except subprocess.CalledProcessError as e:
             print("%s failed: %s" % (name, e.output))
+
     axs_q[0].set_xlabel("quality")
     axs_q[0].legend()
     axs_q[1].axvline(x=0.5**0.5, c="r")
@@ -105,6 +103,37 @@ if __name__ == "__main__":
     # logging.basicConfig(format=FORMAT)
     # logging.getLogger().setLevel(logging.DEBUG)
 
-    run()
+    cases_tucanos = {
+        "Laplacian": lambda mesh, h: remesh(
+            mesh,
+            h,
+            two_steps=True,
+            smooth_type="laplacian",
+        ),
+        "Laplacian2": lambda mesh, h: remesh(
+            mesh,
+            h,
+            two_steps=True,
+            smooth_type="laplacian2",
+        ),
+        "Avro": lambda mesh, h: remesh(
+            mesh,
+            h,
+            two_steps=True,
+            smooth_type="avro",
+        ),
+    }
+
+    cases_benchmark = {
+        "tucanos": lambda mesh, h: remesh(
+            mesh,
+            h,
+            step=4.0,
+        ),
+        "MMG": remesh_mmg,
+        "refine": remesh_refine,
+    }
+
+    run(cases_benchmark)
 
     plt.show()

@@ -24,7 +24,6 @@ if __name__ == "__main__":
 
     coords, elems, etags, faces, ftags = get_square()
     msh = Mesh22(coords, elems, etags, faces, ftags)
-    msh = msh.split().split().split().split()
 
     # add the missing boundaries, & orient them outwards
     msh.add_boundary_faces()
@@ -32,21 +31,42 @@ if __name__ == "__main__":
     # Hilbert renumbering
     msh.reorder_hilbert()
 
-    for _ in range(3):
+    for _ in range(5):
         m = get_m(msh)
+        msh.compute_topology()
         geom = LinearGeometry2d(msh)
         remesher = Remesher2dAniso(msh, geom, m)
-        remesher.remesh(
-            collapse_constrain_q=0.5,
-            split_constrain_q=0.5,
-            smooth_type="laplacian",
-            smooth_iter=2,
-        )
+        remesher.remesh()
 
         msh = remesher.to_mesh()
 
     fig, ax = plt.subplots()
     plot_mesh(ax, msh)
     ax.set_title("Adapted")
+
+    q = remesher.qualities()
+    l = remesher.lengths()
+
+    fig, ax = plt.subplots(2, 1, tight_layout=True)
+    ax[0].hist(
+        q,
+        bins=50,
+        alpha=0.25,
+        density=True,
+        label="parmesan (q_min = %.2f)" % q.min(),
+    )
+    ax[0].set_xlabel("quality")
+    ax[0].legend()
+    ax[1].hist(
+        l,
+        bins=50,
+        alpha=0.25,
+        density=True,
+        label="parmesan (l_min = %.2f, l_max = %.2f)" % (l.min(), l.max()),
+    )
+    ax[1].axvline(x=0.5**0.5, c="r")
+    ax[1].axvline(x=2**0.5, c="r")
+    ax[1].set_xlabel("edge lengths")
+    ax[1].legend()
 
     plt.show()
