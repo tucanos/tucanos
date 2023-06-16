@@ -744,7 +744,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                     }
 
                     let filled_cavity =
-                        FilledCavity::from_cavity_and_vertex(&cavity, &new_p, &new_m);
+                        FilledCavity::from_cavity_and_new_vertex(&cavity, &new_p, &new_m);
 
                     // lower the min quality threshold if the min quality in the cavity increases
                     let q_min = q_min.min(cavity.q_min);
@@ -1135,10 +1135,10 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
             let p1 = &cavity.points[*i1 as usize];
             let e = p0 - p1;
             let l = m0.length(&e);
-            p0_new += l * (p0 + p1);
+            p0_new += l * p1;
             w += l;
         }
-        p0_new /= 2.0 * w;
+        p0_new /= w;
         p0_new
     }
 
@@ -1258,7 +1258,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                 let t0 = &cavity.tags[i0_local as usize];
 
                 let mut h0_new = Default::default();
-                let mut p0_new = match params.smooth_type {
+                let p0_smoothed = match params.smooth_type {
                     SmoothingType::Laplacian => Self::smooth_laplacian(&cavity, &neighbors),
                     SmoothingType::Laplacian2 => Self::smooth_laplacian_2(&cavity, &neighbors),
                     SmoothingType::Avro => Self::smooth_avro(&cavity, &neighbors),
@@ -1266,30 +1266,45 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                     SmoothingType::NLOpt => Self::smooth_nlopt(&cavity, &neighbors),
                 };
 
-                if t0.0 < E::DIM as Dim {
-                    self.geom.project(&mut p0_new, t0);
-                }
+                let mut p0_new = Point::<D>::zeros();
+                let mut valid = false;
 
-                trace!(
-                    "Smooth, vertex moved by {} -> {:?}",
-                    (p0 - p0_new).norm(),
-                    p0_new
-                );
+                for omega in [1.0, 0.5, 0.25] {
+                    p0_new = (1.0 - omega) * p0 + omega * p0_smoothed;
 
-                let mut q_min_new = f64::INFINITY;
-                for f in cavity.faces() {
-                    let gf = cavity.gface(&f);
-                    let ge1 = E::Geom::from_vert_and_face(&p0_new, m0, &gf);
-                    q_min_new = q_min_new.min(ge1.quality());
-                }
+                    if t0.0 < E::DIM as Dim {
+                        self.geom.project(&mut p0_new, t0);
+                    }
 
-                if q_min_new < 0.999 * cavity.q_min {
-                    n_fails += 1;
                     trace!(
-                        "Smooth, quality would decrease: {} < {} ",
-                        q_min_new,
-                        cavity.q_min
+                        "Smooth, vertex moved by {} -> {:?}",
+                        (p0 - p0_new).norm(),
+                        p0_new
                     );
+
+                    let filled_cavity =
+                        FilledCavity::from_cavity_and_moved_vertex(&cavity, &p0_new, m0);
+
+                    if !filled_cavity.check_boundary_normals(
+                        &self.topo,
+                        &self.geom,
+                        params.max_angle,
+                    ) {
+                        trace!("Cannot smooth, would create a non smooth surface");
+                        continue;
+                    }
+
+                    if filled_cavity.check(0.0, f64::MAX, cavity.q_min) > 0. {
+                        valid = true;
+                        break;
+                    } else {
+                        trace!("Smooth, quality would decrease for omega={}", omega,);
+                    }
+                }
+
+                if !valid {
+                    n_fails += 1;
+                    trace!("Smooth, no smoothing is valid");
                     continue;
                 }
 
