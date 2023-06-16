@@ -273,12 +273,26 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
     }
 
     /// Construct a `FilledCavity` from a Cavity and a new vertex
-    pub fn from_cavity_and_vertex(cavity: &'a Cavity<D, E, M>, pt: &Point<D>, m: &M) -> Self {
+    pub fn from_cavity_and_new_vertex(cavity: &'a Cavity<D, E, M>, pt: &Point<D>, m: &M) -> Self {
         Self {
             cavity,
             id: None,
             pt: Some(*pt),
             m: Some(*m),
+        }
+    }
+
+    /// Construct a `FilledCavity` from a Cavity when its center is moved
+    pub fn from_cavity_and_moved_vertex(cavity: &'a Cavity<D, E, M>, pt: &Point<D>, m: &M) -> Self {
+        if let CavityType::Vertex(vx) = cavity.ctype {
+            Self {
+                cavity,
+                id: Some(vx),
+                pt: Some(*pt),
+                m: Some(*m),
+            }
+        } else {
+            panic!("from_cavity_and_moved_vertex can only be used for vertex cavities")
         }
     }
 
@@ -320,13 +334,13 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
 
     /// Get the location and metric for the reconstruction vertex
     fn point(&self) -> (&Point<D>, &M) {
-        if let Some(id) = self.id {
-            (
-                &self.cavity.points[id as usize],
-                &self.cavity.metrics[id as usize],
-            )
-        } else {
+        if self.pt.is_some() {
             (self.pt.as_ref().unwrap(), self.m.as_ref().unwrap())
+        } else {
+            (
+                &self.cavity.points[self.id.unwrap() as usize],
+                &self.cavity.metrics[self.id.unwrap() as usize],
+            )
         }
     }
 
@@ -464,6 +478,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
             };
             let node_on_bdy = self.cavity.tags[self.id.unwrap() as usize].0 < E::DIM as Dim;
             if check && node_on_bdy {
+                let (p0, _) = self.point();
                 // Check for boundary faces
                 for f in self.faces() {
                     for i_edge in 0..E::Face::N_FACES {
@@ -475,7 +490,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
                         let parents = &topo_node.parents;
                         if ftag.0 == E::Face::DIM as Dim && parents.len() == 1 {
                             // boundary face.
-                            let p0 = &self.cavity.points[new_f[0] as usize];
+                            // let p0 = &self.cavity.points[new_f[0] as usize];
                             let p1 = &self.cavity.points[new_f[1] as usize];
                             let p2 = &self.cavity.points[new_f[2] as usize];
                             let mut n = (p2 - p0).cross(&(p1 - p0));
