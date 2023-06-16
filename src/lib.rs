@@ -918,7 +918,7 @@ macro_rules! create_remesher {
                 }
             }
 
-            /// Scale a metric field to reach the desired (ideal) number of elements using min / max bounds on the cell size
+            /// Limit a metric to be between 1/step and step times another metric
             #[classmethod]
             #[allow(clippy::too_many_arguments)]
             pub fn limit_metric<'py>(
