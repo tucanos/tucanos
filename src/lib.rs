@@ -585,6 +585,7 @@ impl Mesh33 {
     ///    and the sizes to curvature radius ratio is r_h
     ///  - the metric is entended into the volume with gradation beta
     ///  - if an implied metric is provided, the result is limited to (1/step,step) times the implied metric
+    ///  - if a normal size array is not provided, the minimum of the tangential sizes is used.
     #[allow(clippy::too_many_arguments)]
     pub fn curvature_metric<'py>(
         &self,
@@ -592,20 +593,23 @@ impl Mesh33 {
         geom: &LinearGeometry3d,
         r_h: f64,
         beta: f64,
-        implied_metric: Option<PyReadonlyArray2<f64>>,
-        step: Option<f64>,
         h_min: Option<f64>,
+        h_n: Option<PyReadonlyArray1<f64>>,
+        h_n_tags: Option<PyReadonlyArray1<Tag>>,
     ) -> PyResult<&'py PyArray2<f64>> {
-        let res = if let Some(implied_metric) = implied_metric {
-            let implied_metric: Vec<_> = (0..self.mesh.n_verts())
-                .map(|i| AnisoMetric3d::from_slice(implied_metric.as_slice().unwrap(), i))
-                .collect();
+        let res = if let Some(h_n) = h_n {
+            let h_n = h_n.as_slice()?;
+            if h_n_tags.is_none() {
+                return Err(PyRuntimeError::new_err("h_n_tags not given"));
+            }
+            let h_n_tags = h_n_tags.unwrap();
+            let h_n_tags = h_n_tags.as_slice()?;
             self.mesh.curvature_metric(
                 geom.geom.as_ref().unwrap(),
                 r_h,
                 beta,
-                Some(&implied_metric),
-                step,
+                Some(h_n),
+                Some(h_n_tags),
             )
         } else {
             self.mesh
