@@ -55,3 +55,12 @@ def mat2sym(m):
         mm[:, 5] = m[:, 2, 0]
 
     return mm
+
+
+def metric2sizes(m):
+
+    m = sym2mat(m)
+    eigvals, eigvecs = np.linalg.eigh(m)
+    eigvals = 1.0 / np.sqrt(eigvals)
+    res = np.einsum("ijk,ik,ilk->ijl", eigvecs, eigvals, eigvecs)
+    return mat2sym(res)
