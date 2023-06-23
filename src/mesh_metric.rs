@@ -518,23 +518,20 @@ impl SimplexMesh<3, Tetrahedron> {
     /// - geom : the geometry on which the curvature is computed
     /// - r_h: the curvature radius to element size ratio
     /// - beta: the mesh gradation
-    /// - implied_metric / step: if provided, the resulting metric will be limited to (1/step, step)
-    ///   times the implied metric
+    /// - h_n: the normal size, defined at the boundary vertices
+    ///   if <0, the min of the tangential sizes is used
     pub fn curvature_metric(
         &self,
         geom: &LinearGeometry<3, Triangle>,
         r_h: f64,
         beta: f64,
-        implied_metric: Option<&[AnisoMetric3d]>,
-        step: Option<f64>,
+        h_n: Option<&[f64]>,
+        h_n_tags: Option<&[Tag]>,
     ) -> Result<Vec<AnisoMetric3d>> {
         info!(
             "Compute the curvature metric with r/h = {} and gradation = {}",
             r_h, beta
         );
-        if implied_metric.is_some() {
-            info!("Limit the curvature metric: f = {} ", step.unwrap());
-        }
 
         if self.vertex_to_vertices.is_none() {
             return Err(Error::from("vertex to vertices connectivity not available"));
@@ -555,14 +552,25 @@ impl SimplexMesh<3, Tetrahedron> {
         // Set the metric at the boundary vertices
         for tag in bdy_tags {
             let (_, ids, _, _) = bdy.extract(tag);
+            let use_h_n = if let Some(h_n_tags) = h_n_tags {
+                h_n_tags.iter().any(|&t| t == tag)
+            } else {
+                false
+            };
             ids.iter()
-                .map(|&i| boundary_vertex_ids[i as usize])
-                .for_each(|i_vert| {
+                .map(|&i| (i, boundary_vertex_ids[i as usize]))
+                .for_each(|(i_bdy_vert, i_vert)| {
                     let pt = self.vert(i_vert);
                     let (mut u, mut v) = geom.curvature(&pt, tag).unwrap();
                     let hu = 1. / (r_h * u.norm());
                     let hv = 1. / (r_h * v.norm());
-                    let hn = f64::min(hu, hv);
+                    let mut hn = f64::min(hu, hv);
+                    if use_h_n {
+                        if let Some(h_n) = h_n {
+                            assert!(h_n[i_bdy_vert as usize] > 0.0);
+                            hn = h_n[i_bdy_vert as usize].min(hn);
+                        }
+                    }
                     u.normalize_mut();
                     v.normalize_mut();
                     let n = hn * u.cross(&v);
@@ -570,10 +578,6 @@ impl SimplexMesh<3, Tetrahedron> {
                     v *= hv;
 
                     curvature_metric[i_vert as usize] = AnisoMetric3d::from_sizes(&n, &u, &v);
-                    if implied_metric.is_some() {
-                        let m_i = implied_metric.as_ref().unwrap()[i_vert as usize];
-                        curvature_metric[i_vert as usize].limit(&m_i, step.unwrap());
-                    }
                     flg[i_vert as usize] = true;
                 });
         }
@@ -603,10 +607,6 @@ impl SimplexMesh<3, Tetrahedron> {
                             let e = pt - pt_i;
                             let m_i_spanned = m_i.span(&e, beta);
                             m = m.intersect(&m_i_spanned);
-                        }
-                        if implied_metric.is_some() {
-                            let m_i = implied_metric.as_ref().unwrap()[i_vert];
-                            m.limit(&m_i, step.unwrap());
                         }
                         curvature_metric[i_vert] = m;
                         to_fix -= 1;
