@@ -762,8 +762,10 @@ macro_rules! create_remesher {
                 h_min: f64,
                 h_max: f64,
                 n_elems: Idx,
-                max_iter: Option<Idx>,
                 fixed_m: Option<PyReadonlyArray2<f64>>,
+                implied_m: Option<PyReadonlyArray2<f64>>,
+                step: Option<f64>,
+                max_iter: Option<Idx>,
             ) -> PyResult<&'py PyArray2<f64>> {
                 if m.shape()[0] != mesh.mesh.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
@@ -777,16 +779,35 @@ macro_rules! create_remesher {
                 let mut m: Vec<_> = (0..mesh.mesh.n_verts())
                     .map(|i| $metric::from_slice(m, i))
                     .collect();
-                let res = if let Some(fixed_m) = fixed_m {
+
+
+                let res =  if let Some(fixed_m) = fixed_m {
                     let fixed_m = (0..mesh.mesh.n_verts())
                         .map(|i| $metric::from_slice(fixed_m.as_slice().unwrap(), i))
                         .collect::<Vec<_>>();
-                    mesh.mesh
-                        .scale_metric(&mut m, Some(&fixed_m), h_min, h_max, n_elems, max_iter.unwrap_or(10))
+                    if let Some(implied_m) = implied_m {
+                        let implied_m = (0..mesh.mesh.n_verts())
+                    .map(|i| $metric::from_slice(implied_m.as_slice().unwrap(), i))
+                    .collect::<Vec<_>>();
+
+                        mesh.mesh
+                            .scale_metric(&mut m, h_min, h_max, n_elems, Some(&fixed_m), Some(&implied_m), step, max_iter.unwrap_or(10))
+                    } else {
+                        mesh.mesh
+                            .scale_metric(&mut m, h_min, h_max, n_elems, Some(&fixed_m), None, step, max_iter.unwrap_or(10))
+                    }
+                } else if let Some(implied_m) = implied_m {
+                    let implied_m = (0..mesh.mesh.n_verts())
+                    .map(|i| $metric::from_slice(implied_m.as_slice().unwrap(), i))
+                    .collect::<Vec<_>>();
+
+                        mesh.mesh
+                            .scale_metric(&mut m, h_min, h_max, n_elems, None, Some(&implied_m), step, max_iter.unwrap_or(10))
                 } else {
                     mesh.mesh
-                        .scale_metric(&mut m, None, h_min, h_max, n_elems, max_iter.unwrap_or(10))
+                    .scale_metric(&mut m, h_min, h_max, n_elems, None, None, None, max_iter.unwrap_or(10))
                 };
+
                 if let Err(res) = res {
                     return Err(PyRuntimeError::new_err(res.to_string()));
                 }
