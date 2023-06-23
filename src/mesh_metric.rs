@@ -208,61 +208,107 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         -1.0
     }
 
+    fn get_bounded_metric<M: Metric<D>>(
+        alpha: f64,
+        h_min: f64,
+        h_max: f64,
+        m: Option<&M>,
+        m_f: Option<&M>,
+        step: Option<f64>,
+        m_i: Option<&M>,
+    ) -> M {
+        let mut res = M::default();
+        if let Some(m) = m {
+            res = *m;
+            res.scale_with_bounds(alpha, h_min, h_max);
+            if let Some(m_f) = m_f {
+                res = res.intersect(m_f);
+            }
+        } else if let Some(m_f) = m_f {
+            res = *m_f;
+        }
+        if let Some(m_i) = m_i {
+            res.limit(m_i, step.unwrap_or(4.0));
+        }
+        res
+        // let mut res = m;
+        // res.scale_with_bounds(alpha, h_min, h_max);
+        // res = m.intersect(m_f);
+    }
+
     /// Find the scaling factor $`\alpha`$ such that the complexity
     /// ```math
-    /// \mathcal C(\mathcal T(\alpha \mathcal M, h_{min}, h_{max}) \cap \mathcal M_f)
+    /// \mathcal C(\mathcal L(\mathcal T(\alpha \mathcal M, h_{min}, h_{max}) \cap \mathcal M_f, \mathcal M_i, f))
     /// ```
     /// equals a target number of elements. The metric field is modified in-place to
     /// ```math
-    /// \mathcal T(\alpha \mathcal M, h_{min}, h_{max}) \cap \mathcal M_f
+    /// \mathcal L(\mathcal T(\alpha \mathcal M, h_{min}, h_{max}) \cap \mathcal M_f, \mathcal M_i, f)
     /// ```
-    /// An error is returned if $`\mathcal C(\mathcal M_f)`$ is larger than the target
+    /// An error is returned if $`\mathcal L(\mathcal C(\mathcal M_f), \mathcal M_i, f)`$ is larger than the target
     /// number of elements
-    ///
+    #[allow(clippy::too_many_arguments)]
     pub fn scale_metric<M: Metric<D>>(
         &self,
         m: &mut [M],
-        fixed_m: Option<&[M]>,
         h_min: f64,
         h_max: f64,
         n_elems: Idx,
+        fixed_m: Option<&[M]>,
+        implied_m: Option<&[M]>,
+        step: Option<f64>,
         max_iter: Idx,
     ) -> Result<f64> {
         info!(
             "Scaling the metric (h_min = {}, h_max = {}, n_elems = {}, max_iter = {})",
             h_min, h_max, n_elems, max_iter
         );
+        if fixed_m.is_some() {
+            info!("Using a fixed metric");
+        }
+        if implied_m.is_some() {
+            info!(
+                "Using the implied metric with step = {}",
+                step.unwrap_or(4.0)
+            );
+        }
 
         let mut scale = self.scale_metric_simple(m, h_min, h_max, n_elems, max_iter);
         if scale < 0.0 {
             return Err(Error::from("Unable to scale the metric (simple)"));
         }
 
-        if let Some(fixed_m) = fixed_m {
-            let fixed_c = self.complexity(fixed_m.iter().copied(), h_min, h_max);
-            debug!("Complexity of the fixed metric: {}", fixed_c);
+        if fixed_m.is_some() || implied_m.is_some() {
+            let fixed_m = (0..self.n_verts()).map(|i| fixed_m.map(|x| &x[i as usize]));
+            let implied_m = (0..self.n_verts()).map(|i| implied_m.map(|x| &x[i as usize]));
 
-            if fixed_c > n_elems as f64 {
+            let constrain_m = fixed_m.clone().zip(implied_m.clone()).map(|(m_f, m_i)| {
+                Self::get_bounded_metric(0.0, h_min, h_max, None, m_f, step, m_i)
+            });
+            let constrain_c = self.complexity(constrain_m, h_min, h_max);
+
+            debug!("Complexity of the constrain metric: {}", constrain_c);
+
+            if constrain_c > n_elems as f64 {
                 return Err(Error::from(&format!(
-                    "The complexity of the fixed metric is {} > n_elems = {}",
-                    fixed_c, n_elems
+                    "The complexity of the constrain metric is {} > n_elems = {}",
+                    constrain_c, n_elems
                 )));
             }
+
+            let m_iter = |s: f64| {
+                m.iter()
+                    .zip(fixed_m.clone())
+                    .zip(implied_m.clone())
+                    .map(move |((m, m_f), m_i)| {
+                        Self::get_bounded_metric(s, h_min, h_max, Some(m), m_f, step, m_i)
+                    })
+            };
+
+            // Get an upper bound for the bisection
             let mut scale_high = 1.5 * scale;
             for iter in 0..max_iter {
-                let vols = self.vert_vol.as_ref().unwrap();
-
-                let c = vols
-                    .iter()
-                    .zip(m.iter())
-                    .zip(fixed_m.iter())
-                    .map(|((v, m0), m1)| {
-                        let mut m = *m0;
-                        m.scale_with_bounds(scale_high, h_min, h_max);
-                        let m = m.intersect(m1);
-                        v / (E::Geom::<D, M>::IDEAL_VOL * m.vol())
-                    })
-                    .sum::<f64>();
+                let tmp_m = m_iter(scale_high);
+                let c = self.complexity(tmp_m, h_min, h_max);
                 debug!(
                     "Iteration {}: scale_high = {}, complexity = {}",
                     iter, scale_high, c
@@ -278,24 +324,31 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 scale_high *= 1.5;
             }
 
-            let mut scale_low = scale;
+            // Get an lower bound for the bisection
+            let mut scale_low = scale / 1.5;
+            for iter in 0..max_iter {
+                let tmp_m = m_iter(scale_low);
+                let c = self.complexity(tmp_m, h_min, h_max);
+                debug!(
+                    "Iteration {}: scale_low = {}, complexity = {}",
+                    iter, scale_low, c
+                );
+
+                if iter == max_iter - 1 {
+                    return Err(Error::from("Unable to scale the metric (bisection)"));
+                }
+
+                if c > n_elems as f64 {
+                    break;
+                }
+                scale_low /= 1.5;
+            }
 
             // bisection
             for iter in 0..max_iter {
                 scale = 0.5 * (scale_low + scale_high);
-                let vols = self.vert_vol.as_ref().unwrap();
-
-                let c = vols
-                    .iter()
-                    .zip(m.iter())
-                    .zip(fixed_m.iter())
-                    .map(|((v, m0), m1)| {
-                        let mut m = *m0;
-                        m.scale_with_bounds(scale, h_min, h_max);
-                        let m = m.intersect(m1);
-                        v / (E::Geom::<D, M>::IDEAL_VOL * m.vol())
-                    })
-                    .sum::<f64>();
+                let tmp_m = m_iter(scale);
+                let c = self.complexity(tmp_m, h_min, h_max);
                 debug!("Iteration {}: scale = {}, complexity = {}", iter, scale, c);
                 if f64::abs(c - f64::from(n_elems)) < 0.05 * f64::from(n_elems) {
                     break;
@@ -309,15 +362,17 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     scale_low = scale;
                 }
             }
+            m.iter_mut()
+                .zip(fixed_m.clone())
+                .zip(implied_m.clone())
+                .for_each(|((m, m_f), m_i)| {
+                    *m = Self::get_bounded_metric(scale, h_min, h_max, Some(m), m_f, step, m_i)
+                });
+        } else {
+            m.iter_mut()
+                .for_each(|m| m.scale_with_bounds(scale, h_min, h_max));
         }
 
-        m.iter_mut()
-            .for_each(|m| m.scale_with_bounds(scale, h_min, h_max));
-        if let Some(fixed_m) = fixed_m {
-            m.iter_mut().zip(fixed_m.iter()).for_each(|(m0, m1)| {
-                *m0 = m0.intersect(m1);
-            });
-        }
         Ok(scale)
     }
 
@@ -676,7 +731,7 @@ mod tests {
         assert!(f64::abs(c - 400. * 4. / f64::sqrt(3.0)) < 1e-6);
 
         let c0 = mesh
-            .scale_metric(&mut m, None, 0.0, 0.05, 1000, 10)
+            .scale_metric(&mut m, 0.0, 0.05, 1000, None, None, None, 10)
             .unwrap();
         assert!(c0 > 0.0);
         let c1 = mesh.complexity(m.iter().copied(), 0.0, 0.05);
@@ -703,7 +758,7 @@ mod tests {
         assert!(f64::abs(c - 1.0 / 3.0 * 4. / f64::sqrt(3.0)) < 1e-6);
 
         let c0 = mesh
-            .scale_metric(&mut m, None, 0.0, 0.05, 1000, 10)
+            .scale_metric(&mut m, 0.0, 0.05, 1000, None, None, None, 10)
             .unwrap();
         assert!(c0 > 0.0);
         let c1 = mesh.complexity(m.iter().copied(), 0.0, 0.05);
@@ -726,11 +781,11 @@ mod tests {
         let c = mesh.complexity(m.iter().copied(), 0.0, 0.05);
         assert!(f64::abs(c - 8000. * 6. * f64::sqrt(2.0)) < 1e-6);
 
-        let c0 = mesh.scale_metric(&mut m, None, 0.0, 0.05, 1000, 10);
+        let c0 = mesh.scale_metric(&mut m, 0.0, 0.05, 1000, None, None, None, 10);
         assert!(c0.is_err());
 
         let n_target = (1.0 / f64::powi(0.05, 3) * 15.0) as Idx;
-        let c0 = mesh.scale_metric(&mut m, None, 0.0, 0.05, n_target, 10)?;
+        let c0 = mesh.scale_metric(&mut m, 0.0, 0.05, n_target, None, None, None, 10)?;
         assert!(c0 > 0.0);
         let c1 = mesh.complexity(m.iter().copied(), 0.0, 0.05);
         assert!(f64::abs(c1 - f64::from(n_target)) < 0.1 * f64::from(n_target));
@@ -758,11 +813,11 @@ mod tests {
         let c = mesh.complexity(m.iter().copied(), 1.0, 5.0);
         assert!(f64::abs(c - 1.0 / 20. * 6. * f64::sqrt(2.0)) < 1e-6);
 
-        let c0 = mesh.scale_metric(&mut m, None, 0.0, 0.05, 1000, 10);
+        let c0 = mesh.scale_metric(&mut m, 0.0, 0.05, 1000, None, None, None, 10);
         assert!(c0.is_err());
 
         let n_target = (1.0 / f64::powi(0.05, 3) * 50.0) as Idx;
-        let c0 = mesh.scale_metric(&mut m, None, 0.0, 0.05, n_target, 10)?;
+        let c0 = mesh.scale_metric(&mut m, 0.0, 0.05, n_target, None, None, None, 10)?;
         assert!(c0 > 0.0);
         let c1 = mesh.complexity(m.iter().copied(), 0.0, 0.05);
         assert!(f64::abs(c1 - f64::from(n_target)) < 0.1 * f64::from(n_target));
@@ -785,7 +840,7 @@ mod tests {
 
         let n_target = (1.0 / f64::powi(0.05, 3) * 15.0) as Idx;
 
-        let c0 = mesh.scale_metric(&mut m, Some(&fixed_m), 0.0, 0.05, n_target, 10)?;
+        let c0 = mesh.scale_metric(&mut m, 0.0, 0.05, n_target, Some(&fixed_m), None, None, 10)?;
         assert!(c0 > 0.0);
         let c1 = mesh.complexity(m.iter().copied(), 0.0, 0.05);
         assert!(f64::abs(c1 - f64::from(n_target)) < 0.1 * f64::from(n_target));
