@@ -3,7 +3,7 @@ use crate::{
     linalg::lapack_qr_least_squares,
     mesh::{Point, SimplexMesh},
     topo_elems::{Elem, Triangle},
-    Error, Idx, Mesh, Result,
+    Error, Idx, Mesh, Result, H_MAX,
 };
 use log::{debug, warn};
 use nalgebra::{SMatrix, SymmetricEigen};
@@ -113,14 +113,26 @@ pub fn compute_curvature_tensor(
         };
 
         // change of basis
+        let bound = |x| {
+            let b = 1. / H_MAX;
+            if x < -b {
+                x
+            } else if x < 0.0 {
+                -b
+            } else if x < b {
+                b
+            } else {
+                x
+            }
+        };
         if ev0 > ev1 {
             u = eig.eigenvectors[0] * u + eig.eigenvectors[1] * v;
             v = n.cross(&u);
             u.normalize_mut();
             v.normalize_mut();
 
-            u *= ev0;
-            v *= ev1;
+            u *= bound(ev0);
+            v *= bound(ev1);
         } else {
             v = eig.eigenvectors[0] * u + eig.eigenvectors[1] * v;
             u = -n.cross(&v);
@@ -128,8 +140,8 @@ pub fn compute_curvature_tensor(
             v.normalize_mut();
             u.normalize_mut();
 
-            u *= ev1;
-            v *= ev0;
+            u *= bound(ev1);
+            v *= bound(ev0);
         }
 
         elem_u.push(u);
@@ -241,7 +253,7 @@ mod tests {
         mesh::{Point, SimplexMesh},
         test_meshes::test_mesh_2d,
         topo_elems::Triangle,
-        Idx, Mesh, Result,
+        Idx, Mesh, Result, H_MAX,
     };
 
     use super::{compute_curvature_tensor, fix_curvature};
@@ -284,7 +296,7 @@ mod tests {
 
             let is_boundary = e.into_iter().any(|i| bdy_flag[i as usize]);
             if !is_boundary {
-                assert!(u.norm() < 1e-6);
+                assert!(u.norm() < 1.1 / H_MAX);
                 assert!(u.norm() > 1e-17);
                 let u_ref = Point::<3>::new(0.0, 0.0, 1.0);
                 u.normalize_mut();
@@ -333,7 +345,7 @@ mod tests {
             let ge = surf.gelem(i_elem as Idx);
             let c = ge.center();
 
-            assert!(u.norm() < 1e-6);
+            assert!(u.norm() < 1.1 / H_MAX);
             assert!(u.norm() > 1e-17);
             let u_ref = Point::<3>::new(0.0, 0.0, 1.0);
             u.normalize_mut();
