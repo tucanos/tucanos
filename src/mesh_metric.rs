@@ -1135,6 +1135,39 @@ mod tests {
                 assert!(s[2] > 1000.0);
             }
         }
+
+        // test metric
+        let mfunc = |_p| {
+            let v0 = Point::<3>::new(0.2, 0., 0.);
+            let v1 = Point::<3>::new(0.0, 0.1, 0.);
+            let v2 = Point::<3>::new(0., 0.0, 1e-4);
+            AnisoMetric3d::from_sizes(&v0, &v1, &v2)
+        };
+        let mut m: Vec<_> = mesh.verts().map(mfunc).collect();
+
+        // Complexity
+        mesh.compute_volumes();
+
+        mesh.scale_metric(&mut m, 1e-2, 0.2, 10000, Some(&m_curv), None, None, 20)?;
+        let c = mesh.complexity(m.iter().cloned(), 0.0, 1.0);
+        assert!(f64::abs(c - 10000.) < 1000.);
+
+        for (i_vert, &m) in m.iter().enumerate() {
+            let s = m.sizes();
+            assert!(s[0] > 0.99 * 1e-2 && s[0] < 1.01 * 0.2);
+            assert!(s[1] > 0.99 * 1e-2 && s[1] < 1.01 * 0.2);
+            assert!(s[2] > 0.99 * 1e-2 && s[2] < 1.01 * 0.2);
+            for _ in 0..100 {
+                let v = SVector::<f64, 3>::new_random();
+                let v = v.normalize();
+                let l_m = m.length(&v);
+                let mut m_curv = m_curv[i_vert];
+                m_curv.scale_with_bounds(1.0, 1e-2, 0.2);
+                let l_m_curv = m_curv.length(&v);
+                assert!(l_m_curv < 1.01 * l_m);
+            }
+        }
+
         Ok(())
     }
 }
