@@ -191,7 +191,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             } else {
                 self.complexity_from_sizes::<M>(&sizes, h_min, h_max)
             };
-            debug!("Iteration {}, complexity = {}", iter, c);
+            debug!("Iteration {}, complexity = {}, scale = {}", iter, c, scale);
             if f64::abs(c - f64::from(n_elems)) < 0.05 * f64::from(n_elems) {
                 return scale;
             }
@@ -230,10 +230,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         if let Some(m_i) = m_i {
             res.limit(m_i, step.unwrap_or(4.0));
         }
+        res.scale_with_bounds(1.0, h_min, h_max);
         res
-        // let mut res = m;
-        // res.scale_with_bounds(alpha, h_min, h_max);
-        // res = m.intersect(m_f);
     }
 
     /// Find the scaling factor $`\alpha`$ such that the complexity
@@ -366,7 +364,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 .zip(fixed_m.clone())
                 .zip(implied_m.clone())
                 .for_each(|((m, m_f), m_i)| {
-                    *m = Self::get_bounded_metric(scale, h_min, h_max, Some(m), m_f, step, m_i)
+                    *m = Self::get_bounded_metric(scale, h_min, h_max, Some(m), m_f, step, m_i);
                 });
         } else {
             m.iter_mut()
@@ -704,14 +702,15 @@ impl SimplexMesh<2, Triangle> {
 
 #[cfg(test)]
 mod tests {
-    use nalgebra::Matrix3;
+    use nalgebra::{Matrix3, SVector};
 
     use crate::{
+        geometry::LinearGeometry,
         mesh::Point,
         metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
         min_iter,
         test_meshes::{test_mesh_2d, test_mesh_3d},
-        Idx, Mesh, Result,
+        Idx, Mesh, Result, ANISO_MAX,
     };
 
     #[test]
@@ -1038,6 +1037,104 @@ mod tests {
             assert!(s[2] > 0.33 * h0 / 8. && s[2] < 3. * h0 / 8.);
         }
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_curvature() -> Result<()> {
+        // build a cylinder mesh
+        let r_in = 0.1;
+        let r_out = 0.5;
+
+        let mut mesh = test_mesh_3d().split().split().split();
+        let mut new_coords = Vec::with_capacity(3 * mesh.n_verts() as usize);
+        for pt in mesh.verts() {
+            let r = r_in + (r_out - r_in) * pt[0];
+            let theta = 3.0 * pt[1];
+            let z = pt[2];
+            let x = r * f64::cos(theta);
+            let y = r * f64::sin(theta);
+            new_coords.push(x);
+            new_coords.push(y);
+            new_coords.push(z);
+        }
+        mesh.coords = new_coords;
+
+        mesh.compute_topology();
+        mesh.compute_vertex_to_vertices();
+
+        // build the geometry
+        let (bdy, bdy_ids) = mesh.boundary();
+
+        mesh.write_vtk("test.vtu", None, None)?;
+        bdy.write_vtk("test_bdy.vtu", None, None)?;
+
+        // tag vertices on the interior & exterior cylinders
+        let mut bdy_flg = vec![0; bdy.n_verts() as usize];
+        let tag_in = 6;
+        let tag_out = 5;
+        bdy.elems().zip(bdy.etags()).for_each(|(f, t)| {
+            if t == tag_in {
+                f.into_iter().for_each(|i| bdy_flg[i as usize] = 1);
+            }
+            if t == tag_out {
+                f.into_iter().for_each(|i| bdy_flg[i as usize] = 2);
+            }
+        });
+        bdy.elems().zip(bdy.etags()).for_each(|(f, t)| {
+            if t != tag_in && t != tag_out {
+                f.into_iter().for_each(|i| bdy_flg[i as usize] = 0);
+            }
+        });
+
+        let mut geom = LinearGeometry::new(&mesh, bdy.clone())?;
+        geom.compute_curvature();
+
+        // curvature metric (no prescribes normal size)
+        let m_curv = mesh.curvature_metric(&geom, 4.0, 2.0, None, None)?;
+        for (i_bdy_vert, &i_vert) in bdy_ids.iter().enumerate() {
+            if bdy_flg[i_bdy_vert] == 1 {
+                let m = m_curv[i_vert as usize];
+                let s = m.sizes();
+                assert!(f64::abs(s[0] - r_in / 4.0) < r_in * 0.1);
+                assert!(f64::abs(s[1] - r_in / 4.0) < r_in * 0.1);
+                assert!(s[2] > 1000.0);
+            }
+            if bdy_flg[i_bdy_vert] == 2 {
+                let m = m_curv[i_vert as usize];
+                let s = m.sizes();
+                assert!(f64::abs(s[0] - r_out / 4.0) < r_out * 0.1);
+                assert!(f64::abs(s[1] - r_out / 4.0) < r_out * 0.1);
+                assert!(s[2] > 1000.0);
+            }
+        }
+
+        // curvature metric (prescribed normal size on the inner cylinder)
+        let h_0 = 1e-3;
+        let mut h_n = vec![-1.0; bdy.n_verts() as usize];
+        bdy.elems().zip(bdy.etags()).for_each(|(f, t)| {
+            if t == tag_in {
+                f.into_iter().for_each(|i| h_n[i as usize] = h_0);
+            }
+        });
+
+        let m_curv = mesh.curvature_metric(&geom, 4.0, 2.0, Some(&h_n), Some(&[tag_in]))?;
+        for (i_bdy_vert, &i_vert) in bdy_ids.iter().enumerate() {
+            if bdy_flg[i_bdy_vert] == 1 {
+                let m = m_curv[i_vert as usize];
+                let s = m.sizes();
+                assert!(f64::abs(s[0] - h_0) < 1e-8);
+                assert!(f64::abs(s[1] - r_in / 4.0) < r_in * 0.1);
+                assert!(s[2] > f64::min(1000., 0.99 * h_0 * ANISO_MAX)); // bounded by ANISO_MAX
+            }
+            if bdy_flg[i_bdy_vert] == 2 {
+                let m = m_curv[i_vert as usize];
+                let s = m.sizes();
+                assert!(f64::abs(s[0] - r_out / 4.0) < r_out * 0.1);
+                assert!(f64::abs(s[1] - r_out / 4.0) < r_out * 0.1);
+                assert!(s[2] > 1000.0);
+            }
+        }
         Ok(())
     }
 }
