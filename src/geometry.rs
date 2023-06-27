@@ -1,8 +1,8 @@
 use crate::{
-    curvature::{compute_curvature_tensor, fix_curvature},
+    curvature::HasCurvature,
     geom_elems::GElem,
     mesh::{Point, SimplexMesh},
-    topo_elems::{Elem, Triangle},
+    topo_elems::Elem,
     topology::Topology,
     Dim, Error, Mesh, Result, Tag, TopoTag,
 };
@@ -71,13 +71,36 @@ impl<const D: usize> Geometry<D> for NoGeometry<D> {
 struct LinearPatchGeometry<const D: usize, E: Elem> {
     /// The face mesh
     mesh: SimplexMesh<D, E>,
-    /// Optionally, the first principal curvature direction (3D only)
+}
+
+impl<const D: usize, E: Elem> LinearPatchGeometry<D, E> {
+    /// Create a `LinearPatchGeometry` from a `SimplexMesh`
+    pub fn new(mut mesh: SimplexMesh<D, E>) -> Self {
+        mesh.compute_octree();
+
+        Self { mesh }
+    }
+
+    // Perform projection
+    fn project(&self, pt: &mut Point<D>) -> (f64, Point<D>) {
+        self.mesh.tree.as_ref().unwrap().project(pt)
+    }
+}
+
+/// Geometry for a patch of faces with a constant tag, with curvature information
+struct LinearPatchGeometryWithCurvature<const D: usize, E: Elem> {
+    /// The face mesh
+    mesh: SimplexMesh<D, E>,
+    /// Optionally, the first principal curvature direction
     u: Option<Vec<Point<D>>>,
     /// Optionally, the second principal curvature direction (3D only)
     v: Option<Vec<Point<D>>>,
 }
 
-impl<const D: usize, E: Elem> LinearPatchGeometry<D, E> {
+impl<const D: usize, E: Elem> LinearPatchGeometryWithCurvature<D, E>
+where
+    SimplexMesh<D, E>: HasCurvature<D>,
+{
     /// Create a `LinearPatchGeometry` from a `SimplexMesh`
     pub fn new(mut mesh: SimplexMesh<D, E>) -> Self {
         mesh.compute_octree();
@@ -96,34 +119,31 @@ impl<const D: usize, E: Elem> LinearPatchGeometry<D, E> {
     fn project(&self, pt: &mut Point<D>) -> (f64, Point<D>) {
         self.mesh.tree.as_ref().unwrap().project(pt)
     }
-}
 
-impl LinearPatchGeometry<3, Triangle> {
-    pub fn compute_curvature(&mut self) {
+    fn compute_curvature(&mut self) {
         self.mesh.add_boundary_faces();
         self.mesh.compute_elem_to_elems();
 
-        let (mut u, mut v) = compute_curvature_tensor(&self.mesh);
-        fix_curvature(&self.mesh, &mut u, &mut v).unwrap();
+        let (u, v) = self.mesh.compute_curvature();
 
         self.mesh.clear_elem_to_elems();
         self.u = Some(u);
-        self.v = Some(v);
+        self.v = v;
     }
 
-    pub fn curvature(&self, pt: &Point<3>) -> Result<(Point<3>, Point<3>)> {
+    fn curvature(&self, pt: &Point<D>) -> Result<(Point<D>, Option<Point<D>>)> {
         if self.u.is_none() {
-            return Err(Error::from(
-                "LinearGeometry<3, Triangle>: compute_curvature not called",
-            ));
+            return Err(Error::from("LinearGeometry: compute_curvature not called"));
         }
 
         let tree = self.mesh.tree.as_ref().unwrap();
         let i_elem = tree.nearest(pt) as usize;
         let u = self.u.as_ref().unwrap();
-        let v = self.v.as_ref().unwrap();
-
-        Ok((u[i_elem], v[i_elem]))
+        if let Some(v) = self.v.as_ref() {
+            Ok((u[i_elem], Some(v[i_elem])))
+        } else {
+            Ok((u[i_elem], None))
+        }
     }
 
     pub fn write_curvature(&self, fname: &str) -> Result<()> {
@@ -156,14 +176,20 @@ impl LinearPatchGeometry<3, Triangle> {
 
 /// Piecewise linear (stl-like) representation of a geometry
 /// doc TODO
-pub struct LinearGeometry<const D: usize, E: Elem> {
+pub struct LinearGeometry<const D: usize, E: Elem>
+where
+    SimplexMesh<D, E>: HasCurvature<D>,
+{
     /// The surface patches
-    patches: FxHashMap<Tag, LinearPatchGeometry<D, E>>,
+    patches: FxHashMap<Tag, LinearPatchGeometryWithCurvature<D, E>>,
     /// The edges
     edges: FxHashMap<Tag, LinearPatchGeometry<D, E::Face>>,
 }
 
-impl<const D: usize, E: Elem> LinearGeometry<D, E> {
+impl<const D: usize, E: Elem> LinearGeometry<D, E>
+where
+    SimplexMesh<D, E>: HasCurvature<D>,
+{
     /// Create a `LinearGeometry` from a `SimplexMesh`
     pub fn new<E2: Elem>(mesh: &SimplexMesh<D, E2>, mut bdy: SimplexMesh<D, E>) -> Result<Self> {
         assert!(E2::DIM >= E::DIM);
@@ -184,12 +210,12 @@ impl<const D: usize, E: Elem> LinearGeometry<D, E> {
 
         let mut patches = FxHashMap::with_hasher(BuildHasherDefault::default());
         for tag in face_tags.iter().copied() {
-            info!("Create LinearPatchGeometry for patch {tag}");
+            info!("Create LinearPatchGeometryWithCurvature for patch {tag}");
             if mesh_topo.get((E::DIM as Dim, tag)).is_none() {
                 return Err(Error::from(&format!("LinearGeometry: face tag {tag:?} not found in topo (mesh: {mesh_face_tags:?}, bdy: {face_tags:?})")));
             }
             let (submesh, _, _, _) = bdy.extract(tag);
-            patches.insert(tag, LinearPatchGeometry::new(submesh));
+            patches.insert(tag, LinearPatchGeometryWithCurvature::new(submesh));
         }
 
         // Edges
@@ -216,9 +242,7 @@ impl<const D: usize, E: Elem> LinearGeometry<D, E> {
         }
         Ok(Self { patches, edges })
     }
-}
 
-impl LinearGeometry<3, Triangle> {
     pub fn compute_curvature(&mut self) {
         for (&i, patch) in self.patches.iter_mut() {
             info!("Compute curvature for patch {i}");
@@ -226,7 +250,7 @@ impl LinearGeometry<3, Triangle> {
         }
     }
 
-    pub fn curvature(&self, pt: &Point<3>, tag: Tag) -> Result<(Point<3>, Point<3>)> {
+    pub fn curvature(&self, pt: &Point<D>, tag: Tag) -> Result<(Point<D>, Option<Point<D>>)> {
         self.patches.get(&tag).unwrap().curvature(pt)
     }
 
@@ -240,7 +264,10 @@ impl LinearGeometry<3, Triangle> {
     }
 }
 
-impl<const D: usize, E: Elem> Geometry<D> for LinearGeometry<D, E> {
+impl<const D: usize, E: Elem> Geometry<D> for LinearGeometry<D, E>
+where
+    SimplexMesh<D, E>: HasCurvature<D>,
+{
     fn check(&self, _topo: &Topology) -> Result<()> {
         // The check is performed during creation
         Ok(())
@@ -299,7 +326,6 @@ mod tests {
         mesh.compute_topology();
 
         let geom = LinearGeometry::new(&mesh, geom)?;
-        println!("ok");
         let mut p = Point::<3>::new(2., 0.5, 0.5);
         let d = geom.project(&mut p, &(2, 1));
         assert!(f64::abs(d - 1.) < 1e-12);
@@ -310,7 +336,6 @@ mod tests {
         assert!(f64::abs(d - 0.25) < 1e-12);
         assert!((p - Point::<3>::new(0.5, 1., 0.5)).norm() < 1e-12);
 
-        println!("ok");
         Ok(())
     }
 
