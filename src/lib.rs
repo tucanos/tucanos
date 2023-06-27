@@ -542,34 +542,33 @@ macro_rules! create_geometry {
             pub fn max_normal_angle(&self, mesh: &$mesh) -> f64 {
                 self.geom.as_ref().unwrap().max_normal_angle(&mesh.mesh)
             }
+
+            /// Compute the curvature
+            pub fn compute_curvature(&mut self) -> PyResult<()> {
+                match &mut self.geom {
+                    Some(geom) => {
+                        geom.compute_curvature();
+                        Ok(())
+                    }
+                    None => Err(PyRuntimeError::new_err("Invalid object")),
+                }
+            }
+
+            /// Export the curvature to a vtk file
+            pub fn write_curvature_vtk(&self, fname: &str) -> PyResult<()> {
+                match &self.geom {
+                    Some(geom) => geom
+                        .write_curvature(fname)
+                        .map_err(|e| PyRuntimeError::new_err(e.to_string())),
+                    None => Err(PyRuntimeError::new_err("Invalid object")),
+                }
+            }
         }
     }
 }
 
 create_geometry!(LinearGeometry3d, 3, Triangle, Mesh33, Mesh32);
 create_geometry!(LinearGeometry2d, 2, Edge, Mesh22, Mesh21);
-
-#[pymethods]
-impl LinearGeometry3d {
-    pub fn compute_curvature(&mut self) -> PyResult<()> {
-        match &mut self.geom {
-            Some(geom) => {
-                geom.compute_curvature();
-                Ok(())
-            }
-            None => Err(PyRuntimeError::new_err("Invalid object")),
-        }
-    }
-
-    pub fn write_curvature_vtk(&self, fname: &str) -> PyResult<()> {
-        match &self.geom {
-            Some(geom) => geom
-                .write_curvature(fname)
-                .map_err(|e| PyRuntimeError::new_err(e.to_string())),
-            None => Err(PyRuntimeError::new_err("Invalid object")),
-        }
-    }
-}
 
 #[pymethods]
 impl Mesh33 {
@@ -671,6 +670,57 @@ impl Mesh22 {
         }
 
         let m: Vec<f64> = res.unwrap().iter().flat_map(|m| m.into_iter()).collect();
+        Ok(to_numpy_2d(py, m, 3))
+    }
+
+    /// Get a metric defined on all the mesh vertices such that
+    ///  - for boundary vertices, the principal directions are aligned with the principal curvature directions
+    ///    and the sizes to curvature radius ratio is r_h
+    ///  - the metric is entended into the volume with gradation beta
+    ///  - if an implied metric is provided, the result is limited to (1/step,step) times the implied metric
+    ///  - if a normal size array is not provided, the minimum of the tangential sizes is used.
+    #[allow(clippy::too_many_arguments)]
+    pub fn curvature_metric<'py>(
+        &self,
+        py: Python<'py>,
+        geom: &LinearGeometry2d,
+        r_h: f64,
+        beta: f64,
+        h_min: Option<f64>,
+        h_n: Option<PyReadonlyArray1<f64>>,
+        h_n_tags: Option<PyReadonlyArray1<Tag>>,
+    ) -> PyResult<&'py PyArray2<f64>> {
+        let res = if let Some(h_n) = h_n {
+            let h_n = h_n.as_slice()?;
+            if h_n_tags.is_none() {
+                return Err(PyRuntimeError::new_err("h_n_tags not given"));
+            }
+            let h_n_tags = h_n_tags.unwrap();
+            let h_n_tags = h_n_tags.as_slice()?;
+            self.mesh.curvature_metric(
+                geom.geom.as_ref().unwrap(),
+                r_h,
+                beta,
+                Some(h_n),
+                Some(h_n_tags),
+            )
+        } else {
+            self.mesh
+                .curvature_metric(geom.geom.as_ref().unwrap(), r_h, beta, None, None)
+        };
+
+        if let Err(res) = res {
+            return Err(PyRuntimeError::new_err(res.to_string()));
+        }
+        let mut m = res.unwrap();
+
+        if let Some(h_min) = h_min {
+            m.iter_mut()
+                .for_each(|x| x.scale_with_bounds(1.0, h_min, f64::MAX));
+        }
+
+        let m: Vec<f64> = m.iter().flat_map(|m| m.into_iter()).collect();
+
         Ok(to_numpy_2d(py, m, 3))
     }
 }

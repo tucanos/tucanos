@@ -20,9 +20,8 @@ def create_mesh(coords, elems, etags, faces, ftags):
             return Mesh33(coords, elems, etags, faces, ftags)
 
 
-def __plot_boundary(ax, msh, normals):
+def __plot_boundary(ax, bdy, normals):
 
-    bdy, _ = msh.boundary()
     xy = bdy.get_coords()
     edgs = bdy.get_elems()
     etags = bdy.get_etags()
@@ -51,24 +50,28 @@ def __plot_boundary(ax, msh, normals):
             )
 
     ax.legend()
-    ax.axis("scaled")
 
 
 def plot_mesh(ax, msh, etag=True, boundary=True, normals=False):
 
-    assert isinstance(msh, Mesh22)
+    if isinstance(msh, Mesh22):
 
-    xy = msh.get_coords()
+        xy = msh.get_coords()
 
-    tris = msh.get_elems()
+        tris = msh.get_elems()
 
-    if etag:
-        ax.tripcolor(xy[:, 0], xy[:, 1], tris, msh.get_etags(), alpha=0.5)
+        if etag:
+            ax.tripcolor(xy[:, 0], xy[:, 1], tris, msh.get_etags(), alpha=0.5)
 
-    ax.triplot(xy[:, 0], xy[:, 1], tris, color="m", linewidth=0.5)
+        ax.triplot(xy[:, 0], xy[:, 1], tris, color="m", linewidth=0.5)
 
-    if boundary:
+        if boundary:
+            bdy, _ = msh.boundary()
+            __plot_boundary(ax, bdy, normals)
+    elif isinstance(msh, Mesh21):
         __plot_boundary(ax, msh, normals)
+
+    ax.axis("scaled")
 
 
 def plot_field(ax, msh, arr, loc="vertex"):
@@ -84,6 +87,8 @@ def plot_field(ax, msh, arr, loc="vertex"):
         cax = ax.tripcolor(xy[:, 0], xy[:, 1], tris, arr)
 
     ax.triplot(xy[:, 0], xy[:, 1], tris, color="m", linewidth=0.5)
+
+    ax.axis("scaled")
 
     return cax
 
