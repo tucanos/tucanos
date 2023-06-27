@@ -65,7 +65,7 @@ impl Connectivity for ElemGraph {
     }
 
     fn max_node(&self) -> Idx {
-        self.elems.iter().copied().max().unwrap()
+        self.elems.iter().copied().max().unwrap_or(0)
     }
 
     fn n(&self) -> Idx {
