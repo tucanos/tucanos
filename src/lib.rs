@@ -1072,6 +1072,7 @@ macro_rules! create_remesher {
                 swap_min_l_abs:Option< f64>,
                 smooth_iter:Option< u32>,
                 smooth_type: Option<&str>,
+                smooth_relax: Option<PyReadonlyArray1<f64>>,
                 max_angle:Option< f64>,
             ) {
                 let smooth_type = smooth_type.unwrap_or("laplacian");
@@ -1108,6 +1109,7 @@ macro_rules! create_remesher {
                     swap_min_l_abs: swap_min_l_abs.unwrap_or(default_params.swap_min_l_abs),
                     smooth_iter: smooth_iter.unwrap_or(default_params.smooth_iter),
                     smooth_type,
+                    smooth_relax: smooth_relax.map(|x| x.to_vec().unwrap()).unwrap_or(default_params.smooth_relax),
                     max_angle: max_angle.unwrap_or(default_params.max_angle),
                 };
                 self.remesher.remesh(params);
