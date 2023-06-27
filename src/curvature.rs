@@ -2,7 +2,7 @@ use crate::{
     geom_elems::GElem,
     linalg::lapack_qr_least_squares,
     mesh::{Point, SimplexMesh},
-    topo_elems::{Elem, Triangle},
+    topo_elems::{Edge, Elem, Triangle},
     Error, Idx, Mesh, Result, H_MAX,
 };
 use log::{debug, warn};
@@ -36,6 +36,52 @@ pub fn compute_vertex_normals<const D: usize, E: Elem>(mesh: &SimplexMesh<D, E>)
     }
 
     normals
+}
+
+fn bound_curvature(x: f64) -> f64 {
+    let b = 1. / H_MAX;
+    if x < -b {
+        x
+    } else if x < 0.0 {
+        -b
+    } else if x < b {
+        b
+    } else {
+        x
+    }
+}
+
+/// Compute the curvature of a line mesh and return the principal direction of the
+/// curvature tensor (scaled with the principal curvature) for each element
+/// (2D version of <https://gfx.cs.princeton.edu/pubs/Rusinkiewicz_2004_ECA/curvpaper.pdf>)
+/// NB: curvature should not be computed across non smooth patches
+/// NB: curvature estimation is not accurate near the boundaires
+pub fn compute_curvature_tensor_2d(smesh: &SimplexMesh<2, Edge>) -> Vec<Point<2>> {
+    debug!("Compute curvature tensors (2d)");
+    let vertex_normals = compute_vertex_normals(smesh);
+
+    let mut elem_u = Vec::with_capacity(smesh.n_verts() as usize);
+
+    for e in smesh.elems() {
+        // Compute the element-based curvature
+        let n0 = &vertex_normals[e[0] as usize];
+        let n1 = &vertex_normals[e[1] as usize];
+        let dn = n1 - n0;
+
+        // local basis
+        let mut u = smesh.vert(e[1]) - smesh.vert(e[0]);
+        let nrm = u.norm();
+        let eu = nrm;
+        u /= nrm;
+        let nu = dn.dot(&u);
+        let c = nu / eu;
+
+        u *= bound_curvature(c);
+
+        elem_u.push(u);
+    }
+
+    elem_u
 }
 
 /// Compute the curvature of a surface mesh and return the principal direction of the
@@ -112,27 +158,14 @@ pub fn compute_curvature_tensor(
             eig.eigenvalues[1]
         };
 
-        // change of basis
-        let bound = |x| {
-            let b = 1. / H_MAX;
-            if x < -b {
-                x
-            } else if x < 0.0 {
-                -b
-            } else if x < b {
-                b
-            } else {
-                x
-            }
-        };
         if ev0 > ev1 {
             u = eig.eigenvectors[0] * u + eig.eigenvectors[1] * v;
             v = n.cross(&u);
             u.normalize_mut();
             v.normalize_mut();
 
-            u *= bound(ev0);
-            v *= bound(ev1);
+            u *= bound_curvature(ev0);
+            v *= bound_curvature(ev1);
         } else {
             v = eig.eigenvectors[0] * u + eig.eigenvectors[1] * v;
             u = -n.cross(&v);
@@ -140,8 +173,8 @@ pub fn compute_curvature_tensor(
             v.normalize_mut();
             u.normalize_mut();
 
-            u *= bound(ev1);
-            v *= bound(ev0);
+            u *= bound_curvature(ev1);
+            v *= bound_curvature(ev0);
         }
 
         elem_u.push(u);
@@ -151,12 +184,18 @@ pub fn compute_curvature_tensor(
     (elem_u, elem_v)
 }
 
-pub fn fix_curvature(
-    smesh: &SimplexMesh<3, Triangle>,
-    u: &mut [Point<3>],
-    v: &mut [Point<3>],
+pub fn fix_curvature<const D: usize, E: Elem>(
+    smesh: &SimplexMesh<D, E>,
+    u: &mut [Point<D>],
+    mut v: Option<&mut [Point<D>]>,
 ) -> Result<()> {
     debug!("Fix curvature tensors near the patch boundaries");
+
+    if D == 2 {
+        assert!(v.is_none());
+    } else {
+        assert!(v.is_some());
+    }
 
     if smesh.elem_to_elems.is_none() {
         return Err(Error::from(
@@ -209,22 +248,29 @@ pub fn fix_curvature(
                 }
 
                 if let Some(i_neighbor) = i_neighbor {
-                    // Make sure that u,v are in the element plane
-                    let mut n = u[i_elem].cross(&v[i_elem]);
-                    n.normalize_mut();
+                    if D == 2 {
+                        u[i_elem].normalize_mut();
+                        u[i_elem] *= u[i_neighbor as usize].norm();
+                    } else {
+                        let v = v.as_mut().unwrap();
 
-                    let mut v_new = v[i_neighbor as usize];
-                    v_new.normalize_mut();
-                    let mut u_new = v_new.cross(&n);
-                    u_new.normalize_mut();
-                    v_new = n.cross(&u_new);
-                    v_new.normalize_mut();
+                        // Make sure that u,v are in the element plane
+                        let mut n = u[i_elem].cross(&v[i_elem]);
+                        n.normalize_mut();
 
-                    u[i_elem] = u_new * u[i_neighbor as usize].norm();
-                    v[i_elem] = v_new * v[i_neighbor as usize].norm();
+                        let mut v_new = v[i_neighbor as usize];
+                        v_new.normalize_mut();
+                        let mut u_new = v_new.cross(&n);
+                        u_new.normalize_mut();
+                        v_new = n.cross(&u_new);
+                        v_new.normalize_mut();
 
-                    to_fix -= 1;
-                    fixed.push(i_elem);
+                        u[i_elem] = u_new * u[i_neighbor as usize].norm();
+                        v[i_elem] = v_new * v[i_neighbor as usize].norm();
+
+                        to_fix -= 1;
+                        fixed.push(i_elem);
+                    }
                 }
             }
         }
@@ -246,6 +292,27 @@ pub fn fix_curvature(
     Ok(())
 }
 
+pub trait HasCurvature<const D: usize> {
+    fn compute_curvature(&self) -> (Vec<Point<D>>, Option<Vec<Point<D>>>);
+}
+
+impl HasCurvature<2> for SimplexMesh<2, Edge> {
+    fn compute_curvature(&self) -> (Vec<Point<2>>, Option<Vec<Point<2>>>) {
+        let mut u = compute_curvature_tensor_2d(self);
+        fix_curvature(self, &mut u, None).unwrap();
+
+        (u, None)
+    }
+}
+
+impl HasCurvature<3> for SimplexMesh<3, Triangle> {
+    fn compute_curvature(&self) -> (Vec<Point<3>>, Option<Vec<Point<3>>>) {
+        let (mut u, mut v) = compute_curvature_tensor(self);
+        fix_curvature(self, &mut u, Some(&mut v)).unwrap();
+        (u, Some(v))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -256,7 +323,117 @@ mod tests {
         Idx, Mesh, Result, H_MAX,
     };
 
-    use super::{compute_curvature_tensor, fix_curvature};
+    use super::{compute_curvature_tensor, compute_curvature_tensor_2d, fix_curvature};
+
+    #[test]
+    fn test_curvature_circle() {
+        let r_in = 0.1;
+        let r_out = 0.5;
+
+        let mesh = test_mesh_2d().split().split().split().split().split();
+        let (mut mesh, _) = mesh.boundary();
+
+        let mut coords = Vec::new();
+        for pt in mesh.verts() {
+            let r = r_in + (r_out - r_in) * pt[0];
+            let theta = 3.0 * pt[1];
+            let x = r * f64::cos(theta);
+            let y = r * f64::sin(theta);
+            coords.push(x);
+            coords.push(y);
+        }
+
+        mesh.coords = coords;
+
+        let u = compute_curvature_tensor_2d(&mesh);
+
+        // Get the indices of corner vertices
+        mesh.add_boundary_faces();
+        let (_, bdy_ids) = mesh.boundary();
+        let mut bdy_flag = vec![false; mesh.n_verts() as usize];
+        bdy_ids
+            .into_iter()
+            .for_each(|i| bdy_flag[i as usize] = true);
+
+        for (i_elem, (e, t)) in mesh.elems().zip(mesh.etags()).enumerate() {
+            let u = u[i_elem];
+            let ge = mesh.gelem(i_elem as Idx);
+            let c = ge.center();
+
+            let is_boundary = e.into_iter().any(|i| bdy_flag[i as usize]);
+            if !is_boundary {
+                match t {
+                    1 | 3 => {
+                        assert!(u.norm() < 1.1 / H_MAX);
+                        assert!(u.norm() > 1e-17);
+                    }
+                    2 => {
+                        assert!(f64::abs(u.norm() - 1. / r_out) < 1e-6 / r_out);
+                        assert!(f64::abs(c.dot(&u)) < 1e-2);
+                    }
+                    4 => {
+                        assert!(f64::abs(u.norm() - 1. / r_in) < 1e-6 / r_in);
+                        assert!(f64::abs(c.dot(&u)) < 1e-2);
+                    }
+                    _ => {
+                        unreachable!();
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_curvature_circle_fixed() -> Result<()> {
+        let r_in = 0.1;
+        let r_out = 0.5;
+
+        let mesh = test_mesh_2d().split().split().split().split().split();
+        let (mut mesh, _) = mesh.boundary();
+
+        let mut coords = Vec::new();
+        for pt in mesh.verts() {
+            let r = r_in + (r_out - r_in) * pt[0];
+            let theta = 3.0 * pt[1];
+            let x = r * f64::cos(theta);
+            let y = r * f64::sin(theta);
+            coords.push(x);
+            coords.push(y);
+        }
+
+        mesh.coords = coords;
+        mesh.compute_elem_to_elems();
+        mesh.add_boundary_faces();
+
+        let mut u = compute_curvature_tensor_2d(&mesh);
+        fix_curvature(&mesh, &mut u, None)?;
+
+        for (i_elem, (_e, t)) in mesh.elems().zip(mesh.etags()).enumerate() {
+            let u = u[i_elem];
+            let ge = mesh.gelem(i_elem as Idx);
+            let c = ge.center();
+
+            match t {
+                1 | 3 => {
+                    assert!(u.norm() < 1.1 / H_MAX);
+                    assert!(u.norm() > 1e-17);
+                }
+                2 => {
+                    assert!(f64::abs(u.norm() - 1. / r_out) < 1e-6 / r_out);
+                    assert!(f64::abs(c.dot(&u)) < 1e-2);
+                }
+                4 => {
+                    assert!(f64::abs(u.norm() - 1. / r_in) < 1e-6 / r_in);
+                    assert!(f64::abs(c.dot(&u)) < 1e-2);
+                }
+                _ => {
+                    unreachable!();
+                }
+            }
+        }
+
+        Ok(())
+    }
 
     #[test]
     fn test_curvature_cylinder() {
@@ -337,7 +514,7 @@ mod tests {
         surf.compute_elem_to_elems();
 
         let (mut u, mut v) = compute_curvature_tensor(&surf);
-        fix_curvature(&surf, &mut u, &mut v)?;
+        fix_curvature(&surf, &mut u, Some(&mut v))?;
 
         for i_elem in 0..surf.n_elems() as usize {
             let mut u = u[i_elem];

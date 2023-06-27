@@ -2,12 +2,13 @@ use crate::{
     geom_elems::GElem,
     geometry::LinearGeometry,
     mesh::{Point, SimplexMesh},
-    metric::{AnisoMetric2d, AnisoMetric3d, Metric},
-    topo_elems::{Elem, Tetrahedron, Triangle},
+    metric::{AnisoMetric, AnisoMetric2d, AnisoMetric3d, Metric},
+    topo_elems::{Edge, Elem, Tetrahedron, Triangle},
     Error, Idx, Mesh, Result, Tag,
 };
 
 use log::{debug, info, warn};
+use nalgebra::{allocator::Allocator, Const, DefaultAllocator};
 use rustc_hash::FxHashSet;
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
@@ -562,6 +563,89 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         Ok((n, n_edgs as Idx))
     }
+
+    /// Extend a metric defined on the boundary inside the whole domain
+    /// - geom : the geometry on which the curvature is computed
+    /// - r_h: the curvature radius to element size ratio
+    /// - beta: the mesh gradation
+    /// - h_n: the normal size, defined at the boundary vertices
+    ///   if <0, the min of the tangential sizes is used
+    pub fn extend_metric<M: AnisoMetric<D>>(
+        &self,
+        metric: &mut [M],
+        flg: &mut [bool],
+        beta: f64,
+    ) -> Result<()>
+    where
+        Const<D>: nalgebra::ToTypenum,
+        Const<D>: nalgebra::DimSub<nalgebra::U1>,
+        DefaultAllocator: Allocator<f64, <Const<D> as nalgebra::DimSub<nalgebra::U1>>::Output>,
+    {
+        info!(
+            "Extend the metric into the domain using gradation = {}",
+            beta
+        );
+
+        if self.vertex_to_vertices.is_none() {
+            return Err(Error::from("vertex to vertices connectivity not available"));
+        }
+
+        let n_verts = self.n_verts() as usize;
+        let n_set = flg.iter().filter(|&&x| x).count();
+
+        let mut to_fix = n_verts - n_set;
+        debug!("{} / {} internal vertices to fix", to_fix, n_verts);
+
+        let v2v = self.vertex_to_vertices.as_ref().unwrap();
+
+        let mut n_iter = 0;
+        loop {
+            let mut fixed = Vec::with_capacity(to_fix);
+            for (i_vert, pt) in self.verts().enumerate() {
+                if !flg[i_vert] {
+                    let neighbors = v2v.row(i_vert as Idx);
+                    let mut valid_neighbors =
+                        neighbors.iter().copied().filter(|&i| flg[i as usize]);
+                    if let Some(i) = valid_neighbors.next() {
+                        let m_i = metric[i as usize];
+                        let pt_i = self.vert(i);
+                        let e = pt - pt_i;
+                        let mut m = m_i.span(&e, beta);
+                        for i in valid_neighbors {
+                            let m_i = metric[i as usize];
+                            let pt_i = self.vert(i);
+                            let e = pt - pt_i;
+                            let m_i_spanned = m_i.span(&e, beta);
+                            m = m.intersect(&m_i_spanned);
+                        }
+                        metric[i_vert] = m;
+                        to_fix -= 1;
+                        fixed.push(i_vert);
+                    }
+                }
+            }
+            if fixed.is_empty() {
+                // No element was fixed
+                if to_fix > 0 {
+                    warn!(
+                        "stop at iteration {}, {} elements cannot be fixed",
+                        n_iter + 1,
+                        to_fix
+                    );
+                }
+                break;
+            }
+            fixed.iter().for_each(|&i| flg[i] = true);
+            n_iter += 1;
+
+            debug!(
+                "iteration {}: {} / {} vertices remain to be fixed",
+                n_iter, to_fix, n_verts
+            );
+        }
+
+        Ok(())
+    }
 }
 
 impl SimplexMesh<3, Tetrahedron> {
@@ -599,10 +683,7 @@ impl SimplexMesh<3, Tetrahedron> {
         let bdy_tags: FxHashSet<Tag> = bdy.etags().collect();
 
         // Initialize the metric field
-        let hx = Point::<3>::new(1.0, 0.0, 0.0);
-        let hy = Point::<3>::new(0.0, 1.0, 0.0);
-        let hz = Point::<3>::new(0.0, 0.0, 1.0);
-        let m = AnisoMetric3d::from_sizes(&hx, &hy, &hz);
+        let m = AnisoMetric3d::default();
         let n_verts = self.n_verts() as usize;
         let mut curvature_metric = vec![m; n_verts];
         let mut flg = vec![false; n_verts];
@@ -619,7 +700,8 @@ impl SimplexMesh<3, Tetrahedron> {
                 .map(|&i| (i, boundary_vertex_ids[i as usize]))
                 .for_each(|(i_bdy_vert, i_vert)| {
                     let pt = self.vert(i_vert);
-                    let (mut u, mut v) = geom.curvature(&pt, tag).unwrap();
+                    let (mut u, v) = geom.curvature(&pt, tag).unwrap();
+                    let mut v = v.unwrap();
                     let hu = 1. / (r_h * u.norm());
                     let hv = 1. / (r_h * v.norm());
                     let mut hn = f64::min(hu, hv);
@@ -640,57 +722,7 @@ impl SimplexMesh<3, Tetrahedron> {
                 });
         }
 
-        // Extend the metric into the volume
-        let mut to_fix = n_verts - boundary_vertex_ids.len();
-        debug!("{} / {} internal vertices to fix", to_fix, n_verts);
-
-        let v2v = self.vertex_to_vertices.as_ref().unwrap();
-
-        let mut n_iter = 0;
-        loop {
-            let mut fixed = Vec::with_capacity(to_fix);
-            for (i_vert, pt) in self.verts().enumerate() {
-                if !flg[i_vert] {
-                    let neighbors = v2v.row(i_vert as Idx);
-                    let mut valid_neighbors =
-                        neighbors.iter().copied().filter(|&i| flg[i as usize]);
-                    if let Some(i) = valid_neighbors.next() {
-                        let m_i = curvature_metric[i as usize];
-                        let pt_i = self.vert(i);
-                        let e = pt - pt_i;
-                        let mut m = m_i.span(&e, beta);
-                        for i in valid_neighbors {
-                            let m_i = curvature_metric[i as usize];
-                            let pt_i = self.vert(i);
-                            let e = pt - pt_i;
-                            let m_i_spanned = m_i.span(&e, beta);
-                            m = m.intersect(&m_i_spanned);
-                        }
-                        curvature_metric[i_vert] = m;
-                        to_fix -= 1;
-                        fixed.push(i_vert);
-                    }
-                }
-            }
-            if fixed.is_empty() {
-                // No element was fixed
-                if to_fix > 0 {
-                    warn!(
-                        "stop at iteration {}, {} elements cannot be fixed",
-                        n_iter + 1,
-                        to_fix
-                    );
-                }
-                break;
-            }
-            fixed.iter().for_each(|&i| flg[i] = true);
-            n_iter += 1;
-
-            debug!(
-                "iteration {}: {} / {} vertices remain to be fixed",
-                n_iter, to_fix, n_verts
-            );
-        }
+        self.extend_metric(&mut curvature_metric, &mut flg, beta)?;
 
         Ok(curvature_metric)
     }
@@ -702,6 +734,74 @@ impl SimplexMesh<2, Triangle> {
         let mut implied_metric = Vec::with_capacity(self.n_elems() as usize);
         implied_metric.extend(self.gelems().map(|ge| ge.implied_metric()));
         self.elem_data_to_vertex_data_metric(&implied_metric)
+    }
+
+    /// Compute an anisotropic metric based on the boundary curvature
+    /// - geom : the geometry on which the curvature is computed
+    /// - r_h: the curvature radius to element size ratio
+    /// - beta: the mesh gradation
+    /// - h_n: the normal size, defined at the boundary vertices
+    ///   if <0, the min of the tangential sizes is used
+    pub fn curvature_metric(
+        &self,
+        geom: &LinearGeometry<2, Edge>,
+        r_h: f64,
+        beta: f64,
+        h_n: Option<&[f64]>,
+        h_n_tags: Option<&[Tag]>,
+    ) -> Result<Vec<AnisoMetric2d>> {
+        info!(
+            "Compute the curvature metric with r/h = {} and gradation = {}",
+            r_h, beta
+        );
+
+        if self.vertex_to_vertices.is_none() {
+            return Err(Error::from("vertex to vertices connectivity not available"));
+        }
+
+        let (bdy, boundary_vertex_ids) = self.boundary();
+        let bdy_tags: FxHashSet<Tag> = bdy.etags().collect();
+
+        // Initialize the metric field
+        let m = AnisoMetric2d::default();
+        let n_verts = self.n_verts() as usize;
+        let mut curvature_metric = vec![m; n_verts];
+        let mut flg = vec![false; n_verts];
+
+        // Set the metric at the boundary vertices
+        for tag in bdy_tags {
+            let (_, ids, _, _) = bdy.extract(tag);
+            let use_h_n = if let Some(h_n_tags) = h_n_tags {
+                h_n_tags.iter().any(|&t| t == tag)
+            } else {
+                false
+            };
+            ids.iter()
+                .map(|&i| (i, boundary_vertex_ids[i as usize]))
+                .for_each(|(i_bdy_vert, i_vert)| {
+                    let pt = self.vert(i_vert);
+                    let (mut u, _) = geom.curvature(&pt, tag).unwrap();
+                    let hu = 1. / (r_h * u.norm());
+                    let mut hn = hu;
+                    if use_h_n {
+                        if let Some(h_n) = h_n {
+                            assert!(h_n[i_bdy_vert as usize] > 0.0);
+                            hn = h_n[i_bdy_vert as usize].min(hn);
+                        }
+                    }
+                    u.normalize_mut();
+
+                    let n = hn * Point::<2>::new(-u[1], u[0]);
+                    u *= hu;
+
+                    curvature_metric[i_vert as usize] = AnisoMetric2d::from_sizes(&n, &u);
+                    flg[i_vert as usize] = true;
+                });
+        }
+
+        self.extend_metric(&mut curvature_metric, &mut flg, beta)?;
+
+        Ok(curvature_metric)
     }
 }
 
