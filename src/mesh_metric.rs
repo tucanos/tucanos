@@ -270,7 +270,11 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             );
         }
 
-        let mut scale = self.scale_metric_simple(m, h_min, h_max, n_elems, max_iter);
+        let mut scale = if max_iter > 0 {
+            self.scale_metric_simple(m, h_min, h_max, n_elems, max_iter)
+        } else {
+            1.0
+        };
         if scale < 0.0 {
             return Err(Error::from("Unable to scale the metric (simple)"));
         }
@@ -279,85 +283,86 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             let fixed_m = (0..self.n_verts()).map(|i| fixed_m.map(|x| &x[i as usize]));
             let implied_m = (0..self.n_verts()).map(|i| implied_m.map(|x| &x[i as usize]));
 
-            let constrain_m = fixed_m.clone().zip(implied_m.clone()).map(|(m_f, m_i)| {
-                Self::get_bounded_metric(0.0, h_min, h_max, None, m_f, step, m_i)
-            });
-            let constrain_c = self.complexity(constrain_m, h_min, h_max);
+            if max_iter > 0 {
+                let constrain_m = fixed_m.clone().zip(implied_m.clone()).map(|(m_f, m_i)| {
+                    Self::get_bounded_metric(0.0, h_min, h_max, None, m_f, step, m_i)
+                });
+                let constrain_c = self.complexity(constrain_m, h_min, h_max);
 
-            debug!("Complexity of the constrain metric: {}", constrain_c);
+                debug!("Complexity of the constrain metric: {}", constrain_c);
 
-            if constrain_c > n_elems as f64 {
-                return Err(Error::from(&format!(
-                    "The complexity of the constrain metric is {} > n_elems = {}",
-                    constrain_c, n_elems
-                )));
-            }
-
-            let m_iter = |s: f64| {
-                m.iter()
-                    .zip(fixed_m.clone())
-                    .zip(implied_m.clone())
-                    .map(move |((m, m_f), m_i)| {
-                        Self::get_bounded_metric(s, h_min, h_max, Some(m), m_f, step, m_i)
-                    })
-            };
-
-            // Get an upper bound for the bisection
-            let mut scale_high = 1.5 * scale;
-            for iter in 0..max_iter {
-                let tmp_m = m_iter(scale_high);
-                let c = self.complexity(tmp_m, h_min, h_max);
-                debug!(
-                    "Iteration {}: scale_high = {}, complexity = {}",
-                    iter, scale_high, c
-                );
-
-                if iter == max_iter - 1 {
-                    return Err(Error::from("Unable to scale the metric (bisection)"));
+                if constrain_c > n_elems as f64 {
+                    return Err(Error::from(&format!(
+                        "The complexity of the constrain metric is {} > n_elems = {}",
+                        constrain_c, n_elems
+                    )));
                 }
 
-                if c < n_elems as f64 {
-                    break;
-                }
-                scale_high *= 1.5;
-            }
+                let m_iter = |s: f64| {
+                    m.iter().zip(fixed_m.clone()).zip(implied_m.clone()).map(
+                        move |((m, m_f), m_i)| {
+                            Self::get_bounded_metric(s, h_min, h_max, Some(m), m_f, step, m_i)
+                        },
+                    )
+                };
 
-            // Get an lower bound for the bisection
-            let mut scale_low = scale / 1.5;
-            for iter in 0..max_iter {
-                let tmp_m = m_iter(scale_low);
-                let c = self.complexity(tmp_m, h_min, h_max);
-                debug!(
-                    "Iteration {}: scale_low = {}, complexity = {}",
-                    iter, scale_low, c
-                );
+                // Get an upper bound for the bisection
+                let mut scale_high = 1.5 * scale;
+                for iter in 0..max_iter {
+                    let tmp_m = m_iter(scale_high);
+                    let c = self.complexity(tmp_m, h_min, h_max);
+                    debug!(
+                        "Iteration {}: scale_high = {}, complexity = {}",
+                        iter, scale_high, c
+                    );
 
-                if iter == max_iter - 1 {
-                    return Err(Error::from("Unable to scale the metric (bisection)"));
+                    if iter == max_iter - 1 {
+                        return Err(Error::from("Unable to scale the metric (bisection)"));
+                    }
+
+                    if c < n_elems as f64 {
+                        break;
+                    }
+                    scale_high *= 1.5;
                 }
 
-                if c > n_elems as f64 {
-                    break;
-                }
-                scale_low /= 1.5;
-            }
+                // Get an lower bound for the bisection
+                let mut scale_low = scale / 1.5;
+                for iter in 0..max_iter {
+                    let tmp_m = m_iter(scale_low);
+                    let c = self.complexity(tmp_m, h_min, h_max);
+                    debug!(
+                        "Iteration {}: scale_low = {}, complexity = {}",
+                        iter, scale_low, c
+                    );
 
-            // bisection
-            for iter in 0..max_iter {
-                scale = 0.5 * (scale_low + scale_high);
-                let tmp_m = m_iter(scale);
-                let c = self.complexity(tmp_m, h_min, h_max);
-                debug!("Iteration {}: scale = {}, complexity = {}", iter, scale, c);
-                if f64::abs(c - f64::from(n_elems)) < 0.05 * f64::from(n_elems) {
-                    break;
+                    if iter == max_iter - 1 {
+                        return Err(Error::from("Unable to scale the metric (bisection)"));
+                    }
+
+                    if c > n_elems as f64 {
+                        break;
+                    }
+                    scale_low /= 1.5;
                 }
-                if iter == max_iter - 1 {
-                    return Err(Error::from("Unable to scale the metric (bisection)"));
-                }
-                if c < n_elems as f64 {
-                    scale_high = scale;
-                } else {
-                    scale_low = scale;
+
+                // bisection
+                for iter in 0..max_iter {
+                    scale = 0.5 * (scale_low + scale_high);
+                    let tmp_m = m_iter(scale);
+                    let c = self.complexity(tmp_m, h_min, h_max);
+                    debug!("Iteration {}: scale = {}, complexity = {}", iter, scale, c);
+                    if f64::abs(c - f64::from(n_elems)) < 0.05 * f64::from(n_elems) {
+                        break;
+                    }
+                    if iter == max_iter - 1 {
+                        return Err(Error::from("Unable to scale the metric (bisection)"));
+                    }
+                    if c < n_elems as f64 {
+                        scale_high = scale;
+                    } else {
+                        scale_low = scale;
+                    }
                 }
             }
             m.iter_mut()
