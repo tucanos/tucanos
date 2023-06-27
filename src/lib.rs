@@ -236,16 +236,27 @@ macro_rules! create_mesh {
             }
 
             /// Write a vtk file containing the mesh
-            pub fn write_vtk(&self, file_name: &str, vert_data : Option<HashMap<String, PyReadonlyArray2<f64>>> ) -> PyResult<()> {
-                let res = if let Some(data) = vert_data {
-                    let mut vdata = HashMap::new();
+            pub fn write_vtk(&self,
+                file_name: &str,
+                vert_data : Option<HashMap<String, PyReadonlyArray2<f64>>>,
+                elem_data : Option<HashMap<String, PyReadonlyArray2<f64>>> ) -> PyResult<()> {
+
+                let mut vdata = HashMap::new();
+                if let Some(data) = vert_data.as_ref() {
                     for (name, arr) in data.iter() {
                         vdata.insert(name.to_string(), arr.as_slice().unwrap());
                     }
-                    self.mesh.write_vtk(file_name, Some(vdata), None)
-                } else {
-                    self.mesh.write_vtk(file_name, None, None)
-                };
+                }
+
+                let mut edata = HashMap::new();
+                if let Some(data) = elem_data.as_ref() {
+                    for (name, arr) in data.iter() {
+                        edata.insert(name.to_string(), arr.as_slice().unwrap());
+                    }
+                }
+
+                let res = self.mesh.write_vtk(file_name, Some(vdata), Some(edata));
+
                 if let Err(res) = res {
                     return Err(PyRuntimeError::new_err(res.to_string()));
                 }
