@@ -192,13 +192,16 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             } else {
                 self.complexity_from_sizes::<M>(&sizes, h_min, h_max)
             };
-            debug!("Iteration {}, complexity = {}, scale = {}", iter, c, scale);
+            debug!(
+                "Iteration {}, complexity = {:.2e}, scale = {:.2e}",
+                iter, c, scale
+            );
             if f64::abs(c - f64::from(n_elems)) < 0.05 * f64::from(n_elems) {
                 return scale;
             }
             if iter == max_iter - 1 {
                 warn!(
-                    "Target complexity {} not reached: complexity {}",
+                    "Target complexity {} not reached: complexity {:.2e}",
                     n_elems, c
                 );
                 return -1.0;
@@ -294,7 +297,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
                 if constrain_c > n_elems as f64 {
                     return Err(Error::from(&format!(
-                        "The complexity of the constrain metric is {} > n_elems = {}",
+                        "The complexity of the constrain metric is {:.2e} > n_elems = {}",
                         constrain_c, n_elems
                     )));
                 }
@@ -313,7 +316,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     let tmp_m = m_iter(scale_high);
                     let c = self.complexity(tmp_m, h_min, h_max);
                     debug!(
-                        "Iteration {}: scale_high = {}, complexity = {}",
+                        "Iteration {}: scale_high = {:.2e}, complexity = {:.2e}",
                         iter, scale_high, c
                     );
 
@@ -333,7 +336,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     let tmp_m = m_iter(scale_low);
                     let c = self.complexity(tmp_m, h_min, h_max);
                     debug!(
-                        "Iteration {}: scale_low = {}, complexity = {}",
+                        "Iteration {}: scale_low = {:.2e}, complexity = {:.2e}",
                         iter, scale_low, c
                     );
 
@@ -352,7 +355,10 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     scale = 0.5 * (scale_low + scale_high);
                     let tmp_m = m_iter(scale);
                     let c = self.complexity(tmp_m, h_min, h_max);
-                    debug!("Iteration {}: scale = {}, complexity = {}", iter, scale, c);
+                    debug!(
+                        "Iteration {}: scale = {:.2e}, complexity = {:.2e}",
+                        iter, scale, c
+                    );
                     if f64::abs(c - f64::from(n_elems)) < 0.05 * f64::from(n_elems) {
                         break;
                     }
@@ -554,7 +560,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         if n > 0 {
             let (c_max, frac_large_gradation) = self.gradation(m, beta)?;
             warn!(
-                "gradation: target not achieved: max gradation: {}, {}% of edges have a gradation > {}",
+                "gradation: target not achieved: max gradation: {:.2}, {:.2e}% of edges have a gradation > {}",
                 c_max,
                 frac_large_gradation * 100.0,
                 beta
