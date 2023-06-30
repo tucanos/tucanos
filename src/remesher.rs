@@ -253,7 +253,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
             }
             res.insert_vertex(p, tag, &m[i_vert]);
         }
-        warn!("Max. distance to the geometry: {dmax}");
+        warn!("Max. distance to the geometry: {dmax:.2e}");
 
         assert_eq!(mesh.n_verts(), res.n_verts());
 
@@ -688,7 +688,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
     ///       max(params.collapse_min_q_abs, params.collapse_min_q_rel * min(q)))
     ///   where min(l) and min(q) as the max edge length and min quality over the entire mesh
     pub fn split(&mut self, l_0: f64, params: &RemesherParams) -> u32 {
-        info!("Split edges with length > {:?}", l_0);
+        info!("Split edges with length > {:.2e}", l_0);
 
         let mesh_l_min = min_iter(self.lengths_iter());
         let l_min = params
@@ -1365,7 +1365,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
             let l_max = max_iter(self.lengths_iter());
             if l_max > 2.0 * f64::sqrt(2.0) {
                 let l_0 = f64::max(0.5 * l_max, 2.0 * f64::sqrt(2.0));
-                info!("Perform a first step with l_0 = {l_0}");
+                info!("Perform a first step with l_0 = {l_0:.2}");
                 let first_step_params = RemesherParams {
                     split_min_q_abs: 0.0,
                     split_min_l_abs: 0.0,
