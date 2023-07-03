@@ -498,19 +498,6 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
                             let mut c = (p0 + p1 + p2) / 3.0;
                             let a = geom.angle(&mut c, &n, &ftag);
                             if a > threshold_degrees {
-                                // let area = (p2 - p0).cross(&(p1 - p0)).norm();
-                                // if area > 1e-12 {
-                                //     self.cavity.to_mesh().write_vtk("cavity.vtu", None, None);
-                                //     self.to_mesh().write_vtk("debug.vtu", None, None);
-                                //     println!("{:?}", (p2 - p0).cross(&(p1 - p0)).norm());
-                                //     println!("{:?}", f);
-                                //     println!("{:?}", e);
-                                //     println!("{}", i_edge);
-                                //     println!("{:?}", new_f);
-                                //     println!("{:?}", n);
-                                //     println!("{} {}", a, threshold_degrees);
-                                //     panic!();
-                                // }
                                 return false;
                             }
                         }
