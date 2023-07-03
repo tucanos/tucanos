@@ -129,7 +129,7 @@ pub enum SmoothingType {
 }
 
 /// Remesher parameters
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct RemesherParams {
     /// Number of collapse - split - swap - smooth loops
     pub num_iter: u32,
@@ -169,6 +169,8 @@ pub struct RemesherParams {
     pub smooth_iter: u32,
     /// Type of smoothing used
     pub smooth_type: SmoothingType,
+    /// Smoothing relaxation
+    pub smooth_relax: Vec<f64>,
     /// Max angle between the normals of the new faces and the geometry (in degrees)
     pub max_angle: f64,
 }
@@ -195,6 +197,7 @@ impl Default for RemesherParams {
             swap_min_l_abs: 0.25,
             smooth_iter: 2,
             smooth_type: SmoothingType::Laplacian,
+            smooth_relax: vec![1.0],
             max_angle: 20.0,
         }
     }
@@ -1269,7 +1272,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                 let mut p0_new = Point::<D>::zeros();
                 let mut valid = false;
 
-                for omega in [1.0, 0.5, 0.25] {
+                for omega in params.smooth_relax.iter().cloned() {
                     p0_new = (1.0 - omega) * p0 + omega * p0_smoothed;
 
                     if t0.0 < E::DIM as Dim {
@@ -1343,7 +1346,10 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
             }
             debug!(
                 "Iteration {}: {} vertices moved, {} fails, {} local minima",
-                iter, n_smooth, n_fails, n_min
+                iter + 1,
+                n_smooth,
+                n_fails,
+                n_min
             );
             self.stats
                 .push(StepStats::Smooth(SmoothStats::new(n_fails, self)));
@@ -1363,7 +1369,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                 let first_step_params = RemesherParams {
                     split_min_q_abs: 0.0,
                     split_min_l_abs: 0.0,
-                    ..params
+                    ..params.clone()
                 };
                 for _ in 0..params.num_iter {
                     self.collapse(&first_step_params);
@@ -1665,6 +1671,7 @@ mod tests {
         let params = RemesherParams {
             smooth_type: SmoothingType::Laplacian,
             smooth_iter: 1,
+            smooth_relax: vec![1.0],
             ..Default::default()
         };
         remesher.smooth(&params);
@@ -1697,6 +1704,7 @@ mod tests {
         let params = RemesherParams {
             smooth_type: SmoothingType::NLOpt,
             smooth_iter: 1,
+            smooth_relax: vec![1.0],
             ..Default::default()
         };
         remesher.smooth(&params);
@@ -1734,6 +1742,7 @@ mod tests {
         let params = RemesherParams {
             smooth_type: SmoothingType::Laplacian,
             smooth_iter: 1,
+            smooth_relax: vec![1.0],
             ..Default::default()
         };
         remesher.smooth(&params);
@@ -1765,6 +1774,7 @@ mod tests {
         let params = RemesherParams {
             smooth_type: SmoothingType::Avro,
             smooth_iter: 10,
+            smooth_relax: vec![1.0],
             ..Default::default()
         };
         remesher.smooth(&params);
@@ -1802,6 +1812,7 @@ mod tests {
         let params = RemesherParams {
             smooth_type: SmoothingType::Avro,
             smooth_iter: 10,
+            smooth_relax: vec![1.0],
             ..Default::default()
         };
         remesher.smooth(&params);
