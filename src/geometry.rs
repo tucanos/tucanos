@@ -300,7 +300,8 @@ where
         let tree = patch.mesh.tree.as_ref().unwrap();
         let idx = tree.nearest(pt);
         let n_ref = patch.mesh.gelem(idx).normal();
-        f64::acos(n.dot(&n_ref)) * 180. / PI
+        let cos_a = n.dot(&n_ref).min(1.0).max(-1.0);
+        f64::acos(cos_a) * 180. / PI
     }
 }
 
