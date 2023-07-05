@@ -404,11 +404,14 @@ macro_rules! create_mesh {
             }
 
             /// Compute the hessian of a field defined at the mesh vertices using a 2nd order least-square approximation
+            /// if `weight_exp` is `None`, the vertex has a weight 10, its first order neighbors have
+            /// a weight 1 and the 2nd order neighbors (if used) have a weight of 0.1
             pub fn compute_hessian<'py>(
                 &self,
                 py: Python<'py>,
                 arr: PyReadonlyArray2<f64>,
                 weight_exp: Option<i32>,
+                use_second_order_neighbors: Option<bool>,
             ) -> PyResult<&'py PyArray2<f64>> {
                 if arr.shape()[0] != self.mesh.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
@@ -419,10 +422,42 @@ macro_rules! create_mesh {
 
                 let res = self
                     .mesh
-                    .hessian(arr.as_slice().unwrap(), weight_exp.unwrap_or(2));
+                    .hessian(arr.as_slice().unwrap(), weight_exp, use_second_order_neighbors.unwrap_or(true));
                 if let Err(res) = res {
                     return Err(PyRuntimeError::new_err(res.to_string()));
                 }
+                Ok(to_numpy_2d(
+                    py,
+                    res.unwrap(),
+                    self.mesh.n_comps(FieldType::SymTensor) as usize,
+                ))
+            }
+
+            /// Compute the hessian of a field defined at the mesh vertices using L2 projection
+            pub fn compute_hessian_l2proj<'py>(
+                &self,
+                py: Python<'py>,
+                arr: PyReadonlyArray2<f64>,
+            ) -> PyResult<&'py PyArray2<f64>> {
+                if arr.shape()[0] != self.mesh.n_verts() as usize {
+                    return Err(PyValueError::new_err("Invalid dimension 0"));
+                }
+                if arr.shape()[1] != 1 {
+                    return Err(PyValueError::new_err("Invalid dimension 1"));
+                }
+
+                let grad = self
+                    .mesh
+                    .gradient_l2proj(arr.as_slice().unwrap());
+                if let Err(res) = grad {
+                    return Err(PyRuntimeError::new_err(res.to_string()));
+                }
+
+                let res = self.mesh.hessian_l2proj(&grad.unwrap());
+                if let Err(res) = res {
+                    return Err(PyRuntimeError::new_err(res.to_string()));
+                }
+
                 Ok(to_numpy_2d(
                     py,
                     res.unwrap(),
