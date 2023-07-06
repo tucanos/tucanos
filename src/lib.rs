@@ -36,6 +36,7 @@ const ANISO_MAX: f64 = 1e5;
 const S_MIN: f64 = 1. / (H_MAX * H_MAX);
 const S_MAX: f64 = 1. / (H_MIN * H_MIN);
 const S_RATIO_MAX: f64 = ANISO_MAX * ANISO_MAX;
+
 // Errors
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 #[derive(Debug)]

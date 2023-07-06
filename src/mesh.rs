@@ -485,10 +485,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         let mut tagged_faces: FxHashMap<E::Face, Tag> =
             FxHashMap::with_hasher(BuildHasherDefault::default());
-        for (i_face, ftag) in self.ftags.iter().enumerate() {
-            let mut face = self.face(i_face as Idx);
+        for (mut face, ftag) in self.faces().zip(self.ftags()) {
             face.sort();
-            tagged_faces.insert(face, *ftag);
+            tagged_faces.insert(face, ftag);
         }
 
         let mut bdy = Vec::with_capacity(E::Face::N_VERTS as usize * n_bdy);
