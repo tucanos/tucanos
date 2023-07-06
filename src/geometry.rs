@@ -214,7 +214,7 @@ where
             if mesh_topo.get((E::DIM as Dim, tag)).is_none() {
                 return Err(Error::from(&format!("LinearGeometry: face tag {tag:?} not found in topo (mesh: {mesh_face_tags:?}, bdy: {face_tags:?})")));
             }
-            let (submesh, _, _, _) = bdy.extract(tag);
+            let submesh = bdy.extract_tag(tag).mesh;
             patches.insert(tag, LinearPatchGeometryWithCurvature::new(submesh));
         }
 
@@ -236,7 +236,7 @@ where
                     .get_from_parents_iter(E::Face::DIM as Dim, bdy_parents.iter().copied())
                     .unwrap();
 
-                let (submesh, _, _, _) = bdy_edges.extract(tag);
+                let submesh = bdy_edges.extract_tag(tag).mesh;
                 edges.insert(mesh_topo_node.tag.1, LinearPatchGeometry::new(submesh));
             }
         }

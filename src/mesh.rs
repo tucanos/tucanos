@@ -31,7 +31,7 @@ pub struct SimplexMesh<const D: usize, E: Elem> {
     pub elem: PhantomData<E>,
     /// Face to element connectitivity stored as a HashMap taking the face vertices (sorted) and returning
     /// a vector of element Ids
-    faces_to_elems: Option<FxHashMap<E::Face, twovec::Vec<u32>>>,
+    pub faces_to_elems: Option<FxHashMap<E::Face, twovec::Vec<u32>>>,
     /// Vertex-to-element connectivity stored in CSR format
     pub vertex_to_elems: Option<CSRGraph>,
     /// Element-to-element connectivity stored in CSR format
@@ -53,6 +53,13 @@ pub struct SimplexMesh<const D: usize, E: Elem> {
     pub topo: Option<Topology>,
     /// Vertex tags
     pub vtags: Option<Vec<TopoTag>>,
+}
+
+pub struct SubSimplexMesh<const D: usize, E: Elem> {
+    pub mesh: SimplexMesh<D, E>,
+    pub parent_vert_ids: Vec<Idx>,
+    pub parent_elem_ids: Vec<Idx>,
+    pub parent_face_ids: Vec<Idx>,
 }
 
 pub type Point<const D: usize> = SVector<f64, D>;
@@ -667,23 +674,22 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Extract a sub-mesh containing all the elements with a specific tag
     /// Return the sub-mesh and the indices of the vertices, elements and faces in the
     /// parent mesh
-    pub fn extract(&self, tag: Tag) -> (SimplexMesh<D, E>, Vec<Idx>, Vec<Idx>, Vec<Idx>) {
-        let els = self
-            .elems()
-            .zip(self.etags())
-            .filter(|(_, t)| *t == tag)
-            .flat_map(|(e, _)| e);
+    pub fn extract_tag(&self, tag: Tag) -> SubSimplexMesh<D, E> {
+        let elem_ids = (0..self.n_elems())
+            .filter(|&i| self.etags[i as usize] == tag)
+            .collect();
+        self.extract(elem_ids)
+    }
 
+    pub fn extract(&self, elem_ids: Vec<Idx>) -> SubSimplexMesh<D, E> {
+        let els = elem_ids.iter().flat_map(|&i| self.elem(i));
         let mut g = ElemGraph::from(E::N_VERTS, els);
         let indices = g.reindex();
         let n_verts = g.max_node() as usize + 1;
-        let n_elems = g.elems.len() / E::N_VERTS as usize;
-        let etags = vec![tag; n_elems];
+        let etags = elem_ids.iter().map(|&i| self.etags[i as usize]).collect();
 
         let mut coords = vec![0.0; D * n_verts];
         let mut vert_ids = vec![0; n_verts];
-        let mut elem_ids = Vec::with_capacity(n_elems);
-        elem_ids.extend((0..self.n_elems()).filter(|i| self.etags[*i as usize] == tag));
 
         for (old, new) in &indices {
             let pt = self.vert(*old);
@@ -707,12 +713,12 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             }
         }
 
-        (
-            SimplexMesh::<D, E>::new(coords, g.elems, etags, faces, ftags),
-            vert_ids,
-            elem_ids,
-            face_ids,
-        )
+        SubSimplexMesh {
+            mesh: SimplexMesh::<D, E>::new(coords, g.elems, etags, faces, ftags),
+            parent_vert_ids: vert_ids,
+            parent_elem_ids: elem_ids,
+            parent_face_ids: face_ids,
+        }
     }
 
     pub fn check(&self) -> Result<()> {
@@ -906,8 +912,9 @@ mod tests {
     fn test_extract_2d() {
         let mesh = test_mesh_2d().split();
 
-        let (smesh, ids, _, _) = mesh.extract(1);
-
+        let sub_mesh = mesh.extract_tag(1);
+        let smesh = sub_mesh.mesh;
+        let ids = sub_mesh.parent_vert_ids;
         assert_eq!(smesh.n_verts(), 6);
         assert_eq!(smesh.n_elems(), 4);
         assert_eq!(smesh.n_faces(), 4);
