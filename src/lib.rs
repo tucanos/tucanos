@@ -677,7 +677,6 @@ impl Mesh22 {
     ///  - for boundary vertices, the principal directions are aligned with the principal curvature directions
     ///    and the sizes to curvature radius ratio is r_h
     ///  - the metric is entended into the volume with gradation beta
-    ///  - if an implied metric is provided, the result is limited to (1/step,step) times the implied metric
     ///  - if a normal size array is not provided, the minimum of the tangential sizes is used.
     #[allow(clippy::too_many_arguments)]
     pub fn curvature_metric<'py>(
@@ -1007,7 +1006,7 @@ macro_rules! create_remesher {
             /// Limit a metric to be between 1/step and step times another metric
             #[classmethod]
             #[allow(clippy::too_many_arguments)]
-            pub fn limit_metric<'py>(
+            pub fn control_step_metric<'py>(
                 _cls: &PyType,
                 py: Python<'py>,
                 mesh: &$mesh,
@@ -1037,7 +1036,7 @@ macro_rules! create_remesher {
                 for i_vert in 0..mesh.mesh.n_verts() {
                     let mut m_i = $metric::from_slice(m, i_vert);
                     let m_other_i = $metric::from_slice(m_other, i_vert);
-                    m_i.limit(&m_other_i, step);
+                    m_i.control_step(&m_other_i, step);
                     res.extend(m_i.into_iter());
                 }
 
