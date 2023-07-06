@@ -13,6 +13,7 @@ mod mesh_l2proj;
 mod mesh_ls;
 pub mod mesh_metric;
 mod mesh_ordering;
+mod mesh_partition;
 mod mesh_split;
 pub mod mesh_stl;
 pub mod mesh_vtk;

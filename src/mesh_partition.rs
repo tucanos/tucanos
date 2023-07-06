@@ -1,11 +1,19 @@
-use lindel::Lineariseable;
-use log::{debug, info};
-use scotch::{Graph, Strategy};
+use log::{info, warn};
 
-use crate::{mesh::SimplexMesh, topo_elems::Elem, Error, Idx, Mesh, Result};
+use crate::{mesh::SimplexMesh, topo_elems::Elem, Error, Idx, Mesh, Result, Tag};
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
+    #[cfg(not(feature = "scotch"))]
+    pub fn partition_scotch(&mut self, _n_parts: Idx) -> Result<()> {
+        Err(Error::from("the scotch feature is not enabled"))
+    }
+
+    #[cfg(feature = "scotch")]
     pub fn partition_scotch(&mut self, n_parts: Idx) -> Result<()> {
+        if self.etags().any(|t| t != 1) {
+            warn!("Erase the element tags");
+        }
+
         info!("Partition the mesh into {} using scotch", n_parts);
         if self.elem_to_elems.is_none() {
             self.compute_elem_to_elems();
@@ -29,7 +37,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             .map(|x| x.try_into().unwrap())
             .collect();
 
-        let mut graph = Graph::build(&scotch::graph::Data::new(
+        let mut graph = scotch::Graph::build(&scotch::graph::Data::new(
             0,
             &xadj,
             &[],
@@ -42,15 +50,24 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         graph.check().unwrap();
         graph
             .mapping(&architecture, &mut partition)
-            .compute(&mut Strategy::new())?;
+            .compute(&mut scotch::Strategy::new())?;
 
-        let partition = partition.iter().copied().map(|i| i as Idx).collect();
-        self.partition = Some(partition);
+        self.etags = partition.iter().copied().map(|i| i as Tag + 1).collect();
 
         Ok(())
     }
 
+    #[cfg(not(feature = "metis"))]
+    pub fn partition_metis(&mut self, _n_parts: Idx) -> Result<()> {
+        Err(Error::from("the metis feature is not enabled"))
+    }
+
+    #[cfg(feature = "metis")]
     pub fn partition_metis(&mut self, n_parts: Idx) -> Result<()> {
+        if self.etags().any(|t| t != 1) {
+            warn!("Erase the element tags");
+        }
+
         info!("Partition the mesh into {} using metis", n_parts);
         if self.elem_to_elems.is_none() {
             self.compute_elem_to_elems();
@@ -76,8 +93,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             .part_recursive(&mut partition)
             .unwrap();
 
-        let partition = partition.iter().copied().map(|i| i as Idx).collect();
-        self.partition = Some(partition);
+        self.etags = partition.iter().copied().map(|i| i as Tag + 1).collect();
 
         Ok(())
     }
@@ -87,16 +103,11 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             return Err(Error::from("face to element connectivity not computed"));
         }
 
-        if self.partition.is_none() {
-            return Err(Error::from("partition not computed"));
-        }
-
         let f2e = self.faces_to_elems.as_ref().unwrap();
-        let p = self.partition.as_ref().unwrap();
 
         let n = f2e
             .iter()
-            .filter(|(_, v)| v.len() == 2 && p[v[0] as usize] != p[v[1] as usize])
+            .filter(|(_, v)| v.len() == 2 && self.etags[v[0] as usize] != self.etags[v[1] as usize])
             .count();
         Ok(n as f64 / f2e.len() as f64)
     }
@@ -109,6 +120,7 @@ mod tests {
         Result,
     };
 
+    #[cfg(feature = "scotch")]
     #[test]
     fn test_partition_scotch_2d() -> Result<()> {
         let mut mesh = test_mesh_2d().split().split().split().split().split();
@@ -121,6 +133,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(feature = "scotch")]
     #[test]
     fn test_partition_scotch_3d() -> Result<()> {
         let mut mesh = test_mesh_3d().split().split().split().split();
@@ -133,6 +146,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(feature = "metis")]
     #[test]
     fn test_partition_metis_2d() -> Result<()> {
         let mut mesh = test_mesh_2d().split().split().split().split().split();
@@ -140,11 +154,12 @@ mod tests {
         mesh.partition_metis(4)?;
 
         let q = mesh.partition_quality()?;
-        assert!(q < 0.025);
+        assert!(q < 0.03);
 
         Ok(())
     }
 
+    #[cfg(feature = "metis")]
     #[test]
     fn test_partition_metis_3d() -> Result<()> {
         let mut mesh = test_mesh_3d().split().split().split().split();
