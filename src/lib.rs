@@ -1,6 +1,7 @@
 use core::fmt;
 mod cavity;
 pub mod curvature;
+pub mod domain_decomposition;
 pub mod geom_elems;
 pub mod geometry;
 pub mod graph;
