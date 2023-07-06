@@ -1438,8 +1438,6 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
 mod tests {
     use std::f64::consts::PI;
 
-    use env_logger::Env;
-
     use crate::{
         geometry::NoGeometry,
         mesh::{Point, SimplexMesh},
@@ -1454,12 +1452,6 @@ mod tests {
     };
 
     use super::RemesherParams;
-
-    fn _init_log(level: &str) {
-        env_logger::Builder::from_env(Env::default().default_filter_or(level))
-            .format_timestamp(None)
-            .init();
-    }
 
     #[test]
     fn test_init() -> Result<()> {
