@@ -310,7 +310,8 @@ mod tests {
     fn test_reorder_faces_2d() {
         let mesh = test_mesh_2d();
         let mut mesh = mesh.split().split().split();
-        assert_eq!(mesh.add_boundary_faces(), 0);
+        let (bdy_tag, _) = mesh.add_boundary_faces();
+        assert_eq!(mesh.n_tagged_faces(bdy_tag), 0);
 
         // Random reordering
         let mut new_face_indices: Vec<Idx> = (0..mesh.n_faces()).collect();
@@ -318,14 +319,16 @@ mod tests {
         new_face_indices.shuffle(&mut rng);
 
         mesh.reorder_faces(&new_face_indices);
-        assert_eq!(mesh.add_boundary_faces(), 0);
+        let (bdy_tag, _) = mesh.add_boundary_faces();
+        assert_eq!(mesh.n_tagged_faces(bdy_tag), 0);
     }
 
     #[test]
     fn test_reorder_faces_3d() {
         let mesh = test_mesh_3d();
         let mut mesh = mesh.split().split().split();
-        assert_eq!(mesh.add_boundary_faces(), 0);
+        let (bdy_tag, _) = mesh.add_boundary_faces();
+        assert_eq!(mesh.n_tagged_faces(bdy_tag), 0);
 
         // Random reordering
         let mut new_face_indices: Vec<Idx> = (0..mesh.n_faces()).collect();
@@ -333,7 +336,8 @@ mod tests {
         new_face_indices.shuffle(&mut rng);
 
         mesh.reorder_faces(&new_face_indices);
-        assert_eq!(mesh.add_boundary_faces(), 0);
+        let (bdy_tag, _) = mesh.add_boundary_faces();
+        assert_eq!(mesh.n_tagged_faces(bdy_tag), 0);
     }
 
     #[test]
