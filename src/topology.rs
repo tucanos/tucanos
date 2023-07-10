@@ -218,6 +218,9 @@ impl Topology {
                             face_tag = *tagged_face;
                         } else {
                             face_tag = next_tag;
+                            if elem_tags.iter().any(|&t| t < 0) {
+                                face_tag = -face_tag;
+                            }
                             next_tag += 1;
                         }
                         topo.insert_iter(
