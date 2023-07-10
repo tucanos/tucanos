@@ -93,6 +93,7 @@ pub struct Remesher<'a, const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> {
 
 enum TrySwapResult {
     QualitySufficient,
+    FixedEdge,
     CouldNotSwap,
     CouldSwap,
 }
@@ -741,6 +742,11 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>, G: Geometry<D> + 'a> Remesher<'a
                     let new_m = M::interpolate([(0.5, m0), (0.5, m1)].into_iter());
                     // tag
                     let tag = self.topo.parent(t0, t1).unwrap();
+
+                    // tag < 0 on fixed boundaries
+                    if tag.1 < 0 {
+                        continue;
+                    }
                     // projection if needed
                     if tag.0 < E::DIM as Dim {
                         self.geom.project(&mut new_p, &tag);
@@ -818,6 +824,10 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>, G: Geometry<D> + 'a> Remesher<'a
         let mut succeed = false;
 
         let etag = self.topo.parent(cavity.tags[i0], cavity.tags[i1]).unwrap();
+        // tag < 0 on fixed boundaries
+        if etag.1 < 0 {
+            return TrySwapResult::FixedEdge;
+        }
 
         for n in 0..cavity.n_verts() {
             if n == i0 as Idx || n == i1 as Idx {
@@ -922,7 +932,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>, G: Geometry<D> + 'a> Remesher<'a
                 match res {
                     TrySwapResult::CouldNotSwap => n_fails += 1,
                     TrySwapResult::CouldSwap => n_swaps += 1,
-                    TrySwapResult::QualitySufficient => n_ok += 1,
+                    _ => n_ok += 1,
                 }
             }
 
@@ -996,6 +1006,10 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>, G: Geometry<D> + 'a> Remesher<'a
                     let mut topo_0 = self.verts.get(&i0).unwrap().tag;
                     let mut topo_1 = self.verts.get(&i1).unwrap().tag;
                     let tag = self.topo.parent(topo_0, topo_1).unwrap();
+                    // tag < 0 on fixed boundaries
+                    if tag.1 < 0 {
+                        continue;
+                    }
 
                     if topo_0.0 != tag.0 || topo_0.1 != tag.1 {
                         if topo_1.0 == tag.0 || !topo_1.1 == tag.1 {
@@ -1241,6 +1255,10 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>, G: Geometry<D> + 'a> Remesher<'a
                 trace!("Try to smooth vertex {}", i0);
 
                 self.compute_cavity_vertex(i0, &mut cavity);
+                let CavityType::Vertex(i0_local) = cavity.ctype else {unreachable!()};
+                if cavity.tags[i0_local as usize].1 < 0 {
+                    continue;
+                }
 
                 let (is_local_minimum, neighbors) = self.get_smoothing_neighbors(&cavity);
 
