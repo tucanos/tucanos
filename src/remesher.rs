@@ -676,6 +676,11 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>, G: Geometry<D> + 'a> Remesher<'a
         self.elems.values().map(|v| v.q)
     }
 
+    /// Get the metrics
+    pub fn metrics(&self) -> Vec<M> {
+        self.verts.values().map(|v| v.m).collect()
+    }
+
     /// Get the element qualities
     pub fn qualities(&self) -> Vec<f64> {
         self.qualities_iter().collect()
