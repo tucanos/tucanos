@@ -206,6 +206,30 @@ impl Octree {
         idx as Idx
     }
 
+    pub fn nearest_vertex<const D: usize>(&self, pt: &Point<D>) -> Idx {
+        let mut pt = match D {
+            2 => Point::<3>::new(pt[0], pt[1], 0.0),
+            3 => Point::<3>::new(pt[0], pt[1], pt[2]),
+            _ => unreachable!(),
+        };
+
+        let mut min_dis: f64 = -1.0;
+
+        let idx = unsafe {
+            LolGetNearest(
+                self.tree,
+                TypTag::LolTypVer as i32,
+                pt.as_mut_ptr(),
+                &mut min_dis,
+                0.0,
+                None,
+                null_mut(),
+                0,
+            )
+        };
+        idx as Idx
+    }
+
     /// Project a vertex onto the nearest element
     pub fn project<const D: usize>(&self, pt: &Point<D>) -> (f64, Point<D>) {
         let mut pt = match D {
@@ -258,7 +282,7 @@ impl Drop for Octree {
 #[cfg(test)]
 mod tests {
     use nalgebra::SVector;
-    use rand::{rngs::StdRng, SeedableRng, Rng};
+    use rand::{rngs::StdRng, Rng, SeedableRng};
     use std::f64::consts::PI;
 
     use crate::{
