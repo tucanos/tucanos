@@ -10,7 +10,7 @@ use crate::{
 use log::{debug, info, warn};
 use nalgebra::SVector;
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::BuildHasherDefault;
 use std::marker::PhantomData;
 
@@ -118,6 +118,28 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             etags,
             faces,
             ftags,
+            point: PhantomData,
+            elem: PhantomData,
+            faces_to_elems: None,
+            vertex_to_elems: None,
+            elem_to_elems: None,
+            edges: None,
+            vertex_to_vertices: None,
+            elem_vol: None,
+            vert_vol: None,
+            tree: None,
+            topo: None,
+            vtags: None,
+        }
+    }
+
+    pub fn empty() -> Self {
+        Self {
+            coords: Vec::new(),
+            elems: Vec::new(),
+            etags: Vec::new(),
+            faces: Vec::new(),
+            ftags: Vec::new(),
             point: PhantomData,
             elem: PhantomData,
             faces_to_elems: None,
@@ -500,11 +522,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let mut bdy = Vec::with_capacity(E::Face::N_VERTS as usize * n_bdy);
         let mut bdy_tags = Vec::with_capacity(n_bdy);
 
-        let new_faces_tag = if self.ftags.is_empty() {
-            1
-        } else {
-            self.ftags.iter().max().unwrap() + 1
-        };
+        let new_faces_tag = self.ftags.iter().max().unwrap_or(&0) + 1;
         let mut next_internal_tag = new_faces_tag + 1;
         let mut internal_faces_tags: HashMap<Tag, Vec<Tag>> = HashMap::new();
 
@@ -595,7 +613,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// If internal faces are present, these are keps
     /// TODO: add the missing internal faces (belonging to 2 elems tagged differently) if needed
     /// TODO: whatto do if > 2 elems?
-    pub fn add_boundary_faces(&mut self) -> Idx {
+    pub fn add_boundary_faces(&mut self) -> (Tag, HashMap<Tag, Vec<Tag>>) {
         debug!("Add the missing boundary faces & orient all faces outwards");
         if self.faces_to_elems.is_none() {
             self.compute_face_to_elems();
@@ -616,7 +634,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         }
         self.faces = faces;
         self.ftags = ftags;
-        n_untagged as Idx
+
+        (new_tag, internal_faces)
     }
 
     /// Return the mesh of the boundary
@@ -675,49 +694,22 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Return the sub-mesh and the indices of the vertices, elements and faces in the
     /// parent mesh
     pub fn extract_tag(&self, tag: Tag) -> SubSimplexMesh<D, E> {
-        let elem_ids = (0..self.n_elems())
-            .filter(|&i| self.etags[i as usize] == tag)
-            .collect();
-        self.extract(elem_ids)
+        self.extract(|t| t == tag)
     }
 
-    pub fn extract(&self, elem_ids: Vec<Idx>) -> SubSimplexMesh<D, E> {
-        let els = elem_ids.iter().flat_map(|&i| self.elem(i));
-        let mut g = ElemGraph::from(E::N_VERTS, els);
-        let indices = g.reindex();
-        let n_verts = g.max_node() as usize + 1;
-        let etags = elem_ids.iter().map(|&i| self.etags[i as usize]).collect();
-
-        let mut coords = vec![0.0; D * n_verts];
-        let mut vert_ids = vec![0; n_verts];
-
-        for (old, new) in &indices {
-            let pt = self.vert(*old);
-            for i in 0..D {
-                coords[D * (*new as usize) + i] = pt[i];
-            }
-            vert_ids[*new as usize] = *old;
-        }
-
-        let mut faces = Vec::new();
-        let mut ftags = Vec::new();
-        let mut face_ids = Vec::new();
-
-        for i_face in 0..self.n_faces() {
-            let f = self.face(i_face);
-            let is_in = f.iter().all(|i| indices.get(i).is_some());
-            if is_in {
-                faces.extend(f.iter().map(|i| indices.get(i).unwrap()));
-                ftags.push(self.ftags[i_face as usize]);
-                face_ids.push(i_face);
-            }
-        }
+    pub fn extract<F>(&self, elem_filter: F) -> SubSimplexMesh<D, E>
+    where
+        F: FnMut(Tag) -> bool,
+    {
+        let mut res = Self::empty();
+        let (parent_vert_ids, parent_elem_ids, parent_face_ids) =
+            res.add(self, elem_filter, |_| true, None::<fn(Tag) -> bool>);
 
         SubSimplexMesh {
-            mesh: SimplexMesh::<D, E>::new(coords, g.elems, etags, faces, ftags),
-            parent_vert_ids: vert_ids,
-            parent_elem_ids: elem_ids,
-            parent_face_ids: face_ids,
+            mesh: res,
+            parent_vert_ids,
+            parent_elem_ids,
+            parent_face_ids,
         }
     }
 
@@ -811,6 +803,154 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn clear_topology(&mut self) {
         self.topo = None;
         self.vtags = None;
+    }
+
+    pub fn clear_all(&mut self) {
+        self.faces_to_elems = None;
+        self.vertex_to_elems = None;
+        self.elem_to_elems = None;
+        self.edges = None;
+        self.vertex_to_vertices = None;
+        self.elem_vol = None;
+        self.vert_vol = None;
+        self.tree = None;
+        self.topo = None;
+        self.vtags = None;
+    }
+
+    /// Add vertices, elements and faces from another mesh according to their tag
+    ///   - only the elements with a tag t such that `element_filter(t)` is true are inserted
+    ///   - among the faces belonging to these elements, only those with a tag such that `face_filter` is true are inserted
+    ///   - if `face_merge_filter` is not None, vertices for `other` on faces with a tagged t such that `face_merge_filter(t)`is true are merged
+    ///      with the closest vertices from `self`
+    pub fn add<F1, F2, F3>(
+        &mut self,
+        other: &Self,
+        mut elem_filter: F1,
+        mut face_filter: F2,
+        face_merge_filter: Option<F3>,
+    ) -> (Vec<Idx>, Vec<Idx>, Vec<Idx>)
+    where
+        F1: FnMut(Tag) -> bool,
+        F2: FnMut(Tag) -> bool,
+        F3: FnMut(Tag) -> bool,
+    {
+        self.clear_all();
+
+        let n_verts = self.n_verts();
+        let n_verts_other = other.n_verts();
+        let mut new_vert_ids = vec![Idx::MAX; n_verts_other as usize];
+
+        for (e, t) in other.elems().zip(other.etags()) {
+            if elem_filter(t) {
+                e.iter()
+                    .for_each(|&i| new_vert_ids[i as usize] = Idx::MAX - 1);
+            }
+        }
+
+        // If needed, merge some face tags
+        if let Some(mut face_merge_filter) = face_merge_filter {
+            let merge_face_tags = other
+                .ftags()
+                .filter(|&t| face_merge_filter(t))
+                .collect::<HashSet<_>>();
+            let mut flg = vec![false; n_verts_other as usize];
+            let (bdy, ids) = self.boundary();
+            for tag in merge_face_tags {
+                let smsh = bdy.extract_tag(tag);
+                if smsh.mesh.n_verts() == 0 {
+                    continue;
+                }
+                println!("merge tag {tag}");
+                let tree = Octree::new(&smsh.mesh);
+                flg.iter_mut().for_each(|x| *x = false);
+                other
+                    .faces()
+                    .zip(other.ftags())
+                    .filter(|(_, t)| *t == tag)
+                    .flat_map(|(f, _)| f)
+                    .for_each(|i| flg[i as usize] = true);
+                for i_vert in 0..n_verts_other {
+                    if flg[i_vert as usize] && new_vert_ids[i_vert as usize] == Idx::MAX - 1 {
+                        let vx = other.vert(i_vert);
+                        let i = tree.nearest_vertex(&vx);
+                        let i = ids[smsh.parent_vert_ids[i as usize] as usize];
+                        new_vert_ids[i_vert as usize] = i;
+                    }
+                }
+                println!("done merge tag {tag}");
+            }
+        }
+
+        // number & add the new vertices
+        let mut next = n_verts;
+        let mut added_verts = Vec::new();
+        new_vert_ids.iter_mut().enumerate().for_each(|(i, x)| {
+            if *x == Idx::MAX - 1 {
+                added_verts.push(i as Idx);
+                *x = next;
+                next += 1;
+                for j in 0..D {
+                    self.coords.push(other.coords[D * i + j])
+                }
+            }
+        });
+
+        let mut added_elems = Vec::new();
+        for (i, (e, t)) in other
+            .elems()
+            .zip(other.etags())
+            .enumerate()
+            .filter(|(_, (_, t))| elem_filter(*t))
+        {
+            added_elems.push(i as Idx);
+            self.elems
+                .extend(e.iter().map(|&i| new_vert_ids[i as usize]));
+            self.etags.push(t);
+        }
+
+        let mut added_faces = Vec::new();
+        for (i, (f, t)) in other
+            .faces()
+            .zip(other.ftags())
+            .enumerate()
+            .filter(|(_, (_, t))| face_filter(*t))
+            .filter(|(_, (f, _))| f.iter().all(|&j| new_vert_ids[j as usize] < Idx::MAX - 1))
+        {
+            added_faces.push(i as Idx);
+            self.faces
+                .extend(f.iter().map(|&i| new_vert_ids[i as usize]));
+            self.ftags.push(t);
+        }
+
+        (added_verts, added_elems, added_faces)
+    }
+
+    /// Remove faces based on their tag
+    pub fn remove_faces<F: FnMut(Tag) -> bool>(&mut self, mut face_filter: F) {
+        let mut new_faces = Vec::new();
+        let mut new_ftags = Vec::new();
+
+        for (f, t) in self
+            .faces()
+            .zip(self.ftags())
+            .filter(|(_, t)| !face_filter(*t))
+        {
+            new_faces.extend(f.iter().copied());
+            new_ftags.push(t);
+        }
+        self.faces = new_faces;
+        self.ftags = new_ftags;
+    }
+
+    /// Modify the face tags
+    pub fn update_face_tags<F: FnMut(Tag) -> Tag>(&mut self, mut new_ftags: F) {
+        self.ftags.iter_mut().for_each(|mut t| *t = new_ftags(*t));
+    }
+
+    /// Get the number of faces with a given tag
+    pub fn n_tagged_faces(&self, tag: Tag) -> Idx {
+        self.ftags.iter().filter(|&&t| t == tag).count() as Idx
     }
 }
 
