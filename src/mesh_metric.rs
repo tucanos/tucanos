@@ -232,7 +232,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             res = *m_f;
         }
         if let Some(m_i) = m_i {
-            res.limit(m_i, step.unwrap_or(4.0));
+            res.control_step(m_i, step.unwrap_or(4.0));
         }
         res.scale_with_bounds(1.0, h_min, h_max);
         res
