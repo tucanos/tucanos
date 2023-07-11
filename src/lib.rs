@@ -64,7 +64,8 @@ pub type Idx = u32;
 
 /// Topological tags
 pub type Dim = i8;
-pub type Tag = i16;
+/// TODO: doc
+pub type Tag = i16; // TODO: use a struct
 pub type TopoTag = (Dim, Tag);
 
 /// Return the minimum of an iterator of f64
