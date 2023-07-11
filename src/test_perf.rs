@@ -39,7 +39,7 @@ fn main() -> Result<()> {
     bdy.compute_octree();
     let geom = LinearGeometry::new(&mesh, bdy)?;
 
-    let mut remesher = Remesher::new(&mesh, &m, geom)?;
+    let mut remesher = Remesher::new(&mesh, &m, &geom)?;
 
     remesher.remesh(RemesherParams::default());
     remesher.check()?;

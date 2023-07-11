@@ -232,7 +232,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             res = *m_f;
         }
         if let Some(m_i) = m_i {
-            res.limit(m_i, step.unwrap_or(4.0));
+            res.control_step(m_i, step.unwrap_or(4.0));
         }
         res.scale_with_bounds(1.0, h_min, h_max);
         res
@@ -696,7 +696,7 @@ impl SimplexMesh<3, Tetrahedron> {
 
         // Set the metric at the boundary vertices
         for tag in bdy_tags {
-            let (_, ids, _, _) = bdy.extract(tag);
+            let ids = bdy.extract_tag(tag).parent_vert_ids;
             let use_h_n = if let Some(h_n_tags) = h_n_tags {
                 h_n_tags.iter().any(|&t| t == tag)
             } else {
@@ -776,7 +776,7 @@ impl SimplexMesh<2, Triangle> {
 
         // Set the metric at the boundary vertices
         for tag in bdy_tags {
-            let (_, ids, _, _) = bdy.extract(tag);
+            let ids = bdy.extract_tag(tag).parent_vert_ids;
             let use_h_n = if let Some(h_n_tags) = h_n_tags {
                 h_n_tags.iter().any(|&t| t == tag)
             } else {

@@ -1,6 +1,7 @@
 use core::fmt;
 mod cavity;
 pub mod curvature;
+pub mod domain_decomposition;
 pub mod geom_elems;
 pub mod geometry;
 pub mod graph;
@@ -13,6 +14,7 @@ mod mesh_l2proj;
 mod mesh_ls;
 pub mod mesh_metric;
 mod mesh_ordering;
+mod mesh_partition;
 mod mesh_split;
 pub mod mesh_stl;
 pub mod mesh_vtk;
@@ -36,6 +38,7 @@ const ANISO_MAX: f64 = 1e5;
 const S_MIN: f64 = 1. / (H_MAX * H_MAX);
 const S_MAX: f64 = 1. / (H_MIN * H_MIN);
 const S_RATIO_MAX: f64 = ANISO_MAX * ANISO_MAX;
+
 // Errors
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 #[derive(Debug)]
@@ -61,7 +64,8 @@ pub type Idx = u32;
 
 /// Topological tags
 pub type Dim = i8;
-pub type Tag = i16;
+/// TODO: doc
+pub type Tag = i16; // TODO: use a struct
 pub type TopoTag = (Dim, Tag);
 
 /// Return the minimum of an iterator of f64
@@ -124,4 +128,12 @@ pub trait Mesh {
             _ => None,
         }
     }
+}
+
+// Set the log level for tests
+#[cfg(test)]
+fn init_log(level: &str) {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(level))
+        .format_timestamp(None)
+        .init();
 }

@@ -72,7 +72,7 @@ pub struct ElemInfo<E: Elem> {
 }
 
 /// Remesher for simplex meshes of elements E in dimension D
-pub struct Remesher<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> {
+pub struct Remesher<'a, const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> {
     /// The topology information
     topo: Topology,
     /// Vertices
@@ -86,13 +86,14 @@ pub struct Remesher<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> {
     /// Next element Id
     next_elem: Idx,
     /// Geometry
-    geom: G,
+    geom: &'a G,
     /// Statistics
     stats: Vec<StepStats>,
 }
 
 enum TrySwapResult {
     QualitySufficient,
+    FixedEdge,
     CouldNotSwap,
     CouldSwap,
 }
@@ -203,9 +204,9 @@ impl Default for RemesherParams {
     }
 }
 
-impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G> {
+impl<'a, const D: usize, E: Elem, M: Metric<D>, G: Geometry<D> + 'a> Remesher<'a, D, E, M, G> {
     /// Initialize the remesher
-    pub fn new(mesh: &SimplexMesh<D, E>, m: &[M], geom: G) -> Result<Self> {
+    pub fn new(mesh: &SimplexMesh<D, E>, m: &[M], geom: &'a G) -> Result<Self> {
         info!(
             "Initialize the remesher with {} {}D vertices / {} {}",
             mesh.n_verts(),
@@ -675,6 +676,11 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
         self.elems.values().map(|v| v.q)
     }
 
+    /// Get the metrics
+    pub fn metrics(&self) -> Vec<M> {
+        self.verts.values().map(|v| v.m).collect()
+    }
+
     /// Get the element qualities
     pub fn qualities(&self) -> Vec<f64> {
         self.qualities_iter().collect()
@@ -741,6 +747,11 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                     let new_m = M::interpolate([(0.5, m0), (0.5, m1)].into_iter());
                     // tag
                     let tag = self.topo.parent(t0, t1).unwrap();
+
+                    // tag < 0 on fixed boundaries
+                    if tag.1 < 0 {
+                        continue;
+                    }
                     // projection if needed
                     if tag.0 < E::DIM as Dim {
                         self.geom.project(&mut new_p, &tag);
@@ -818,6 +829,10 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
         let mut succeed = false;
 
         let etag = self.topo.parent(cavity.tags[i0], cavity.tags[i1]).unwrap();
+        // tag < 0 on fixed boundaries
+        if etag.1 < 0 {
+            return TrySwapResult::FixedEdge;
+        }
 
         for n in 0..cavity.n_verts() {
             if n == i0 as Idx || n == i1 as Idx {
@@ -843,7 +858,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                 continue;
             }
 
-            if !filled_cavity.check_boundary_normals(&self.topo, &self.geom, max_angle) {
+            if !filled_cavity.check_boundary_normals(&self.topo, self.geom, max_angle) {
                 trace!("Cannot swap, would create a non smooth surface");
                 continue;
             }
@@ -922,7 +937,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                 match res {
                     TrySwapResult::CouldNotSwap => n_fails += 1,
                     TrySwapResult::CouldSwap => n_swaps += 1,
-                    TrySwapResult::QualitySufficient => n_ok += 1,
+                    _ => n_ok += 1,
                 }
             }
 
@@ -996,6 +1011,10 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                     let mut topo_0 = self.verts.get(&i0).unwrap().tag;
                     let mut topo_1 = self.verts.get(&i1).unwrap().tag;
                     let tag = self.topo.parent(topo_0, topo_1).unwrap();
+                    // tag < 0 on fixed boundaries
+                    if tag.1 < 0 {
+                        continue;
+                    }
 
                     if topo_0.0 != tag.0 || topo_0.1 != tag.1 {
                         if topo_1.0 == tag.0 || !topo_1.1 == tag.1 {
@@ -1029,7 +1048,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
 
                     if !filled_cavity.check_boundary_normals(
                         &self.topo,
-                        &self.geom,
+                        self.geom,
                         params.max_angle,
                     ) {
                         trace!("Cannot collapse, would create a non smooth surface");
@@ -1241,6 +1260,10 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
                 trace!("Try to smooth vertex {}", i0);
 
                 self.compute_cavity_vertex(i0, &mut cavity);
+                let CavityType::Vertex(i0_local) = cavity.ctype else {unreachable!()};
+                if cavity.tags[i0_local as usize].1 < 0 {
+                    continue;
+                }
 
                 let (is_local_minimum, neighbors) = self.get_smoothing_neighbors(&cavity);
 
@@ -1290,7 +1313,7 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
 
                     if !filled_cavity.check_boundary_normals(
                         &self.topo,
-                        &self.geom,
+                        self.geom,
                         params.max_angle,
                     ) {
                         trace!("Cannot smooth, would create a non smooth surface");
@@ -1438,8 +1461,6 @@ impl<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>> Remesher<D, E, M, G>
 mod tests {
     use std::f64::consts::PI;
 
-    use env_logger::Env;
-
     use crate::{
         geometry::NoGeometry,
         mesh::{Point, SimplexMesh},
@@ -1455,18 +1476,12 @@ mod tests {
 
     use super::RemesherParams;
 
-    fn _init_log(level: &str) {
-        env_logger::Builder::from_env(Env::default().default_filter_or(level))
-            .format_timestamp(None)
-            .init();
-    }
-
     #[test]
     fn test_init() -> Result<()> {
         let mut mesh = test_mesh_2d();
         mesh.compute_topology();
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
-        let remesher = Remesher::new(&mesh, &h, NoGeometry())?;
+        let remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
 
         assert_eq!(remesher.n_verts(), 4);
         assert_eq!(remesher.n_elems(), 2);
@@ -1516,7 +1531,7 @@ mod tests {
         mesh.compute_topology();
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
 
-        let mut remesher = Remesher::new(&mesh, &h, NoGeometry()).unwrap();
+        let mut remesher = Remesher::new(&mesh, &h, &NoGeometry()).unwrap();
 
         remesher.remove_vertex(5);
     }
@@ -1529,7 +1544,7 @@ mod tests {
 
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
 
-        let mut remesher = Remesher::new(&mesh, &h, NoGeometry()).unwrap();
+        let mut remesher = Remesher::new(&mesh, &h, &NoGeometry()).unwrap();
 
         remesher.remove_vertex(1);
     }
@@ -1541,7 +1556,7 @@ mod tests {
 
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
 
-        let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
+        let mut remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
 
         remesher.remove_elem(0);
         remesher.remove_vertex(1);
@@ -1561,7 +1576,7 @@ mod tests {
 
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
 
-        let mut remesher = Remesher::new(&mesh, &h, NoGeometry()).unwrap();
+        let mut remesher = Remesher::new(&mesh, &h, &NoGeometry()).unwrap();
 
         remesher.remove_elem(3);
     }
@@ -1575,7 +1590,7 @@ mod tests {
             .verts()
             .map(|p| IsoMetric::<2>::from(h_2d(&p)))
             .collect();
-        let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
+        let mut remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
 
         let params = RemesherParams {
             split_max_iter: 10,
@@ -1598,7 +1613,7 @@ mod tests {
 
         // collapse to lower the quality
         let h = vec![IsoMetric::<2>::from(2.); mesh.n_verts() as usize];
-        let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
+        let mut remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
         remesher.check()?;
 
         let params = RemesherParams {
@@ -1616,7 +1631,7 @@ mod tests {
         let mut mesh = remesher.to_mesh(true);
         mesh.compute_topology();
         let h = vec![IsoMetric::<2>::from(2.); mesh.n_verts() as usize];
-        let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
+        let mut remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
 
         let n_iter = remesher.swap(0.8, &params);
         assert!(n_iter < 10);
@@ -1636,7 +1651,7 @@ mod tests {
         mesh.compute_topology();
 
         let h = vec![IsoMetric::<2>::from(2.); mesh.n_verts() as usize];
-        let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
+        let mut remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
         remesher.check()?;
 
         let params = RemesherParams {
@@ -1666,7 +1681,7 @@ mod tests {
         mesh.compute_topology();
 
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
-        let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
+        let mut remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
 
         let params = RemesherParams {
             smooth_type: SmoothingType::Laplacian,
@@ -1699,7 +1714,7 @@ mod tests {
         mesh.compute_topology();
 
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
-        let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
+        let mut remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
 
         let params = RemesherParams {
             smooth_type: SmoothingType::NLOpt,
@@ -1737,7 +1752,7 @@ mod tests {
             AnisoMetric2d::from_slice(&[1., 100., 0.], 0),
             AnisoMetric2d::from_slice(&[1., 100., 0.], 0),
         ];
-        let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
+        let mut remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
 
         let params = RemesherParams {
             smooth_type: SmoothingType::Laplacian,
@@ -1769,7 +1784,7 @@ mod tests {
         mesh.compute_topology();
 
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
-        let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
+        let mut remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
 
         let params = RemesherParams {
             smooth_type: SmoothingType::Avro,
@@ -1807,7 +1822,7 @@ mod tests {
             AnisoMetric2d::from_slice(&[1., 100., 0.], 0),
             AnisoMetric2d::from_slice(&[1., 100., 0.], 0),
         ];
-        let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
+        let mut remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
 
         let params = RemesherParams {
             smooth_type: SmoothingType::Avro,
@@ -1836,7 +1851,7 @@ mod tests {
             let h: Vec<_> = (0..mesh.n_verts())
                 .map(|i| IsoMetric::<2>::from(h_2d(&mesh.vert(i))))
                 .collect();
-            let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
+            let mut remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
 
             remesher.remesh(RemesherParams::default());
             remesher.check()?;
@@ -1862,7 +1877,7 @@ mod tests {
         };
 
         let h: Vec<_> = mesh.verts().map(mfunc).collect();
-        let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
+        let mut remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
 
         remesher.remesh(RemesherParams::default());
         remesher.check()?;
@@ -1885,7 +1900,7 @@ mod tests {
                 .verts()
                 .map(|p| IsoMetric::<2>::from(h_2d(&p)))
                 .collect();
-            let mut remesher = Remesher::new(&mesh, &h, GeomHalfCircle2d())?;
+            let mut remesher = Remesher::new(&mesh, &h, &GeomHalfCircle2d())?;
 
             remesher.remesh(RemesherParams::default());
             remesher.check()?;
@@ -1906,7 +1921,7 @@ mod tests {
         mesh.compute_topology();
 
         let h = vec![IsoMetric::<3>::from(0.25); mesh.n_verts() as usize];
-        let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
+        let mut remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
         remesher.check()?;
 
         let params = RemesherParams {
@@ -1932,7 +1947,7 @@ mod tests {
             .verts()
             .map(|p| IsoMetric::<3>::from(h_3d(&p)))
             .collect();
-        let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
+        let mut remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
         remesher.check()?;
 
         let params = RemesherParams {
@@ -1956,7 +1971,7 @@ mod tests {
         mesh.compute_topology();
 
         let h = vec![IsoMetric::<3>::from(2.); mesh.n_verts() as usize];
-        let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
+        let mut remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
         remesher.check()?;
 
         let params = RemesherParams {
@@ -1981,7 +1996,7 @@ mod tests {
 
         // collapse to lower the quality
         let h = vec![IsoMetric::<3>::from(2.); mesh.n_verts() as usize];
-        let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
+        let mut remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
 
         remesher.check()?;
         let mesh = remesher.to_mesh(true);
@@ -2010,7 +2025,7 @@ mod tests {
 
         // collapse to lower the quality
         let h = vec![IsoMetric::<3>::from(2.); mesh.n_verts() as usize];
-        let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
+        let mut remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
         remesher.check()?;
 
         let params = RemesherParams {
@@ -2030,7 +2045,7 @@ mod tests {
         mesh.compute_topology();
 
         let h = vec![IsoMetric::<3>::from(2.); mesh.n_verts() as usize];
-        let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
+        let mut remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
 
         let n_iter = remesher.swap(0.8, &params);
         assert!(n_iter < 10);
@@ -2053,7 +2068,7 @@ mod tests {
             .verts()
             .map(|p| IsoMetric::<3>::from(h_3d(&p)))
             .collect();
-        let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
+        let mut remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
 
         remesher.remesh(RemesherParams::default());
 
@@ -2078,7 +2093,7 @@ mod tests {
         };
 
         let h: Vec<_> = mesh.verts().map(mfunc).collect();
-        let mut remesher = Remesher::new(&mesh, &h, NoGeometry())?;
+        let mut remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
 
         remesher.remesh(RemesherParams::default());
         remesher.check()?;
@@ -2106,7 +2121,7 @@ mod tests {
         let c = mesh.complexity(h.iter().copied(), 0.0, f64::MAX);
         assert!(f64::abs(c - c_ref) < 1e-6 * c);
 
-        let remesher = Remesher::new(&mesh, &h, NoGeometry())?;
+        let remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
 
         let c = remesher.complexity();
         assert!(f64::abs(c - c_ref) < 1e-6 * c);
@@ -2132,7 +2147,7 @@ mod tests {
         let c = mesh.complexity(h.iter().copied(), 0.0, f64::MAX);
         assert!(f64::abs(c - c_ref) < 1e-6 * c);
 
-        let remesher = Remesher::new(&mesh, &h, NoGeometry())?;
+        let remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
 
         let c = remesher.complexity();
         assert!(f64::abs(c - c_ref) < 1e-6 * c);
