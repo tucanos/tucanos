@@ -83,49 +83,11 @@ pub fn min_max_iter<I: Iterator<Item = f64>>(it: I) -> (f64, f64) {
     })
 }
 
-#[derive(Debug, Hash, Eq, PartialEq, Clone, Copy)]
-pub enum FieldLocation {
-    Vertex,
-    Element,
-    Constant,
-}
-
-#[derive(Debug)]
-pub enum FieldType {
-    Scalar,
-    Vector,
-    SymTensor,
-}
-
-pub trait Mesh {
+pub trait Mesh<const D: usize> {
     fn n_verts(&self) -> Idx;
     fn n_elems(&self) -> Idx;
     fn n_faces(&self) -> Idx;
-    fn dim(&self) -> Idx;
     fn cell_dim(&self) -> Idx;
-    fn n_comps(&self, ftype: FieldType) -> Idx {
-        match ftype {
-            FieldType::Scalar => 1,
-            FieldType::Vector => self.dim(),
-            FieldType::SymTensor => self.dim() * (self.dim() + 1) / 2,
-        }
-    }
-    fn field_type(&self, vec: &[f64], loc: FieldLocation) -> Option<FieldType> {
-        let n = match loc {
-            FieldLocation::Vertex => self.n_verts(),
-            FieldLocation::Element => self.n_elems(),
-            FieldLocation::Constant => 1,
-        };
-        let m = vec.len() as Idx;
-        let size = m / n;
-        assert!(m % n == 0);
-        match size {
-            1 => Some(FieldType::Scalar),
-            x if x == self.dim() => Some(FieldType::Vector),
-            x if x == (self.dim() * (self.dim() + 1) / 2) => Some(FieldType::SymTensor),
-            _ => None,
-        }
-    }
 }
 
 // Set the log level for tests

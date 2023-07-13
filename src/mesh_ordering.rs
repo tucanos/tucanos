@@ -1,4 +1,8 @@
-use crate::{mesh::SimplexMesh, topo_elems::Elem, Idx, Mesh};
+use crate::{
+    mesh::{Point, SimplexMesh},
+    topo_elems::Elem,
+    Idx, Mesh,
+};
 use lindel::Lineariseable;
 use log::{debug, info};
 
@@ -24,13 +28,13 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let n = self.n_verts() as usize;
         assert_eq!(new_indices.len(), n);
 
-        let mut coords = vec![0.0; self.coords.len()];
-        for (i_old, i_new) in new_indices.iter().copied().enumerate() {
-            for j in 0..D {
-                coords[D * i_new as usize + j] = self.coords[D * i_old + j];
-            }
+        let mut new_verts = vec![Point::<D>::zeros(); self.n_verts() as usize];
+        for (i_old, &i_new) in new_indices.iter().enumerate() {
+            new_verts[i_new as usize] = self.vert(i_old as Idx);
         }
-        self.coords = coords;
+        self.mut_verts()
+            .zip(new_verts.iter())
+            .for_each(|(p0, p1)| *p0 = *p1);
 
         self.elems
             .iter_mut()
@@ -113,7 +117,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         // Hilbert index
         let order = 16;
         let scale = usize::pow(2, order) as f64 - 1.0;
-        let hilbert = |x: &[f64]| {
+        let hilbert = |x: Point<D>| {
             let mut tmp = [0; 3];
             for j in 0..D {
                 tmp[j] = (scale * (x[j] - mini[j]) / (maxi[j] - mini[j])).round() as u16;
@@ -122,11 +126,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         };
 
         // Sort the vertices
-        let hilbert_v = |i: usize| {
-            let start = D * i;
-            let end = start + D;
-            hilbert(&self.coords[start..end]) as usize
-        };
+        let hilbert_v = |i: usize| hilbert(self.vert(i as Idx)) as usize;
 
         let new_vert_indices = get_indices(self.n_verts() as usize, hilbert_v);
         self.reorder_vertices(&new_vert_indices);
@@ -179,7 +179,7 @@ mod tests {
     fn test_reorder_verts_2d() -> Result<()> {
         let mut mesh = test_mesh_2d().split().split().split();
 
-        let f: Vec<f64> = mesh.coords.iter().step_by(2).copied().collect();
+        let f: Vec<f64> = mesh.verts().map(|p| p[0]).collect();
 
         // Random reordering
         let mut new_vert_indices: Vec<Idx> = (0..mesh.n_verts()).collect();
@@ -195,13 +195,7 @@ mod tests {
         let v: f64 = mesh.elem_vols().sum();
         assert!(f64::abs(v - 1.0) < 1e-10);
 
-        for (a, b) in mesh
-            .coords
-            .iter()
-            .step_by(2)
-            .copied()
-            .zip(f_new.iter().copied())
-        {
+        for (a, b) in mesh.verts().map(|p| p[0]).zip(f_new.iter().copied()) {
             assert!(f64::abs(b - a) < 1e-10);
         }
 
@@ -212,7 +206,7 @@ mod tests {
     fn test_reorder_verts_3d() -> Result<()> {
         let mut mesh = test_mesh_3d().split().split().split();
 
-        let f: Vec<f64> = mesh.coords.iter().step_by(3).copied().collect();
+        let f: Vec<f64> = mesh.verts().map(|p| p[0]).collect();
 
         // Random reordering
         let mut new_vert_indices: Vec<Idx> = (0..mesh.n_verts()).collect();
@@ -228,13 +222,7 @@ mod tests {
         for (i_old, i_new) in new_vert_indices.iter().copied().enumerate() {
             f_new[i_new as usize] = f[i_old];
         }
-        for (a, b) in mesh
-            .coords
-            .iter()
-            .step_by(3)
-            .copied()
-            .zip(f_new.iter().copied())
-        {
+        for (a, b) in mesh.verts().map(|p| p[0]).zip(f_new.iter().copied()) {
             assert!(f64::abs(b - a) < 1e-10);
         }
 

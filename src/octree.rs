@@ -26,19 +26,13 @@ impl Octree {
     /// Build an octree from a `SimplexMesh`
     /// The coordinates and element connectivity are copied
     pub fn new<const D: usize, E: Elem>(mesh: &SimplexMesh<D, E>) -> Self {
-        let mut coords = Vec::with_capacity(3 * mesh.n_verts() as usize);
-        if D == 3 {
-            for e in &mesh.coords {
-                coords.push(*e);
+        let mut coords = Vec::with_capacity(mesh.n_verts() as usize);
+        for p in mesh.verts() {
+            for j in 0..D {
+                coords.push(p[j]);
             }
-        } else {
-            for p in mesh.verts() {
-                for j in 0..D {
-                    coords.push(p[j]);
-                }
-                for _j in D..3 {
-                    coords.push(0.);
-                }
+            for _j in D..3 {
+                coords.push(0.);
             }
         }
 
@@ -295,7 +289,12 @@ mod tests {
 
     #[test]
     fn test_edgs() {
-        let coords: Vec<f64> = vec![0., 0., 1., 0., 1., 1., 0., 1.];
+        let coords = vec![
+            Point::<2>::new(0., 0.),
+            Point::<2>::new(1., 0.),
+            Point::<2>::new(1., 1.),
+            Point::<2>::new(0., 1.),
+        ];
         let elems: Vec<Idx> = vec![0, 1, 1, 2, 2, 3, 3, 0];
         let etags: Vec<Tag> = vec![1, 2];
         let faces: Vec<Idx> = vec![];
@@ -321,12 +320,16 @@ mod tests {
         let mut coords = Vec::with_capacity(2 * (n as usize) * dim);
         for i in 0..n {
             let theta = 2.0 * PI * i as f64 / n as f64;
-            coords.push(r_in * f64::cos(theta));
-            coords.push(r_in * f64::sin(theta));
-            coords.push(0.0);
-            coords.push(r_out * f64::cos(theta));
-            coords.push(r_out * f64::sin(theta));
-            coords.push(0.0);
+            coords.push(Point::<3>::new(
+                r_in * f64::cos(theta),
+                r_in * f64::sin(theta),
+                0.0,
+            ));
+            coords.push(Point::<3>::new(
+                r_out * f64::cos(theta),
+                r_out * f64::sin(theta),
+                0.0,
+            ));
         }
 
         let mut tris = Vec::with_capacity(2 * (n as usize) * 3);

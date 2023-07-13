@@ -1,6 +1,6 @@
 use crate::{
     geom_elems::GElem,
-    mesh::SimplexMesh,
+    mesh::{Point, SimplexMesh},
     octree::Octree,
     topo_elems::{Elem, Triangle},
     Idx, Mesh,
@@ -16,11 +16,11 @@ pub fn read_stl(file_name: &str) -> SimplexMesh<3, Triangle> {
     let mut file = OpenOptions::new().read(true).open(file_name).unwrap();
     let stl = stl_io::read_stl(&mut file).unwrap();
 
-    let mut coords = Vec::with_capacity(3 * stl.vertices.len());
-    coords.extend(
+    let mut verts = Vec::with_capacity(stl.vertices.len());
+    verts.extend(
         stl.vertices
             .iter()
-            .flat_map(|v| (0..3).map(|i| f64::from(v[i]))),
+            .map(|v| Point::<3>::new(v[0] as f64, v[1] as f64, v[2] as f64)),
     );
 
     let mut elems = Vec::with_capacity(3 * stl.faces.len());
@@ -33,7 +33,7 @@ pub fn read_stl(file_name: &str) -> SimplexMesh<3, Triangle> {
     let faces = Vec::new();
     let ftags = Vec::new();
 
-    SimplexMesh::<3, Triangle>::new(coords, elems, etags, faces, ftags)
+    SimplexMesh::<3, Triangle>::new(verts, elems, etags, faces, ftags)
 }
 
 /// Reorder a surface mesh that provides a representation of the geometry of the boundary of a

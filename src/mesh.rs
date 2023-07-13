@@ -18,7 +18,7 @@ use std::marker::PhantomData;
 #[derive(Debug, Default, Clone)]
 pub struct SimplexMesh<const D: usize, E: Elem> {
     /// Coordinates of the vertices (length = D * # of vertices)
-    pub coords: Vec<f64>,
+    verts: Vec<Point<D>>,
     /// Element connectivity (length = # of vertices per element * # of elements)
     pub elems: Vec<Idx>,
     /// Element tags (length = # of elements)
@@ -64,24 +64,13 @@ pub struct SubSimplexMesh<const D: usize, E: Elem> {
 
 pub type Point<const D: usize> = SVector<f64, D>;
 
-#[must_use]
-pub fn get_point<const D: usize>(conn: &[f64], idx: Idx) -> Point<D> {
-    let start = idx as usize * D;
-    let end = start + D;
-    return SVector::from_iterator(conn[start..end].iter().copied());
-}
-
-impl<const D: usize, E: Elem> Mesh for SimplexMesh<D, E> {
-    fn dim(&self) -> Idx {
-        D as Idx
-    }
-
+impl<const D: usize, E: Elem> Mesh<D> for SimplexMesh<D, E> {
     fn cell_dim(&self) -> Idx {
         E::DIM as Idx
     }
 
     fn n_verts(&self) -> Idx {
-        (self.coords.len() / D) as Idx
+        self.verts.len() as Idx
     }
 
     fn n_elems(&self) -> Idx {
@@ -97,7 +86,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Create a new `SimplexMesh`. The extra connectivity information is not built
     #[must_use]
     pub fn new(
-        coords: Vec<f64>,
+        verts: Vec<Point<D>>,
         elems: Vec<Idx>,
         etags: Vec<Tag>,
         faces: Vec<Idx>,
@@ -105,7 +94,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     ) -> Self {
         info!(
             "Create a SimplexMesh with {} {}D vertices / {} {} / {} {}",
-            coords.len() / D,
+            verts.len(),
             D,
             elems.len() / E::N_VERTS as usize,
             E::NAME,
@@ -113,7 +102,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             E::Face::NAME
         );
         Self {
-            coords,
+            verts,
             elems,
             etags,
             faces,
@@ -135,7 +124,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
     pub fn empty() -> Self {
         Self {
-            coords: Vec::new(),
+            verts: Vec::new(),
             elems: Vec::new(),
             etags: Vec::new(),
             faces: Vec::new(),
@@ -158,12 +147,23 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Get the i-th vertex
     #[must_use]
     pub fn vert(&self, idx: Idx) -> Point<D> {
-        get_point(&self.coords, idx)
+        self.verts[idx as usize]
+    }
+
+    /// Get the i-th vertex (mutable reference)
+    #[must_use]
+    pub fn mut_vert(&mut self, idx: Idx) -> &mut Point<D> {
+        &mut self.verts[idx as usize]
     }
 
     /// Get an iterator through the vertices
     pub fn verts(&self) -> impl Iterator<Item = Point<D>> + '_ {
-        (0..self.n_verts()).map(|i| self.vert(i))
+        self.verts.iter().copied()
+    }
+
+    /// Get an iterator through the vertices
+    pub fn mut_verts(&mut self) -> impl Iterator<Item = &mut Point<D>> + '_ {
+        self.verts.iter_mut()
     }
 
     /// Get the i-th element
@@ -204,7 +204,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn gelem(&self, idx: Idx) -> E::Geom<D, IsoMetric<D>> {
         let e: E = get_elem(&self.elems, idx);
         let metric = IsoMetric::<D>::from(1.0);
-        E::Geom::from_verts(e.iter().map(|i| (get_point::<D>(&self.coords, *i), metric)))
+        E::Geom::from_verts(e.iter().map(|&i| (self.vert(i), metric)))
     }
 
     /// Get an iterator through the geometric elements
@@ -248,9 +248,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn gface(&self, idx: Idx) -> <<E as Elem>::Face as Elem>::Geom<D, IsoMetric<D>> {
         let f: E::Face = get_elem(&self.faces, idx);
         let metric = IsoMetric::<D>::from(1.0);
-        <<E as Elem>::Face as Elem>::Geom::from_verts(
-            f.iter().map(|i| (get_point::<D>(&self.coords, *i), metric)),
-        )
+        <<E as Elem>::Face as Elem>::Geom::from_verts(f.iter().map(|&i| (self.vert(i), metric)))
     }
 
     /// Get an iterator through the geometric faces
@@ -660,20 +658,17 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let indices = g.reindex();
         let n_bdy_verts = g.max_node() as usize + 1;
 
-        let mut coords = vec![0.0; D * n_bdy_verts];
+        let mut verts = vec![Point::<D>::zeros(); n_bdy_verts];
         let mut vert_ids = vec![0; n_bdy_verts];
 
-        for (old, new) in &indices {
-            let pt = self.vert(*old);
-            for i in 0..D {
-                coords[D * (*new as usize) + i] = pt[i];
-            }
-            vert_ids[*new as usize] = *old;
+        for (old, new) in indices {
+            verts[new as usize] = self.vert(old);
+            vert_ids[new as usize] = old;
         }
 
         (
             SimplexMesh::<D, E::Face>::new(
-                coords,
+                verts,
                 g.elems,
                 self.ftags.clone(),
                 Vec::new(),
@@ -890,9 +885,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 added_verts.push(i as Idx);
                 *x = next;
                 next += 1;
-                for j in 0..D {
-                    self.coords.push(other.coords[D * i + j])
-                }
+                self.verts.push(other.verts[i])
             }
         });
 

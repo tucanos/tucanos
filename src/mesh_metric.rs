@@ -1126,15 +1126,12 @@ mod tests {
             0.,
         );
 
-        let mut coords = Vec::with_capacity(mesh.coords.len());
-        for mut pt in mesh.verts() {
-            pt[0] *= h0;
-            pt[1] *= h1;
-            pt[2] *= h2;
-            pt = rot * pt;
-            coords.extend(pt.iter());
-        }
-        mesh.coords = coords;
+        mesh.mut_verts().for_each(|p| {
+            p[0] *= h0;
+            p[1] *= h1;
+            p[2] *= h2;
+            *p = rot * (*p);
+        });
         mesh.compute_vertex_to_elems();
         mesh.compute_volumes();
 
@@ -1158,18 +1155,15 @@ mod tests {
         let r_out = 0.5;
 
         let mut mesh = test_mesh_3d().split().split().split();
-        let mut new_coords = Vec::with_capacity(3 * mesh.n_verts() as usize);
-        for pt in mesh.verts() {
-            let r = r_in + (r_out - r_in) * pt[0];
-            let theta = 3.0 * pt[1];
-            let z = pt[2];
+
+        mesh.mut_verts().for_each(|p| {
+            let r = r_in + (r_out - r_in) * p[0];
+            let theta = 3.0 * p[1];
+            let z = p[2];
             let x = r * f64::cos(theta);
             let y = r * f64::sin(theta);
-            new_coords.push(x);
-            new_coords.push(y);
-            new_coords.push(z);
-        }
-        mesh.coords = new_coords;
+            *p = Point::<3>::new(x, y, z);
+        });
 
         mesh.compute_topology();
         mesh.compute_vertex_to_vertices();

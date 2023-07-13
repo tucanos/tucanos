@@ -45,31 +45,19 @@ mod tests {
         let mut mesh = test_mesh_2d().split().split().split();
         mesh.compute_octree();
 
-        let f: Vec<f64> = mesh.coords.iter().step_by(2).copied().collect();
+        let f: Vec<f64> = mesh.verts().map(|p| p[0]).collect();
 
         let other = test_mesh_2d().split().split().split().split();
         let f_other = mesh.interpolate(&other, &f)?;
 
-        for (a, b) in other
-            .coords
-            .iter()
-            .step_by(2)
-            .copied()
-            .zip(f_other.iter().copied())
-        {
+        for (a, b) in other.verts().map(|p| p[0]).zip(f_other.iter().copied()) {
             assert!(f64::abs(b - a) < 1e-10);
         }
 
         let other = test_mesh_2d().split();
         let f_other = mesh.interpolate(&other, &f)?;
 
-        for (a, b) in other
-            .coords
-            .iter()
-            .step_by(2)
-            .copied()
-            .zip(f_other.iter().copied())
-        {
+        for (a, b) in other.verts().map(|p| p[0]).zip(f_other.iter().copied()) {
             assert!(f64::abs(b - a) < 1e-10);
         }
 
@@ -81,31 +69,19 @@ mod tests {
         let mut mesh = test_mesh_3d().split().split().split();
         mesh.compute_octree();
 
-        let f: Vec<f64> = mesh.coords.iter().step_by(3).copied().collect();
+        let f: Vec<f64> = mesh.verts().map(|p| p[0]).collect();
 
         let other = test_mesh_3d().split().split().split().split();
         let f_other = mesh.interpolate(&other, &f)?;
 
-        for (a, b) in other
-            .coords
-            .iter()
-            .step_by(3)
-            .copied()
-            .zip(f_other.iter().copied())
-        {
+        for (a, b) in other.verts().map(|p| p[0]).zip(f_other.iter().copied()) {
             assert!(f64::abs(b - a) < 1e-10);
         }
 
         let other = test_mesh_3d().split();
         let f_other = mesh.interpolate(&other, &f)?;
 
-        for (a, b) in other
-            .coords
-            .iter()
-            .step_by(3)
-            .copied()
-            .zip(f_other.iter().copied())
-        {
+        for (a, b) in other.verts().map(|p| p[0]).zip(f_other.iter().copied()) {
             assert!(f64::abs(b - a) < 1e-10);
         }
 
