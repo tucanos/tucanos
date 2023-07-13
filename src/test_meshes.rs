@@ -8,7 +8,12 @@ use std::io::Write;
 /// Build a 2d mesh of a square with 2 triangles tagged differently
 #[must_use]
 pub fn test_mesh_2d() -> SimplexMesh<2, Triangle> {
-    let coords = vec![0., 0., 1., 0., 1., 1., 0., 1.];
+    let coords = vec![
+        Point::<2>::new(0., 0.),
+        Point::<2>::new(1., 0.),
+        Point::<2>::new(1., 1.),
+        Point::<2>::new(0., 1.),
+    ];
     let elems = vec![0, 1, 2, 0, 2, 3];
     let etags = vec![1, 2];
     let faces = vec![0, 1, 1, 2, 2, 3, 3, 0];
@@ -21,7 +26,12 @@ pub fn test_mesh_2d() -> SimplexMesh<2, Triangle> {
 /// Boundaries are not defined
 #[must_use]
 pub fn test_mesh_2d_nobdy() -> SimplexMesh<2, Triangle> {
-    let coords = vec![0., 0., 1., 0., 1., 1., 0., 1.];
+    let coords = vec![
+        Point::<2>::new(0., 0.),
+        Point::<2>::new(1., 0.),
+        Point::<2>::new(1., 1.),
+        Point::<2>::new(0., 1.),
+    ];
     let elems = vec![0, 1, 2, 0, 2, 3];
     let etags = vec![1, 2];
     let faces = vec![];
@@ -33,7 +43,12 @@ pub fn test_mesh_2d_nobdy() -> SimplexMesh<2, Triangle> {
 /// Build a 2d mesh with 2 flat triangles with the same tag
 #[must_use]
 pub fn test_mesh_2d_two_tris() -> SimplexMesh<2, Triangle> {
-    let coords = vec![0., 0., 1., 0.5, 0., 1., -1., 0.5];
+    let coords = vec![
+        Point::<2>::new(0., 0.),
+        Point::<2>::new(1., 0.5),
+        Point::<2>::new(0., 1.),
+        Point::<2>::new(-1., 0.5),
+    ];
     let elems = vec![0, 1, 3, 3, 1, 2];
     let etags = vec![1, 1];
     let faces = vec![0, 1, 1, 2, 2, 3, 3, 0];
@@ -57,7 +72,12 @@ pub fn h_2d(p: &Point<2>) -> f64 {
 /// Build a 2d mesh with 2 triangles corresponding to the geometry `GeomHalfCircle2d`
 #[must_use]
 pub fn test_mesh_moon_2d() -> SimplexMesh<2, Triangle> {
-    let coords = vec![-1., 0., 0., 0.5, 1., 0., 0., 1.];
+    let coords = vec![
+        Point::<2>::new(-1., 0.),
+        Point::<2>::new(0., 0.5),
+        Point::<2>::new(1., 0.),
+        Point::<2>::new(0., 1.),
+    ];
     let elems = vec![0, 1, 3, 1, 2, 3];
     let etags = vec![1, 1];
     let faces = vec![0, 1, 1, 2, 2, 3, 3, 0];
@@ -122,7 +142,12 @@ impl Geometry<2> for GeomHalfCircle2d {
 /// Build a 3d mesh with 1 single tetrahedron
 #[must_use]
 pub fn test_mesh_3d_single_tet() -> SimplexMesh<3, Tetrahedron> {
-    let coords = vec![0., 0., 0., 1., 0., 0., 0., 1., 0., 0., 0., 1.];
+    let coords = vec![
+        Point::<3>::new(0., 0., 0.),
+        Point::<3>::new(1., 0., 0.),
+        Point::<3>::new(0., 1., 0.),
+        Point::<3>::new(0., 0., 1.),
+    ];
     let elems = vec![0, 1, 2, 3];
     let etags = vec![1];
     let faces = vec![0, 1, 2, 0, 1, 3, 1, 2, 3, 2, 0, 3];
@@ -135,7 +160,11 @@ pub fn test_mesh_3d_single_tet() -> SimplexMesh<3, Tetrahedron> {
 #[must_use]
 pub fn test_mesh_3d_two_tets() -> SimplexMesh<3, Tetrahedron> {
     let coords = vec![
-        0., 0., 0., 1., 0., 0., 0.5, 0.1, 0., 0., 0., 1., 0.5, -0.1, 0.,
+        Point::<3>::new(0., 0., 0.),
+        Point::<3>::new(1., 0., 0.),
+        Point::<3>::new(0.5, 0.1, 0.),
+        Point::<3>::new(0., 0., 1.),
+        Point::<3>::new(0.5, -0.1, 0.),
     ];
     let elems = vec![0, 1, 2, 3, 0, 4, 1, 3];
     let etags = vec![1, 1];
@@ -149,8 +178,14 @@ pub fn test_mesh_3d_two_tets() -> SimplexMesh<3, Tetrahedron> {
 #[must_use]
 pub fn test_mesh_3d() -> SimplexMesh<3, Tetrahedron> {
     let coords = vec![
-        0., 0., 0., 1., 0., 0., 1., 1., 0., 0., 1., 0., 0., 0., 1., 1., 0., 1., 1., 1., 1., 0., 1.,
-        1.,
+        Point::<3>::new(0., 0., 0.),
+        Point::<3>::new(1., 0., 0.),
+        Point::<3>::new(1., 1., 0.),
+        Point::<3>::new(0., 1., 0.),
+        Point::<3>::new(0., 0., 1.),
+        Point::<3>::new(1., 0., 1.),
+        Point::<3>::new(1., 1., 1.),
+        Point::<3>::new(0., 1., 1.),
     ];
     let elems = vec![0, 1, 2, 5, 0, 2, 7, 5, 0, 2, 3, 7, 0, 5, 7, 4, 2, 7, 5, 6];
     let etags = vec![1, 1, 1, 1, 1];

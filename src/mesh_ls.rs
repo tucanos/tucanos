@@ -2,7 +2,7 @@ use crate::{
     linalg::lapack_qr_least_squares,
     mesh::{Point, SimplexMesh},
     topo_elems::Elem,
-    Error, FieldType, Idx, Mesh, Result,
+    Error, Idx, Mesh, Result,
 };
 
 use log::info;
@@ -102,8 +102,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             return Err(Error::from("vertex to vertex connection not available"));
         }
 
-        let m = self.n_comps(FieldType::Scalar);
-        let mut res = Vec::with_capacity((m * self.n_verts()) as usize);
+        let mut res = Vec::with_capacity(self.n_verts() as usize);
 
         let v2v = self.vertex_to_vertices.as_ref().unwrap();
         for i_vert in 0..self.n_verts() {
@@ -201,8 +200,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             return Err(Error::from("vertex to vertex connection not available"));
         }
 
-        let m = self.n_comps(FieldType::Vector) as usize;
-        let mut res = Vec::with_capacity(m * self.n_verts() as usize);
+        let mut res = Vec::with_capacity(D * self.n_verts() as usize);
 
         let mut failed = vec![false; self.n_verts() as usize];
 
@@ -213,7 +211,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             // Don't use a LS scheme for boundary vertices
             if flg[i_vert as usize] {
                 failed[i_vert as usize] = true;
-                res.resize(res.len() + m, 0.0);
+                res.resize(res.len() + D, 0.0);
             } else {
                 let neighbors = v2v.row(i_vert);
                 let dx_df_w = neighbors.iter().map(|&i| {
@@ -233,7 +231,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                         res.extend(sol.iter().skip(1).take(D));
                     } else {
                         failed[i_vert as usize] = true;
-                        res.resize(res.len() + m, 0.0);
+                        res.resize(res.len() + D, 0.0);
                     }
                 } else if D == 3 {
                     let sol = Self::least_squares::<4, _>(dx_df_w, None);
@@ -241,14 +239,14 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                         res.extend(sol.iter().skip(1).take(D));
                     } else {
                         failed[i_vert as usize] = true;
-                        res.resize(res.len() + m, 0.0);
+                        res.resize(res.len() + D, 0.0);
                     }
                 }
             }
         }
 
         // For vertices where no valid approximation could be computed, average over the valid neighbors
-        if self.fix_not_computed(&mut res, &mut failed, m, 3) {
+        if self.fix_not_computed(&mut res, &mut failed, D, 3) {
             if res.iter().copied().any(f64::is_nan) {
                 return Err(Error::from("NaN in gradient computation"));
             }
@@ -287,8 +285,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             return Err(Error::from("vertex to vertex connection not available"));
         }
 
-        let m = self.n_comps(FieldType::SymTensor) as usize;
-        let mut res = Vec::with_capacity(m * self.n_verts() as usize);
+        let mut res = Vec::with_capacity(D * (D + 1) / 2 * self.n_verts() as usize);
 
         let mut failed = vec![false; self.n_verts() as usize];
 
@@ -334,7 +331,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     res.extend(sol.iter().skip(D + 1));
                 } else {
                     failed[i_vert as usize] = true;
-                    res.resize(res.len() + m, 0.0);
+                    res.resize(res.len() + 3, 0.0);
                 }
             } else if D == 3 {
                 let sol = Self::least_squares::<10, _>(dx_df_w, w0);
@@ -342,13 +339,13 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     res.extend(sol.iter().skip(D + 1));
                 } else {
                     failed[i_vert as usize] = true;
-                    res.resize(res.len() + m, 0.0);
+                    res.resize(res.len() + 6, 0.0);
                 }
             }
         }
 
         // For vertices where no valid approximation could be computed, average over the valid neighbors
-        if self.fix_not_computed(&mut res, &mut failed, m, 3) {
+        if self.fix_not_computed(&mut res, &mut failed, D * (D + 1) / 2, 3) {
             if res.iter().copied().any(f64::is_nan) {
                 return Err(Error::from("NaN in hessian computation"));
             }

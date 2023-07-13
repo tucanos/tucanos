@@ -333,17 +333,13 @@ mod tests {
         let mesh = test_mesh_2d().split().split().split().split().split();
         let (mut mesh, _) = mesh.boundary();
 
-        let mut coords = Vec::new();
-        for pt in mesh.verts() {
-            let r = r_in + (r_out - r_in) * pt[0];
-            let theta = 3.0 * pt[1];
+        mesh.mut_verts().for_each(|p| {
+            let r = r_in + (r_out - r_in) * p[0];
+            let theta = 3.0 * p[1];
             let x = r * f64::cos(theta);
             let y = r * f64::sin(theta);
-            coords.push(x);
-            coords.push(y);
-        }
-
-        mesh.coords = coords;
+            *p = Point::<2>::new(x, y)
+        });
 
         let u = compute_curvature_tensor_2d(&mesh);
 
@@ -391,17 +387,14 @@ mod tests {
         let mesh = test_mesh_2d().split().split().split().split().split();
         let (mut mesh, _) = mesh.boundary();
 
-        let mut coords = Vec::new();
-        for pt in mesh.verts() {
-            let r = r_in + (r_out - r_in) * pt[0];
-            let theta = 3.0 * pt[1];
+        mesh.mut_verts().for_each(|p| {
+            let r = r_in + (r_out - r_in) * p[0];
+            let theta = 3.0 * p[1];
             let x = r * f64::cos(theta);
             let y = r * f64::sin(theta);
-            coords.push(x);
-            coords.push(y);
-        }
+            *p = Point::<2>::new(x, y)
+        });
 
-        mesh.coords = coords;
         mesh.compute_elem_to_elems();
         mesh.add_boundary_faces();
 
@@ -441,20 +434,19 @@ mod tests {
 
         let mesh = test_mesh_2d().split().split().split().split().split();
 
-        let mut coords = Vec::new();
-
-        for pt in mesh.verts() {
-            let z = pt[0];
-            let theta = 3.0 * pt[1];
-            let x = radius * f64::cos(theta);
-            let y = radius * f64::sin(theta);
-            coords.push(x);
-            coords.push(y);
-            coords.push(z);
-        }
+        let verts = mesh
+            .verts()
+            .map(|p| {
+                let z = p[0];
+                let theta = 3.0 * p[1];
+                let x = radius * f64::cos(theta);
+                let y = radius * f64::sin(theta);
+                Point::<3>::new(x, y, z)
+            })
+            .collect();
 
         let mut surf =
-            SimplexMesh::<3, Triangle>::new(coords, mesh.elems, mesh.etags, vec![0; 0], vec![0; 0]);
+            SimplexMesh::<3, Triangle>::new(verts, mesh.elems, mesh.etags, vec![0; 0], vec![0; 0]);
         // Get the indices of boundary vertices
         surf.add_boundary_faces();
         let (_, bdy_ids) = surf.boundary();
@@ -496,20 +488,19 @@ mod tests {
 
         let mesh = test_mesh_2d().split().split().split().split().split();
 
-        let mut coords = Vec::new();
-
-        for pt in mesh.verts() {
-            let z = pt[0];
-            let theta = 3.0 * pt[1];
-            let x = radius * f64::cos(theta);
-            let y = radius * f64::sin(theta);
-            coords.push(x);
-            coords.push(y);
-            coords.push(z);
-        }
+        let verts = mesh
+            .verts()
+            .map(|p| {
+                let z = p[0];
+                let theta = 3.0 * p[1];
+                let x = radius * f64::cos(theta);
+                let y = radius * f64::sin(theta);
+                Point::<3>::new(x, y, z)
+            })
+            .collect();
 
         let mut surf =
-            SimplexMesh::<3, Triangle>::new(coords, mesh.elems, mesh.etags, vec![0; 0], vec![0; 0]);
+            SimplexMesh::<3, Triangle>::new(verts, mesh.elems, mesh.etags, vec![0; 0], vec![0; 0]);
         surf.add_boundary_faces();
         surf.compute_elem_to_elems();
 

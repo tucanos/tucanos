@@ -9,7 +9,7 @@ use vtkio::{
     IOBuffer, Vtk,
 };
 
-use crate::{mesh::SimplexMesh, topo_elems::Elem, FieldLocation, FieldType, Mesh, Result};
+use crate::{mesh::SimplexMesh, topo_elems::Elem, Mesh, Result};
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn write_vtk(
@@ -33,36 +33,15 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         if let Some(vertex_data) = vertex_data {
             for (name, arr) in vertex_data.iter() {
                 debug!("Write vertex data {name}");
-                let ftype = self.field_type(arr, FieldLocation::Vertex).unwrap();
-                match ftype {
-                    FieldType::Scalar => {
-                        point_data.push(Attribute::DataArray(DataArrayBase {
-                            name: name.to_string(),
-                            elem: ElementType::Scalars {
-                                num_comp: 1,
-                                lookup_table: None,
-                            },
-                            data: IOBuffer::F64(arr.to_vec()),
-                        }));
-                    }
-                    FieldType::Vector => {
-                        point_data.push(Attribute::DataArray(DataArrayBase {
-                            name: name.to_string(),
-                            elem: ElementType::Vectors,
-                            data: IOBuffer::F64(arr.to_vec()),
-                        }));
-                    }
-                    FieldType::SymTensor => {
-                        point_data.push(Attribute::DataArray(DataArrayBase {
-                            name: name.to_string(),
-                            elem: ElementType::Scalars {
-                                num_comp: if D == 3 { 6 } else { 3 },
-                                lookup_table: None,
-                            },
-                            data: IOBuffer::F64(arr.to_vec()),
-                        }));
-                    }
-                }
+                let num_comp = arr.len() / self.n_verts() as usize;
+                point_data.push(Attribute::DataArray(DataArrayBase {
+                    name: name.to_string(),
+                    elem: ElementType::Scalars {
+                        num_comp: num_comp as u32,
+                        lookup_table: None,
+                    },
+                    data: IOBuffer::F64(arr.to_vec()),
+                }));
             }
         }
 
@@ -79,52 +58,27 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         if let Some(elem_data) = elem_data {
             for (name, arr) in elem_data.iter() {
                 debug!("Write element data {name}");
-                let ftype = self.field_type(arr, FieldLocation::Element).unwrap();
-                match ftype {
-                    FieldType::Scalar => {
-                        cell_data.push(Attribute::DataArray(DataArrayBase {
-                            name: name.to_string(),
-                            elem: ElementType::Scalars {
-                                num_comp: 1,
-                                lookup_table: None,
-                            },
-                            data: IOBuffer::F64(arr.to_vec()),
-                        }));
-                    }
-                    FieldType::Vector => {
-                        cell_data.push(Attribute::DataArray(DataArrayBase {
-                            name: name.to_string(),
-                            elem: ElementType::Vectors,
-                            data: IOBuffer::F64(arr.to_vec()),
-                        }));
-                    }
-                    FieldType::SymTensor => {
-                        cell_data.push(Attribute::DataArray(DataArrayBase {
-                            name: name.to_string(),
-                            elem: ElementType::Scalars {
-                                num_comp: if D == 3 { 6 } else { 3 },
-                                lookup_table: None,
-                            },
-                            data: IOBuffer::F64(arr.to_vec()),
-                        }));
-                    }
-                }
+                let num_comp = arr.len() / self.n_verts() as usize;
+                cell_data.push(Attribute::DataArray(DataArrayBase {
+                    name: name.to_string(),
+                    elem: ElementType::Scalars {
+                        num_comp: num_comp as u32,
+                        lookup_table: None,
+                    },
+                    data: IOBuffer::F64(arr.to_vec()),
+                }));
             }
         }
 
-        let coords = if D == 3 {
-            self.coords.clone()
-        } else if D == 2 {
-            let mut res = Vec::with_capacity(3 * self.n_verts() as usize);
-            for pt in self.verts() {
-                res.push(pt[0]);
-                res.push(pt[1]);
-                res.push(0.0);
+        let mut coords = Vec::with_capacity(3 * self.n_verts() as usize);
+        self.verts().for_each(|p| {
+            for i in 0..D {
+                coords.push(p[i]);
             }
-            res
-        } else {
-            unreachable!()
-        };
+            for _ in D..3 {
+                coords.push(0.0);
+            }
+        });
 
         let vtk = Vtk {
             version: Version { major: 1, minor: 0 },

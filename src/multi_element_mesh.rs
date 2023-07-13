@@ -1,9 +1,7 @@
-use std::collections::HashMap;
-
 use crate::{
-    mesh::SimplexMesh,
+    mesh::{Point, SimplexMesh},
     topo_elems::{Elem, Tetrahedron, Triangle},
-    Error, FieldLocation, Idx, Mesh, Result, Tag,
+    Idx, Mesh, Result, Tag,
 };
 
 /// Subdivision of standard elements to triangles and tetrahedra maintaining a consistent mesh. The algorithms are taken from
@@ -322,11 +320,11 @@ impl ElementType {
 
 /// Mesh containing elements of any type
 #[derive(Debug)]
-pub struct MultiElementMesh {
+pub struct MultiElementMesh<const D: usize> {
     /// Mesh dimension
     pub dim: u32,
     /// Coordinates of the vertices (length = dim * # of vertices)
-    pub coords: Vec<f64>,
+    verts: Vec<Point<D>>,
     /// Pointer to the vertices of the i-th element (CSR storage) (length = # of elements + 1)
     pub ptr: Vec<Idx>,
     /// Element types (length = # of elements)
@@ -335,15 +333,9 @@ pub struct MultiElementMesh {
     pub etags: Vec<Tag>,
     /// Element to vertex connectivity
     pub conn: Vec<Idx>,
-    /// Fields defined on the mesh
-    pub data: HashMap<(String, FieldLocation), Vec<f64>>,
 }
 
-impl Mesh for MultiElementMesh {
-    fn dim(&self) -> Idx {
-        self.dim as Idx
-    }
-
+impl<const D: usize> Mesh<D> for MultiElementMesh<D> {
     fn cell_dim(&self) -> Idx {
         self.etypes
             .iter()
@@ -354,7 +346,7 @@ impl Mesh for MultiElementMesh {
     }
 
     fn n_verts(&self) -> Idx {
-        self.coords.len() as Idx / self.dim as Idx
+        self.verts.len() as Idx
     }
 
     fn n_elems(&self) -> Idx {
@@ -368,25 +360,23 @@ impl Mesh for MultiElementMesh {
     }
 }
 
-impl MultiElementMesh {
+impl<const D: usize> MultiElementMesh<D> {
     /// Create a new empty `MultiElementMesh` of dimension dim
     #[must_use]
     pub fn new(dim: u32) -> Self {
         Self {
             dim,
-            coords: Vec::default(),
+            verts: Vec::default(),
             ptr: vec![0],
             etypes: Vec::default(),
             etags: Vec::default(),
             conn: Vec::default(),
-            data: HashMap::default(),
         }
     }
 
     /// Set the mesh coordinates    
-    pub fn set_verts(&mut self, coords: &[f64]) {
-        self.coords.reserve(coords.len());
-        self.coords.extend(coords.iter());
+    pub fn set_verts(&mut self, verts: Vec<Point<D>>) {
+        self.verts = verts;
     }
 
     /// Add elements of type etype
@@ -516,30 +506,10 @@ impl MultiElementMesh {
         0
     }
 
-    pub fn add_field(&mut self, name: &str, loc: FieldLocation, data: Vec<f64>) -> Result<()> {
-        if self.field_type(&data, loc).is_none() {
-            return Err(Error::from("Invalid dimension"));
-        }
-        if self.get_field(name, loc).is_some() {
-            return Err(Error::from("Field already present"));
-        }
-        self.data.insert((name.to_owned(), loc), data);
-        Ok(())
-    }
-
-    pub fn get_field(&self, name: &str, loc: FieldLocation) -> Option<&Vec<f64>> {
-        self.data.get(&(name.to_owned(), loc))
-    }
-
     /// Convert all the elements to simplices an return a `SimplexMesh`
     /// The data is transfered to the new `SimplexMesh` (no interpolation or smoothing for P0 fields)
     #[allow(clippy::type_complexity)]
-    pub fn to_simplices<const D: usize, E: Elem>(
-        mut self,
-    ) -> Result<(
-        SimplexMesh<D, E>,
-        HashMap<(String, FieldLocation), Vec<f64>>,
-    )> {
+    pub fn to_simplices<E: Elem>(self) -> Result<SimplexMesh<D, E>> {
         if self.dim != D as u32 {
             return Err("Invalid vertex dimension".into());
         }
@@ -548,7 +518,6 @@ impl MultiElementMesh {
         if cell_dim > E::DIM {
             return Err("Invalid cell dimension".into());
         }
-        let same_cell_dim = cell_dim == E::DIM;
 
         // Elements
         let mut edgs = Vec::new();
@@ -558,42 +527,9 @@ impl MultiElementMesh {
         let mut tets = Vec::new();
         let mut tet_tags = Vec::new();
 
-        // Fields
-        let mut data: HashMap<(String, FieldLocation), Vec<f64>> = HashMap::new();
-
-        let node_data_names: Vec<_> = self
-            .data
-            .keys()
-            .filter(|(_, loc)| *loc == FieldLocation::Vertex)
-            .map(|(name, _)| name.clone())
-            .collect();
-        let cell_data_names: Vec<_> = self
-            .data
-            .keys()
-            .filter(|(_, loc)| *loc == FieldLocation::Element)
-            .map(|(name, _)| name.clone())
-            .collect();
-
-        // Get the node data
-        for name in &node_data_names {
-            let key = (name.clone(), FieldLocation::Vertex);
-            let vec = self.data.remove(&key).unwrap();
-            data.insert(key, vec);
-        }
-
-        // Initialize empty vectors for element data
-        if same_cell_dim {
-            for name in &cell_data_names {
-                let key = (name.clone(), FieldLocation::Element);
-                data.insert(key, Vec::new());
-            }
-        }
-
         let n = self.ptr.len() - 1;
-        let mut i_elem = 0;
         for i in 0..n {
-            let mut n_elems_created = 0;
-            n_elems_created += match self.etypes.get(i).unwrap() {
+            match self.etypes.get(i).unwrap() {
                 ElementType::Edge => self.add_edg(i, &mut edgs, &mut edg_tags, E::DIM),
                 ElementType::Triangle => self.add_tri(i, &mut tris, &mut tri_tags, E::DIM),
                 ElementType::Quadrangle => self.add_quad(i, &mut tris, &mut tri_tags, E::DIM),
@@ -602,33 +538,19 @@ impl MultiElementMesh {
                 ElementType::Prism => self.add_pri(i, &mut tets, &mut tet_tags, E::DIM),
                 ElementType::Hexahedron => self.add_hex(i, &mut tets, &mut tet_tags, E::DIM),
             };
-            if n_elems_created > 0 {
-                for name in &cell_data_names {
-                    let key = (name.clone(), FieldLocation::Element);
-                    let in_vec = self.data.get(&key).unwrap();
-                    let out_vec = data.get_mut(&key).unwrap();
-                    for _ in 0..n_elems_created {
-                        out_vec.push(in_vec[i_elem]);
-                    }
-                }
-                i_elem += 1;
-            }
         }
 
         if E::DIM == 3 {
-            return Ok((
-                SimplexMesh::new(self.coords, tets, tet_tags, tris, tri_tags),
-                data,
-            ));
+            return Ok(SimplexMesh::new(self.verts, tets, tet_tags, tris, tri_tags));
         } else if E::DIM == 2 {
-            return Ok((
-                SimplexMesh::new(self.coords, tris, tri_tags, edgs, edg_tags),
-                data,
-            ));
+            return Ok(SimplexMesh::new(self.verts, tris, tri_tags, edgs, edg_tags));
         } else if E::DIM == 1 {
-            return Ok((
-                SimplexMesh::new(self.coords, edgs, edg_tags, Vec::new(), Vec::new()),
-                data,
+            return Ok(SimplexMesh::new(
+                self.verts,
+                edgs,
+                edg_tags,
+                Vec::new(),
+                Vec::new(),
             ));
         }
         unreachable!();
@@ -639,35 +561,35 @@ impl MultiElementMesh {
 mod tests {
     use super::{ElementType, MultiElementMesh};
     use crate::{
-        mesh::SimplexMesh,
+        mesh::{Point, SimplexMesh},
         topo_elems::{Tetrahedron, Triangle},
         Idx, Mesh, Result,
     };
 
     #[test]
     fn test_2d() -> Result<()> {
-        let coords = vec![0., 0., 1., 0., 1., 1., 0., 1., 1.5, 0.5];
+        let coords = vec![
+            Point::<2>::new(0., 0.),
+            Point::<2>::new(1., 0.),
+            Point::<2>::new(1., 1.),
+            Point::<2>::new(0., 1.),
+            Point::<2>::new(1.5, 0.5),
+        ];
         let quad = vec![0, 1, 2, 3];
         let tri = vec![1, 4, 2];
         let edgs = vec![0, 1, 1, 5, 5, 2, 2, 3, 3, 0];
 
         let mut msh = MultiElementMesh::new(2);
-        msh.set_verts(&coords);
+        msh.set_verts(coords);
         msh.add_elems(ElementType::Quadrangle, &quad, &[1]);
         msh.add_elems(ElementType::Triangle, &tri, &[1]);
         msh.add_elems(ElementType::Edge, &edgs, &[1; 5]);
-        msh.add_field(
-            "f1",
-            crate::FieldLocation::Vertex,
-            vec![0., 1., 1., 0., 1.5],
-        )?;
-        msh.add_field("f2", crate::FieldLocation::Element, vec![1.0, 2.0])?;
 
         assert_eq!(msh.n_verts(), 5);
         assert_eq!(msh.n_elems(), 2);
         assert_eq!(msh.n_faces(), 5);
 
-        let (msh, data): (SimplexMesh<2, Triangle>, _) = msh.to_simplices().unwrap();
+        let msh: SimplexMesh<2, Triangle> = msh.to_simplices().unwrap();
 
         assert_eq!(msh.n_verts(), 5);
         assert_eq!(msh.n_elems(), 3);
@@ -676,24 +598,21 @@ mod tests {
         let vol: f64 = (0..(msh.n_elems() as Idx)).map(|i| msh.elem_vol(i)).sum();
         assert!(f64::abs(vol - 1.25) < 1e-10);
 
-        let arr = data
-            .get(&("f1".to_string(), crate::FieldLocation::Vertex))
-            .unwrap();
-        assert_eq!(*arr, vec![0., 1., 1., 0., 1.5]);
-
-        let arr = data
-            .get(&("f2".to_string(), crate::FieldLocation::Element))
-            .unwrap();
-        assert_eq!(*arr, vec![1.0, 1.0, 2.0]);
-
         Ok(())
     }
 
     #[test]
     fn test_3d() -> Result<()> {
         let coords = vec![
-            0., 0., 0., 1., 0., 0., 1., 1., 0., 0., 1., 0., 0., 0., 1., 1., 0., 1., 1., 1., 1., 0.,
-            1., 1., 0.5, 0.5, 1.5,
+            Point::<3>::new(0., 0., 0.),
+            Point::<3>::new(1., 0., 0.),
+            Point::<3>::new(1., 1., 0.),
+            Point::<3>::new(0., 1., 0.),
+            Point::<3>::new(0., 0., 1.),
+            Point::<3>::new(1., 0., 1.),
+            Point::<3>::new(1., 1., 1.),
+            Point::<3>::new(0., 1., 1.),
+            Point::<3>::new(0.5, 0.5, 1.5),
         ];
         let hexa = vec![0, 1, 2, 3, 4, 5, 6, 7];
         let pyra = vec![4, 5, 6, 7, 8];
@@ -701,19 +620,17 @@ mod tests {
         let quads = vec![0, 1, 2, 3, 0, 1, 5, 4, 1, 2, 6, 5, 2, 3, 7, 6, 3, 0, 4, 7];
 
         let mut msh = MultiElementMesh::new(3);
-        msh.set_verts(&coords);
+        msh.set_verts(coords);
         msh.add_elems(ElementType::Hexahedron, &hexa, &[1]);
         msh.add_elems(ElementType::Pyramids, &pyra, &[1]);
         msh.add_elems(ElementType::Triangle, &tris, &[1; 4]);
         msh.add_elems(ElementType::Quadrangle, &quads, &[2; 5]);
 
-        msh.add_field("f2", crate::FieldLocation::Element, vec![1.0, 2.0])?;
-
         assert_eq!(msh.n_verts(), 9);
         assert_eq!(msh.n_elems(), 2);
         assert_eq!(msh.n_faces(), 9);
 
-        let (mut msh, data): (SimplexMesh<3, Tetrahedron>, _) = msh.to_simplices().unwrap();
+        let mut msh: SimplexMesh<3, Tetrahedron> = msh.to_simplices().unwrap();
         assert_eq!(msh.n_verts(), 9);
         assert_eq!(msh.n_elems(), 8);
         assert_eq!(msh.n_faces(), 14);
@@ -727,37 +644,37 @@ mod tests {
         let vol: f64 = (0..(msh.n_elems() as Idx)).map(|i| msh.elem_vol(i)).sum();
         assert!(f64::abs(vol - 7. / 6.) < 1e-10);
 
-        let arr = data
-            .get(&("f2".to_string(), crate::FieldLocation::Element))
-            .unwrap();
-        assert_eq!(*arr, vec![1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0, 2.0]);
-
         Ok(())
     }
 
     #[test]
     fn test_3d_bdy() -> Result<()> {
         let coords = vec![
-            0., 0., 0., 1., 0., 0., 1., 1., 0., 0., 1., 0., 0., 0., 1., 1., 0., 1., 1., 1., 1., 0.,
-            1., 1., 0.5, 0.5, 1.5,
+            Point::<3>::new(0., 0., 0.),
+            Point::<3>::new(1., 0., 0.),
+            Point::<3>::new(1., 1., 0.),
+            Point::<3>::new(0., 1., 0.),
+            Point::<3>::new(0., 0., 1.),
+            Point::<3>::new(1., 0., 1.),
+            Point::<3>::new(1., 1., 1.),
+            Point::<3>::new(0., 1., 1.),
+            Point::<3>::new(0.5, 0.5, 1.5),
         ];
         let hexa = vec![0, 1, 2, 3, 4, 5, 6, 7];
         let pyra = vec![4, 5, 6, 7, 8];
         let tris = vec![4, 5, 8, 5, 6, 8, 6, 7, 8, 7, 4, 8];
 
         let mut msh = MultiElementMesh::new(3);
-        msh.set_verts(&coords);
+        msh.set_verts(coords);
         msh.add_elems(ElementType::Hexahedron, &hexa, &[1]);
         msh.add_elems(ElementType::Pyramids, &pyra, &[1]);
         msh.add_elems(ElementType::Triangle, &tris, &[1; 4]);
-
-        msh.add_field("f2", crate::FieldLocation::Element, vec![1.0, 2.0])?;
 
         assert_eq!(msh.n_verts(), 9);
         assert_eq!(msh.n_elems(), 2);
         assert_eq!(msh.n_faces(), 4);
 
-        let (mut msh, _): (SimplexMesh<3, Tetrahedron>, _) = msh.to_simplices().unwrap();
+        let mut msh: SimplexMesh<3, Tetrahedron> = msh.to_simplices().unwrap();
         assert_eq!(msh.n_verts(), 9);
         assert_eq!(msh.n_elems(), 8);
         assert_eq!(msh.n_faces(), 4);

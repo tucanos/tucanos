@@ -222,8 +222,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
         let etags = vec![1; elems.len() / E::N_VERTS as usize];
         let faces = Vec::new();
         let ftags = Vec::new();
-        let coords: Vec<_> = self.points.iter().flatten().copied().collect();
-        SimplexMesh::<D, E>::new(coords, elems, etags, faces, ftags)
+        SimplexMesh::<D, E>::new(self.points.clone(), elems, etags, faces, ftags)
     }
 }
 
@@ -328,8 +327,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
         let etags = vec![1; elems.len() / E::N_VERTS as usize];
         let faces = Vec::new();
         let ftags = Vec::new();
-        let coords: Vec<_> = self.cavity.points.iter().flatten().copied().collect();
-        SimplexMesh::<D, E>::new(coords, elems, etags, faces, ftags)
+        SimplexMesh::<D, E>::new(self.cavity.points.clone(), elems, etags, faces, ftags)
     }
 
     /// Get the location and metric for the reconstruction vertex

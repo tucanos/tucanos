@@ -492,7 +492,15 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let (elems, etags) = reader.read_elements(etype);
         let (faces, ftags) = reader.read_elements(ftype);
 
-        Ok(SimplexMesh::<D, E>::new(coords, elems, etags, faces, ftags))
+        let n_verts = coords.len() / D;
+        let verts = (0..n_verts)
+            .map(|i| {
+                let start = i * D;
+                let end = start + D;
+                Point::<D>::from_iterator(coords[start..end].iter().copied())
+            })
+            .collect();
+        Ok(SimplexMesh::<D, E>::new(verts, elems, etags, faces, ftags))
     }
 }
 

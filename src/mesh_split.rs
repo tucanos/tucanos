@@ -1,4 +1,8 @@
-use crate::{mesh::SimplexMesh, topo_elems::Elem, Idx, Mesh, Tag};
+use crate::{
+    mesh::{Point, SimplexMesh},
+    topo_elems::Elem,
+    Idx, Mesh, Tag,
+};
 use log::info;
 use rustc_hash::FxHashMap;
 use std::hash::BuildHasherDefault;
@@ -190,16 +194,14 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         }
 
         let new_n_verts = self.n_verts() + edges.len() as Idx;
-        let mut coords = Vec::with_capacity(D * new_n_verts as usize);
-        coords.extend(self.coords.iter());
-        coords.resize(D * new_n_verts as usize, 0.);
+        let mut verts = Vec::with_capacity(new_n_verts as usize);
+        verts.extend(self.verts());
+        verts.resize(new_n_verts as usize, Point::<D>::zeros());
 
-        for (edg, i) in &edges {
+        for (edg, &i) in edges.iter() {
             let p0 = self.vert(edg[0]);
             let p1 = self.vert(edg[1]);
-            for j in 0..D {
-                coords[D * (*i as usize) + j] = 0.5 * (p0[j] + p1[j]);
-            }
+            verts[i as usize] = 0.5 * (p0 + p1);
         }
 
         if E::N_VERTS == 3 {
@@ -207,13 +209,13 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 Self::split_tris(self.n_elems(), self.elems().zip(self.etags()), &edges);
             let (faces, ftags) =
                 Self::split_edgs(self.n_faces(), self.faces().zip(self.ftags()), &edges);
-            SimplexMesh::<D, E>::new(coords, elems, etags, faces, ftags)
+            SimplexMesh::<D, E>::new(verts, elems, etags, faces, ftags)
         } else {
             let (elems, etags) =
                 Self::split_tets(self.n_elems(), self.elems().zip(self.etags()), &edges);
             let (faces, ftags) =
                 Self::split_tris(self.n_faces(), self.faces().zip(self.ftags()), &edges);
-            SimplexMesh::<D, E>::new(coords, elems, etags, faces, ftags)
+            SimplexMesh::<D, E>::new(verts, elems, etags, faces, ftags)
         }
     }
 }

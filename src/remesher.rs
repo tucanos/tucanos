@@ -394,11 +394,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>, G: Geometry<D> + 'a> Remesher<'a
             .map(|(i, (k, _v))| (*k, i as Idx))
             .collect();
 
-        let coords: Vec<f64> = self
-            .verts
-            .iter()
-            .flat_map(|(_k, v)| v.vx.iter().copied())
-            .collect();
+        let verts = self.verts.values().map(|v| v.vx).collect();
 
         // Keep the remesher node ids for now to get the tags
         let elems: Vec<Idx> = self.elems.iter().flat_map(|(_k, e)| e.el).collect();
@@ -457,7 +453,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>, G: Geometry<D> + 'a> Remesher<'a
         }
 
         SimplexMesh::<D, E>::new(
-            coords,
+            verts,
             elems.iter().map(|x| *vidx.get(x).unwrap()).collect(),
             etags,
             faces,
@@ -1671,7 +1667,13 @@ mod tests {
 
     #[test]
     fn test_smooth_laplacian_2d() -> Result<()> {
-        let coords: Vec<f64> = vec![0., 0., 1., 0., 1., 1., 0., 1., 0.1, 0.1];
+        let coords = vec![
+            Point::<2>::new(0., 0.),
+            Point::<2>::new(1., 0.),
+            Point::<2>::new(1., 1.0),
+            Point::<2>::new(0., 1.0),
+            Point::<2>::new(0.1, 0.1),
+        ];
         let elems: Vec<Idx> = vec![0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4];
         let etags: Vec<Tag> = vec![1, 1, 1, 1];
         let faces: Vec<Idx> = vec![0, 1, 1, 2, 2, 3, 3, 0];
@@ -1704,7 +1706,13 @@ mod tests {
     #[test]
     #[cfg(feature = "nlopt")]
     fn test_smooth_nlopt_2d() -> Result<()> {
-        let coords: Vec<f64> = vec![0., 0., 1., 0., 1., 1., 0., 1., 0.1, 0.1];
+        let coords = vec![
+            Point::<2>::new(0., 0.),
+            Point::<2>::new(1., 0.),
+            Point::<2>::new(1., 1.),
+            Point::<2>::new(0., 1.),
+            Point::<2>::new(0.1, 0.1),
+        ];
         let elems: Vec<Idx> = vec![0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4];
         let etags: Vec<Tag> = vec![1, 1, 1, 1];
         let faces: Vec<Idx> = vec![0, 1, 1, 2, 2, 3, 3, 0];
@@ -1736,7 +1744,13 @@ mod tests {
 
     #[test]
     fn test_smooth_laplacian_2d_aniso() -> Result<()> {
-        let coords: Vec<f64> = vec![0., 0., 1., 0., 1., 0.1, 0., 0.1, 0.01, 0.01];
+        let coords = vec![
+            Point::<2>::new(0., 0.),
+            Point::<2>::new(1., 0.),
+            Point::<2>::new(1., 0.1),
+            Point::<2>::new(0., 0.1),
+            Point::<2>::new(0.01, 0.01),
+        ];
         let elems: Vec<Idx> = vec![0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4];
         let etags: Vec<Tag> = vec![1, 1, 1, 1];
         let faces: Vec<Idx> = vec![0, 1, 1, 2, 2, 3, 3, 0];
@@ -1774,7 +1788,13 @@ mod tests {
 
     #[test]
     fn test_smooth_omega_2d() -> Result<()> {
-        let coords: Vec<f64> = vec![0., 0., 1., 0., 1., 1., 0., 1., 0.1, 0.1];
+        let coords = vec![
+            Point::<2>::new(0., 0.),
+            Point::<2>::new(1., 0.),
+            Point::<2>::new(1., 1.),
+            Point::<2>::new(0., 1.),
+            Point::<2>::new(0.1, 0.1),
+        ];
         let elems: Vec<Idx> = vec![0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4];
         let etags: Vec<Tag> = vec![1, 1, 1, 1];
         let faces: Vec<Idx> = vec![0, 1, 1, 2, 2, 3, 3, 0];
@@ -1806,7 +1826,13 @@ mod tests {
 
     #[test]
     fn test_smooth_omega_2d_aniso() -> Result<()> {
-        let coords: Vec<f64> = vec![0., 0., 1., 0., 1., 0.1, 0., 0.1, 0.01, 0.01];
+        let coords = vec![
+            Point::<2>::new(0., 0.),
+            Point::<2>::new(1., 0.),
+            Point::<2>::new(1., 0.1),
+            Point::<2>::new(0., 0.1),
+            Point::<2>::new(0.01, 0.01),
+        ];
         let elems: Vec<Idx> = vec![0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4];
         let etags: Vec<Tag> = vec![1, 1, 1, 1];
         let faces: Vec<Idx> = vec![0, 1, 1, 2, 2, 3, 3, 0];
