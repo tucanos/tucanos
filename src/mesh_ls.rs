@@ -98,13 +98,10 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             "Compute smoothing using 1st order LS (weight = {})",
             weight_exp
         );
-        if self.vertex_to_vertices.is_none() {
-            return Err(Error::from("vertex to vertex connection not available"));
-        }
 
         let mut res = Vec::with_capacity(self.n_verts() as usize);
 
-        let v2v = self.vertex_to_vertices.as_ref().unwrap();
+        let v2v = self.get_vertex_to_vertices()?;
         for i_vert in 0..self.n_verts() {
             let neighbors = v2v.row(i_vert);
             let dx_df_w = neighbors.iter().map(|&i| {
@@ -155,7 +152,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         m: usize,
         max_iter: usize,
     ) -> bool {
-        let v2v = self.vertex_to_vertices.as_ref().unwrap();
+        let v2v = self.get_vertex_to_vertices().unwrap();
         for _ in 0..max_iter {
             for i_vert in 0..self.n_verts() as usize {
                 if failed[i_vert] {
@@ -196,9 +193,6 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             "Compute gradient using 1st order LS (weight = {})",
             weight_exp
         );
-        if self.vertex_to_vertices.is_none() {
-            return Err(Error::from("vertex to vertex connection not available"));
-        }
 
         let mut res = Vec::with_capacity(D * self.n_verts() as usize);
 
@@ -206,7 +200,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         let flg = self.boundary_flag();
 
-        let v2v = self.vertex_to_vertices.as_ref().unwrap();
+        let v2v = self.get_vertex_to_vertices()?;
         for i_vert in 0..self.n_verts() {
             // Don't use a LS scheme for boundary vertices
             if flg[i_vert as usize] {
@@ -281,15 +275,11 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             info!("  using second order neighbors");
         }
 
-        if self.vertex_to_vertices.is_none() {
-            return Err(Error::from("vertex to vertex connection not available"));
-        }
-
         let mut res = Vec::with_capacity(D * (D + 1) / 2 * self.n_verts() as usize);
 
         let mut failed = vec![false; self.n_verts() as usize];
 
-        let v2v = self.vertex_to_vertices.as_ref().unwrap();
+        let v2v = self.get_vertex_to_vertices()?;
         for i_vert in 0..self.n_verts() {
             let first_order_neighbors = v2v.row(i_vert);
             let mut neighbors = first_order_neighbors
@@ -437,7 +427,7 @@ mod tests {
         mesh.compute_vertex_to_vertices();
         mesh.compute_volumes();
 
-        let v = mesh.vert_vol.as_ref().unwrap();
+        let v = mesh.get_vertex_volumes()?;
 
         let f: Vec<_> = mesh.verts().map(|p| p[0] * p[1]).collect();
         let res = mesh.gradient(&f, 2)?;
@@ -491,7 +481,7 @@ mod tests {
         mesh.compute_vertex_to_vertices();
         mesh.compute_volumes();
 
-        let v = mesh.vert_vol.as_ref().unwrap();
+        let v = mesh.get_vertex_volumes()?;
 
         let f: Vec<_> = mesh.verts().map(|p| p[0] * p[1] * p[2]).collect();
         let res = mesh.gradient(&f, 2)?;
@@ -605,7 +595,7 @@ mod tests {
         mesh.compute_vertex_to_vertices();
         mesh.compute_volumes();
 
-        let v = mesh.vert_vol.as_ref().unwrap();
+        let v = mesh.get_vertex_volumes()?;
 
         let f: Vec<_> = mesh
             .verts()
@@ -669,7 +659,7 @@ mod tests {
         mesh.compute_vertex_to_vertices();
         mesh.compute_volumes();
 
-        let vols = mesh.vert_vol.as_ref().unwrap();
+        let vols = mesh.get_vertex_volumes()?;
 
         let test_f: Vec<_> = mesh
             .verts()

@@ -38,15 +38,6 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// vertex-to-element connectivity and volumes are required
     pub fn elem_data_to_vertex_data_metric<M: Metric<D>>(&self, v: &[M]) -> Result<Vec<M>> {
         debug!("Convert metric element data to vertex data");
-        if self.vertex_to_elems.is_none() {
-            return Err(Error::from("vertex to element connectivity not computed"));
-        }
-        if self.elem_vol.is_none() {
-            return Err(Error::from("element volumes not computed"));
-        }
-        if self.vert_vol.is_none() {
-            return Err(Error::from("node volumes not computed"));
-        }
 
         let n_elems = self.n_elems() as usize;
         let n_verts = self.n_verts() as usize;
@@ -54,9 +45,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         let mut res = Vec::with_capacity(n_verts);
 
-        let v2e = self.vertex_to_elems.as_ref().unwrap();
-        let elem_vol = self.elem_vol.as_ref().unwrap();
-        let node_vol = self.vert_vol.as_ref().unwrap();
+        let v2e = self.get_vertex_to_elems()?;
+        let elem_vol = self.get_elem_volumes()?;
+        let node_vol = self.get_vertex_volumes()?;
 
         let mut weights = Vec::new();
         let mut metrics = Vec::new();
@@ -114,8 +105,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Compute the number of elements corresponding to a metric field based on its D characteristic sizes and min/max constraints
     #[must_use]
     fn complexity_from_sizes<M: Metric<D>>(&self, sizes: &[f64], h_min: f64, h_max: f64) -> f64 {
-        assert!(self.vert_vol.is_some());
-        let vols = self.vert_vol.as_ref().unwrap();
+        let vols = self.get_vertex_volumes().unwrap();
 
         vols.iter()
             .enumerate()
@@ -396,13 +386,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// on its neighbors ignoring the metrics with the minimum and maximum volumes
     /// TODO: doc
     pub fn smooth_metric<M: Metric<D>>(&self, m: &[M]) -> Result<Vec<M>> {
-        if self.vertex_to_vertices.is_none() {
-            return Err(Error::from("vertex to vertex connection not available"));
-        }
-
         info!("Apply metric smoothing");
 
-        let v2v = self.vertex_to_vertices.as_ref().unwrap();
+        let v2v = self.get_vertex_to_vertices()?;
         let mut weights = Vec::new();
         let mut metrics = Vec::new();
         let mut res = Vec::with_capacity(m.len());
@@ -473,11 +459,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Compute the maximum metric gradation and the fraction of edges with a gradation
     /// higher than an threshold
     pub fn gradation<M: Metric<D>>(&self, m: &[M], target: f64) -> Result<(f64, f64)> {
-        if self.edges.is_none() {
-            return Err(Error::from("edges not available"));
-        }
-
-        let edges = self.edges.as_ref().unwrap();
+        let edges = self.get_edges()?;
 
         let n_edgs = edges.len() / 2;
 
@@ -506,16 +488,12 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         beta: f64,
         max_iter: Idx,
     ) -> Result<(Idx, Idx)> {
-        if self.edges.is_none() {
-            return Err(Error::from("edges not available"));
-        }
-
         info!(
             "Apply metric gradation (beta = {}, max_iter = {})",
             beta, max_iter
         );
 
-        let edges = self.edges.as_ref().unwrap();
+        let edges = self.get_edges()?;
 
         let mut n = 0;
         for iter in 0..max_iter {
@@ -592,17 +570,13 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             beta
         );
 
-        if self.vertex_to_vertices.is_none() {
-            return Err(Error::from("vertex to vertices connectivity not available"));
-        }
-
         let n_verts = self.n_verts() as usize;
         let n_set = flg.iter().filter(|&&x| x).count();
 
         let mut to_fix = n_verts - n_set;
         debug!("{} / {} internal vertices to fix", to_fix, n_verts);
 
-        let v2v = self.vertex_to_vertices.as_ref().unwrap();
+        let v2v = self.get_vertex_to_vertices()?;
 
         let mut n_iter = 0;
         loop {
@@ -681,10 +655,6 @@ impl SimplexMesh<3, Tetrahedron> {
             r_h, beta
         );
 
-        if self.vertex_to_vertices.is_none() {
-            return Err(Error::from("vertex to vertices connectivity not available"));
-        }
-
         let (bdy, boundary_vertex_ids) = self.boundary();
         let bdy_tags: FxHashSet<Tag> = bdy.etags().collect();
 
@@ -760,10 +730,6 @@ impl SimplexMesh<2, Triangle> {
             "Compute the curvature metric with r/h = {} and gradation = {}",
             r_h, beta
         );
-
-        if self.vertex_to_vertices.is_none() {
-            return Err(Error::from("vertex to vertices connectivity not available"));
-        }
 
         let (bdy, boundary_vertex_ids) = self.boundary();
         let bdy_tags: FxHashSet<Tag> = bdy.etags().collect();
@@ -1087,7 +1053,7 @@ mod tests {
         assert!(c_max < 1.001 * beta);
         assert!(frac_large_c < 1e-12);
 
-        let edges = mesh.edges.as_ref().unwrap();
+        let edges = mesh.get_edges().unwrap();
         for &e in edges.iter() {
             let i0 = e[0] as usize;
             let i1 = e[1] as usize;

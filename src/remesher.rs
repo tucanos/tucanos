@@ -217,11 +217,8 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>, G: Geometry<D> + 'a> Remesher<'a
         assert_eq!(m.len(), mesh.n_verts() as usize);
 
         // Get the topology
-        if mesh.topo.is_none() {
-            return Err(Error::from("Mesh topology not computed"));
-        }
-        let topo = mesh.topo.as_ref().unwrap();
-        let vtag = mesh.vtags.as_ref().unwrap();
+        let topo = mesh.get_topology()?;
+        let vtag = mesh.get_vertex_tags()?;
 
         // Check that the geometry and topology are consistent
         geom.check(topo)?;

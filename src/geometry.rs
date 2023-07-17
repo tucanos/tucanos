@@ -81,7 +81,7 @@ impl<const D: usize, E: Elem> LinearPatchGeometry<D, E> {
 
     // Perform projection
     fn project(&self, pt: &mut Point<D>) -> (f64, Point<D>) {
-        self.mesh.tree.as_ref().unwrap().project(pt)
+        self.mesh.get_octree().unwrap().project(pt)
     }
 }
 
@@ -115,7 +115,7 @@ where
 
     // Perform projection
     fn project(&self, pt: &mut Point<D>) -> (f64, Point<D>) {
-        self.mesh.tree.as_ref().unwrap().project(pt)
+        self.mesh.get_octree().unwrap().project(pt)
     }
 
     fn compute_curvature(&mut self) {
@@ -134,7 +134,7 @@ where
             return Err(Error::from("LinearGeometry: compute_curvature not called"));
         }
 
-        let tree = self.mesh.tree.as_ref().unwrap();
+        let tree = self.mesh.get_octree().unwrap();
         let i_elem = tree.nearest(pt) as usize;
         let u = self.u.as_ref().unwrap();
         if let Some(v) = self.v.as_ref() {
@@ -191,11 +191,8 @@ where
     /// Create a `LinearGeometry` from a `SimplexMesh`
     pub fn new<E2: Elem>(mesh: &SimplexMesh<D, E2>, mut bdy: SimplexMesh<D, E>) -> Result<Self> {
         assert!(E2::DIM >= E::DIM);
-        if mesh.topo.is_none() {
-            return Err(Error::from("Mesh topology not computed"));
-        }
 
-        let mesh_topo = mesh.topo.as_ref().unwrap();
+        let mesh_topo = mesh.get_topology()?;
 
         // Faces
         let mesh_face_tags = mesh_topo.tags(E::DIM as Dim);
@@ -295,7 +292,7 @@ where
         assert_eq!(tag.0, D as Dim - 1);
 
         let patch = self.patches.get(&tag.1).unwrap();
-        let tree = patch.mesh.tree.as_ref().unwrap();
+        let tree = patch.mesh.get_octree().unwrap();
         let idx = tree.nearest(pt);
         let n_ref = patch.mesh.gelem(patch.mesh.elem(idx)).normal();
         let cos_a = n.dot(&n_ref).min(1.0).max(-1.0);
@@ -412,8 +409,7 @@ mod tests {
         assert!(f64::abs(pt[2] - 0.25) < 1e-12);
 
         let topo_node = mesh
-            .topo
-            .as_ref()
+            .get_topology()
             .unwrap()
             .get_from_parents(1, &[6, 3])
             .unwrap();

@@ -27,32 +27,32 @@ pub struct SimplexMesh<const D: usize, E: Elem> {
     faces: Vec<E::Face>,
     /// Faces tags (length = # of faces)
     ftags: Vec<Tag>,
-    pub point: PhantomData<SVector<f64, D>>,
-    pub elem: PhantomData<E>,
+    point: PhantomData<SVector<f64, D>>,
+    elem: PhantomData<E>,
     /// Face to element connectitivity stored as a HashMap taking the face vertices (sorted) and returning
     /// a vector of element Ids
-    pub faces_to_elems: Option<FxHashMap<E::Face, twovec::Vec<u32>>>,
+    faces_to_elems: Option<FxHashMap<E::Face, twovec::Vec<u32>>>,
     /// Vertex-to-element connectivity stored in CSR format
-    pub vertex_to_elems: Option<CSRGraph>,
+    vertex_to_elems: Option<CSRGraph>,
     /// Element-to-element connectivity stored in CSR format
-    pub elem_to_elems: Option<CSRGraph>,
+    elem_to_elems: Option<CSRGraph>,
     /// Edges (length = # of edges)
-    pub edges: Option<Vec<[Idx; 2]>>,
+    edges: Option<Vec<[Idx; 2]>>,
     /// Vertex-to-vertex (~edges) connectivity stored in CSR format
-    pub vertex_to_vertices: Option<CSRGraph>,
+    vertex_to_vertices: Option<CSRGraph>,
     /// Element volumes (length = # of elements)
-    pub elem_vol: Option<Vec<f64>>,
+    elem_vol: Option<Vec<f64>>,
     /// Vertex volumes (length = # of vertices)
     /// The volume of a vertex in the weighted average of the neighboring element volumes
     /// It can be seen as the volume of a dual cell
     /// sum(elem_vol) = sum(vert_vol)
-    pub vert_vol: Option<Vec<f64>>,
+    vert_vol: Option<Vec<f64>>,
     /// Octree
-    pub tree: Option<Octree>,
+    tree: Option<Octree>,
     /// Topology
-    pub topo: Option<Topology>,
+    topo: Option<Topology>,
     /// Vertex tags
-    pub vtags: Option<Vec<TopoTag>>,
+    vtags: Option<Vec<TopoTag>>,
 }
 
 pub struct SubSimplexMesh<const D: usize, E: Elem> {
@@ -270,6 +270,15 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         self.faces_to_elems = None;
     }
 
+    /// Get the face-to-element connectivity
+    pub fn get_face_to_elems(&self) -> Result<&FxHashMap<<E as Elem>::Face, twovec::Vec<u32>>> {
+        if self.faces_to_elems.is_none() {
+            Err(Error::from("Face to element connectivity not computed"))
+        } else {
+            Ok(self.faces_to_elems.as_ref().unwrap())
+        }
+    }
+
     /// Compute the vertex-to-element connectivity
     pub fn compute_vertex_to_elems(&mut self) {
         debug!("Compute the vertex to element connectivity");
@@ -285,6 +294,15 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn clear_vertex_to_elems(&mut self) {
         debug!("Delete the vertex to element connectivity");
         self.vertex_to_elems = None;
+    }
+
+    /// Get the vertex-to-element connectivity
+    pub fn get_vertex_to_elems(&self) -> Result<&CSRGraph> {
+        if self.vertex_to_elems.is_none() {
+            Err(Error::from("Vertex to element connectivity not computed"))
+        } else {
+            Ok(self.vertex_to_elems.as_ref().unwrap())
+        }
     }
 
     /// Compute the element-to-element connectivity
@@ -317,6 +335,15 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         self.elem_to_elems = None;
     }
 
+    /// Get the element-to-element connectivity
+    pub fn get_elem_to_elems(&self) -> Result<&CSRGraph> {
+        if self.elem_to_elems.is_none() {
+            Err(Error::from("Element to element connectivity not computed"))
+        } else {
+            Ok(self.elem_to_elems.as_ref().unwrap())
+        }
+    }
+
     /// Compute the edges
     pub fn compute_edges(&mut self) {
         debug!("Compute the edges");
@@ -342,6 +369,15 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         self.edges = None;
     }
 
+    /// Get the the edges
+    pub fn get_edges(&self) -> Result<&[[Idx; 2]]> {
+        if self.edges.is_none() {
+            Err(Error::from("Edges not computed"))
+        } else {
+            Ok(self.edges.as_ref().unwrap())
+        }
+    }
+
     /// Compute the vertex-to-vertex connectivity
     /// Edges are computed if not available
     pub fn compute_vertex_to_vertices(&mut self) {
@@ -360,6 +396,15 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn clear_vertex_to_vertices(&mut self) {
         debug!("Delete the vertex to vertex connectivity");
         self.vertex_to_vertices = None;
+    }
+
+    /// Get the vertex-to-vertes connectivity
+    pub fn get_vertex_to_vertices(&self) -> Result<&CSRGraph> {
+        if self.vertex_to_vertices.is_none() {
+            Err(Error::from("Vertex to vertex connectivity not computed"))
+        } else {
+            Ok(self.vertex_to_vertices.as_ref().unwrap())
+        }
     }
 
     /// Compute the volume and vertex volumes
@@ -390,6 +435,24 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         self.vert_vol = None;
     }
 
+    /// Get the vertex volumes
+    pub fn get_vertex_volumes(&self) -> Result<&[f64]> {
+        if self.vert_vol.is_none() {
+            Err(Error::from("Volumes not computed"))
+        } else {
+            Ok(self.vert_vol.as_ref().unwrap())
+        }
+    }
+
+    /// Get the element volumes
+    pub fn get_elem_volumes(&self) -> Result<&[f64]> {
+        if self.elem_vol.is_none() {
+            Err(Error::from("Volumes not computed"))
+        } else {
+            Ok(self.elem_vol.as_ref().unwrap())
+        }
+    }
+
     /// Compute an octree
     pub fn compute_octree(&mut self) {
         debug!("Compute an octree");
@@ -404,6 +467,15 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn clear_octree(&mut self) {
         debug!("Delete the octree");
         self.tree = None;
+    }
+
+    /// Get the octree
+    pub fn get_octree(&self) -> Result<&Octree> {
+        if self.tree.is_none() {
+            Err(Error::from("Octree not computed"))
+        } else {
+            Ok(self.tree.as_ref().unwrap())
+        }
     }
 
     /// Convert a field defined at the element centers (P0) to a field defined at the vertices (P1)
@@ -771,6 +843,24 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn clear_topology(&mut self) {
         self.topo = None;
         self.vtags = None;
+    }
+
+    /// Get the topology
+    pub fn get_topology(&self) -> Result<&Topology> {
+        if self.topo.is_none() {
+            Err(Error::from("Topology not computed"))
+        } else {
+            Ok(self.topo.as_ref().unwrap())
+        }
+    }
+
+    /// Get the vertex tags
+    pub fn get_vertex_tags(&self) -> Result<&[TopoTag]> {
+        if self.topo.is_none() {
+            Err(Error::from("Topology not computed"))
+        } else {
+            Ok(self.vtags.as_ref().unwrap())
+        }
     }
 
     pub fn clear_all(&mut self) {
