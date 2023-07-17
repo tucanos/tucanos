@@ -22,8 +22,8 @@ pub fn compute_vertex_normals<const D: usize, E: Elem>(mesh: &SimplexMesh<D, E>)
 
     let mut normals = vec![Point::<D>::zeros(); mesh.n_verts() as usize];
 
-    for (i_elem, e) in mesh.elems().enumerate() {
-        let ge = mesh.gelem(i_elem as Idx);
+    for e in mesh.elems() {
+        let ge = mesh.gelem(e);
         let n = ge.normal();
         let w = ge.vol();
         for i_vert in e.into_iter() {
@@ -105,9 +105,9 @@ pub fn compute_curvature_tensor(
     let mut elem_u = Vec::with_capacity(smesh.n_verts() as usize);
     let mut elem_v = Vec::with_capacity(smesh.n_verts() as usize);
 
-    for (i_elem, e) in smesh.elems().enumerate() {
+    for e in smesh.elems() {
         // Compute the element-based curvature
-        let ge = smesh.gelem(i_elem as Idx);
+        let ge = smesh.gelem(e);
         let n = ge.normal();
 
         let edgs = [ge.edge(0), ge.edge(1), ge.edge(2)];
@@ -222,6 +222,7 @@ pub fn fix_curvature<const D: usize, E: Elem>(
     }
 
     let mut n_iter = 0;
+    let etags: Vec<_> = smesh.etags().collect();
     while to_fix > 0 {
         debug!("iteration {}: {} elements to fix", n_iter + 1, to_fix);
         let mut fixed = Vec::with_capacity(to_fix);
@@ -234,12 +235,14 @@ pub fn fix_curvature<const D: usize, E: Elem>(
                     .iter()
                     .copied()
                     .filter(|i| !flg[*i as usize])
-                    .filter(|i| smesh.etags[*i as usize] == smesh.etags[i_elem]);
+                    .filter(|i| etags[*i as usize] == etags[i_elem]);
                 let mut min_dist = f64::MAX;
-                let c = smesh.elem_center(i_elem as Idx);
+                let e = smesh.elem(i_elem as Idx);
+                let c = smesh.gelem(e).center();
                 let mut i_neighbor = None;
                 for i in valid_neighbors {
-                    let c2 = smesh.elem_center(i);
+                    let e2 = smesh.elem(i);
+                    let c2 = smesh.gelem(e2).center();
                     let dist = (c2 - c).norm();
                     if dist < min_dist {
                         min_dist = dist;
@@ -320,7 +323,7 @@ mod tests {
         mesh::{Point, SimplexMesh},
         test_meshes::test_mesh_2d,
         topo_elems::Triangle,
-        Idx, Mesh, Result, H_MAX,
+        Mesh, Result, H_MAX,
     };
 
     use super::{compute_curvature_tensor, compute_curvature_tensor_2d, fix_curvature};
@@ -353,7 +356,7 @@ mod tests {
 
         for (i_elem, (e, t)) in mesh.elems().zip(mesh.etags()).enumerate() {
             let u = u[i_elem];
-            let ge = mesh.gelem(i_elem as Idx);
+            let ge = mesh.gelem(e);
             let c = ge.center();
 
             let is_boundary = e.into_iter().any(|i| bdy_flag[i as usize]);
@@ -401,9 +404,9 @@ mod tests {
         let mut u = compute_curvature_tensor_2d(&mesh);
         fix_curvature(&mesh, &mut u, None)?;
 
-        for (i_elem, (_e, t)) in mesh.elems().zip(mesh.etags()).enumerate() {
+        for (i_elem, (e, t)) in mesh.elems().zip(mesh.etags()).enumerate() {
             let u = u[i_elem];
-            let ge = mesh.gelem(i_elem as Idx);
+            let ge = mesh.gelem(e);
             let c = ge.center();
 
             match t {
@@ -445,8 +448,13 @@ mod tests {
             })
             .collect();
 
-        let mut surf =
-            SimplexMesh::<3, Triangle>::new(verts, mesh.elems, mesh.etags, vec![0; 0], vec![0; 0]);
+        let mut surf = SimplexMesh::<3, Triangle>::new(
+            verts,
+            mesh.elems().collect::<Vec<_>>(),
+            mesh.etags().collect::<Vec<_>>(),
+            Vec::new(),
+            Vec::new(),
+        );
         // Get the indices of boundary vertices
         surf.add_boundary_faces();
         let (_, bdy_ids) = surf.boundary();
@@ -460,7 +468,7 @@ mod tests {
         for (i_elem, e) in surf.elems().enumerate() {
             let mut u = u[i_elem];
             let mut v = v[i_elem];
-            let ge = surf.gelem(i_elem as Idx);
+            let ge = surf.gelem(e);
             let c = ge.center();
 
             let is_boundary = e.into_iter().any(|i| bdy_flag[i as usize]);
@@ -499,18 +507,23 @@ mod tests {
             })
             .collect();
 
-        let mut surf =
-            SimplexMesh::<3, Triangle>::new(verts, mesh.elems, mesh.etags, vec![0; 0], vec![0; 0]);
+        let mut surf = SimplexMesh::<3, Triangle>::new(
+            verts,
+            mesh.elems().collect::<Vec<_>>(),
+            mesh.etags().collect::<Vec<_>>(),
+            Vec::new(),
+            Vec::new(),
+        );
         surf.add_boundary_faces();
         surf.compute_elem_to_elems();
 
         let (mut u, mut v) = compute_curvature_tensor(&surf);
         fix_curvature(&surf, &mut u, Some(&mut v))?;
 
-        for i_elem in 0..surf.n_elems() as usize {
+        for (i_elem, e) in surf.elems().enumerate() {
             let mut u = u[i_elem];
             let mut v = v[i_elem];
-            let ge = surf.gelem(i_elem as Idx);
+            let ge = surf.gelem(e);
             let c = ge.center();
 
             assert!(u.norm() < 1.1 / H_MAX);

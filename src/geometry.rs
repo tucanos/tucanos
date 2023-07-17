@@ -4,7 +4,7 @@ use crate::{
     mesh::{Point, SimplexMesh},
     topo_elems::Elem,
     topology::Topology,
-    Dim, Error, Mesh, Result, Tag, TopoTag,
+    Dim, Error, Result, Tag, TopoTag,
 };
 use log::info;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -25,9 +25,8 @@ pub trait Geometry<const D: usize> {
     /// Compute the max distance between the face centers and the geometry normals
     fn max_distance<E2: Elem>(&self, mesh: &SimplexMesh<D, E2>) -> f64 {
         let mut d_max = 0.0;
-        for i_face in 0..mesh.n_faces() {
-            let mut c = mesh.face_center(i_face);
-            let tag = mesh.ftags[i_face as usize];
+        for (gf, tag) in mesh.gfaces().zip(mesh.ftags()) {
+            let mut c = gf.center();
             let d = self.project(&mut c, &(E2::Face::DIM as Dim, tag));
             d_max = f64::max(d_max, d);
         }
@@ -37,10 +36,9 @@ pub trait Geometry<const D: usize> {
     /// Compute the max angle between the face normals and the geometry normals
     fn max_normal_angle<E2: Elem>(&self, mesh: &SimplexMesh<D, E2>) -> f64 {
         let mut a_max = 0.0;
-        for i_face in 0..mesh.n_faces() {
-            let mut c = mesh.face_center(i_face);
-            let tag = mesh.ftags[i_face as usize];
-            let n = mesh.gface(i_face).normal();
+        for (gf, tag) in mesh.gfaces().zip(mesh.ftags()) {
+            let mut c = gf.center();
+            let n = gf.normal();
             let a = self.angle(&mut c, &n, &(E2::Face::DIM as Dim, tag));
             a_max = f64::max(a_max, a);
         }
@@ -299,7 +297,7 @@ where
         let patch = self.patches.get(&tag.1).unwrap();
         let tree = patch.mesh.tree.as_ref().unwrap();
         let idx = tree.nearest(pt);
-        let n_ref = patch.mesh.gelem(idx).normal();
+        let n_ref = patch.mesh.gelem(patch.mesh.elem(idx)).normal();
         let cos_a = n.dot(&n_ref).min(1.0).max(-1.0);
         f64::acos(cos_a) * 180. / PI
     }

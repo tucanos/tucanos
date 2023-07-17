@@ -1,7 +1,7 @@
 use crate::{
     mesh::{Point, SimplexMesh},
-    topo_elems::{Elem, Tetrahedron, Triangle},
-    Idx, Mesh, Result, Tag,
+    topo_elems::{Edge, Elem, Tetrahedron, Triangle},
+    Idx, Mesh, Tag,
 };
 
 /// Subdivision of standard elements to triangles and tetrahedra maintaining a consistent mesh. The algorithms are taken from
@@ -413,112 +413,80 @@ impl<const D: usize> MultiElementMesh<D> {
         (tag, el)
     }
 
-    fn add_edg(&self, i: usize, elems: &mut Vec<Idx>, etags: &mut Vec<Tag>, cell_dim: Idx) -> Idx {
+    fn add_edg(&self, i: usize, elems: &mut Vec<Edge>, etags: &mut Vec<Tag>) {
         assert_eq!(self.etypes[i], ElementType::Edge);
         let (tag, el) = self.get_elem(i);
-        elems.extend(el.iter());
+        elems.push(Edge::from_slice(el));
         etags.push(tag);
-        if cell_dim == 1 {
-            return 1;
-        }
-        0
     }
 
-    fn add_tri(&self, i: usize, elems: &mut Vec<Idx>, etags: &mut Vec<Tag>, cell_dim: Idx) -> Idx {
+    fn add_tri(&self, i: usize, elems: &mut Vec<Triangle>, etags: &mut Vec<Tag>) {
         assert_eq!(self.etypes[i], ElementType::Triangle);
         let (tag, el) = self.get_elem(i);
-        elems.extend(el.iter());
+        elems.push(Triangle::from_slice(el));
         etags.push(tag);
-        if cell_dim == 2 {
-            return 1;
-        }
-        0
     }
 
-    fn add_quad(&self, i: usize, elems: &mut Vec<Idx>, etags: &mut Vec<Tag>, cell_dim: Idx) -> Idx {
+    fn add_quad(&self, i: usize, elems: &mut Vec<Triangle>, etags: &mut Vec<Tag>) {
         assert_eq!(self.etypes[i], ElementType::Quadrangle);
         let (tag, el) = self.get_elem(i);
         for t in quad2tris(el) {
-            elems.extend(t.iter());
+            elems.push(t);
             etags.push(tag);
         }
-        if cell_dim == 2 {
-            return 2;
-        }
-        0
     }
 
-    fn add_tet(&self, i: usize, elems: &mut Vec<Idx>, etags: &mut Vec<Tag>, cell_dim: Idx) -> Idx {
+    fn add_tet(&self, i: usize, elems: &mut Vec<Tetrahedron>, etags: &mut Vec<Tag>) {
         assert_eq!(self.etypes[i], ElementType::Tetrahedron);
         let (tag, el) = self.get_elem(i);
-        elems.extend(el.iter());
+        elems.push(Tetrahedron::from_slice(el));
         etags.push(tag);
-        if cell_dim == 3 {
-            return 1;
-        }
-        0
     }
 
-    fn add_pyr(&self, i: usize, elems: &mut Vec<Idx>, etags: &mut Vec<Tag>, cell_dim: Idx) -> Idx {
+    fn add_pyr(&self, i: usize, elems: &mut Vec<Tetrahedron>, etags: &mut Vec<Tag>) {
         assert_eq!(self.etypes[i], ElementType::Pyramids);
         let (tag, el) = self.get_elem(i);
         for t in pyr2tets(el) {
-            elems.extend(t.iter());
+            elems.push(t);
             etags.push(tag);
         }
-        if cell_dim == 3 {
-            return 2;
-        }
-        0
     }
 
-    fn add_pri(&self, i: usize, elems: &mut Vec<Idx>, etags: &mut Vec<Tag>, cell_dim: Idx) -> Idx {
+    fn add_pri(&self, i: usize, elems: &mut Vec<Tetrahedron>, etags: &mut Vec<Tag>) {
         assert_eq!(self.etypes[i], ElementType::Prism);
         let (tag, el) = self.get_elem(i);
         for t in pri2tets(el) {
-            elems.extend(t.iter());
+            elems.push(t);
             etags.push(tag);
         }
-        if cell_dim == 3 {
-            return 3;
-        }
-        0
     }
 
-    fn add_hex(&self, i: usize, elems: &mut Vec<Idx>, etags: &mut Vec<Tag>, cell_dim: Idx) -> Idx {
+    fn add_hex(&self, i: usize, elems: &mut Vec<Tetrahedron>, etags: &mut Vec<Tag>) {
         assert_eq!(self.etypes[i], ElementType::Hexahedron);
         let (tag, el) = self.get_elem(i);
         let (first_5, last) = hex2tets(el);
         for t in first_5 {
-            elems.extend(t.iter());
+            elems.push(t);
             etags.push(tag);
         }
         if let Some(last) = last {
-            elems.extend(last.iter());
+            elems.push(last);
             etags.push(tag);
-            if cell_dim == 3 {
-                return 6;
-            }
         }
-        if cell_dim == 3 {
-            return 5;
-        }
-        0
     }
 
-    /// Convert all the elements to simplices an return a `SimplexMesh`
-    /// The data is transfered to the new `SimplexMesh` (no interpolation or smoothing for P0 fields)
+    /// Convert all the elements to simplices
     #[allow(clippy::type_complexity)]
-    pub fn to_simplices<E: Elem>(self) -> Result<SimplexMesh<D, E>> {
-        if self.dim != D as u32 {
-            return Err("Invalid vertex dimension".into());
-        }
-
-        let cell_dim = self.cell_dim();
-        if cell_dim > E::DIM {
-            return Err("Invalid cell dimension".into());
-        }
-
+    fn to_simplices(
+        &self,
+    ) -> (
+        Vec<Tetrahedron>,
+        Vec<Tag>,
+        Vec<Triangle>,
+        Vec<Tag>,
+        Vec<Edge>,
+        Vec<Tag>,
+    ) {
         // Elements
         let mut edgs = Vec::new();
         let mut edg_tags = Vec::new();
@@ -530,41 +498,39 @@ impl<const D: usize> MultiElementMesh<D> {
         let n = self.ptr.len() - 1;
         for i in 0..n {
             match self.etypes.get(i).unwrap() {
-                ElementType::Edge => self.add_edg(i, &mut edgs, &mut edg_tags, E::DIM),
-                ElementType::Triangle => self.add_tri(i, &mut tris, &mut tri_tags, E::DIM),
-                ElementType::Quadrangle => self.add_quad(i, &mut tris, &mut tri_tags, E::DIM),
-                ElementType::Tetrahedron => self.add_tet(i, &mut tets, &mut tet_tags, E::DIM),
-                ElementType::Pyramids => self.add_pyr(i, &mut tets, &mut tet_tags, E::DIM),
-                ElementType::Prism => self.add_pri(i, &mut tets, &mut tet_tags, E::DIM),
-                ElementType::Hexahedron => self.add_hex(i, &mut tets, &mut tet_tags, E::DIM),
+                ElementType::Edge => self.add_edg(i, &mut edgs, &mut edg_tags),
+                ElementType::Triangle => self.add_tri(i, &mut tris, &mut tri_tags),
+                ElementType::Quadrangle => self.add_quad(i, &mut tris, &mut tri_tags),
+                ElementType::Tetrahedron => self.add_tet(i, &mut tets, &mut tet_tags),
+                ElementType::Pyramids => self.add_pyr(i, &mut tets, &mut tet_tags),
+                ElementType::Prism => self.add_pri(i, &mut tets, &mut tet_tags),
+                ElementType::Hexahedron => self.add_hex(i, &mut tets, &mut tet_tags),
             };
         }
 
-        if E::DIM == 3 {
-            return Ok(SimplexMesh::new(self.verts, tets, tet_tags, tris, tri_tags));
-        } else if E::DIM == 2 {
-            return Ok(SimplexMesh::new(self.verts, tris, tri_tags, edgs, edg_tags));
-        } else if E::DIM == 1 {
-            return Ok(SimplexMesh::new(
-                self.verts,
-                edgs,
-                edg_tags,
-                Vec::new(),
-                Vec::new(),
-            ));
-        }
-        unreachable!();
+        (tets, tet_tags, tris, tri_tags, edgs, edg_tags)
+    }
+
+    pub fn to_tet_mesh(self) -> SimplexMesh<D, Tetrahedron> {
+        let (tets, tet_tags, tris, tri_tags, _, _) = self.to_simplices();
+        SimplexMesh::new(self.verts, tets, tet_tags, tris, tri_tags)
+    }
+
+    pub fn to_tri_mesh(self) -> SimplexMesh<D, Triangle> {
+        let (_, _, tris, tri_tags, edgs, edg_tags) = self.to_simplices();
+        SimplexMesh::new(self.verts, tris, tri_tags, edgs, edg_tags)
+    }
+
+    pub fn to_edg_mesh(self) -> SimplexMesh<D, Edge> {
+        let (_, _, _, _, edgs, edg_tags) = self.to_simplices();
+        SimplexMesh::new(self.verts, edgs, edg_tags, Vec::new(), Vec::new())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{ElementType, MultiElementMesh};
-    use crate::{
-        mesh::{Point, SimplexMesh},
-        topo_elems::{Tetrahedron, Triangle},
-        Idx, Mesh, Result,
-    };
+    use crate::{mesh::Point, Mesh, Result};
 
     #[test]
     fn test_2d() -> Result<()> {
@@ -589,14 +555,13 @@ mod tests {
         assert_eq!(msh.n_elems(), 2);
         assert_eq!(msh.n_faces(), 5);
 
-        let msh: SimplexMesh<2, Triangle> = msh.to_simplices().unwrap();
+        let msh = msh.to_tri_mesh();
 
         assert_eq!(msh.n_verts(), 5);
         assert_eq!(msh.n_elems(), 3);
         assert_eq!(msh.n_faces(), 5);
 
-        let vol: f64 = (0..(msh.n_elems() as Idx)).map(|i| msh.elem_vol(i)).sum();
-        assert!(f64::abs(vol - 1.25) < 1e-10);
+        assert!(f64::abs(msh.vol() - 1.25) < 1e-10);
 
         Ok(())
     }
@@ -630,7 +595,7 @@ mod tests {
         assert_eq!(msh.n_elems(), 2);
         assert_eq!(msh.n_faces(), 9);
 
-        let mut msh: SimplexMesh<3, Tetrahedron> = msh.to_simplices().unwrap();
+        let mut msh = msh.to_tet_mesh();
         assert_eq!(msh.n_verts(), 9);
         assert_eq!(msh.n_elems(), 8);
         assert_eq!(msh.n_faces(), 14);
@@ -641,8 +606,7 @@ mod tests {
         assert_eq!(msh.n_elems(), 8);
         assert_eq!(msh.n_faces(), 14);
 
-        let vol: f64 = (0..(msh.n_elems() as Idx)).map(|i| msh.elem_vol(i)).sum();
-        assert!(f64::abs(vol - 7. / 6.) < 1e-10);
+        assert!(f64::abs(msh.vol() - 7. / 6.) < 1e-10);
 
         Ok(())
     }
@@ -674,7 +638,7 @@ mod tests {
         assert_eq!(msh.n_elems(), 2);
         assert_eq!(msh.n_faces(), 4);
 
-        let mut msh: SimplexMesh<3, Tetrahedron> = msh.to_simplices().unwrap();
+        let mut msh = msh.to_tet_mesh();
         assert_eq!(msh.n_verts(), 9);
         assert_eq!(msh.n_elems(), 8);
         assert_eq!(msh.n_faces(), 4);

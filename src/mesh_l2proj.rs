@@ -29,7 +29,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         for i_elem in 0..self.n_elems() {
             let e = self.elem(i_elem);
-            let ge = self.gelem(i_elem);
+            let ge = self.gelem(e);
             let mut grad = Point::<D>::zeros();
             for i_face in 0..E::N_FACES {
                 let i_vert = e[i_face as usize] as usize;
@@ -80,7 +80,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let mut res = vec![0.0; n * self.n_verts() as usize];
         for i_elem in 0..self.n_elems() {
             let e = self.elem(i_elem);
-            let ge = self.gelem(i_elem);
+            let ge = self.gelem(e);
             let mut hess = SMatrix::<f64, D, D>::zeros();
             for i_face in 0..E::N_FACES {
                 let i_vert = e[i_face as usize] as usize;

@@ -12,9 +12,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         n_elems: Idx,
         elems_and_tags: I,
         edges: &FxHashMap<[Idx; 2], Idx>,
-    ) -> (Vec<Idx>, Vec<Tag>) {
+    ) -> (Vec<E2>, Vec<Tag>) {
         let new_n_elems = 2 * n_elems;
-        let mut elems = Vec::with_capacity((E::N_VERTS * new_n_elems) as usize);
+        let mut elems = Vec::with_capacity(new_n_elems as usize);
         let mut etags = Vec::with_capacity(new_n_elems as usize);
 
         for (e, tag) in elems_and_tags {
@@ -22,12 +22,10 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             edg.sort_unstable();
             let i = edges.get(&edg).unwrap();
 
-            elems.push(e[0]);
-            elems.push(*i);
+            elems.push(E2::from_slice(&[e[0], *i]));
             etags.push(tag);
 
-            elems.push(*i);
-            elems.push(e[1]);
+            elems.push(E2::from_slice(&[*i, e[1]]));
             etags.push(tag);
         }
 
@@ -38,9 +36,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         n_elems: Idx,
         elems_and_tags: I,
         edges: &FxHashMap<[Idx; 2], Idx>,
-    ) -> (Vec<Idx>, Vec<Tag>) {
+    ) -> (Vec<E2>, Vec<Tag>) {
         let new_n_elems = 4 * n_elems;
-        let mut elems = Vec::with_capacity((E::N_VERTS * new_n_elems) as usize);
+        let mut elems = Vec::with_capacity(new_n_elems as usize);
         let mut etags = Vec::with_capacity(new_n_elems as usize);
 
         for (e, tag) in elems_and_tags {
@@ -54,24 +52,16 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             edg.sort_unstable();
             let i1 = edges.get(&edg).unwrap();
 
-            elems.push(e[0]);
-            elems.push(*i2);
-            elems.push(*i1);
+            elems.push(E2::from_slice(&[e[0], *i2, *i1]));
             etags.push(tag);
 
-            elems.push(*i2);
-            elems.push(e[1]);
-            elems.push(*i0);
+            elems.push(E2::from_slice(&[*i2, e[1], *i0]));
             etags.push(tag);
 
-            elems.push(*i2);
-            elems.push(*i0);
-            elems.push(*i1);
+            elems.push(E2::from_slice(&[*i2, *i0, *i1]));
             etags.push(tag);
 
-            elems.push(*i1);
-            elems.push(*i0);
-            elems.push(e[2]);
+            elems.push(E2::from_slice(&[*i1, *i0, e[2]]));
             etags.push(tag);
         }
 
@@ -82,7 +72,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         n_elems: Idx,
         elems_and_tags: I,
         edges: &FxHashMap<[Idx; 2], Idx>,
-    ) -> (Vec<Idx>, Vec<Tag>) {
+    ) -> (Vec<E2>, Vec<Tag>) {
         let new_n_elems = 8 * n_elems;
         let mut elems = Vec::with_capacity((E::N_VERTS * new_n_elems) as usize);
         let mut etags = Vec::with_capacity(new_n_elems as usize);
@@ -120,52 +110,28 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 *i9.unwrap(),
             ];
 
-            elems.push(ids[0]);
-            elems.push(ids[4]);
-            elems.push(ids[6]);
-            elems.push(ids[7]);
+            elems.push(E2::from_slice(&[ids[0], ids[4], ids[6], ids[7]]));
             etags.push(tag);
 
-            elems.push(ids[4]);
-            elems.push(ids[1]);
-            elems.push(ids[5]);
-            elems.push(ids[8]);
+            elems.push(E2::from_slice(&[ids[4], ids[1], ids[5], ids[8]]));
             etags.push(tag);
 
-            elems.push(ids[4]);
-            elems.push(ids[5]);
-            elems.push(ids[6]);
-            elems.push(ids[7]);
+            elems.push(E2::from_slice(&[ids[4], ids[5], ids[6], ids[7]]));
             etags.push(tag);
 
-            elems.push(ids[4]);
-            elems.push(ids[5]);
-            elems.push(ids[7]);
-            elems.push(ids[8]);
+            elems.push(E2::from_slice(&[ids[4], ids[5], ids[7], ids[8]]));
             etags.push(tag);
 
-            elems.push(ids[8]);
-            elems.push(ids[5]);
-            elems.push(ids[7]);
-            elems.push(ids[9]);
+            elems.push(E2::from_slice(&[ids[8], ids[5], ids[7], ids[9]]));
             etags.push(tag);
 
-            elems.push(ids[6]);
-            elems.push(ids[5]);
-            elems.push(ids[9]);
-            elems.push(ids[7]);
+            elems.push(E2::from_slice(&[ids[6], ids[5], ids[9], ids[7]]));
             etags.push(tag);
 
-            elems.push(ids[7]);
-            elems.push(ids[8]);
-            elems.push(ids[9]);
-            elems.push(ids[3]);
+            elems.push(E2::from_slice(&[ids[7], ids[8], ids[9], ids[3]]));
             etags.push(tag);
 
-            elems.push(ids[6]);
-            elems.push(ids[5]);
-            elems.push(ids[2]);
-            elems.push(ids[9]);
+            elems.push(E2::from_slice(&[ids[6], ids[5], ids[2], ids[9]]));
             etags.push(tag);
         }
 
@@ -224,8 +190,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 mod tests {
 
     use crate::{
+        geom_elems::GElem,
         test_meshes::{test_mesh_2d, test_mesh_3d},
-        topo_elems::{get_face_to_elem, Elem, Tetrahedron},
+        topo_elems::{get_face_to_elem, Elem},
         Idx, Mesh,
     };
 
@@ -250,15 +217,15 @@ mod tests {
         assert_eq!(mesh.n_faces(), 12 * 4);
         assert_eq!(mesh.n_elems(), 5 * 8);
 
-        let v: f64 = mesh.elem_vols().sum();
+        let v: f64 = mesh.vol();
         assert!(f64::abs(v - 1.0) < 1e-12);
 
-        let f2e = get_face_to_elem::<Tetrahedron>(&mesh.elems);
+        let f2e = get_face_to_elem(mesh.elems());
         let mut areas = [0.0; 7];
         for (i_face, (mut f, tag)) in mesh.faces().zip(mesh.ftags()).enumerate() {
             f.sort();
             assert!(f2e.get(&f).is_some());
-            areas[tag as usize] += mesh.face_vol(i_face as Idx);
+            areas[tag as usize] += mesh.gface(mesh.face(i_face as Idx)).vol();
         }
         for a in areas.iter().skip(1) {
             assert!((*a - 1.).abs() < 1e-12);

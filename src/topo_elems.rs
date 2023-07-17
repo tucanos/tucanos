@@ -41,6 +41,8 @@ pub trait Elem:
     fn iter(&self) -> Iter<Idx>;
     /// Create from a slice containing the element connectivity
     fn from_slice(s: &[Idx]) -> Self;
+    /// Create from a iterator containing the element connectivity
+    fn from_iter<I: Iterator<Item = Idx>>(s: I) -> Self;
     /// Sort the vertices by increasing order (can make the geometric element invalid !)
     fn sort(&mut self);
     /// Get the i-th face
@@ -75,17 +77,15 @@ pub trait Elem:
     }
 }
 
-/// Get the i-th element in a global connectivity array
-#[must_use]
-pub fn get_elem<E: Elem>(conn: &[Idx], idx: Idx) -> E {
-    let start = (idx * E::N_VERTS) as usize;
-    let end = start + E::N_VERTS as usize;
-    E::from_slice(&conn[start..end])
-}
-
 /// Tetrahedron
 #[derive(Clone, Copy, Hash, Debug, Eq, PartialEq, Default)]
 pub struct Tetrahedron([Idx; 4]);
+
+impl Tetrahedron {
+    pub fn new(i0: Idx, i1: Idx, i2: Idx, i3: Idx) -> Self {
+        Self([i0, i1, i2, i3])
+    }
+}
 
 impl Elem for Tetrahedron {
     const N_VERTS: Idx = 4;
@@ -104,6 +104,14 @@ impl Elem for Tetrahedron {
     fn from_slice(s: &[Idx]) -> Self {
         let mut res = Self([0; 4]);
         res.0.clone_from_slice(s);
+        res
+    }
+
+    fn from_iter<I: Iterator<Item = Idx>>(mut s: I) -> Self {
+        let mut res = Self([0; 4]);
+        for i in 0..4 {
+            res.0[i] = s.next().unwrap();
+        }
         res
     }
 
@@ -164,6 +172,12 @@ impl IndexMut<usize> for Tetrahedron {
 #[derive(Clone, Copy, Hash, Debug, Eq, PartialEq, Default)]
 pub struct Triangle([Idx; 3]);
 
+impl Triangle {
+    pub fn new(i0: Idx, i1: Idx, i2: Idx) -> Self {
+        Self([i0, i1, i2])
+    }
+}
+
 impl Elem for Triangle {
     const N_VERTS: Idx = 3;
     const N_FACES: Idx = 3;
@@ -180,6 +194,14 @@ impl Elem for Triangle {
     fn from_slice(s: &[Idx]) -> Self {
         let mut res = Self([0; 3]);
         res.0.clone_from_slice(s);
+        res
+    }
+
+    fn from_iter<I: Iterator<Item = Idx>>(mut s: I) -> Self {
+        let mut res = Self([0; 3]);
+        for i in 0..3 {
+            res.0[i] = s.next().unwrap();
+        }
         res
     }
 
@@ -234,6 +256,12 @@ impl IndexMut<usize> for Triangle {
 #[derive(Clone, Copy, Hash, Debug, Eq, PartialEq, Default)]
 pub struct Edge([Idx; 2]);
 
+impl Edge {
+    pub fn new(i0: Idx, i1: Idx) -> Self {
+        Self([i0, i1])
+    }
+}
+
 impl Elem for Edge {
     const N_VERTS: Idx = 2;
     const N_FACES: Idx = 2;
@@ -250,6 +278,14 @@ impl Elem for Edge {
     fn from_slice(s: &[Idx]) -> Self {
         let mut res = Self([0; 2]);
         res.0.clone_from_slice(s);
+        res
+    }
+
+    fn from_iter<I: Iterator<Item = Idx>>(mut s: I) -> Self {
+        let mut res = Self([0; 2]);
+        for i in 0..2 {
+            res.0[i] = s.next().unwrap();
+        }
         res
     }
 
@@ -322,6 +358,14 @@ impl Elem for Vertex {
         res
     }
 
+    fn from_iter<I: Iterator<Item = Idx>>(mut s: I) -> Self {
+        let mut res = Self([0; 1]);
+        for i in 0..1 {
+            res.0[i] = s.next().unwrap();
+        }
+        res
+    }
+
     fn sort(&mut self) {
         self.0.sort_unstable();
     }
@@ -360,21 +404,20 @@ impl IndexMut<usize> for Vertex {
 
 /// Compute a `FxHashMap` that maps face-to-vertex connectivity (sorted) to a vector of element indices
 #[must_use]
-pub fn get_face_to_elem<E: Elem>(elems: &[Idx]) -> FxHashMap<E::Face, twovec::Vec<Idx>> {
-    let n_elems = elems.len() as Idx / E::N_VERTS;
-
+pub fn get_face_to_elem<E: Elem, I: Iterator<Item = E>>(
+    elems: I,
+) -> FxHashMap<E::Face, twovec::Vec<Idx>> {
     let mut map: FxHashMap<E::Face, twovec::Vec<Idx>> =
         FxHashMap::with_hasher(BuildHasherDefault::default());
-    for i_elem in 0..n_elems {
-        let elem = get_elem::<E>(elems, i_elem);
+    for (i_elem, elem) in elems.enumerate() {
         for i_face in 0..E::N_FACES {
             let mut f = elem.face(i_face);
             f.sort();
             let n = map.get_mut(&f);
             if let Some(n) = n {
-                n.push(i_elem);
+                n.push(i_elem as Idx);
             } else {
-                map.insert(f, twovec::Vec::with_single(i_elem));
+                map.insert(f, twovec::Vec::with_single(i_elem as Idx));
             }
         }
     }
@@ -388,8 +431,8 @@ mod tests {
 
     #[test]
     fn test_2d() {
-        let elems: Vec<Idx> = vec![0, 1, 2, 0, 2, 3];
-        let faces = get_face_to_elem::<Triangle>(&elems);
+        let elems = vec![Triangle([0, 1, 2]), Triangle([0, 2, 3])];
+        let faces = get_face_to_elem(elems.iter().cloned());
         assert_eq!(faces.len(), 5);
 
         let face = Edge([0 as Idx, 1 as Idx]);

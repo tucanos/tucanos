@@ -52,7 +52,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             .mapping(&architecture, &mut partition)
             .compute(&mut scotch::Strategy::new())?;
 
-        self.etags = partition.iter().copied().map(|i| i as Tag + 1).collect();
+        self.mut_etags()
+            .enumerate()
+            .for_each(|(i, t)| *t = partition[i] as Tag + 1);
 
         Ok(())
     }
@@ -93,7 +95,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             .part_recursive(&mut partition)
             .unwrap();
 
-        self.etags = partition.iter().copied().map(|i| i as Tag + 1).collect();
+        self.mut_etags()
+            .enumerate()
+            .for_each(|(i, t)| *t = partition[i] as Tag + 1);
 
         Ok(())
     }
@@ -107,7 +111,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         let n = f2e
             .iter()
-            .filter(|(_, v)| v.len() == 2 && self.etags[v[0] as usize] != self.etags[v[1] as usize])
+            .filter(|(_, v)| v.len() == 2 && self.etag(v[0]) != self.etag(v[1]))
             .count();
         Ok(n as f64 / f2e.len() as f64)
     }

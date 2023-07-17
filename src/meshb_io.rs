@@ -500,6 +500,25 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 Point::<D>::from_iterator(coords[start..end].iter().copied())
             })
             .collect();
+
+        let n_elems = elems.len() / E::N_VERTS as usize;
+        let elems = (0..n_elems)
+            .map(|i| {
+                let start = i * D;
+                let end = start + D;
+                E::from_slice(&elems[start..end])
+            })
+            .collect();
+
+        let n_faces = faces.len() / E::N_VERTS as usize;
+        let faces = (0..n_faces)
+            .map(|i| {
+                let start = i * D;
+                let end = start + D;
+                E::Face::from_slice(&faces[start..end])
+            })
+            .collect();
+
         Ok(SimplexMesh::<D, E>::new(verts, elems, etags, faces, ftags))
     }
 }
