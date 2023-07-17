@@ -3,7 +3,7 @@ use crate::{
     linalg::lapack_qr_least_squares,
     mesh::{Point, SimplexMesh},
     topo_elems::{Edge, Elem, Triangle},
-    Error, Idx, Mesh, Result, H_MAX,
+    Idx, Mesh, Result, H_MAX,
 };
 use log::{debug, warn};
 use nalgebra::{SMatrix, SymmetricEigen};
@@ -197,19 +197,13 @@ pub fn fix_curvature<const D: usize, E: Elem>(
         assert!(v.is_some());
     }
 
-    if smesh.elem_to_elems.is_none() {
-        return Err(Error::from(
-            "element to elements connectivity not available",
-        ));
-    }
-
     let (_, bdy_ids) = smesh.boundary();
     let mut bdy_flag = vec![false; smesh.n_verts() as usize];
     bdy_ids
         .into_iter()
         .for_each(|i| bdy_flag[i as usize] = true);
 
-    let e2e = smesh.elem_to_elems.as_ref().unwrap();
+    let e2e = smesh.get_elem_to_elems()?;
     let mut flg = Vec::with_capacity(smesh.n_elems() as usize);
 
     let mut to_fix = 0;

@@ -41,10 +41,10 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         self.mut_faces()
             .for_each(|f| *f = E::Face::from_iter(f.iter().map(|&i| new_indices[i as usize])));
 
-        self.vertex_to_elems = None;
-        self.vertex_to_vertices = None;
-        self.edges = None;
-        self.vert_vol = None;
+        self.clear_vertex_to_elems();
+        self.clear_vertex_to_vertices();
+        self.clear_edges();
+        self.clear_volumes();
     }
 
     /// Reorder the mesh elements
@@ -70,8 +70,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             .for_each(|(t0, t1)| *t0 = *t1);
 
         self.clear_face_to_elems();
-        self.elem_to_elems = None;
-        self.elem_vol = None;
+        self.clear_elem_to_elems();
+        self.clear_volumes();
     }
 
     /// Reorder the mesh faces
@@ -332,7 +332,7 @@ mod tests {
         let mut mesh = test_mesh_2d().split();
         mesh.compute_elem_to_elems();
 
-        let e2e = mesh.elem_to_elems.as_ref().unwrap();
+        let e2e = mesh.get_elem_to_elems().unwrap();
 
         assert_eq!(e2e.row(0), [2, 4]);
         assert_eq!(e2e.row(1), [2]);
@@ -354,7 +354,7 @@ mod tests {
     }
 
     fn mean_bandwidth_e2e<const D: usize, E: Elem>(mesh: &SimplexMesh<D, E>) -> f64 {
-        let e2e = mesh.elem_to_elems.as_ref().unwrap();
+        let e2e = mesh.get_elem_to_elems().unwrap();
         let mut mean = 0;
         for i_elem in 0..mesh.n_elems() {
             let n = e2e.row(i_elem);

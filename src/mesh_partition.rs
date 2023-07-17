@@ -1,6 +1,6 @@
 use log::{info, warn};
 
-use crate::{mesh::SimplexMesh, topo_elems::Elem, Error, Idx, Mesh, Result, Tag};
+use crate::{mesh::SimplexMesh, topo_elems::Elem, Idx, Mesh, Result, Tag};
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     #[cfg(not(feature = "scotch"))]
@@ -13,14 +13,10 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         if self.etags().any(|t| t != 1) {
             warn!("Erase the element tags");
         }
-
         info!("Partition the mesh into {} using scotch", n_parts);
-        if self.elem_to_elems.is_none() {
-            self.compute_elem_to_elems();
-        }
 
         let mut partition = vec![0; self.n_elems() as usize];
-        let e2e = self.elem_to_elems.as_ref().unwrap();
+        let e2e = self.get_elem_to_elems()?;
 
         let architecture = scotch::Architecture::complete(n_parts as i32);
 
@@ -71,12 +67,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         }
 
         info!("Partition the mesh into {} using metis", n_parts);
-        if self.elem_to_elems.is_none() {
-            self.compute_elem_to_elems();
-        }
 
         let mut partition = vec![0; self.n_elems() as usize];
-        let e2e = self.elem_to_elems.as_ref().unwrap();
+        let e2e = self.get_elem_to_elems()?;
 
         let mut xadj: Vec<metis::Idx> = e2e
             .ptr
@@ -103,11 +96,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     pub fn partition_quality(&self) -> Result<f64> {
-        if self.faces_to_elems.is_none() {
-            return Err(Error::from("face to element connectivity not computed"));
-        }
-
-        let f2e = self.faces_to_elems.as_ref().unwrap();
+        let f2e = self.get_face_to_elems()?;
 
         let n = f2e
             .iter()
@@ -128,7 +117,7 @@ mod tests {
     #[test]
     fn test_partition_scotch_2d() -> Result<()> {
         let mut mesh = test_mesh_2d().split().split().split().split().split();
-
+        mesh.compute_elem_to_elems();
         mesh.partition_scotch(4)?;
 
         let q = mesh.partition_quality()?;
@@ -141,7 +130,7 @@ mod tests {
     #[test]
     fn test_partition_scotch_3d() -> Result<()> {
         let mut mesh = test_mesh_3d().split().split().split().split();
-
+        mesh.compute_elem_to_elems();
         mesh.partition_scotch(4)?;
 
         let q = mesh.partition_quality()?;
@@ -154,7 +143,7 @@ mod tests {
     #[test]
     fn test_partition_metis_2d() -> Result<()> {
         let mut mesh = test_mesh_2d().split().split().split().split().split();
-
+        mesh.compute_elem_to_elems();
         mesh.partition_metis(4)?;
 
         let q = mesh.partition_quality()?;
@@ -167,7 +156,7 @@ mod tests {
     #[test]
     fn test_partition_metis_3d() -> Result<()> {
         let mut mesh = test_mesh_3d().split().split().split().split();
-
+        mesh.compute_elem_to_elems();
         mesh.partition_metis(4)?;
 
         let q = mesh.partition_quality()?;

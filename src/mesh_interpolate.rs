@@ -1,16 +1,9 @@
 use crate::{
-    geom_elems::AsSliceF64, geom_elems::GElem, mesh::SimplexMesh, topo_elems::Elem, Error, Mesh,
-    Result,
+    geom_elems::AsSliceF64, geom_elems::GElem, mesh::SimplexMesh, topo_elems::Elem, Mesh, Result,
 };
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn interpolate(&self, other: &Self, f: &[f64]) -> Result<Vec<f64>> {
-        if self.tree.is_none() {
-            return Err(Error::from(
-                "compute_octree() not called before interpolate is called",
-            ));
-        }
-
         let n_verts = self.n_verts() as usize;
         let n_verts_other = other.n_verts() as usize;
         assert_eq!(f.len() % n_verts, 0);
@@ -18,7 +11,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let n_comp = f.len() / n_verts;
 
         let mut res = Vec::with_capacity(n_verts_other * n_comp);
-        let tree = self.tree.as_ref().unwrap();
+        let tree = self.get_octree()?;
         for vert in other.verts() {
             let i_elem = tree.nearest(&vert);
             let e = self.elem(i_elem);

@@ -2,7 +2,7 @@ use crate::{
     geom_elems::GElem,
     mesh::{Point, SimplexMesh},
     topo_elems::Elem,
-    Error, Mesh, Result,
+    Mesh, Result,
 };
 
 use log::info;
@@ -19,9 +19,6 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     ///
     pub fn gradient_l2proj(&self, f: &[f64]) -> Result<Vec<f64>> {
         info!("Compute gradient using L2 projection");
-        if self.vert_vol.is_none() {
-            return Err(Error::from("volumes not available"));
-        }
 
         assert_eq!(f.len(), self.n_verts() as usize);
 
@@ -43,7 +40,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             }
         }
 
-        let vol = self.vert_vol.as_ref().unwrap();
+        let vol = self.get_vertex_volumes()?;
         let fac = match D {
             2 => -6.0,
             3 => -12.0,
@@ -62,9 +59,6 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// NB: this actually does not converge the the hessian!
     pub fn hessian_l2proj(&self, gradf: &[f64]) -> Result<Vec<f64>> {
         info!("Compute hessian using L2 projection");
-        if self.vert_vol.is_none() {
-            return Err(Error::from("volumes not available"));
-        }
 
         assert_eq!(gradf.len(), D * self.n_verts() as usize);
 
@@ -104,7 +98,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             }
         }
 
-        let vol = self.vert_vol.as_ref().unwrap();
+        let vol = self.get_vertex_volumes()?;
         let fac = match D {
             2 => -6.0,
             3 => -12.0,
@@ -166,7 +160,7 @@ mod tests {
 
         mesh.compute_volumes();
 
-        let v = mesh.vert_vol.as_ref().unwrap();
+        let v = mesh.get_vertex_volumes()?;
 
         let f: Vec<_> = mesh.verts().map(f_2d).collect();
         let res = mesh.gradient_l2proj(&f)?;
@@ -280,7 +274,7 @@ mod tests {
         mesh.compute_vertex_to_vertices();
         mesh.compute_volumes();
 
-        let v = mesh.vert_vol.as_ref().unwrap();
+        let v = mesh.get_vertex_volumes()?;
 
         let f: Vec<_> = mesh.verts().map(f_3d).collect();
         let res = mesh.gradient_l2proj(&f)?;
