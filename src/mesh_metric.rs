@@ -483,7 +483,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         let mut c_max = 0.0;
         let mut n_larger_than_target = 0;
-        for edg in edges.chunks(2) {
+        for edg in edges.iter() {
             let i0 = edg[0];
             let i1 = edg[1];
             let c = self.edge_gradation(m, i0, i1);
@@ -517,14 +517,13 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         let edges = self.edges.as_ref().unwrap();
 
-        let n_edgs = edges.len() / 2;
         let mut n = 0;
         for iter in 0..max_iter {
             n = 0;
-            let mut c = Vec::with_capacity(n_edgs);
+            let mut c = Vec::with_capacity(edges.len());
             c.extend(
                 edges
-                    .chunks(2)
+                    .iter()
                     .map(|edg| self.edge_gradation(m, edg[0], edg[1])),
             );
             // argsort
@@ -535,8 +534,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 if c[i_edge] < beta {
                     break;
                 }
-                let i0 = edges[2 * i_edge] as usize;
-                let i1 = edges[2 * i_edge + 1] as usize;
+                let edg = edges[i_edge];
+                let i0 = edg[0] as usize;
+                let i1 = edg[1] as usize;
 
                 let e = self.vert(i1 as Idx) - self.vert(i0 as Idx);
                 let m0 = m[i0];
@@ -551,7 +551,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     n += 1;
                 }
             }
-            debug!("Iteration {}, {}/{} edges modified", iter, n, n_edgs);
+            debug!("Iteration {}, {}/{} edges modified", iter, n, edges.len());
             if n == 0 {
                 break;
             }
@@ -567,7 +567,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             );
         }
 
-        Ok((n, n_edgs as Idx))
+        Ok((n, edges.len() as Idx))
     }
 
     /// Extend a metric defined on the boundary inside the whole domain
@@ -1088,10 +1088,9 @@ mod tests {
         assert!(frac_large_c < 1e-12);
 
         let edges = mesh.edges.as_ref().unwrap();
-        let n_edgs = edges.len() / 2;
-        for i_edge in 0..n_edgs {
-            let i0 = edges[2 * i_edge] as usize;
-            let i1 = edges[2 * i_edge + 1] as usize;
+        for &e in edges.iter() {
+            let i0 = e[0] as usize;
+            let i1 = e[1] as usize;
 
             let e = mesh.vert(i1 as Idx) - mesh.vert(i0 as Idx);
 

@@ -36,12 +36,10 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             .zip(new_verts.iter())
             .for_each(|(p0, p1)| *p0 = *p1);
 
-        self.elems
-            .iter_mut()
-            .for_each(|i| *i = new_indices[*i as usize]);
-        self.faces
-            .iter_mut()
-            .for_each(|i| *i = new_indices[*i as usize]);
+        self.mut_elems()
+            .for_each(|e| *e = E::from_iter(e.iter().map(|&i| new_indices[i as usize])));
+        self.mut_faces()
+            .for_each(|f| *f = E::Face::from_iter(f.iter().map(|&i| new_indices[i as usize])));
 
         self.vertex_to_elems = None;
         self.vertex_to_vertices = None;
@@ -58,17 +56,18 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let n = self.n_elems() as usize;
         assert_eq!(new_indices.len(), n);
 
-        let mut elems = vec![0; self.elems.len()];
+        let mut elems = vec![E::default(); n];
         let mut etags = vec![0; n];
         for (i_old, i_new) in new_indices.iter().copied().enumerate() {
-            for j in 0..E::N_VERTS as usize {
-                elems[(E::N_VERTS * i_new) as usize + j] =
-                    self.elems[E::N_VERTS as usize * i_old + j];
-            }
-            etags[i_new as usize] = self.etags[i_old];
+            elems[i_new as usize] = self.elem(i_old as Idx);
+            etags[i_new as usize] = self.etag(i_old as Idx);
         }
-        self.elems = elems;
-        self.etags = etags;
+        self.mut_elems()
+            .zip(elems.iter())
+            .for_each(|(e0, e1)| *e0 = *e1);
+        self.mut_etags()
+            .zip(etags.iter())
+            .for_each(|(t0, t1)| *t0 = *t1);
 
         self.clear_face_to_elems();
         self.elem_to_elems = None;
@@ -83,17 +82,18 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let n = self.n_faces() as usize;
         assert_eq!(new_indices.len(), n);
 
-        let mut faces = vec![0; self.faces.len()];
+        let mut faces = vec![E::Face::default(); self.faces().len()];
         let mut ftags = vec![0; n];
         for (i_old, i_new) in new_indices.iter().copied().enumerate() {
-            for j in 0..E::Face::N_VERTS as usize {
-                faces[(E::Face::N_VERTS * i_new) as usize + j] =
-                    self.faces[E::Face::N_VERTS as usize * i_old + j];
-            }
-            ftags[i_new as usize] = self.ftags[i_old];
+            faces[i_new as usize] = self.face(i_old as Idx);
+            ftags[i_new as usize] = self.ftag(i_old as Idx);
         }
-        self.faces = faces;
-        self.ftags = ftags;
+        self.mut_faces()
+            .zip(faces.iter())
+            .for_each(|(f0, f1)| *f0 = *f1);
+        self.mut_ftags()
+            .zip(ftags.iter())
+            .for_each(|(t0, t1)| *t0 = *t1);
 
         self.clear_face_to_elems();
     }
@@ -168,6 +168,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 #[cfg(test)]
 mod tests {
     use crate::{
+        geom_elems::GElem,
         mesh::SimplexMesh,
         test_meshes::{test_mesh_2d, test_mesh_3d},
         topo_elems::Elem,
@@ -192,7 +193,7 @@ mod tests {
             f_new[i_new as usize] = f[i_old];
         }
 
-        let v: f64 = mesh.elem_vols().sum();
+        let v: f64 = mesh.vol();
         assert!(f64::abs(v - 1.0) < 1e-10);
 
         for (a, b) in mesh.verts().map(|p| p[0]).zip(f_new.iter().copied()) {
@@ -215,7 +216,7 @@ mod tests {
 
         mesh.reorder_vertices(&new_vert_indices);
 
-        let v: f64 = mesh.elem_vols().sum();
+        let v: f64 = mesh.vol();
         assert!(f64::abs(v - 1.0) < 1e-10);
 
         let mut f_new = vec![0.0; mesh.n_verts() as usize];
@@ -233,9 +234,7 @@ mod tests {
     fn test_reorder_elems_2d() -> Result<()> {
         let mut mesh = test_mesh_2d().split().split().split();
 
-        let f: Vec<f64> = (0..(mesh.n_elems() as Idx))
-            .map(|i| mesh.elem_center(i)[0])
-            .collect();
+        let f: Vec<f64> = mesh.gelems().map(|ge| ge.center()[0]).collect();
 
         // Random reordering
         let mut new_elem_indices: Vec<Idx> = (0..mesh.n_elems()).collect();
@@ -244,15 +243,16 @@ mod tests {
 
         mesh.reorder_elems(&new_elem_indices);
 
-        let v: f64 = mesh.elem_vols().sum();
+        let v: f64 = mesh.vol();
         assert!(f64::abs(v - 1.0) < 1e-10);
 
         let mut f_new = vec![0.0; mesh.n_elems() as usize];
         for (i_old, i_new) in new_elem_indices.iter().copied().enumerate() {
             f_new[i_new as usize] = f[i_old];
         }
-        for (a, b) in (0..(mesh.n_elems() as Idx))
-            .map(|i| mesh.elem_center(i)[0])
+        for (a, b) in mesh
+            .gelems()
+            .map(|ge| ge.center()[0])
             .zip(f_new.iter().copied())
         {
             assert!(f64::abs(b - a) < 1e-10);
@@ -265,9 +265,7 @@ mod tests {
     fn test_reorder_elems_3d() -> Result<()> {
         let mut mesh = test_mesh_3d().split().split().split();
 
-        let f: Vec<f64> = (0..(mesh.n_elems() as Idx))
-            .map(|i| mesh.elem_center(i)[0])
-            .collect();
+        let f: Vec<f64> = mesh.gelems().map(|ge| ge.center()[0]).collect();
 
         // Random reordering
         let mut new_elem_indices: Vec<Idx> = (0..mesh.n_elems()).collect();
@@ -276,7 +274,7 @@ mod tests {
 
         mesh.reorder_elems(&new_elem_indices);
 
-        let v: f64 = mesh.elem_vols().sum();
+        let v: f64 = mesh.vol();
         assert!(f64::abs(v - 1.0) < 1e-10);
 
         let mut f_new = vec![0.0; mesh.n_elems() as usize];
@@ -284,8 +282,9 @@ mod tests {
             f_new[i_new as usize] = f[i_old];
         }
 
-        for (a, b) in (0..(mesh.n_elems() as Idx))
-            .map(|i| mesh.elem_center(i)[0])
+        for (a, b) in mesh
+            .gelems()
+            .map(|ge| ge.center()[0])
             .zip(f_new.iter().copied())
         {
             assert!(f64::abs(b - a) < 1e-10);

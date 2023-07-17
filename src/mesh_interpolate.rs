@@ -21,11 +21,11 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let tree = self.tree.as_ref().unwrap();
         for vert in other.verts() {
             let i_elem = tree.nearest(&vert);
-            let el = self.elem(i_elem);
-            let ge = self.gelem(i_elem);
+            let e = self.elem(i_elem);
+            let ge = self.gelem(e);
             let x = ge.bcoords(&vert);
             for j in 0..n_comp {
-                let iter = el.iter().copied().zip(x.as_slice_f64().iter().copied());
+                let iter = e.iter().copied().zip(x.as_slice_f64().iter().copied());
                 res.push(iter.fold(0.0, |a, (i, w)| a + f[n_comp * i as usize + j] * w));
             }
         }

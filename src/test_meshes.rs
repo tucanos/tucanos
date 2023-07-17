@@ -1,6 +1,6 @@
 use crate::geometry::Geometry;
 use crate::mesh::{Point, SimplexMesh};
-use crate::topo_elems::{Tetrahedron, Triangle};
+use crate::topo_elems::{Edge, Tetrahedron, Triangle};
 use crate::{Dim, Error, Result, TopoTag};
 use std::fs::File;
 use std::io::Write;
@@ -14,9 +14,14 @@ pub fn test_mesh_2d() -> SimplexMesh<2, Triangle> {
         Point::<2>::new(1., 1.),
         Point::<2>::new(0., 1.),
     ];
-    let elems = vec![0, 1, 2, 0, 2, 3];
+    let elems = vec![Triangle::new(0, 1, 2), Triangle::new(0, 2, 3)];
     let etags = vec![1, 2];
-    let faces = vec![0, 1, 1, 2, 2, 3, 3, 0];
+    let faces = vec![
+        Edge::new(0, 1),
+        Edge::new(1, 2),
+        Edge::new(2, 3),
+        Edge::new(3, 0),
+    ];
     let ftags = vec![1, 2, 3, 4];
 
     SimplexMesh::new(coords, elems, etags, faces, ftags)
@@ -32,7 +37,7 @@ pub fn test_mesh_2d_nobdy() -> SimplexMesh<2, Triangle> {
         Point::<2>::new(1., 1.),
         Point::<2>::new(0., 1.),
     ];
-    let elems = vec![0, 1, 2, 0, 2, 3];
+    let elems = vec![Triangle::new(0, 1, 2), Triangle::new(0, 2, 3)];
     let etags = vec![1, 2];
     let faces = vec![];
     let ftags = vec![];
@@ -49,9 +54,14 @@ pub fn test_mesh_2d_two_tris() -> SimplexMesh<2, Triangle> {
         Point::<2>::new(0., 1.),
         Point::<2>::new(-1., 0.5),
     ];
-    let elems = vec![0, 1, 3, 3, 1, 2];
+    let elems = vec![Triangle::new(0, 1, 3), Triangle::new(3, 1, 2)];
     let etags = vec![1, 1];
-    let faces = vec![0, 1, 1, 2, 2, 3, 3, 0];
+    let faces = vec![
+        Edge::new(0, 1),
+        Edge::new(1, 2),
+        Edge::new(2, 3),
+        Edge::new(3, 0),
+    ];
     let ftags = vec![1, 1, 2, 2];
 
     SimplexMesh::new(coords, elems, etags, faces, ftags)
@@ -78,9 +88,14 @@ pub fn test_mesh_moon_2d() -> SimplexMesh<2, Triangle> {
         Point::<2>::new(1., 0.),
         Point::<2>::new(0., 1.),
     ];
-    let elems = vec![0, 1, 3, 1, 2, 3];
+    let elems = vec![Triangle::new(0, 1, 3), Triangle::new(1, 2, 3)];
     let etags = vec![1, 1];
-    let faces = vec![0, 1, 1, 2, 2, 3, 3, 0];
+    let faces = vec![
+        Edge::new(0, 1),
+        Edge::new(1, 2),
+        Edge::new(2, 3),
+        Edge::new(3, 0),
+    ];
     let ftags = vec![1, 1, 2, 2];
 
     SimplexMesh::new(coords, elems, etags, faces, ftags)
@@ -148,9 +163,14 @@ pub fn test_mesh_3d_single_tet() -> SimplexMesh<3, Tetrahedron> {
         Point::<3>::new(0., 1., 0.),
         Point::<3>::new(0., 0., 1.),
     ];
-    let elems = vec![0, 1, 2, 3];
+    let elems = vec![Tetrahedron::new(0, 1, 2, 3)];
     let etags = vec![1];
-    let faces = vec![0, 1, 2, 0, 1, 3, 1, 2, 3, 2, 0, 3];
+    let faces = vec![
+        Triangle::new(0, 1, 2),
+        Triangle::new(0, 1, 3),
+        Triangle::new(1, 2, 3),
+        Triangle::new(2, 0, 3),
+    ];
     let ftags = vec![1, 2, 3, 4];
 
     SimplexMesh::new(coords, elems, etags, faces, ftags)
@@ -166,9 +186,16 @@ pub fn test_mesh_3d_two_tets() -> SimplexMesh<3, Tetrahedron> {
         Point::<3>::new(0., 0., 1.),
         Point::<3>::new(0.5, -0.1, 0.),
     ];
-    let elems = vec![0, 1, 2, 3, 0, 4, 1, 3];
+    let elems = vec![Tetrahedron::new(0, 1, 2, 3), Tetrahedron::new(0, 4, 1, 3)];
     let etags = vec![1, 1];
-    let faces = vec![0, 1, 2, 1, 2, 3, 2, 0, 3, 0, 4, 1, 4, 1, 3, 0, 4, 3];
+    let faces = vec![
+        Triangle::new(0, 1, 2),
+        Triangle::new(1, 2, 3),
+        Triangle::new(2, 0, 3),
+        Triangle::new(0, 4, 1),
+        Triangle::new(4, 1, 3),
+        Triangle::new(0, 4, 3),
+    ];
     let ftags = vec![1, 2, 3, 1, 2, 3];
 
     SimplexMesh::new(coords, elems, etags, faces, ftags)
@@ -187,11 +214,27 @@ pub fn test_mesh_3d() -> SimplexMesh<3, Tetrahedron> {
         Point::<3>::new(1., 1., 1.),
         Point::<3>::new(0., 1., 1.),
     ];
-    let elems = vec![0, 1, 2, 5, 0, 2, 7, 5, 0, 2, 3, 7, 0, 5, 7, 4, 2, 7, 5, 6];
+    let elems = vec![
+        Tetrahedron::new(0, 1, 2, 5),
+        Tetrahedron::new(0, 2, 7, 5),
+        Tetrahedron::new(0, 2, 3, 7),
+        Tetrahedron::new(0, 5, 7, 4),
+        Tetrahedron::new(2, 7, 5, 6),
+    ];
     let etags = vec![1, 1, 1, 1, 1];
     let faces = vec![
-        0, 1, 2, 0, 2, 3, 5, 6, 7, 5, 7, 4, 0, 1, 5, 0, 5, 4, 2, 6, 7, 2, 7, 3, 1, 2, 5, 2, 6, 5,
-        0, 3, 7, 0, 7, 4,
+        Triangle::new(0, 1, 2),
+        Triangle::new(0, 2, 3),
+        Triangle::new(5, 6, 7),
+        Triangle::new(5, 7, 4),
+        Triangle::new(0, 1, 5),
+        Triangle::new(0, 5, 4),
+        Triangle::new(2, 6, 7),
+        Triangle::new(2, 7, 3),
+        Triangle::new(1, 2, 5),
+        Triangle::new(2, 6, 5),
+        Triangle::new(0, 3, 7),
+        Triangle::new(0, 7, 4),
     ];
     let ftags = vec![1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6];
 

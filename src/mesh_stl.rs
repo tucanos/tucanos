@@ -24,11 +24,13 @@ pub fn read_stl(file_name: &str) -> SimplexMesh<3, Triangle> {
     );
 
     let mut elems = Vec::with_capacity(3 * stl.faces.len());
-    elems.extend(
-        stl.faces
-            .iter()
-            .flat_map(|v| (0..3).map(|i| v.vertices[i] as Idx)),
-    );
+    elems.extend(stl.faces.iter().map(|v| {
+        Triangle::new(
+            v.vertices[0] as Idx,
+            v.vertices[1] as Idx,
+            v.vertices[2] as Idx,
+        )
+    }));
     let etags = vec![1; stl.faces.len()];
     let faces = Vec::new();
     let ftags = Vec::new();
@@ -50,24 +52,32 @@ pub fn orient_stl<const D: usize, E: Elem>(
 
     let mut dmin = 1.0;
     let mut n_inverted = 0;
-    for i_face in 0..stl_mesh.n_elems() {
-        let c = stl_mesh.elem_center(i_face);
-        let gf = stl_mesh.gelem(i_face);
-        let n = gf.normal();
+    let mut new_elems = Vec::with_capacity(stl_mesh.n_elems() as usize);
+    for e in stl_mesh.elems() {
+        let ge = stl_mesh.gelem(e);
+        let c = ge.center();
+        let n = ge.normal();
         let i_face_mesh = tree.nearest(&c);
-        let gf_mesh = mesh.gface(i_face_mesh);
+        let f_mesh = mesh.face(i_face_mesh);
+        let gf_mesh = mesh.gface(f_mesh);
         let n_mesh = gf_mesh.normal();
         let mut d = n.dot(&n_mesh);
+        let mut new_e = e;
         if d < 0.0 {
-            stl_mesh.elems.swap(
-                (E::Face::N_VERTS * i_face) as usize,
-                (E::Face::N_VERTS * i_face + 1) as usize,
-            );
+            new_e[0] = e[1];
+            new_e[1] = e[0];
             d = -d;
             n_inverted += 1;
         }
         dmin = f64::min(dmin, d);
+        new_elems.push(new_e);
     }
+
+    stl_mesh
+        .mut_elems()
+        .zip(new_elems.into_iter())
+        .for_each(|(e0, e1)| *e0 = e1);
+
     if n_inverted > 0 {
         warn!("{} faces reoriented", n_inverted);
     }
@@ -82,6 +92,7 @@ mod tests {
     use crate::{
         mesh_stl::read_stl,
         test_meshes::{test_mesh_3d, write_stl_file},
+        topo_elems::Triangle,
         Result,
     };
 
@@ -91,7 +102,7 @@ mod tests {
         let geom = read_stl("cube.stl");
         remove_file("cube.stl")?;
 
-        let v: f64 = geom.elem_vols().sum();
+        let v: f64 = geom.vol();
         assert!(f64::abs(v - 6.0) < 1e-10);
 
         Ok(())
@@ -105,14 +116,22 @@ mod tests {
         write_stl_file("cube1.stl")?;
         let mut geom = read_stl("cube1.stl");
         remove_file("cube1.stl")?;
-        geom.elems.swap(4, 5);
+
+        let v: f64 = geom.vol();
+        assert!(f64::abs(v - 6.0) < 1e-10);
+
+        geom.mut_elems().enumerate().for_each(|(i, e)| {
+            if i % 2 == 0 {
+                *e = Triangle::new(e[0], e[2], e[1])
+            }
+        });
 
         let (n, angle) = orient_stl(&mesh, &mut geom);
 
-        assert_eq!(n, 1);
+        assert_eq!(n, 6);
         assert!(f64::abs(angle - 0.0) < 1e-10);
 
-        let v: f64 = geom.elem_vols().sum();
+        let v: f64 = geom.vol();
         assert!(f64::abs(v - 6.0) < 1e-10);
         Ok(())
     }

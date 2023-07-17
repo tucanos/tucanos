@@ -7,7 +7,7 @@ use crate::{
     metric::Metric,
     min_iter, min_max_iter,
     stats::{CollapseStats, InitStats, SmoothStats, SplitStats, Stats, StepStats, SwapStats},
-    topo_elems::{get_elem, get_face_to_elem, Elem},
+    topo_elems::{get_face_to_elem, Elem},
     topology::Topology,
     Dim, Error, Idx, Mesh, Result, Tag, TopoTag,
 };
@@ -397,11 +397,10 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>, G: Geometry<D> + 'a> Remesher<'a
         let verts = self.verts.values().map(|v| v.vx).collect();
 
         // Keep the remesher node ids for now to get the tags
-        let elems: Vec<Idx> = self.elems.iter().flat_map(|(_k, e)| e.el).collect();
+        let elems: Vec<E> = self.elems.values().map(|e| e.el).collect();
 
         let mut etags: Vec<Tag> = vec![0; self.n_elems() as usize];
-        for (i_elem, val) in etags.iter_mut().enumerate() {
-            let elem = get_elem::<E>(&elems, i_elem as Idx);
+        for (elem, val) in elems.iter().zip(etags.iter_mut()) {
             let mut vtags = elem.iter().map(|i| self.verts.get(i).unwrap().tag);
             let etag = self.topo.elem_tag(&mut vtags).unwrap();
             if etag.0 < E::DIM as Dim {
@@ -414,7 +413,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>, G: Geometry<D> + 'a> Remesher<'a
             }
         }
 
-        let f2e = get_face_to_elem::<E>(&elems);
+        let f2e = get_face_to_elem(elems.iter().copied());
         let mut faces = Vec::new();
         let mut ftags = Vec::new();
 
@@ -425,7 +424,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>, G: Geometry<D> + 'a> Remesher<'a
                 if ftag.0 == E::Face::DIM as Dim {
                     if iels.len() == 1 {
                         // Orient the face outwards
-                        let elem = get_elem::<E>(&elems, iels[0]);
+                        let elem = elems[iels[0] as usize];
                         let mut ok = false;
                         for i_face in 0..E::N_FACES {
                             let mut f = elem.face(i_face);
@@ -433,9 +432,10 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>, G: Geometry<D> + 'a> Remesher<'a
                             let is_same = !f.iter().zip(face.iter()).any(|(x, y)| x != y);
                             if is_same {
                                 let f = elem.face(i_face);
-                                for idx in f.iter() {
-                                    faces.push(*vidx.get(idx).unwrap());
-                                }
+                                faces.push(E::Face::from_iter(
+                                    f.iter().map(|&i| *vidx.get(&i).unwrap()),
+                                ));
+
                                 ftags.push(ftag.1);
                                 ok = true;
                                 break;
@@ -443,9 +443,9 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>, G: Geometry<D> + 'a> Remesher<'a
                         }
                         assert!(ok);
                     } else if !only_bdy_faces {
-                        for idx in face.iter() {
-                            faces.push(*vidx.get(idx).unwrap());
-                        }
+                        faces.push(E::Face::from_iter(
+                            face.iter().map(|&i| *vidx.get(&i).unwrap()),
+                        ));
                         ftags.push(ftag.1);
                     }
                 }
@@ -454,7 +454,10 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>, G: Geometry<D> + 'a> Remesher<'a
 
         SimplexMesh::<D, E>::new(
             verts,
-            elems.iter().map(|x| *vidx.get(x).unwrap()).collect(),
+            elems
+                .iter()
+                .map(|e| E::from_iter(e.iter().map(|&i| *vidx.get(&i).unwrap())))
+                .collect(),
             etags,
             faces,
             ftags,
@@ -1458,6 +1461,7 @@ mod tests {
     use std::f64::consts::PI;
 
     use crate::{
+        geom_elems::GElem,
         geometry::NoGeometry,
         mesh::{Point, SimplexMesh},
         metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
@@ -1466,8 +1470,8 @@ mod tests {
             h_2d, h_3d, test_mesh_2d, test_mesh_3d, test_mesh_3d_single_tet, test_mesh_3d_two_tets,
             test_mesh_moon_2d, GeomHalfCircle2d,
         },
-        topo_elems::Triangle,
-        Idx, Mesh, Result, Tag,
+        topo_elems::{Edge, Elem, Triangle},
+        Mesh, Result,
     };
 
     use super::RemesherParams;
@@ -1493,7 +1497,7 @@ mod tests {
         assert_eq!(mesh.n_elems(), 2);
         assert_eq!(mesh.n_faces(), 4);
 
-        for (c, tag) in mesh.elem_centers().zip(mesh.etags()) {
+        for (c, tag) in mesh.gelems().map(|ge| ge.center()).zip(mesh.etags()) {
             let mut p = Point::<2>::zeros();
             match tag {
                 1 => p.copy_from_slice(&[2. / 3., 1. / 3.]),
@@ -1504,7 +1508,7 @@ mod tests {
             assert!(d < 1e-8);
         }
 
-        for (c, tag) in mesh.face_centers().zip(mesh.ftags()) {
+        for (c, tag) in mesh.gfaces().map(|ge| ge.center()).zip(mesh.ftags()) {
             let mut p = Point::<2>::zeros();
             match tag {
                 1 => p.copy_from_slice(&[0.5, 0.]),
@@ -1674,12 +1678,22 @@ mod tests {
             Point::<2>::new(0., 1.0),
             Point::<2>::new(0.1, 0.1),
         ];
-        let elems: Vec<Idx> = vec![0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4];
-        let etags: Vec<Tag> = vec![1, 1, 1, 1];
-        let faces: Vec<Idx> = vec![0, 1, 1, 2, 2, 3, 3, 0];
-        let ftags: Vec<Tag> = vec![1, 2, 3, 4];
+        let elems = vec![
+            Triangle::from_slice(&[0, 1, 4]),
+            Triangle::from_slice(&[1, 2, 4]),
+            Triangle::from_slice(&[2, 3, 4]),
+            Triangle::from_slice(&[3, 0, 4]),
+        ];
+        let etags = vec![1, 1, 1, 1];
+        let faces = vec![
+            Edge::from_slice(&[0, 1]),
+            Edge::from_slice(&[1, 2]),
+            Edge::from_slice(&[2, 3]),
+            Edge::from_slice(&[3, 0]),
+        ];
+        let ftags = vec![1, 2, 3, 4];
 
-        let mut mesh = SimplexMesh::<2, Triangle>::new(coords, elems, etags, faces, ftags);
+        let mut mesh = SimplexMesh::new(coords, elems, etags, faces, ftags);
         mesh.compute_topology();
 
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
@@ -1713,12 +1727,22 @@ mod tests {
             Point::<2>::new(0., 1.),
             Point::<2>::new(0.1, 0.1),
         ];
-        let elems: Vec<Idx> = vec![0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4];
-        let etags: Vec<Tag> = vec![1, 1, 1, 1];
-        let faces: Vec<Idx> = vec![0, 1, 1, 2, 2, 3, 3, 0];
-        let ftags: Vec<Tag> = vec![1, 2, 3, 4];
+        let elems = vec![
+            Triangle::from_slice(&[0, 1, 4]),
+            Triangle::from_slice(&[1, 2, 4]),
+            Triangle::from_slice(&[2, 3, 4]),
+            Triangle::from_slice(&[3, 0, 4]),
+        ];
+        let etags = vec![1, 1, 1, 1];
+        let faces = vec![
+            Edge::from_slice(&[0, 1]),
+            Edge::from_slice(&[1, 2]),
+            Edge::from_slice(&[2, 3]),
+            Edge::from_slice(&[3, 0]),
+        ];
+        let ftags = vec![1, 2, 3, 4];
 
-        let mut mesh = SimplexMesh::<2, Triangle>::new(coords, elems, etags, faces, ftags);
+        let mut mesh = SimplexMesh::new(coords, elems, etags, faces, ftags);
         mesh.compute_topology();
 
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
@@ -1751,12 +1775,22 @@ mod tests {
             Point::<2>::new(0., 0.1),
             Point::<2>::new(0.01, 0.01),
         ];
-        let elems: Vec<Idx> = vec![0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4];
-        let etags: Vec<Tag> = vec![1, 1, 1, 1];
-        let faces: Vec<Idx> = vec![0, 1, 1, 2, 2, 3, 3, 0];
-        let ftags: Vec<Tag> = vec![1, 2, 3, 4];
+        let elems = vec![
+            Triangle::from_slice(&[0, 1, 4]),
+            Triangle::from_slice(&[1, 2, 4]),
+            Triangle::from_slice(&[2, 3, 4]),
+            Triangle::from_slice(&[3, 0, 4]),
+        ];
+        let etags = vec![1, 1, 1, 1];
+        let faces = vec![
+            Edge::from_slice(&[0, 1]),
+            Edge::from_slice(&[1, 2]),
+            Edge::from_slice(&[2, 3]),
+            Edge::from_slice(&[3, 0]),
+        ];
+        let ftags = vec![1, 2, 3, 4];
 
-        let mut mesh = SimplexMesh::<2, Triangle>::new(coords, elems, etags, faces, ftags);
+        let mut mesh = SimplexMesh::new(coords, elems, etags, faces, ftags);
         mesh.compute_topology();
 
         let h = vec![
@@ -1795,12 +1829,22 @@ mod tests {
             Point::<2>::new(0., 1.),
             Point::<2>::new(0.1, 0.1),
         ];
-        let elems: Vec<Idx> = vec![0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4];
-        let etags: Vec<Tag> = vec![1, 1, 1, 1];
-        let faces: Vec<Idx> = vec![0, 1, 1, 2, 2, 3, 3, 0];
-        let ftags: Vec<Tag> = vec![1, 2, 3, 4];
+        let elems = vec![
+            Triangle::from_slice(&[0, 1, 4]),
+            Triangle::from_slice(&[1, 2, 4]),
+            Triangle::from_slice(&[2, 3, 4]),
+            Triangle::from_slice(&[3, 0, 4]),
+        ];
+        let etags = vec![1, 1, 1, 1];
+        let faces = vec![
+            Edge::from_slice(&[0, 1]),
+            Edge::from_slice(&[1, 2]),
+            Edge::from_slice(&[2, 3]),
+            Edge::from_slice(&[3, 0]),
+        ];
+        let ftags = vec![1, 2, 3, 4];
 
-        let mut mesh = SimplexMesh::<2, Triangle>::new(coords, elems, etags, faces, ftags);
+        let mut mesh = SimplexMesh::new(coords, elems, etags, faces, ftags);
         mesh.compute_topology();
 
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
@@ -1833,12 +1877,22 @@ mod tests {
             Point::<2>::new(0., 0.1),
             Point::<2>::new(0.01, 0.01),
         ];
-        let elems: Vec<Idx> = vec![0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4];
-        let etags: Vec<Tag> = vec![1, 1, 1, 1];
-        let faces: Vec<Idx> = vec![0, 1, 1, 2, 2, 3, 3, 0];
-        let ftags: Vec<Tag> = vec![1, 2, 3, 4];
+        let elems = vec![
+            Triangle::from_slice(&[0, 1, 4]),
+            Triangle::from_slice(&[1, 2, 4]),
+            Triangle::from_slice(&[2, 3, 4]),
+            Triangle::from_slice(&[3, 0, 4]),
+        ];
+        let etags = vec![1, 1, 1, 1];
+        let faces = vec![
+            Edge::from_slice(&[0, 1]),
+            Edge::from_slice(&[1, 2]),
+            Edge::from_slice(&[2, 3]),
+            Edge::from_slice(&[3, 0]),
+        ];
+        let ftags = vec![1, 2, 3, 4];
 
-        let mut mesh = SimplexMesh::<2, Triangle>::new(coords, elems, etags, faces, ftags);
+        let mut mesh = SimplexMesh::new(coords, elems, etags, faces, ftags);
         mesh.compute_topology();
 
         let h = vec![
@@ -1892,7 +1946,7 @@ mod tests {
     #[test]
     fn test_adapt_aniso_2d() -> Result<()> {
         let mut mesh = test_mesh_2d();
-        mesh.etags[1] = 1;
+        mesh.mut_etags().for_each(|t| *t = 1);
         mesh.compute_topology();
 
         let mfunc = |pt: Point<2>| {

@@ -19,7 +19,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         elem_data: Option<HashMap<String, &[f64]>>,
     ) -> Result<()> {
         info!("Write {file_name}");
-        let connectivity = self.elems.iter().map(|&i| i as u64).collect();
+        let connectivity = self.elems().flatten().map(|i| i as u64).collect();
         let offsets = (0..self.n_elems())
             .map(|i| (E::N_VERTS * (i + 1)) as u64)
             .collect();
@@ -52,7 +52,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 num_comp: 1,
                 lookup_table: None,
             },
-            data: IOBuffer::I16(self.etags.clone()),
+            data: IOBuffer::I16(self.etags().collect()),
         }));
 
         if let Some(elem_data) = elem_data {
@@ -75,8 +75,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             for i in 0..D {
                 coords.push(p[i]);
             }
-            for _ in D..3 {
-                coords.push(0.0);
+            if D < 3 {
+                coords.resize(coords.len() + 3 - D, 0.0);
             }
         });
 

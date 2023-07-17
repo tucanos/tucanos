@@ -36,10 +36,7 @@ impl Octree {
             }
         }
 
-        let mut elems = Vec::with_capacity(mesh.elems.len());
-        for e in &mesh.elems {
-            elems.push(*e as c_int);
-        }
+        let elems: Vec<c_int> = mesh.elems().flatten().map(|i| i as c_int).collect();
 
         match E::N_VERTS {
             2 => {
@@ -281,8 +278,8 @@ mod tests {
 
     use crate::{
         mesh::{Point, SimplexMesh},
-        topo_elems::{Edge, Triangle},
-        Idx, Tag,
+        topo_elems::{Edge, Elem, Triangle},
+        Tag,
     };
 
     use super::Octree;
@@ -295,12 +292,17 @@ mod tests {
             Point::<2>::new(1., 1.),
             Point::<2>::new(0., 1.),
         ];
-        let elems: Vec<Idx> = vec![0, 1, 1, 2, 2, 3, 3, 0];
-        let etags: Vec<Tag> = vec![1, 2];
-        let faces: Vec<Idx> = vec![];
-        let ftags: Vec<Tag> = vec![];
+        let elems: Vec<_> = vec![
+            Edge::from_slice(&[0, 1]),
+            Edge::from_slice(&[1, 2]),
+            Edge::from_slice(&[2, 3]),
+            Edge::from_slice(&[3, 0]),
+        ];
+        let etags: Vec<Tag> = vec![1, 2, 3, 4];
+        let faces: Vec<_> = Vec::new();
+        let ftags: Vec<Tag> = Vec::new();
 
-        let mesh = SimplexMesh::<2, Edge>::new(coords, elems, etags, faces, ftags);
+        let mesh = SimplexMesh::new(coords, elems, etags, faces, ftags);
 
         let tree = Octree::new(&mesh);
 
@@ -332,21 +334,13 @@ mod tests {
             ));
         }
 
-        let mut tris = Vec::with_capacity(2 * (n as usize) * 3);
+        let mut tris = Vec::with_capacity(2 * (n as usize));
         for i in 0..n - 1 {
-            tris.push(2 * i);
-            tris.push(2 * i + 1);
-            tris.push(2 * i + 2);
-            tris.push(2 * i + 2);
-            tris.push(2 * i + 1);
-            tris.push(2 * i + 3);
+            tris.push(Triangle::from_slice(&[2 * i, 2 * i + 1, 2 * i + 2]));
+            tris.push(Triangle::from_slice(&[2 * i + 2, 2 * i + 1, 2 * i + 3]));
         }
-        tris.push(2 * n - 2);
-        tris.push(2 * n - 1);
-        tris.push(0);
-        tris.push(0);
-        tris.push(2 * n - 1);
-        tris.push(1);
+        tris.push(Triangle::from_slice(&[2 * n - 2, 2 * n - 1, 0]));
+        tris.push(Triangle::from_slice(&[0, 2 * n - 1, 1]));
 
         let tri_tags = vec![1; 2 * (n as usize)];
 

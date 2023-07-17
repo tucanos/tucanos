@@ -218,11 +218,10 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
     /// Convert the filled cavity to a SimplexMesh to export it (for debug)
     #[allow(dead_code)]
     pub fn to_mesh(&self) -> SimplexMesh<D, E> {
-        let elems: Vec<_> = self.elems.iter().flat_map(|x| x.into_iter()).collect();
-        let etags = vec![1; elems.len() / E::N_VERTS as usize];
+        let etags = vec![1; self.elems.len()];
         let faces = Vec::new();
         let ftags = Vec::new();
-        SimplexMesh::<D, E>::new(self.points.clone(), elems, etags, faces, ftags)
+        SimplexMesh::<D, E>::new(self.points.clone(), self.elems.clone(), etags, faces, ftags)
     }
 }
 
@@ -321,12 +320,13 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
     #[allow(dead_code)]
     pub fn to_mesh(&self) -> SimplexMesh<D, E> {
         let mut elems = Vec::new();
-        for (e, _) in self.elems_and_faces() {
-            elems.extend(e.into_iter());
+        let mut faces = Vec::new();
+        for (e, f) in self.elems_and_faces() {
+            elems.push(e);
+            faces.push(f);
         }
-        let etags = vec![1; elems.len() / E::N_VERTS as usize];
-        let faces = Vec::new();
-        let ftags = Vec::new();
+        let etags = vec![1; elems.len()];
+        let ftags = vec![1; faces.len()];
         SimplexMesh::<D, E>::new(self.cavity.points.clone(), elems, etags, faces, ftags)
     }
 
