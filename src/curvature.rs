@@ -3,7 +3,7 @@ use crate::{
     linalg::lapack_qr_least_squares,
     mesh::{Point, SimplexMesh},
     topo_elems::{Edge, Elem, Triangle},
-    Idx, Mesh, Result, H_MAX,
+    Idx, Result, H_MAX,
 };
 use log::{debug, warn};
 use nalgebra::{SMatrix, SymmetricEigen};
@@ -317,7 +317,7 @@ mod tests {
         mesh::{Point, SimplexMesh},
         test_meshes::test_mesh_2d,
         topo_elems::Triangle,
-        Mesh, Result, H_MAX,
+        Result, H_MAX,
     };
 
     use super::{compute_curvature_tensor, compute_curvature_tensor_2d, fix_curvature};

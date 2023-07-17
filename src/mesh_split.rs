@@ -1,7 +1,7 @@
 use crate::{
     mesh::{Point, SimplexMesh},
     topo_elems::Elem,
-    Idx, Mesh, Tag,
+    Idx, Tag,
 };
 use log::info;
 use rustc_hash::FxHashMap;
@@ -193,7 +193,7 @@ mod tests {
         geom_elems::GElem,
         test_meshes::{test_mesh_2d, test_mesh_3d},
         topo_elems::{get_face_to_elem, Elem},
-        Idx, Mesh,
+        Idx,
     };
 
     #[test]

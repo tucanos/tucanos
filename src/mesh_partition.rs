@@ -1,7 +1,8 @@
 use log::{info, warn};
-
-use crate::{mesh::SimplexMesh, topo_elems::Elem, Idx, Mesh, Result, Tag};
-
+use crate::{mesh::SimplexMesh, topo_elems::Elem, Idx, Result, Tag};
+#[cfg(any(not(feature = "metis"),not(feature = "scotch")))]
+use crate::Error;
+    
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     #[cfg(not(feature = "scotch"))]
     pub fn partition_scotch(&mut self, _n_parts: Idx) -> Result<()> {

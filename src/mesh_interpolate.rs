@@ -1,5 +1,5 @@
 use crate::{
-    geom_elems::AsSliceF64, geom_elems::GElem, mesh::SimplexMesh, topo_elems::Elem, Mesh, Result,
+    geom_elems::AsSliceF64, geom_elems::GElem, mesh::SimplexMesh, topo_elems::Elem, Result,
 };
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {

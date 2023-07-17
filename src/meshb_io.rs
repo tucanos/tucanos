@@ -8,7 +8,7 @@ use self::libmeshb_sys::{
 use crate::{
     mesh::{Point, SimplexMesh},
     topo_elems::Elem,
-    Error, Idx, Mesh, Result, Tag,
+    Error, Idx, Result, Tag,
 };
 use std::{
     convert::TryInto,

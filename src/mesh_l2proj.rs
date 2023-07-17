@@ -2,7 +2,7 @@ use crate::{
     geom_elems::GElem,
     mesh::{Point, SimplexMesh},
     topo_elems::Elem,
-    Mesh, Result,
+    Result,
 };
 
 use log::info;
@@ -120,7 +120,7 @@ mod tests {
         mesh::Point,
         test_meshes::{test_mesh_2d, test_mesh_3d},
         topo_elems::Elem,
-        Mesh, Result,
+        Result,
     };
 
     #[test]

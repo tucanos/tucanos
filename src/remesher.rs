@@ -9,7 +9,7 @@ use crate::{
     stats::{CollapseStats, InitStats, SmoothStats, SplitStats, Stats, StepStats, SwapStats},
     topo_elems::{get_face_to_elem, Elem},
     topology::Topology,
-    Dim, Error, Idx, Mesh, Result, Tag, TopoTag,
+    Dim, Error, Idx, Result, Tag, TopoTag,
 };
 use log::{debug, info, trace, warn};
 #[cfg(feature = "nlopt")]
@@ -1468,7 +1468,7 @@ mod tests {
             test_mesh_moon_2d, GeomHalfCircle2d,
         },
         topo_elems::{Edge, Elem, Triangle},
-        Mesh, Result,
+        Result,
     };
 
     use super::RemesherParams;

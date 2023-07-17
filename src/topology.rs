@@ -1,7 +1,7 @@
 use crate::{
     mesh::SimplexMesh,
     topo_elems::{get_face_to_elem, Elem},
-    Dim, Idx, Mesh, Tag, TopoTag,
+    Dim, Idx, Tag, TopoTag,
 };
 use core::cmp::max;
 use log::info;

@@ -83,13 +83,6 @@ pub fn min_max_iter<I: Iterator<Item = f64>>(it: I) -> (f64, f64) {
     })
 }
 
-pub trait Mesh<const D: usize> {
-    fn n_verts(&self) -> Idx;
-    fn n_elems(&self) -> Idx;
-    fn n_faces(&self) -> Idx;
-    fn cell_dim(&self) -> Idx;
-}
-
 // Set the log level for tests
 #[cfg(test)]
 fn init_log(level: &str) {
