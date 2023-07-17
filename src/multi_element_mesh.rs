@@ -1,7 +1,7 @@
 use crate::{
     mesh::{Point, SimplexMesh},
     topo_elems::{Edge, Elem, Tetrahedron, Triangle},
-    Idx, Mesh, Tag,
+    Idx, Tag,
 };
 
 /// Subdivision of standard elements to triangles and tetrahedra maintaining a consistent mesh. The algorithms are taken from
@@ -335,31 +335,6 @@ pub struct MultiElementMesh<const D: usize> {
     pub conn: Vec<Idx>,
 }
 
-impl<const D: usize> Mesh<D> for MultiElementMesh<D> {
-    fn cell_dim(&self) -> Idx {
-        self.etypes
-            .iter()
-            .copied()
-            .map(ElementType::dim)
-            .max()
-            .unwrap()
-    }
-
-    fn n_verts(&self) -> Idx {
-        self.verts.len() as Idx
-    }
-
-    fn n_elems(&self) -> Idx {
-        let cdim = self.cell_dim();
-        self.etypes.iter().filter(|x| x.dim() == cdim).count() as Idx
-    }
-
-    fn n_faces(&self) -> Idx {
-        let fdim = self.cell_dim() - 1;
-        self.etypes.iter().filter(|x| x.dim() == fdim).count() as Idx
-    }
-}
-
 impl<const D: usize> MultiElementMesh<D> {
     /// Create a new empty `MultiElementMesh` of dimension dim
     #[must_use]
@@ -372,6 +347,36 @@ impl<const D: usize> MultiElementMesh<D> {
             etags: Vec::default(),
             conn: Vec::default(),
         }
+    }
+
+    /// Get the cell dimension
+    pub fn cell_dim(&self) -> Idx {
+        self.etypes
+            .iter()
+            .copied()
+            .map(ElementType::dim)
+            .max()
+            .unwrap()
+    }
+
+    /// Get the number of vertices
+    #[allow(dead_code)]
+    fn n_verts(&self) -> Idx {
+        self.verts.len() as Idx
+    }
+
+    /// Get the number of elements
+    #[allow(dead_code)]
+    fn n_elems(&self) -> Idx {
+        let cdim = self.cell_dim();
+        self.etypes.iter().filter(|x| x.dim() == cdim).count() as Idx
+    }
+
+    /// Get the number of faces
+    #[allow(dead_code)]
+    fn n_faces(&self) -> Idx {
+        let fdim = self.cell_dim() - 1;
+        self.etypes.iter().filter(|x| x.dim() == fdim).count() as Idx
     }
 
     /// Set the mesh coordinates    
@@ -530,7 +535,7 @@ impl<const D: usize> MultiElementMesh<D> {
 #[cfg(test)]
 mod tests {
     use super::{ElementType, MultiElementMesh};
-    use crate::{mesh::Point, Mesh, Result};
+    use crate::{mesh::Point, Result};
 
     #[test]
     fn test_2d() -> Result<()> {

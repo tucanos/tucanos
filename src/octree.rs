@@ -1,7 +1,7 @@
 use crate::{
     mesh::{Point, SimplexMesh},
     topo_elems::Elem,
-    Idx, Mesh,
+    Idx,
 };
 use log::info;
 use marechal_libol_sys::{LolFreeOctree, LolGetNearest, LolNewOctree, LolProjectVertex, TypTag};

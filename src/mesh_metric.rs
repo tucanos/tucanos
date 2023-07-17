@@ -4,7 +4,7 @@ use crate::{
     mesh::{Point, SimplexMesh},
     metric::{AnisoMetric, AnisoMetric2d, AnisoMetric3d, Metric},
     topo_elems::{Edge, Elem, Tetrahedron, Triangle},
-    Error, Idx, Mesh, Result, Tag,
+    Error, Idx, Result, Tag,
 };
 
 use log::{debug, info, warn};
@@ -787,7 +787,7 @@ mod tests {
         metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
         min_iter,
         test_meshes::{test_mesh_2d, test_mesh_3d},
-        Idx, Mesh, Result, ANISO_MAX,
+        Idx, Result, ANISO_MAX,
     };
 
     #[test]

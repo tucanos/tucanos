@@ -3,7 +3,7 @@ use crate::{
     mesh::{Point, SimplexMesh},
     octree::Octree,
     topo_elems::{Elem, Triangle},
-    Idx, Mesh,
+    Idx,
 };
 use log::{info, warn};
 use std::{f64::consts::PI, fs::OpenOptions};

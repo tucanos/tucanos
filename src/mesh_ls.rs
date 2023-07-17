@@ -2,7 +2,7 @@ use crate::{
     linalg::lapack_qr_least_squares,
     mesh::{Point, SimplexMesh},
     topo_elems::Elem,
-    Error, Idx, Mesh, Result,
+    Error, Idx, Result,
 };
 
 use log::info;
@@ -351,7 +351,7 @@ mod tests {
 
     use crate::{
         test_meshes::{test_mesh_2d, test_mesh_3d},
-        Mesh, Result,
+        Result,
     };
 
     #[test]

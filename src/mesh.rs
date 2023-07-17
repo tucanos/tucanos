@@ -5,7 +5,7 @@ use crate::{
     octree::Octree,
     topo_elems::{get_face_to_elem, Elem},
     topology::Topology,
-    twovec, Error, Idx, Mesh, Result, Tag, TopoTag,
+    twovec, Error, Idx, Result, Tag, TopoTag,
 };
 use log::{debug, info, warn};
 use nalgebra::SVector;
@@ -63,24 +63,6 @@ pub struct SubSimplexMesh<const D: usize, E: Elem> {
 }
 
 pub type Point<const D: usize> = SVector<f64, D>;
-
-impl<const D: usize, E: Elem> Mesh<D> for SimplexMesh<D, E> {
-    fn cell_dim(&self) -> Idx {
-        E::DIM as Idx
-    }
-
-    fn n_verts(&self) -> Idx {
-        self.verts.len() as Idx
-    }
-
-    fn n_elems(&self) -> Idx {
-        self.elems.len() as Idx
-    }
-
-    fn n_faces(&self) -> Idx {
-        self.faces.len() as Idx
-    }
-}
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Create a new `SimplexMesh`. The extra connectivity information is not built
@@ -142,6 +124,21 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             topo: None,
             vtags: None,
         }
+    }
+
+    /// Get the number of vertices
+    pub fn n_verts(&self) -> Idx {
+        self.verts.len() as Idx
+    }
+
+    /// Get the number or elements
+    pub fn n_elems(&self) -> Idx {
+        self.elems.len() as Idx
+    }
+
+    /// Get the number of faces
+    pub fn n_faces(&self) -> Idx {
+        self.faces.len() as Idx
     }
 
     /// Get the i-th vertex
@@ -1018,7 +1015,7 @@ mod tests {
         geom_elems::GElem,
         test_meshes::{test_mesh_2d, test_mesh_3d},
         topo_elems::{Edge, Elem, Triangle},
-        Mesh, Result,
+        Result,
     };
 
     #[test]

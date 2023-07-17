@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-
+use crate::{mesh::SimplexMesh, topo_elems::Elem, Result};
 use log::{debug, info};
+use std::collections::HashMap;
 use vtkio::{
     model::{
         Attribute, Attributes, ByteOrder, CellType, Cells, DataArrayBase, DataSet, ElementType,
@@ -8,8 +8,6 @@ use vtkio::{
     },
     IOBuffer, Vtk,
 };
-
-use crate::{mesh::SimplexMesh, topo_elems::Elem, Mesh, Result};
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn write_vtk(

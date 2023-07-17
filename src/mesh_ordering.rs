@@ -1,7 +1,7 @@
 use crate::{
     mesh::{Point, SimplexMesh},
     topo_elems::Elem,
-    Idx, Mesh,
+    Idx,
 };
 use lindel::Lineariseable;
 use log::{debug, info};
@@ -172,7 +172,7 @@ mod tests {
         mesh::SimplexMesh,
         test_meshes::{test_mesh_2d, test_mesh_3d},
         topo_elems::Elem,
-        Idx, Mesh, Result,
+        Idx, Result,
     };
     use rand::{prelude::SliceRandom, rngs::StdRng, SeedableRng};
 
