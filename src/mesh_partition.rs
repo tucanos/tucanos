@@ -1,16 +1,21 @@
-use log::{info, warn};
-use crate::{mesh::SimplexMesh, topo_elems::Elem, Idx, Result, Tag};
-#[cfg(any(not(feature = "metis"),not(feature = "scotch")))]
-use crate::Error;
-    
+// use log::{info, warn};
+// use crate::{mesh::SimplexMesh, topo_elems::Elem, Idx, Result, Tag};
+// #[cfg(any(not(feature = "metis"),not(feature = "scotch")))]
+// use crate::Error;
+use crate::{mesh::SimplexMesh, topo_elems::Elem, Idx, Result};
+
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     #[cfg(not(feature = "scotch"))]
     pub fn partition_scotch(&mut self, _n_parts: Idx) -> Result<()> {
+        use crate::Error;
         Err(Error::from("the scotch feature is not enabled"))
     }
 
     #[cfg(feature = "scotch")]
     pub fn partition_scotch(&mut self, n_parts: Idx) -> Result<()> {
+        use crate::Tag;
+        use log::{info, warn};
+
         if self.etags().any(|t| t != 1) {
             warn!("Erase the element tags");
         }
@@ -58,11 +63,15 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
     #[cfg(not(feature = "metis"))]
     pub fn partition_metis(&mut self, _n_parts: Idx) -> Result<()> {
+        use crate::Error;
         Err(Error::from("the metis feature is not enabled"))
     }
 
     #[cfg(feature = "metis")]
     pub fn partition_metis(&mut self, n_parts: Idx) -> Result<()> {
+        use crate::Tag;
+        use log::{info, warn};
+
         if self.etags().any(|t| t != 1) {
             warn!("Erase the element tags");
         }
@@ -109,14 +118,13 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        test_meshes::{test_mesh_2d, test_mesh_3d},
-        Result,
-    };
+    use crate::Result;
 
     #[cfg(feature = "scotch")]
     #[test]
     fn test_partition_scotch_2d() -> Result<()> {
+        use crate::test_meshes::test_mesh_2d;
+
         let mut mesh = test_mesh_2d().split().split().split().split().split();
         mesh.compute_elem_to_elems();
         mesh.partition_scotch(4)?;
@@ -130,6 +138,8 @@ mod tests {
     #[cfg(feature = "scotch")]
     #[test]
     fn test_partition_scotch_3d() -> Result<()> {
+        use crate::test_meshes::test_mesh_3d;
+
         let mut mesh = test_mesh_3d().split().split().split().split();
         mesh.compute_elem_to_elems();
         mesh.partition_scotch(4)?;
@@ -143,6 +153,8 @@ mod tests {
     #[cfg(feature = "metis")]
     #[test]
     fn test_partition_metis_2d() -> Result<()> {
+        use crate::test_meshes::test_mesh_2d;
+
         let mut mesh = test_mesh_2d().split().split().split().split().split();
         mesh.compute_elem_to_elems();
         mesh.partition_metis(4)?;
@@ -156,6 +168,8 @@ mod tests {
     #[cfg(feature = "metis")]
     #[test]
     fn test_partition_metis_3d() -> Result<()> {
+        use crate::test_meshes::test_mesh_3d;
+
         let mut mesh = test_mesh_3d().split().split().split().split();
         mesh.compute_elem_to_elems();
         mesh.partition_metis(4)?;
