@@ -1791,11 +1791,11 @@ mod tests {
         mesh.compute_topology();
 
         let h = vec![
-            AnisoMetric2d::from_slice(&[1., 100., 0.], 0),
-            AnisoMetric2d::from_slice(&[1., 100., 0.], 0),
-            AnisoMetric2d::from_slice(&[1., 100., 0.], 0),
-            AnisoMetric2d::from_slice(&[1., 100., 0.], 0),
-            AnisoMetric2d::from_slice(&[1., 100., 0.], 0),
+            AnisoMetric2d::from_slice(&[1., 100., 0.]),
+            AnisoMetric2d::from_slice(&[1., 100., 0.]),
+            AnisoMetric2d::from_slice(&[1., 100., 0.]),
+            AnisoMetric2d::from_slice(&[1., 100., 0.]),
+            AnisoMetric2d::from_slice(&[1., 100., 0.]),
         ];
         let mut remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
 
@@ -1893,11 +1893,11 @@ mod tests {
         mesh.compute_topology();
 
         let h = vec![
-            AnisoMetric2d::from_slice(&[1., 100., 0.], 0),
-            AnisoMetric2d::from_slice(&[1., 100., 0.], 0),
-            AnisoMetric2d::from_slice(&[1., 100., 0.], 0),
-            AnisoMetric2d::from_slice(&[1., 100., 0.], 0),
-            AnisoMetric2d::from_slice(&[1., 100., 0.], 0),
+            AnisoMetric2d::from_slice(&[1., 100., 0.]),
+            AnisoMetric2d::from_slice(&[1., 100., 0.]),
+            AnisoMetric2d::from_slice(&[1., 100., 0.]),
+            AnisoMetric2d::from_slice(&[1., 100., 0.]),
+            AnisoMetric2d::from_slice(&[1., 100., 0.]),
         ];
         let mut remesher = Remesher::new(&mesh, &h, &NoGeometry())?;
 
