@@ -504,17 +504,17 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let n_elems = elems.len() / E::N_VERTS as usize;
         let elems = (0..n_elems)
             .map(|i| {
-                let start = i * D;
-                let end = start + D;
+                let start = i * E::N_VERTS as usize;
+                let end = start + E::N_VERTS as usize;
                 E::from_slice(&elems[start..end])
             })
             .collect();
 
-        let n_faces = faces.len() / E::N_VERTS as usize;
+        let n_faces = faces.len() / E::Face::N_VERTS as usize;
         let faces = (0..n_faces)
             .map(|i| {
-                let start = i * D;
-                let end = start + D;
+                let start = i * E::Face::N_VERTS as usize;
+                let end = start + E::Face::N_VERTS as usize;
                 E::Face::from_slice(&faces[start..end])
             })
             .collect();
