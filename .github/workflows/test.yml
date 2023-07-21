@@ -12,7 +12,6 @@ env:
   LIBOL_COMMIT: ceb112c
   LIBMESHB_DIR: /opt/libMeshB
   LIBMESHB_COMMIT: v7.60
-  REMESH_LIBRARIES: lapack
 
 permissions:
   contents: read
