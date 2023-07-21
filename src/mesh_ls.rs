@@ -1,5 +1,4 @@
 use crate::{
-    linalg::lapack_qr_least_squares,
     mesh::{Point, SimplexMesh},
     topo_elems::Elem,
     Error, Idx, Result,
@@ -43,7 +42,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     fn least_squares<const N: usize, I: ExactSizeIterator<Item = (Point<D>, f64, f64)>>(
         dx_df_w: I,
         w0: Option<f64>,
-    ) -> Option<[f64; N]> {
+    ) -> Option<nalgebra::DVector<f64>> {
         debug_assert!(D != 2 || N == 3 || N == 6);
         debug_assert!(D != 3 || N == 4 || N == 10);
         let n_others = dx_df_w.len();
@@ -52,38 +51,59 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         }
         let nrows = 1 + n_others;
         // One allocation to rule them all. An extra N for b and 2 extra N for work.
-        let mut buf = vec![0.; nrows * (N + 3)];
-        let (a, b) = buf.split_at_mut(nrows * N);
-        let (b, work) = b.split_at_mut(nrows);
+        // let mut buf = vec![0.; nrows * (N + 3)];
+        // let (a, b) = buf.split_at_mut(nrows * N);
+        // let (b, work) = b.split_at_mut(nrows);
+
+        let mut mat = nalgebra::DMatrix::<f64>::zeros(nrows, N);
+        let mut rhs = nalgebra::DVector::<f64>::zeros(nrows);
 
         let mut w_max = 0.0;
         for (irow, (dp, df, w)) in dx_df_w.enumerate() {
             let irow = irow + 1;
-            let row = &mut a[irow..];
+            let mut row = nalgebra::OMatrix::<f64, nalgebra::Const<1>, nalgebra::Dyn>::zeros(N);
             row[0] = w * 1.0;
-            row[nrows] = w * dp[0];
-            row[2 * nrows] = w * dp[1];
+            row[1] = w * dp[0];
+            row[2] = w * dp[1];
             if D == 2 && N == 6 {
-                row[3 * nrows] = w * 0.5 * dp[0] * dp[0];
-                row[4 * nrows] = w * 0.5 * dp[1] * dp[1];
-                row[5 * nrows] = w * dp[0] * dp[1];
+                row[3] = w * 0.5 * dp[0] * dp[0];
+                row[4] = w * 0.5 * dp[1] * dp[1];
+                row[5] = w * dp[0] * dp[1];
             } else if D == 3 {
-                row[3 * nrows] = w * dp[2];
+                row[3] = w * dp[2];
                 if N == 10 {
-                    row[4 * nrows] = w * 0.5 * dp[0] * dp[0];
-                    row[5 * nrows] = w * 0.5 * dp[1] * dp[1];
-                    row[6 * nrows] = w * 0.5 * dp[2] * dp[2];
-                    row[7 * nrows] = w * dp[0] * dp[1];
-                    row[8 * nrows] = w * dp[1] * dp[2];
-                    row[9 * nrows] = w * dp[0] * dp[2];
+                    row[4] = w * 0.5 * dp[0] * dp[0];
+                    row[5] = w * 0.5 * dp[1] * dp[1];
+                    row[6] = w * 0.5 * dp[2] * dp[2];
+                    row[7] = w * dp[0] * dp[1];
+                    row[8] = w * dp[1] * dp[2];
+                    row[9] = w * dp[0] * dp[2];
                 }
             }
+            mat.set_row(irow, &row);
 
-            b[irow] = w * df;
+            rhs[irow] = w * df;
             w_max = f64::max(w_max, w);
         }
-        a[0] = w0.unwrap_or(f64::sqrt(2.0) * w_max);
-        lapack_qr_least_squares(a, b, work)
+        mat[0] = w0.unwrap_or(f64::sqrt(2.0) * w_max);
+
+        // Solve the least squares problem using a QR decomposition
+        let qr = mat.qr();
+        qr.q_tr_mul(&mut rhs);
+        let r = qr.r();
+
+        let (mind, maxd) = r
+            .diagonal()
+            .iter()
+            .map(|x| (x.abs(), x.abs()))
+            .reduce(|(mi1, ma1), (mi2, ma2)| (mi1.min(mi2), ma1.max(ma2)))
+            .unwrap();
+        if maxd / mind > 1e8 {
+            None
+        } else {
+            assert!(r.solve_upper_triangular_mut(&mut rhs));
+            Some(rhs)
+        }
     }
 
     /// Smooth a vertex field using a 1st order weighted least square approximation
@@ -318,7 +338,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             if D == 2 {
                 let sol = Self::least_squares::<6, _>(dx_df_w, w0);
                 if let Some(sol) = sol {
-                    res.extend(sol.iter().skip(D + 1));
+                    res.extend(sol.iter().skip(D + 1).take(D * (D + 1) / 2));
                 } else {
                     failed[i_vert as usize] = true;
                     res.resize(res.len() + 3, 0.0);
@@ -326,7 +346,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             } else if D == 3 {
                 let sol = Self::least_squares::<10, _>(dx_df_w, w0);
                 if let Some(sol) = sol {
-                    res.extend(sol.iter().skip(D + 1));
+                    res.extend(sol.iter().skip(D + 1).take(D * (D + 1) / 2));
                 } else {
                     failed[i_vert as usize] = true;
                     res.resize(res.len() + 6, 0.0);

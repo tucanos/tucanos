@@ -20,9 +20,7 @@ rustc-hash = "1.1.0"
 sorted-vec = "0.8.2"
 rand = "0.8.5"
 lindel = "0.1.1"
-lapack-src = { version = "0.8.0", optional = true }
 marechal-libol-sys = { git = "https://github.com/tucanos/marechal-libol-sys.git" }
-lapack = "0.19.0"
 simba = "0.8.0"
 libmeshb-sys = {git = "https://github.com/tucanos/libmeshb-sys.git", optional = true}
 vtkio = {version = "0.6.3"}
@@ -31,10 +29,6 @@ metis = { git = "https://github.com/tucanos/metis-rs.git", version = "0.1.2", op
 
 [features]
 meshb = ["libmeshb-sys"]
-accelerate = ["lapack-src/accelerate"]
-netlib = ["lapack-src/netlib"]
-openblas = ["lapack-src/openblas"]
-intel-mkl = ["lapack-src/intel-mkl"]
 
 [profile.release]
 debug = 1

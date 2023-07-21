@@ -1,12 +1,11 @@
 use crate::{
     geom_elems::GElem,
-    linalg::lapack_qr_least_squares,
     mesh::{Point, SimplexMesh},
     topo_elems::{Edge, Elem, Triangle},
     Idx, Result, H_MAX,
 };
 use log::{debug, warn};
-use nalgebra::{SMatrix, SymmetricEigen};
+use nalgebra::{SMatrix, SVector, SymmetricEigen};
 
 /// Compute the surface normals at the mesh vertices
 /// NB: it should not be used across non smooth patches
@@ -95,12 +94,9 @@ pub fn compute_curvature_tensor(
     debug!("Compute curvature tensors");
     let vertex_normals = compute_vertex_normals(smesh);
 
-    // arrays for the least squares problem
-    let nrows = 6;
-    let ncols = 3;
-    let mut buf = vec![0.; nrows * (ncols + 3)];
-    let (a, b) = buf.split_at_mut(nrows * ncols);
-    let (b, work) = b.split_at_mut(nrows);
+    // // arrays for the least squares problem
+    // let nrows = 6;
+    // let ncols = 3;
 
     let mut elem_u = Vec::with_capacity(smesh.n_verts() as usize);
     let mut elem_v = Vec::with_capacity(smesh.n_verts() as usize);
@@ -121,29 +117,33 @@ pub fn compute_curvature_tensor(
         u.normalize_mut();
         let mut v = n.cross(&u);
 
+        let mut mat = SMatrix::<f64, 6, 3>::zeros();
+        let mut rhs = SMatrix::<f64, 6, 1>::zeros();
+
         for i in 0..3 {
             let eu = edgs[i].dot(&u);
             let ev = edgs[i].dot(&v);
             let nu = dn[i].dot(&u);
             let nv = dn[i].dot(&v);
+
+            let row = SMatrix::<f64, 1, 3>::new(eu, ev, 0.0);
             let irow = 2 * i;
-            let row = &mut a[irow..];
-            row[0] = eu;
-            row[nrows] = ev;
-            row[2 * nrows] = 0.;
-            b[irow] = nu;
+            mat.set_row(irow, &row);
+            rhs[irow] = nu;
+
+            let row = SMatrix::<f64, 1, 3>::new(0.0, eu, ev);
             let irow = 2 * i + 1;
-            let row = &mut a[irow..];
-            row[0] = 0.0;
-            row[nrows] = eu;
-            row[2 * nrows] = ev;
-            b[irow] = nv;
+            mat.set_row(irow, &row);
+            rhs[irow] = nv;
         }
 
-        let res: [f64; 3] = lapack_qr_least_squares(a, b, work).unwrap();
+        let qr = mat.qr();
+        qr.q_tr_mul(&mut rhs);
+        let mut rhs = SVector::<f64, 3>::new(rhs[0], rhs[1], rhs[2]);
+        assert!(qr.r().solve_upper_triangular_mut(&mut rhs));
 
         // Compute the principal directions
-        let mat = SMatrix::<f64, 2, 2>::new(res[0], res[1], res[1], res[2]);
+        let mat = SMatrix::<f64, 2, 2>::new(rhs[0], rhs[1], rhs[1], rhs[2]);
         let eig = SymmetricEigen::new(mat);
 
         // Make sure that the pricipal curvatures are non-zero
