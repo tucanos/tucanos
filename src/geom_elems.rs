@@ -119,7 +119,6 @@ pub struct GTetrahedron<const D: usize, M: Metric<D>> {
 }
 
 impl<const D: usize, M: Metric<D>> GTetrahedron<D, M> {
-    const DIM: f64 = 3.0;
     // Jacobian of the reference to equilateral transformation
     const J_EQ: Matrix3<f64> = Matrix3::new(
         1.0,
@@ -224,7 +223,7 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GTetrahedron<D, M> {
         let l = l / 6.0;
         let vol = vol / m.vol() / Self::IDEAL_VOL;
 
-        f64::powf(vol, 2. / Self::DIM) / l
+        vol.powi(2).cbrt() / l
     }
 
     fn point(&self, x: &[f64]) -> Point<D> {
@@ -301,7 +300,6 @@ pub struct GTriangle<const D: usize, M: Metric<D>> {
 }
 
 impl<const D: usize, M: Metric<D>> GTriangle<D, M> {
-    const DIM: f64 = 2.0;
     // Jacobian of the reference to equilateral transformation
     const J_EQ: Matrix2<f64> = Matrix2::new(1.0, -1. / SQRT_3, 0., 2. / SQRT_3);
 
@@ -398,7 +396,7 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GTriangle<D, M> {
         let l = l / 3.0;
         let vol = vol / m.vol() / Self::IDEAL_VOL;
 
-        f64::powf(vol, 2. / Self::DIM) / l
+        vol / l
     }
 
     fn point(&self, x: &[f64]) -> Point<D> {
@@ -605,6 +603,72 @@ mod tests {
         mesh::Point,
         metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric},
     };
+
+    #[test]
+    fn test_quality_2d() {
+        let p0 = Point::<2>::new(0., 0.);
+        let p1 = Point::<2>::new(1., 0.);
+        let p2 = Point::<2>::new(0., 1.);
+        let points = [p0, p1, p2];
+
+        let m = IsoMetric::<2>::from(1.0);
+        let tri = GTriangle::from_verts(points.iter().map(|x| (*x, m)));
+        assert!(f64::abs(tri.quality() - 0.8660254037844388) < 1e-12);
+
+        let p0 = Point::<2>::new(0., 0.);
+        let p1 = Point::<2>::new(1234., 0.);
+        let p2 = Point::<2>::new(0., 1234.);
+        let points = [p0, p1, p2];
+
+        let m = IsoMetric::<2>::from(1.0);
+        let tri = GTriangle::from_verts(points.iter().map(|x| (*x, m)));
+        assert!(f64::abs(tri.quality() - 0.8660254037844388) < 1e-12);
+
+        let p0 = Point::<2>::new(0., 0.);
+        let p1 = Point::<2>::new(1., 0.);
+        let p2 = Point::<2>::new(0., 1.);
+        let points = [p0, p1, p2];
+
+        let m = IsoMetric::<2>::from(0.1234);
+        let tri = GTriangle::from_verts(points.iter().map(|x| (*x, m)));
+        assert!(f64::abs(tri.quality() - 0.8660254037844388) < 1e-12);
+    }
+
+    #[test]
+    fn test_quality_3d() {
+        let p0 = Point::<3>::new(0., 0., 0.);
+        let p1 = Point::<3>::new(1., 0., 0.);
+        let p2 = Point::<3>::new(0., 1., 0.);
+        let p3 = Point::<3>::new(0., 0., 1.);
+        let points = [p0, p1, p2, p3];
+
+        let m = IsoMetric::<3>::from(1.0);
+
+        let tet = GTetrahedron::from_verts(points.iter().map(|x| (*x, m)));
+        assert!(f64::abs(tet.quality() - 0.8399473665965821) < 1e-12);
+
+        let p0 = Point::<3>::new(0., 0., 0.);
+        let p1 = Point::<3>::new(1234., 0., 0.);
+        let p2 = Point::<3>::new(0., 1234., 0.);
+        let p3 = Point::<3>::new(0., 0., 1234.);
+        let points = [p0, p1, p2, p3];
+
+        let m = IsoMetric::<3>::from(1.0);
+
+        let tet = GTetrahedron::from_verts(points.iter().map(|x| (*x, m)));
+        assert!(f64::abs(tet.quality() - 0.8399473665965821) < 1e-12);
+
+        let p0 = Point::<3>::new(0., 0., 0.);
+        let p1 = Point::<3>::new(1., 0., 0.);
+        let p2 = Point::<3>::new(0., 1., 0.);
+        let p3 = Point::<3>::new(0., 0., 1.);
+        let points = [p0, p1, p2, p3];
+
+        let m = IsoMetric::<3>::from(0.1234);
+
+        let tet = GTetrahedron::from_verts(points.iter().map(|x| (*x, m)));
+        assert!(f64::abs(tet.quality() - 0.8399473665965821) < 1e-12);
+    }
 
     #[test]
     fn test_vol_2d() {
