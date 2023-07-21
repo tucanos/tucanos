@@ -7,16 +7,18 @@ use nalgebra::{Const, DefaultAllocator, SMatrix};
 ///   - Compute $M = \mathcal M_2^{-1/2} P = (e_0 | ... | e_d)$
 ///   - Compute $s_i = mav(e_i^T\mathcal M_1 e, e_i^T\mathcal M_2 e)$
 ///   - $\mathcal M_{1 \cap 2} = \mathcal M_2^{1/2} M diag(s) M^T \mathcal M_2^{1/2}$
+/// $\mathcal M_{1 \cap 2}$ and $\det(\mathcal M_{1 \cap 2})$ are returned
 pub fn simultaneous_reduction<const D: usize>(
     a: SMatrix<f64, D, D>,
     b: SMatrix<f64, D, D>,
-) -> SMatrix<f64, D, D>
+) -> (SMatrix<f64, D, D>, f64)
 where
     Const<D>: nalgebra::DimName + nalgebra::ToTypenum + nalgebra::DimSub<nalgebra::U1>,
     DefaultAllocator: Allocator<f64, Const<D>>
         + Allocator<f64, <Const<D> as nalgebra::DimSub<nalgebra::U1>>::Output>,
 {
     let mut eig = b.symmetric_eigen();
+    let mut det = eig.eigenvalues.iter().product::<f64>();
     eig.eigenvalues.iter_mut().for_each(|s| *s = 1.0 / s.sqrt());
     let tmp = eig.recompose();
 
@@ -29,12 +31,14 @@ where
     for i in 0..n {
         let v = tmp.column(i);
         s[n * i + i] = f64::max(v.dot(&(a * v)), v.dot(&(b * v)));
+        det *= f64::max(v.dot(&(a * v)), v.dot(&(b * v)));
     }
 
     eig.eigenvalues.iter_mut().for_each(|s| *s = 1.0 / *s);
     let tmp = eig.recompose();
     let tmp = p.transpose() * tmp;
-    tmp.transpose() * s * tmp
+
+    (tmp.transpose() * s * tmp, det)
 }
 
 /// Bound the step between two metrics $`\mathcal M_1`$ and $`\mathcal M_2`$.
@@ -90,6 +94,13 @@ mod tests {
 
     #[test]
     fn test_simred_2d() {
+        let mat_a = SMatrix::<f64, 2, 2>::new(0.05406506, -0.05927677, -0.05927677, 0.0803954);
+        let mat_b = SMatrix::<f64, 2, 2>::new(0.20212283, 0.12064306, 0.12064306, 0.07613422);
+        let mat_c_ref = SMatrix::<f64, 2, 2>::new(0.25017324, 0.05992738, 0.05992738, 0.15285352);
+        let (mat_c, _) = simultaneous_reduction(mat_a, mat_b);
+
+        assert!((mat_c - mat_c_ref).norm() < mat_c.norm() * 1e-6);
+
         let eps = 1e-8;
 
         for _ in 0..100 {
@@ -98,7 +109,7 @@ mod tests {
             let mat_r = SMatrix::<f64, 2, 2>::new_random();
             let mat_b = mat_r.transpose() * mat_r;
 
-            let mat_c = simultaneous_reduction(mat_a, mat_b);
+            let (mat_c, _) = simultaneous_reduction(mat_a, mat_b);
 
             for _ in 0..100 {
                 let v = SVector::<f64, 2>::new_random();
@@ -124,7 +135,7 @@ mod tests {
             let mat_r = SMatrix::<f64, 3, 3>::new_random();
             let mat_b = mat_r.transpose() * mat_r;
 
-            let mat_c = simultaneous_reduction(mat_a, mat_b);
+            let (mat_c, _) = simultaneous_reduction(mat_a, mat_b);
 
             for _ in 0..100 {
                 let v = SVector::<f64, 3>::new_random();

@@ -426,8 +426,8 @@ where
         } else if other.is_near_zero(1e-16) {
             *self
         } else {
-            let res = simultaneous_reduction(self.as_mat(), other.as_mat());
-            Self::from_mat(res)
+            let (res, det) = simultaneous_reduction(self.as_mat(), other.as_mat());
+            Self::from_mat_and_vol(res, 1. / det.sqrt())
         }
     }
 
