@@ -1,5 +1,5 @@
 use crate::metric_reduction::{control_step, simultaneous_reduction};
-use crate::{mesh::Point, Error, Idx, Result};
+use crate::{mesh::Point, Error, Result};
 use crate::{H_MAX, S_MAX, S_MIN, S_RATIO_MAX};
 use nalgebra::allocator::Allocator;
 use nalgebra::{Const, DefaultAllocator, SMatrix, SVector};
@@ -14,8 +14,8 @@ pub trait Metric<const D: usize>:
     Debug + Clone + Copy + IntoIterator<Item = f64> + Default + Display
 {
     const N: usize;
-    /// Create a metric from m[start..end]
-    fn from_slice(m: &[f64], i: Idx) -> Self;
+    /// Create a metric from m
+    fn from_slice(m: &[f64]) -> Self;
     /// Check if the metric is valid (i.e. positive)
     fn check(&self) -> Result<()>;
     /// Compute the length of an edge in metric space
@@ -123,8 +123,8 @@ impl<const D: usize> Default for IsoMetric<D> {
 impl<const D: usize> Metric<D> for IsoMetric<D> {
     const N: usize = 1;
 
-    fn from_slice(m: &[f64], i: Idx) -> Self {
-        Self(m[i as usize])
+    fn from_slice(m: &[f64]) -> Self {
+        Self(m[0])
     }
 
     /// For an isotropic metric, the metric space length is
@@ -305,11 +305,8 @@ where
 {
     const N: usize = <Self as AnisoMetric<D>>::N;
 
-    fn from_slice(m: &[f64], i: Idx) -> Self {
-        let start = i as usize * <Self as Metric<D>>::N;
-        let end = start + <Self as Metric<D>>::N;
-
-        let mat = Self::slice_to_mat(&m[start..end]);
+    fn from_slice(m: &[f64]) -> Self {
+        let mat = Self::slice_to_mat(m);
         Self::from_mat(mat)
     }
 
@@ -775,7 +772,7 @@ mod tests {
 
     #[test]
     fn test_positive_2d() -> Result<()> {
-        let m = AnisoMetric2d::from_slice(&[1., 1., 2.], 0);
+        let m = AnisoMetric2d::from_slice(&[1., 1., 2.]);
 
         m.check()?;
         assert!(f64::abs(m.vol() - 1.0 / f64::sqrt(3.0)) < 1e-12);
@@ -785,7 +782,7 @@ mod tests {
 
     #[test]
     fn test_check_2d() -> Result<()> {
-        let m = AnisoMetric2d::from_slice(&[1.0, 10.0 * S_RATIO_MAX, 0.0], 0);
+        let m = AnisoMetric2d::from_slice(&[1.0, 10.0 * S_RATIO_MAX, 0.0]);
 
         m.check()?;
         assert!(f64::abs(m[0] - 10.0) < 1e-12);
@@ -795,7 +792,7 @@ mod tests {
 
     #[test]
     fn test_check_3d() -> Result<()> {
-        let m = AnisoMetric3d::from_slice(&[1.0, 2.0, 10.0 * S_RATIO_MAX, 0.0, 0.0, 0.0], 0);
+        let m = AnisoMetric3d::from_slice(&[1.0, 2.0, 10.0 * S_RATIO_MAX, 0.0, 0.0, 0.0]);
 
         m.check()?;
         assert!(f64::abs(m[0] - 10.0) < 1e-12);
@@ -836,7 +833,7 @@ mod tests {
 
     #[test]
     fn test_positive_3d() -> Result<()> {
-        let m = AnisoMetric3d::from_slice(&[1., 3., 6., 2., 4., 3.], 0);
+        let m = AnisoMetric3d::from_slice(&[1., 3., 6., 2., 4., 3.]);
 
         m.check()?;
         assert!(f64::abs(m.vol() - 1.0) < 1e-12);

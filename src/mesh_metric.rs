@@ -796,9 +796,7 @@ mod tests {
         mesh.compute_volumes();
 
         let h = vec![0.1; mesh.n_verts() as usize];
-        let mut m: Vec<_> = (0..mesh.n_verts())
-            .map(|i| IsoMetric::<2>::from_slice(&h, i))
-            .collect();
+        let mut m: Vec<_> = h.iter().map(|&x| IsoMetric::<2>::from(x)).collect();
 
         let c = mesh.complexity(m.iter().copied(), 0.0, f64::MAX);
         assert!(f64::abs(c - 100. * 4. / f64::sqrt(3.0)) < 1e-6);
@@ -847,9 +845,7 @@ mod tests {
         mesh.compute_volumes();
 
         let h = vec![0.1; mesh.n_verts() as usize];
-        let mut m: Vec<_> = (0..mesh.n_verts())
-            .map(|i| IsoMetric::<3>::from_slice(&h, i))
-            .collect();
+        let mut m: Vec<_> = h.iter().map(|&x| IsoMetric::<3>::from(x)).collect();
 
         let c = mesh.complexity(m.iter().copied(), 0.0, f64::MAX);
         assert!(f64::abs(c - 1000. * 6. * f64::sqrt(2.0)) < 1e-6);
@@ -906,9 +902,7 @@ mod tests {
         mesh.compute_volumes();
 
         let h = vec![0.1; mesh.n_verts() as usize];
-        let mut m: Vec<_> = (0..mesh.n_verts())
-            .map(|i| IsoMetric::<3>::from_slice(&h, i))
-            .collect();
+        let mut m: Vec<_> = h.iter().map(|&x| IsoMetric::<3>::from(x)).collect();
         let fixed_m: Vec<_> = mesh
             .verts()
             .map(|p| IsoMetric::<3>::from(0.1 + p[0] + p[1]))
