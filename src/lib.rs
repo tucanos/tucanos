@@ -563,6 +563,30 @@ macro_rules! create_geometry {
                     None => Err(PyRuntimeError::new_err("Invalid object")),
                 }
             }
+
+            /// Project vertices
+            pub fn project<'py>(&self, py: Python<'py>, mesh: &$mesh) -> PyResult<&'py PyArray2<f64>> {
+                match &self.geom {
+                    Some(geom) => {
+                        let vtags = mesh.mesh.vtags.as_ref().unwrap();
+                        let mut coords = Vec::with_capacity(mesh.n_verts() as usize * $dim);
+
+                        for (mut pt, tag) in mesh.mesh.verts().zip(vtags.iter()) {
+                            if tag.0 < $dim {
+                                geom.project(&mut pt, tag);
+                            }
+                            coords.extend(pt.iter().copied());
+                        }
+
+                        Ok(to_numpy_2d(
+                            py,
+                            coords,
+                            $dim,
+                        ))
+                    }
+                    None => Err(PyRuntimeError::new_err("Invalid object")),
+                }
+            }
         }
     }
 }
