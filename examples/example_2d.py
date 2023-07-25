@@ -6,7 +6,6 @@ from pytucanos.remesh import Remesher2dIso
 
 
 def get_h(msh):
-
     x, y = msh.get_coords().T
     hmin = 0.01
     hmax = 0.3
@@ -16,7 +15,6 @@ def get_h(msh):
 
 
 if __name__ == "__main__":
-
     coords, elems, etags, faces, ftags = get_square()
     # Invert the first face
     faces[0, :] = faces[0, ::-1]
@@ -59,7 +57,7 @@ if __name__ == "__main__":
         msh.compute_topology()
         geom = LinearGeometry2d(msh)
         remesher = Remesher2dIso(msh, geom, h.reshape((-1, 1)))
-        remesher.remesh()
+        remesher.remesh(geom)
 
         msh = remesher.to_mesh()
 

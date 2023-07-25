@@ -6,7 +6,6 @@ from pytucanos.remesh import Remesher2dAniso
 
 
 def get_m(msh):
-
     x, y = msh.get_coords().T
 
     hx = 0.1
@@ -21,7 +20,6 @@ def get_m(msh):
 
 
 if __name__ == "__main__":
-
     coords, elems, etags, faces, ftags = get_square()
     msh = Mesh22(coords, elems, etags, faces, ftags)
 
@@ -31,15 +29,15 @@ if __name__ == "__main__":
     # Hilbert renumbering
     msh.reorder_hilbert()
 
+    msh.compute_topology()
+    geom = LinearGeometry2d(msh)
     for _ in range(5):
         m = get_m(msh)
-        msh.compute_topology()
-        geom = LinearGeometry2d(msh)
         remesher = Remesher2dAniso(msh, geom, m)
-        remesher.remesh()
+        remesher.remesh(geom)
 
         msh = remesher.to_mesh()
-
+        msh.compute_topology()
     fig, ax = plt.subplots()
     plot_mesh(ax, msh)
     ax.set_title("Adapted")

@@ -2,11 +2,7 @@ import setuptools
 from setuptools_rust import Binding, RustExtension
 import platform
 
-features = ["libmeshb-sys"]
-if platform.system() == "Linux":
-    features += ["netlib"]
-elif platform.system() == "Darwin":
-    features += ["accelerate"]
+features = ["meshb"]
 
 setuptools.setup(
     name="pytucanos",

@@ -14,7 +14,6 @@ def naca_profile(
     n=512,
     finite_te=False,
 ):
-
     m = int(id[0]) / 100
     p = int(id[1]) / 10
     t = int(id[2:4]) / 100
@@ -69,7 +68,6 @@ def naca_profile(
 
 
 def get_meshes():
-
     upper, lower = naca_profile()
 
     coords = np.vstack(
@@ -213,7 +211,6 @@ def get_meshes():
 
 
 if __name__ == "__main__":
-
     FORMAT = "%(levelname)s %(name)s %(asctime)-15s %(filename)s:%(lineno)d %(message)s"
     logging.basicConfig(format=FORMAT)
     logging.getLogger().setLevel(logging.INFO)
@@ -231,11 +228,11 @@ if __name__ == "__main__":
 
     msh.write_vtk(f"naca_0.vtu")
 
-    for it in range(6):
-        msh.compute_topology()
-        geom = LinearGeometry2d(msh, bmsh)
-        geom.compute_curvature()
+    msh.compute_topology()
+    geom = LinearGeometry2d(msh, bmsh)
+    geom.compute_curvature()
 
+    for it in range(6):
         bdy, bdy_ids = msh.boundary()
         h_n = 1e-3 + np.zeros(bdy_ids.size)
 
@@ -287,12 +284,16 @@ if __name__ == "__main__":
         # ax0.set_title("Metric")
 
         remesher = Remesher2dAniso(msh, geom, m)
-        remesher.remesh(two_steps=True, num_iter=3)
+        remesher.remesh(
+            geom,
+            two_steps=True,
+            num_iter=3,
+        )
         q = remesher.qualities()
         l = remesher.lengths()
 
         msh = remesher.to_mesh()
-
+        msh.compute_topology()
         # cax = plot_field(ax1, msh, q, "element")
         # fig.colorbar(cax, ax=ax1)
         # ax1.set_title("Adapted mesh")

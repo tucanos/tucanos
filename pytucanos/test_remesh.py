@@ -17,7 +17,6 @@ class TestRemesh(unittest.TestCase):
         logging.disable(logging.DEBUG)
 
     def test_2d_iso(self):
-
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh22(coords, elems, etags, faces, ftags).split().split()
         msh.compute_topology()
@@ -27,6 +26,7 @@ class TestRemesh(unittest.TestCase):
 
         remesher = Remesher2dIso(msh, geom, h)
         remesher.remesh(
+            geom,
             num_iter=4,
             split_min_q_rel=0.5,
             collapse_min_q_rel=0.5,
@@ -46,7 +46,6 @@ class TestRemesh(unittest.TestCase):
         self.assertLess(msh.n_verts(), 200)
 
     def test_2d_iso_circle(self):
-
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh22(coords, elems, etags, faces, ftags)
 
@@ -97,6 +96,7 @@ class TestRemesh(unittest.TestCase):
 
         remesher = Remesher2dIso(msh, geom, h)
         remesher.remesh(
+            geom,
             num_iter=4,
             split_min_q_rel=0.5,
             collapse_min_q_rel=0.5,
@@ -118,7 +118,6 @@ class TestRemesh(unittest.TestCase):
         self.assertLess(msh.n_verts(), 200 * msh.vol())
 
     def test_2d_aniso(self):
-
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh22(coords, elems, etags, faces, ftags).split().split()
         msh.compute_topology()
@@ -134,6 +133,7 @@ class TestRemesh(unittest.TestCase):
 
             remesher = Remesher2dAniso(msh, geom, m)
             remesher.remesh(
+                geom,
                 two_steps=True,
                 num_iter=2,
                 split_min_q_rel=0.5,

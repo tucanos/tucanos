@@ -19,21 +19,18 @@ class TestMeshes(unittest.TestCase):
         logging.disable(logging.CRITICAL)
 
     def test_init_2d_fail(self):
-
         coords, elems, etags, faces, ftags = get_square()
 
         with self.assertRaises(ValueError):
             msh = Mesh33(coords, elems, etags, faces, ftags)
 
     def test_init_3d_fail(self):
-
         coords, elems, etags, faces, ftags = get_cube()
 
         with self.assertRaises(ValueError):
             msh = Mesh32(coords, elems, etags, faces, ftags)
 
     def test_init_2d(self):
-
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh22(coords, elems, etags, faces, ftags)
 
@@ -49,7 +46,6 @@ class TestMeshes(unittest.TestCase):
 
     @unittest.skipUnless(HAVE_MESHB, "The libMeshb interface is not available")
     def test_meshb_2d(self):
-
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh22(coords, elems, etags, faces, ftags)
 
@@ -71,7 +67,6 @@ class TestMeshes(unittest.TestCase):
         os.remove("tmp.meshb")
 
     def test_init_3d(self):
-
         coords, elems, etags, faces, ftags = get_cube()
         msh = Mesh33(coords, elems, etags, faces, ftags)
 
@@ -86,7 +81,6 @@ class TestMeshes(unittest.TestCase):
         self.assertTrue(np.allclose(msh.get_ftags(), ftags))
 
     def test_split_2d(self):
-
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh22(coords, elems, etags, faces, ftags)
         msh = msh.split().split()
@@ -96,7 +90,6 @@ class TestMeshes(unittest.TestCase):
         self.assertTrue(np.allclose(msh.vol(), 1.0))
 
     def test_split_3d(self):
-
         coords, elems, etags, faces, ftags = get_cube()
         msh = Mesh33(coords, elems, etags, faces, ftags)
         msh = msh.split().split()
@@ -106,7 +99,6 @@ class TestMeshes(unittest.TestCase):
         self.assertTrue(np.allclose(msh.vol(), 1.0))
 
     def test_boundary_2d(self):
-
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh22(coords, elems, etags, faces, ftags)
         msh = msh.split().split()
@@ -118,7 +110,6 @@ class TestMeshes(unittest.TestCase):
         self.assertTrue(np.allclose(bdy.vol(), 4.0 + 2**0.5))
 
     def test_boundary_3d(self):
-
         coords, elems, etags, faces, ftags = get_cube()
         msh = Mesh33(coords, elems, etags, faces, ftags)
         msh = msh.split().split()
@@ -130,7 +121,6 @@ class TestMeshes(unittest.TestCase):
         self.assertTrue(np.allclose(bdy.vol(), 6.0))
 
     def test_hilbert_2d(self):
-
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh22(coords, elems, etags, faces, ftags)
         msh = msh.split().split().split().split().split()
@@ -150,7 +140,6 @@ class TestMeshes(unittest.TestCase):
         self.assertTrue(after < 0.11 * before)
 
     def test_hilbert_3d(self):
-
         coords, elems, etags, faces, ftags = get_cube()
         msh = Mesh33(coords, elems, etags, faces, ftags)
         msh = msh.split().split().split()
@@ -170,7 +159,6 @@ class TestMeshes(unittest.TestCase):
         self.assertTrue(after < 0.5 * before)
 
     def test_boundary_faces_2d(self):
-
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh22(coords, elems, etags, faces, ftags)
         msh = msh.split().split().split().split().split()
@@ -183,8 +171,8 @@ class TestMeshes(unittest.TestCase):
         faces_before = faces_before[idx, :]
         ftags_before = ftags_before[idx]
 
-        n = msh.add_boundary_faces()
-        self.assertEqual(n, 0)
+        tag = msh.add_boundary_faces()
+        self.assertEqual((msh.get_ftags() == tag).sum(), 0)
 
         faces_after, ftags_after = msh.get_faces(), msh.get_ftags()
         mask = ftags_after < 5
@@ -198,7 +186,6 @@ class TestMeshes(unittest.TestCase):
         self.assertTrue(np.array_equal(ftags_before, ftags_after))
 
     def test_boundary_faces_2d_2(self):
-
         coords, elems, etags, faces, ftags = get_square()
         faces[0, :] = faces[0, ::-1]
         msh = Mesh22(coords, elems, etags, faces, ftags)
@@ -209,8 +196,8 @@ class TestMeshes(unittest.TestCase):
         faces_before = faces_before[idx, :]
         ftags_before = ftags_before[idx]
 
-        n = msh.add_boundary_faces()
-        self.assertEqual(n, 0)
+        tag = msh.add_boundary_faces()
+        self.assertEqual((msh.get_ftags() == tag).sum(), 0)
 
         faces_after, ftags_after = msh.get_faces(), msh.get_ftags()
         idx = np.lexsort(faces_after.T)
@@ -220,7 +207,6 @@ class TestMeshes(unittest.TestCase):
         self.assertFalse(np.array_equal(faces_before, faces_after))
 
     def test_boundary_faces_2d_3(self):
-
         coords, elems, etags, faces, ftags = get_square()
         faces = faces[:2, :]
         ftags = ftags[:2]
@@ -228,16 +214,14 @@ class TestMeshes(unittest.TestCase):
         msh = Mesh22(coords, elems, etags, faces, ftags)
         msh = msh.split().split().split().split().split()
 
-        n = msh.add_boundary_faces()
-        faces_after, ftags_after = msh.get_faces(), msh.get_ftags()
-        self.assertEqual(n, 2 * 2**5)
+        tag = msh.add_boundary_faces()
+        self.assertEqual((msh.get_ftags() == tag).sum(), 2 * 2**5)
 
         faces_after, ftags_after = msh.get_faces(), msh.get_ftags()
         self.assertTrue(np.array_equal(np.unique(ftags_after), [1, 2, 3, 4]))
         self.assertEqual(np.nonzero(ftags_after == 3)[0].size, 2 * 2**5)
 
     def test_boundary_faces_3d(self):
-
         coords, elems, etags, faces, ftags = get_cube()
         msh = Mesh33(coords, elems, etags, faces, ftags)
         msh = msh.split().split().split()
@@ -247,11 +231,10 @@ class TestMeshes(unittest.TestCase):
         faces_before = faces_before[idx, :]
         ftags_before = ftags_before[idx]
 
-        n = msh.add_boundary_faces()
-        self.assertEqual(n, 0)
+        tag = msh.add_boundary_faces()
+        self.assertEqual((msh.get_ftags() == tag).sum(), 0)
 
     def test_boundary_faces_3d_2(self):
-
         coords, elems, etags, faces, ftags = get_cube()
         faces[0, :] = faces[0, ::-1]
         msh = Mesh33(coords, elems, etags, faces, ftags)
@@ -262,23 +245,20 @@ class TestMeshes(unittest.TestCase):
         faces_before = faces_before[idx, :]
         ftags_before = ftags_before[idx]
 
-        n = msh.add_boundary_faces()
-        self.assertEqual(n, 0)
+        tag = msh.add_boundary_faces()
+        self.assertEqual((msh.get_ftags() == tag).sum(), 0)
 
     def test_boundary_faces_3d_3(self):
-
         coords, elems, etags, faces, ftags = get_cube()
         faces = faces[:2, :]
         ftags = ftags[:2]
         msh = Mesh33(coords, elems, etags, faces, ftags)
         msh = msh.split().split().split()
 
-        n = msh.add_boundary_faces()
-        faces_after, ftags_after = msh.get_faces(), msh.get_ftags()
-        self.assertEqual(n, 10 * 4**3)
+        tag = msh.add_boundary_faces()
+        self.assertEqual((msh.get_ftags() == tag).sum(), 10 * 4**3)
 
     def test_fields_2d(self):
-
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh22(coords, elems, etags, faces, ftags)
         msh = msh.split().split().split()
@@ -309,7 +289,6 @@ class TestMeshes(unittest.TestCase):
 
     @unittest.skipUnless(HAVE_MESHB, "The libMeshb interface is not available")
     def test_meshb_3d(self):
-
         coords, elems, etags, faces, ftags = get_cube()
         msh = Mesh33(coords, elems, etags, faces, ftags)
 
@@ -331,7 +310,6 @@ class TestMeshes(unittest.TestCase):
         os.remove("tmp.meshb")
 
     def test_vols_2d(self):
-
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh22(coords, elems, etags, faces, ftags)
         msh = msh.split().split().split()

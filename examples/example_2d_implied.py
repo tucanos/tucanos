@@ -1,11 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from pytucanos.mesh import get_square, Mesh22, plot_mesh, plot_metric
-from pytucanos.remesh import Remesher2dAniso
 
 
 def get_m(msh):
-
     x, y = msh.get_coords().T
 
     hx = 0.1
@@ -20,7 +18,6 @@ def get_m(msh):
 
 
 if __name__ == "__main__":
-
     coords, elems, etags, faces, ftags = get_square()
     msh = Mesh22(coords, elems, etags, faces, ftags)
     msh = msh.split().split()

@@ -7,14 +7,12 @@ from pytucanos.remesh import Remesher2dAniso
 
 
 def get_f(msh):
-
     x, y = msh.get_coords().T
     f = np.tanh((x + y - 1.0) / 0.01)
     return f.reshape((-1, 1))
 
 
 if __name__ == "__main__":
-
     FORMAT = "%(levelname)s %(name)s %(asctime)-15s %(filename)s:%(lineno)d %(message)s"
     logging.basicConfig(format=FORMAT)
     logging.getLogger().setLevel(logging.INFO)
@@ -25,6 +23,8 @@ if __name__ == "__main__":
 
     msh.add_boundary_faces()
 
+    msh.compute_topology()
+    geom = LinearGeometry2d(msh)
     for _ in range(6):
         msh.compute_volumes()
         msh.compute_vertex_to_vertices()
@@ -41,11 +41,11 @@ if __name__ == "__main__":
 
         assert np.isfinite(m).all()
 
-        msh.compute_topology()
-        geom = LinearGeometry2d(msh)
         remesher = Remesher2dAniso(msh, geom, m)
-        remesher.remesh()
+        remesher.remesh(geom)
+
         msh = remesher.to_mesh()
+        msh.compute_topology()
 
     q = remesher.qualities()
     l = remesher.lengths()

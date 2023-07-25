@@ -8,13 +8,15 @@ use pyo3::{
 };
 use std::collections::HashMap;
 use tucanos::{
+    geom_elems::GElem,
     geometry::{Geometry, LinearGeometry},
+    mesh::Point,
     mesh::SimplexMesh,
     mesh_stl::{orient_stl, read_stl},
     metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
     remesher::{Remesher, RemesherParams, SmoothingType},
     topo_elems::{Edge, Elem, Tetrahedron, Triangle},
-    FieldType, Idx, Mesh, Tag,
+    Idx, Tag,
 };
 
 fn to_numpy_1d<T: numpy::Element>(py: Python<'_>, vec: Vec<T>) -> &'_ PyArray1<T> {
@@ -24,20 +26,6 @@ fn to_numpy_1d<T: numpy::Element>(py: Python<'_>, vec: Vec<T>) -> &'_ PyArray1<T
 fn to_numpy_2d<T: numpy::Element>(py: Python<'_>, vec: Vec<T>, m: usize) -> &'_ PyArray2<T> {
     let n = vec.len();
     PyArray::from_vec(py, vec).reshape([n / m, m]).unwrap()
-}
-
-fn to_numpy_1d_copy<'py, T: numpy::Element>(py: Python<'py>, vec: &[T]) -> &'py PyArray1<T> {
-    PyArray::from_slice(py, vec)
-}
-
-fn to_numpy_2d_copy<'py, T: numpy::Element>(
-    py: Python<'py>,
-    vec: &[T],
-    m: usize,
-) -> &'py PyArray2<T> {
-    PyArray::from_slice(py, vec)
-        .reshape([vec.len() / m, m])
-        .unwrap()
 }
 
 macro_rules! create_mesh {
@@ -83,12 +71,27 @@ macro_rules! create_mesh {
                     stringify!($etype),
                     stringify!($dim)
                 );
+
+                let coords = coords.as_slice()?;
+                let coords = coords.chunks($dim).map(|p| {
+                    let mut vx = Point::<$dim>::zeros();
+                    vx.copy_from_slice(p);
+                    vx
+                }
+                ).collect();
+
+                let elems = elems.as_slice()?;
+                let elems = elems.chunks($etype::N_VERTS as usize).map(|e| $etype::from_slice(e)).collect();
+
+                let faces = faces.as_slice()?;
+                let faces = faces.chunks(<$etype as Elem>::Face::N_VERTS as usize).map(|e| <$etype as Elem>::Face::from_slice(e)).collect();
+
                 Ok(Self {
                     mesh: SimplexMesh::<$dim, $etype>::new(
-                        coords.to_vec().unwrap(),
-                        elems.to_vec().unwrap(),
+                        coords,
+                        elems,
                         etags.to_vec().unwrap(),
-                        faces.to_vec().unwrap(),
+                        faces,
                         ftags.to_vec().unwrap(),
                     ),
                 })
@@ -96,7 +99,7 @@ macro_rules! create_mesh {
 
             #[doc = concat!("Read a ", stringify!($name), " from a .mesh(b) file")]
             #[classmethod]
-            #[cfg(feature = "libmeshb-sys")]
+            #[cfg(feature = "meshb")]
             pub fn from_meshb(_cls: &PyType, fname: &str) -> PyResult<Self> {
                 let res = SimplexMesh::<$dim, $etype>::read_meshb(fname);
                 match res {
@@ -106,13 +109,13 @@ macro_rules! create_mesh {
             }
 
             /// Write the mesh to a .mesh(b) file
-            #[cfg(feature = "libmeshb-sys")]
+            #[cfg(feature = "meshb")]
             pub fn write_meshb(&self, fname: &str) -> PyResult<()> {
                 self.mesh.write_meshb(fname).map_err(|e| PyRuntimeError::new_err(e.to_string()))
             }
 
             /// Write a solution to a .sol(b) file
-            #[cfg(feature = "libmeshb-sys")]
+            #[cfg(feature = "meshb")]
             pub fn write_solb(&self, fname: &str, arr: PyReadonlyArray2<f64>) -> PyResult<()> {
                 self.mesh.write_solb(&arr.to_vec().unwrap(), fname).map_err(|e| PyRuntimeError::new_err(e.to_string()))
             }
@@ -138,13 +141,13 @@ macro_rules! create_mesh {
             /// Get the volume of the mesh
             #[must_use]
             pub fn vol(&self) -> f64 {
-                self.mesh.elem_vols().sum()
+                self.mesh.gelems().map(|ge| ge.vol()).sum()
             }
 
             /// Get the volume of all the elements
             pub fn vols<'py>(&self, py: Python<'py>) -> &'py PyArray1<f64> {
 
-                let res : Vec<_> = self.mesh.elem_vols().collect();
+                let res : Vec<_> = self.mesh.gelems().map(|ge| ge.vol()).collect();
                 to_numpy_1d(py, res)
             }
 
@@ -231,8 +234,8 @@ macro_rules! create_mesh {
 
             /// Add the missing boundary faces and make sure that boundary faces are oriented outwards
             /// If internal faces are present, these are keps
-            pub fn add_boundary_faces(&mut self) -> Idx {
-                self.mesh.add_boundary_faces()
+            pub fn add_boundary_faces(&mut self) -> Tag {
+                self.mesh.add_boundary_faces().0
             }
 
             /// Write a vtk file containing the mesh
@@ -274,26 +277,33 @@ macro_rules! create_mesh {
 
             #[doc = concat!("Get a copy of the mesh coordinates as a numpy array of shape (# of vertices, ", stringify!($dim), ")")]
             pub fn get_coords<'py>(&mut self, py: Python<'py>) -> &'py PyArray2<f64> {
-                to_numpy_2d_copy(py, &self.mesh.coords, $dim)
+                let mut coords = Vec::with_capacity(self.mesh.n_verts() as usize * $dim);
+                for v in self.mesh.verts() {
+                    coords.extend(v.iter().copied());
+                }
+                to_numpy_2d(py, coords, $dim)
             }
 
             /// Get a copy of the element connectivity as a numpy array of shape (# of elements, m)
             pub fn get_elems<'py>(&mut self, py: Python<'py>) -> &'py PyArray2<Idx> {
-                to_numpy_2d_copy(py, &self.mesh.elems, <$etype as Elem>::N_VERTS as usize)
+                let elems = self.mesh.elems().flatten().collect();
+                to_numpy_2d(py, elems, <$etype as Elem>::N_VERTS as usize)
             }
 
             /// Get a copy of the element tags as a numpy array of shape (# of elements)
             #[must_use]
             pub fn get_etags<'py>(&self, py: Python<'py>) -> &'py PyArray1<Tag> {
-                to_numpy_1d_copy(py, &self.mesh.etags)
+                let etags = self.mesh.etags().collect();
+                to_numpy_1d(py, etags)
             }
 
             /// Get a copy of the face connectivity as a numpy array of shape (# of faces, m)
             #[must_use]
             pub fn get_faces<'py>(&self, py: Python<'py>) -> &'py PyArray2<Idx> {
-                to_numpy_2d_copy(
+                let faces = self.mesh.faces().flatten().collect();
+                to_numpy_2d(
                     py,
-                    &self.mesh.faces,
+                    faces,
                     <$etype as Elem>::Face::N_VERTS as usize,
                 )
             }
@@ -301,7 +311,8 @@ macro_rules! create_mesh {
             /// Get a copy of the face tags as a numpy array of shape (# of faces)
             #[must_use]
             pub fn get_ftags<'py>(&self, py: Python<'py>) -> &'py PyArray1<Tag> {
-                to_numpy_1d_copy(py, &self.mesh.ftags)
+                let ftags = self.mesh.ftags().collect();
+                to_numpy_1d(py, ftags)
             }
 
             /// Reorder the vertices, element and faces using a Hilbert SFC
@@ -410,7 +421,7 @@ macro_rules! create_mesh {
                 Ok(to_numpy_2d(
                     py,
                     res.unwrap(),
-                    self.mesh.n_comps(FieldType::Vector) as usize,
+                    $dim,
                 ))
             }
 
@@ -440,7 +451,7 @@ macro_rules! create_mesh {
                 Ok(to_numpy_2d(
                     py,
                     res.unwrap(),
-                    self.mesh.n_comps(FieldType::SymTensor) as usize,
+                    $dim * ($dim +1 ) / 2,
                 ))
             }
 
@@ -472,7 +483,7 @@ macro_rules! create_mesh {
                 Ok(to_numpy_2d(
                     py,
                     res.unwrap(),
-                    self.mesh.n_comps(FieldType::SymTensor) as usize,
+                    $dim * ($dim +1 ) / 2,
                 ))
             }
 
@@ -510,7 +521,7 @@ macro_rules! create_geometry {
         #[pyclass]
         // #[derive(Clone)]
         pub struct $name {
-            geom: Option<LinearGeometry<$dim, $etype>>,
+            geom: LinearGeometry<$dim, $etype>,
         }
         #[pymethods]
         impl $name {
@@ -530,62 +541,48 @@ macro_rules! create_geometry {
                 gmesh.compute_octree();
                 let geom = LinearGeometry::new(&mesh.mesh, gmesh).unwrap();
 
-                Self{geom: Some(geom)}
+                Self{geom: geom}
             }
 
             /// Compute the max distance between the face centers and the geometry normals
             pub fn max_distance(&self, mesh: &$mesh) -> f64 {
-                self.geom.as_ref().unwrap().max_distance(&mesh.mesh)
+                self.geom.max_distance(&mesh.mesh)
             }
 
             /// Compute the max angle between the face normals and the geometry normals
             pub fn max_normal_angle(&self, mesh: &$mesh) -> f64 {
-                self.geom.as_ref().unwrap().max_normal_angle(&mesh.mesh)
+                self.geom.max_normal_angle(&mesh.mesh)
             }
 
             /// Compute the curvature
-            pub fn compute_curvature(&mut self) -> PyResult<()> {
-                match &mut self.geom {
-                    Some(geom) => {
-                        geom.compute_curvature();
-                        Ok(())
-                    }
-                    None => Err(PyRuntimeError::new_err("Invalid object")),
-                }
+            pub fn compute_curvature(&mut self)  {
+               self.geom.compute_curvature()
             }
 
             /// Export the curvature to a vtk file
             pub fn write_curvature_vtk(&self, fname: &str) -> PyResult<()> {
-                match &self.geom {
-                    Some(geom) => geom
-                        .write_curvature(fname)
-                        .map_err(|e| PyRuntimeError::new_err(e.to_string())),
-                    None => Err(PyRuntimeError::new_err("Invalid object")),
-                }
+               self.geom
+                    .write_curvature(fname)
+                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
             }
 
             /// Project vertices
             pub fn project<'py>(&self, py: Python<'py>, mesh: &$mesh) -> PyResult<&'py PyArray2<f64>> {
-                match &self.geom {
-                    Some(geom) => {
-                        let vtags = mesh.mesh.vtags.as_ref().unwrap();
-                        let mut coords = Vec::with_capacity(mesh.n_verts() as usize * $dim);
+                let vtags = mesh.mesh.get_vertex_tags().unwrap();
+                let mut coords = Vec::with_capacity(mesh.mesh.n_verts() as usize * $dim);
 
-                        for (mut pt, tag) in mesh.mesh.verts().zip(vtags.iter()) {
-                            if tag.0 < $dim {
-                                geom.project(&mut pt, tag);
-                            }
-                            coords.extend(pt.iter().copied());
-                        }
-
-                        Ok(to_numpy_2d(
-                            py,
-                            coords,
-                            $dim,
-                        ))
+                for (mut pt, tag) in mesh.mesh.verts().zip(vtags.iter()) {
+                    if tag.0 < $dim {
+                        self.geom.project(&mut pt, tag);
                     }
-                    None => Err(PyRuntimeError::new_err("Invalid object")),
+                    coords.extend(pt.iter().copied());
                 }
+
+                Ok(to_numpy_2d(
+                    py,
+                    coords,
+                    $dim,
+                ))
             }
         }
     }
@@ -638,16 +635,11 @@ impl Mesh33 {
             }
             let h_n_tags = h_n_tags.unwrap();
             let h_n_tags = h_n_tags.as_slice()?;
-            self.mesh.curvature_metric(
-                geom.geom.as_ref().unwrap(),
-                r_h,
-                beta,
-                Some(h_n),
-                Some(h_n_tags),
-            )
+            self.mesh
+                .curvature_metric(&geom.geom, r_h, beta, Some(h_n), Some(h_n_tags))
         } else {
             self.mesh
-                .curvature_metric(geom.geom.as_ref().unwrap(), r_h, beta, None, None)
+                .curvature_metric(&geom.geom, r_h, beta, None, None)
         };
 
         if let Err(res) = res {
@@ -720,16 +712,11 @@ impl Mesh22 {
             }
             let h_n_tags = h_n_tags.unwrap();
             let h_n_tags = h_n_tags.as_slice()?;
-            self.mesh.curvature_metric(
-                geom.geom.as_ref().unwrap(),
-                r_h,
-                beta,
-                Some(h_n),
-                Some(h_n_tags),
-            )
+            self.mesh
+                .curvature_metric(&geom.geom, r_h, beta, Some(h_n), Some(h_n_tags))
         } else {
             self.mesh
-                .curvature_metric(geom.geom.as_ref().unwrap(), r_h, beta, None, None)
+                .curvature_metric(&geom.geom, r_h, beta, None, None)
         };
 
         if let Err(res) = res {
@@ -750,7 +737,7 @@ impl Mesh22 {
 
 /// Read a solution stored in a .sol(b) file
 #[pyfunction]
-#[cfg(feature = "libmeshb-sys")]
+#[cfg(feature = "meshb")]
 pub fn read_solb<'py>(py: Python<'py>, fname: &str) -> PyResult<&'py PyArray2<f64>> {
     let res = tucanos::meshb_io::read_solb(fname);
     match res {
@@ -765,7 +752,7 @@ macro_rules! create_remesher {
         #[doc = concat!("using ", stringify!($metric), " as metric and a piecewise linear representation of the geometry")]
         #[pyclass]
         pub struct $name {
-            remesher: Remesher<$dim, $etype, $metric, LinearGeometry<$dim, <$etype as Elem>::Face>>,
+            remesher: Remesher<$dim, $etype, $metric>,
         }
 
         #[doc = concat!("Create a remesher from a ", stringify!($mesh), " and a ",stringify!($metric) ," metric defined at the mesh vertices")]
@@ -775,7 +762,7 @@ macro_rules! create_remesher {
             #[new]
             pub fn new(
                 mesh: &$mesh,
-                geometry: &mut $geom,
+                geometry: &$geom,
                 m: PyReadonlyArray2<f64>,
             ) -> PyResult<Self> {
                 if m.shape()[0] != mesh.mesh.n_verts() as usize {
@@ -786,11 +773,9 @@ macro_rules! create_remesher {
                 }
 
                 let m = m.as_slice()?;
-                let m: Vec<_> = (0..mesh.n_verts())
-                    .map(|i| $metric::from_slice(&m, i))
-                    .collect();
+                let m: Vec<_> = m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect();
 
-                let remesher = Remesher::new(&mesh.mesh, &m, geometry.geom.take().unwrap());
+                let remesher = Remesher::new(&mesh.mesh, &m, &geometry.geom);
                 if let Err(res) = remesher {
                     return Err(PyRuntimeError::new_err(res.to_string()));
                 }
@@ -816,6 +801,7 @@ macro_rules! create_remesher {
 
                 let mut res = Vec::with_capacity(m.shape()[0] * m.shape()[1]);
                 let m = m.as_slice().unwrap();
+                let mut m: Vec<_> = m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect();
 
                 let exponent = if let Some(p) = p {
                     2.0 / (2.0 * p as f64 + $dim as f64)
@@ -823,8 +809,7 @@ macro_rules! create_remesher {
                     0.0
                 };
 
-                for i_vert in 0..mesh.mesh.n_verts() {
-                    let mut m_v = $metric::from_slice(m, i_vert);
+                for m_v in m.iter_mut() {
                     let scale = f64::powf(m_v.vol(), exponent);
                     if !scale.is_nan() {
                         m_v.scale(scale);
@@ -859,21 +844,14 @@ macro_rules! create_remesher {
                 }
 
                 let m = m.as_slice().unwrap();
-
-                let mut m: Vec<_> = (0..mesh.mesh.n_verts())
-                    .map(|i| $metric::from_slice(m, i))
-                    .collect();
-
+                let mut m: Vec<_> = m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect();
 
                 let res =  if let Some(fixed_m) = fixed_m {
-                    let fixed_m = (0..mesh.mesh.n_verts())
-                        .map(|i| $metric::from_slice(fixed_m.as_slice().unwrap(), i))
-                        .collect::<Vec<_>>();
+                    let fixed_m = fixed_m.as_slice().unwrap();
+                    let fixed_m: Vec<_> = fixed_m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect();
                     if let Some(implied_m) = implied_m {
-                        let implied_m = (0..mesh.mesh.n_verts())
-                    .map(|i| $metric::from_slice(implied_m.as_slice().unwrap(), i))
-                    .collect::<Vec<_>>();
-
+                        let implied_m = implied_m.as_slice().unwrap();
+                        let implied_m: Vec<_> = implied_m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect();
                         mesh.mesh
                             .scale_metric(&mut m, h_min, h_max, n_elems, Some(&fixed_m), Some(&implied_m), step, max_iter.unwrap_or(10))
                     } else {
@@ -881,12 +859,10 @@ macro_rules! create_remesher {
                             .scale_metric(&mut m, h_min, h_max, n_elems, Some(&fixed_m), None, step, max_iter.unwrap_or(10))
                     }
                 } else if let Some(implied_m) = implied_m {
-                    let implied_m = (0..mesh.mesh.n_verts())
-                    .map(|i| $metric::from_slice(implied_m.as_slice().unwrap(), i))
-                    .collect::<Vec<_>>();
-
-                        mesh.mesh
-                            .scale_metric(&mut m, h_min, h_max, n_elems, None, Some(&implied_m), step, max_iter.unwrap_or(10))
+                    let implied_m = implied_m.as_slice().unwrap();
+                    let implied_m: Vec<_> = implied_m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect();
+                    mesh.mesh
+                        .scale_metric(&mut m, h_min, h_max, n_elems, None, Some(&implied_m), step, max_iter.unwrap_or(10))
                 } else {
                     mesh.mesh
                     .scale_metric(&mut m, h_min, h_max, n_elems, None, None, None, max_iter.unwrap_or(10))
@@ -916,9 +892,7 @@ macro_rules! create_remesher {
                 }
 
                 let m = m.as_slice().unwrap();
-                let m: Vec<_> = (0..mesh.mesh.n_verts())
-                    .map(|i| $metric::from_slice(m, i))
-                    .collect();
+                let m: Vec<_> = m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect();
                 let m = mesh.mesh.smooth_metric(&m);
                 if let Err(m) = m {
                     return Err(PyRuntimeError::new_err(m.to_string()));
@@ -947,9 +921,7 @@ macro_rules! create_remesher {
                 }
 
                 let m = m.as_slice().unwrap();
-                let mut m: Vec<_> = (0..mesh.mesh.n_verts())
-                    .map(|i| $metric::from_slice(m, i))
-                    .collect();
+                let mut m: Vec<_> = m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect();
                 let res = mesh.mesh.apply_metric_gradation(&mut m, beta, n_iter);
                 match res {
                     Ok(_) => {
@@ -980,9 +952,7 @@ macro_rules! create_remesher {
                 }
 
                 let m = m.as_slice().unwrap();
-                let m: Vec<_> = (0..mesh.mesh.n_verts())
-                    .map(|i| $metric::from_slice(m, i))
-                    .collect();
+                let m: Vec<_> = m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect();
                 let res = mesh.mesh.elem_data_to_vertex_data_metric::<$metric>(&m);
                 match res {
                     Ok(res) => {
@@ -1012,9 +982,7 @@ macro_rules! create_remesher {
                 }
 
                 let m = m.as_slice().unwrap();
-                let m: Vec<_> = (0..mesh.mesh.n_verts())
-                    .map(|i| $metric::from_slice(m, i))
-                    .collect();
+                let m: Vec<_> = m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect();
                 let res = mesh.mesh.vertex_data_to_elem_data_metric::<$metric>(&m);
                 match res {
                     Ok(res) => {
@@ -1053,13 +1021,14 @@ macro_rules! create_remesher {
                 }
 
                 let m = m.as_slice().unwrap();
+                let m = m.chunks($metric::N).map(|x| $metric::from_slice(x));
+
                 let m_other = m_other.as_slice().unwrap();
+                let m_other = m_other.chunks($metric::N).map(|x| $metric::from_slice(x));
 
                 let mut res = Vec::with_capacity(mesh.mesh.n_verts() as usize * <$metric as Metric<$dim>>::N);
 
-                for i_vert in 0..mesh.mesh.n_verts() {
-                    let mut m_i = $metric::from_slice(m, i_vert);
-                    let m_other_i = $metric::from_slice(m_other, i_vert);
+                for (mut m_i, m_other_i) in m.zip(m_other) {
                     m_i.control_step(&m_other_i, step);
                     res.extend(m_i.into_iter());
                 }
@@ -1075,9 +1044,7 @@ macro_rules! create_remesher {
                 m: PyReadonlyArray2<f64>,
             ) -> (f64, f64, f64, f64) {
                 let m = m.as_slice().unwrap();
-                let m: Vec<_> = (0..mesh.mesh.n_verts())
-                    .map(|i| $metric::from_slice(m, i))
-                    .collect();
+                let m = m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect::<Vec<_>>();
                 mesh.mesh.metric_info(&m)
             }
 
@@ -1126,6 +1093,7 @@ macro_rules! create_remesher {
             #[allow(clippy::too_many_arguments)]
             pub fn remesh(
                 &mut self,
+                geometry: &$geom,
                 num_iter:Option< u32>,
                 two_steps: Option<bool>,
                 split_max_iter:Option< u32>,
@@ -1185,7 +1153,7 @@ macro_rules! create_remesher {
                     smooth_relax: smooth_relax.map(|x| x.to_vec().unwrap()).unwrap_or(default_params.smooth_relax),
                     max_angle: max_angle.unwrap_or(default_params.max_angle),
                 };
-                self.remesher.remesh(params);
+                self.remesher.remesh(params, &geometry.geom);
             }
 
             /// Get the element qualities as a numpy array of size (# or elements)
@@ -1255,15 +1223,15 @@ fn pytucanos(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<Mesh21>()?;
     m.add_class::<LinearGeometry2d>()?;
     m.add_class::<LinearGeometry3d>()?;
-    #[cfg(feature = "libmeshb-sys")]
+    #[cfg(feature = "meshb")]
     m.add_function(wrap_pyfunction!(read_solb, m)?)?;
     m.add_class::<Remesher2dIso>()?;
     m.add_class::<Remesher2dAniso>()?;
     m.add_class::<Remesher3dIso>()?;
     m.add_class::<Remesher3dAniso>()?;
-    #[cfg(not(feature = "libmeshb-sys"))]
+    #[cfg(not(feature = "meshb"))]
     m.add("HAVE_MESHB", false)?;
-    #[cfg(feature = "libmeshb-sys")]
+    #[cfg(feature = "meshb")]
     m.add("HAVE_MESHB", true)?;
     Ok(())
 }
