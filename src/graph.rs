@@ -134,7 +134,7 @@ pub struct CSRGraph {
 
 impl CSRGraph {
     fn set_ptr<E: IntoIterator<Item = Idx> + Copy>(elems: &[E]) -> Self {
-        let nv = elems.iter().copied().flatten().max().unwrap() as usize + 1;
+        let nv = elems.iter().copied().flatten().max().unwrap_or(0) as usize + 1;
         let n = elems.iter().copied().flatten().count();
 
         let mut res = Self {
