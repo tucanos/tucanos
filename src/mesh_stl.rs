@@ -75,7 +75,7 @@ pub fn orient_stl<const D: usize, E: Elem>(
 
     stl_mesh
         .mut_elems()
-        .zip(new_elems.into_iter())
+        .zip(new_elems)
         .for_each(|(e0, e1)| *e0 = e1);
 
     if n_inverted > 0 {
