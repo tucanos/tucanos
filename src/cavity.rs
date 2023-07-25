@@ -89,12 +89,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
     }
 
     /// Build the local cavity from a list of elements
-    pub fn compute<G: Geometry<D>>(
-        &mut self,
-        r: &Remesher<D, E, M, G>,
-        global_elems: &[Idx],
-        x: CavityType,
-    ) {
+    pub fn compute(&mut self, r: &Remesher<D, E, M>, global_elems: &[Idx], x: CavityType) {
         self.clear();
         self.q_min = f64::INFINITY;
 
