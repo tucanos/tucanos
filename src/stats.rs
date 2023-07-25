@@ -1,4 +1,4 @@
-use crate::{geometry::Geometry, metric::Metric, remesher::Remesher, topo_elems::Elem, Idx};
+use crate::{metric::Metric, remesher::Remesher, topo_elems::Elem, Idx};
 use core::fmt;
 use serde::Serialize;
 
@@ -108,9 +108,7 @@ pub struct RemesherStats {
 }
 
 impl RemesherStats {
-    pub fn new<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>>(
-        r: &Remesher<D, E, M, G>,
-    ) -> Self {
+    pub fn new<const D: usize, E: Elem, M: Metric<D>>(r: &Remesher<D, E, M>) -> Self {
         Self {
             n_verts: r.n_verts(),
             n_elems: r.n_elems(),
@@ -137,9 +135,7 @@ pub struct InitStats {
 }
 
 impl InitStats {
-    pub fn new<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>>(
-        r: &Remesher<D, E, M, G>,
-    ) -> Self {
+    pub fn new<const D: usize, E: Elem, M: Metric<D>>(r: &Remesher<D, E, M>) -> Self {
         Self {
             r_stats: RemesherStats::new(r),
         }
@@ -154,10 +150,10 @@ pub struct SplitStats {
 }
 
 impl SplitStats {
-    pub fn new<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>>(
+    pub fn new<const D: usize, E: Elem, M: Metric<D>>(
         n_splits: Idx,
         n_fails: Idx,
-        r: &Remesher<D, E, M, G>,
+        r: &Remesher<D, E, M>,
     ) -> Self {
         Self {
             n_splits,
@@ -175,10 +171,10 @@ pub struct SwapStats {
 }
 
 impl SwapStats {
-    pub fn new<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>>(
+    pub fn new<const D: usize, E: Elem, M: Metric<D>>(
         n_swaps: Idx,
         n_fails: Idx,
-        r: &Remesher<D, E, M, G>,
+        r: &Remesher<D, E, M>,
     ) -> Self {
         Self {
             n_swaps,
@@ -196,10 +192,10 @@ pub struct CollapseStats {
 }
 
 impl CollapseStats {
-    pub fn new<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>>(
+    pub fn new<const D: usize, E: Elem, M: Metric<D>>(
         n_collapses: Idx,
         n_fails: Idx,
-        r: &Remesher<D, E, M, G>,
+        r: &Remesher<D, E, M>,
     ) -> Self {
         Self {
             n_collapses,
@@ -216,10 +212,7 @@ pub struct SmoothStats {
 }
 
 impl SmoothStats {
-    pub fn new<const D: usize, E: Elem, M: Metric<D>, G: Geometry<D>>(
-        n_fails: Idx,
-        r: &Remesher<D, E, M, G>,
-    ) -> Self {
+    pub fn new<const D: usize, E: Elem, M: Metric<D>>(n_fails: Idx, r: &Remesher<D, E, M>) -> Self {
         Self {
             n_fails,
             r_stats: RemesherStats::new(r),

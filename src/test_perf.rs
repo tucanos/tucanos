@@ -41,7 +41,7 @@ fn main() -> Result<()> {
 
     let mut remesher = Remesher::new(&mesh, &m, &geom)?;
 
-    remesher.remesh(RemesherParams::default());
+    remesher.remesh(RemesherParams::default(), &geom);
     remesher.check()?;
 
     let mesh = remesher.to_mesh(true);
