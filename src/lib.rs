@@ -83,7 +83,7 @@ pub fn min_max_iter<I: Iterator<Item = f64>>(it: I) -> (f64, f64) {
 }
 
 // Set the log level for tests
-#[cfg(test)]
+#[allow(dead_code)]
 fn init_log(level: &str) {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(level))
         .format_timestamp(None)

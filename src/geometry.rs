@@ -80,7 +80,7 @@ impl<const D: usize, E: Elem> LinearPatchGeometry<D, E> {
     }
 
     // Perform projection
-    fn project(&self, pt: &mut Point<D>) -> (f64, Point<D>) {
+    fn project(&self, pt: &Point<D>) -> (f64, Point<D>) {
         self.mesh.get_octree().unwrap().project(pt)
     }
 }
@@ -114,7 +114,7 @@ where
     }
 
     // Perform projection
-    fn project(&self, pt: &mut Point<D>) -> (f64, Point<D>) {
+    fn project(&self, pt: &Point<D>) -> (f64, Point<D>) {
         self.mesh.get_octree().unwrap().project(pt)
     }
 

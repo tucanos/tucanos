@@ -791,6 +791,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     ///   - one of the elements in its cavity has a quality < qmin
     ///   - no edge smaller that `l_min` or longer that `l_max` is created
     /// TODO: move to Cavity?
+    #[allow(clippy::too_many_arguments)]
     fn try_swap<G: Geometry<D>>(
         &mut self,
         edg: [Idx; 2],
