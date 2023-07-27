@@ -113,10 +113,10 @@ def remesh(msh, h, bdy=None, step=None, **remesh_params):
         msh.compute_vertex_to_elems()
         msh.compute_volumes()
         m_implied = msh.implied_metric()
-        h = Remesher.limit_metric(msh, h, m_implied, step)
+        h = Remesher.control_step_metric(msh, h, m_implied, step)
 
     remesher = Remesher(msh, geom, h)
-    remesher.remesh(**remesh_params)
+    remesher.remesh(geom, **remesh_params)
 
     return remesher.to_mesh()
 
