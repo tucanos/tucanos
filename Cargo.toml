@@ -21,7 +21,6 @@ sorted-vec = "0.8.2"
 rand = "0.8.5"
 lindel = "0.1.1"
 marechal-libol-sys = { git = "https://github.com/tucanos/marechal-libol-sys.git" }
-simba = "0.8.0"
 libmeshb-sys = {git = "https://github.com/tucanos/libmeshb-sys.git", optional = true}
 vtkio = {version = "0.6.3"}
 scotch = { git = "https://github.com/tucanos/scotch-rs.git", version = "0.2.1", optional = true }
