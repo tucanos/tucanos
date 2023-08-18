@@ -34,17 +34,7 @@ LIBMESHB_DIR="/path/to/libMeshb_prefix"
 See <https://github.com/xgarnaud/libmeshb-sys> and <https://github.com/jeromerobert/marechal-libol-sys.git> for other possible environment variables.
 
 * Optional features are
-    - netlib / accelerate / openblas / intel-mkl to select the LAPACK version
     - nlopt to enable smoothing with NLOpt
-
-Instead of specifying any of `< netlib | accelerate | openblas | intel-mkl>` you may specify the Lapack
-implementation you prefer to use by adding this to the `.cargo/config.toml` file:
-
-```toml
-[env]
-REMESH_LINK_DIRS="/usr/lib/x86_64-linux-gnu/openblas-pthread"
-REMESH_LIBRARIES="openblasp-r0.3.21"
-```
 
 ## Render doc
 
