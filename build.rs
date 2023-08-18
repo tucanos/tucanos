@@ -12,7 +12,8 @@ fn main() {
     }
 
     if let Ok(ld) = std::env::var("REMESH_LINK_DIRS") {
-        for s in ld.split(':') {
+        for p in std::env::split_paths(&ld) {
+            let s = p.display();
             rpath.push(s.to_string());
             println!("cargo:rustc-link-search={s}");
         }
