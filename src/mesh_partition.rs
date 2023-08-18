@@ -118,6 +118,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(any(feature = "scotch", feature = "metis"))]
     use crate::Result;
 
     #[cfg(feature = "scotch")]
