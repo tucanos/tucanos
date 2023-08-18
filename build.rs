@@ -20,7 +20,9 @@ fn main() {
     }
 
     if let Ok(lib) = std::env::var("REMESH_LIBRARIES") {
-        println!("cargo:rustc-link-lib={lib}");
+        for s in lib.split(',') {
+            println!("cargo:rustc-link-lib={s}");
+        }
     }
 
     for p in &rpath {
