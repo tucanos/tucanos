@@ -541,7 +541,7 @@ macro_rules! create_geometry {
                 gmesh.compute_octree();
                 let geom = LinearGeometry::new(&mesh.mesh, gmesh).unwrap();
 
-                Self{geom: geom}
+                Self { geom }
             }
 
             /// Compute the max distance between the face centers and the geometry normals
