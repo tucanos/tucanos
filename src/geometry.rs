@@ -8,7 +8,7 @@ use crate::{
 };
 use log::info;
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::{collections::HashMap, f64::consts::PI, hash::BuildHasherDefault};
+use std::{collections::HashMap, hash::BuildHasherDefault};
 
 /// Representation of a D-dimensional geometry
 pub trait Geometry<const D: usize> {
@@ -137,11 +137,10 @@ where
         let tree = self.mesh.get_octree().unwrap();
         let i_elem = tree.nearest(pt) as usize;
         let u = self.u.as_ref().unwrap();
-        if let Some(v) = self.v.as_ref() {
-            Ok((u[i_elem], Some(v[i_elem])))
-        } else {
-            Ok((u[i_elem], None))
-        }
+        self.v.as_ref().map_or_else(
+            || Ok((u[i_elem], None)),
+            |v| Ok((u[i_elem], Some(v[i_elem]))),
+        )
     }
 
     pub fn write_curvature(&self, fname: &str) -> Result<()> {
@@ -239,7 +238,7 @@ where
     }
 
     pub fn compute_curvature(&mut self) {
-        for (&i, patch) in self.patches.iter_mut() {
+        for (&i, patch) in &mut self.patches {
             info!("Compute curvature for patch {i}");
             patch.compute_curvature();
         }
@@ -250,9 +249,8 @@ where
     }
 
     pub fn write_curvature(&self, fname: &str) -> Result<()> {
-        for (tag, patch) in self.patches.iter() {
-            patch
-                .write_curvature(&String::from(fname).replace(".vtu", &format!("_{}.vtu", tag)))?;
+        for (tag, patch) in &self.patches {
+            patch.write_curvature(&String::from(fname).replace(".vtu", &format!("_{tag}.vtu")))?;
         }
 
         Ok(())
@@ -295,8 +293,8 @@ where
         let tree = patch.mesh.get_octree().unwrap();
         let idx = tree.nearest(pt);
         let n_ref = patch.mesh.gelem(patch.mesh.elem(idx)).normal();
-        let cos_a = n.dot(&n_ref).min(1.0).max(-1.0);
-        f64::acos(cos_a) * 180. / PI
+        let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
+        f64::acos(cos_a).to_degrees()
     }
 }
 

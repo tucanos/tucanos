@@ -120,7 +120,7 @@ impl Topology {
         res
     }
 
-    pub fn compute_parents(&mut self) {
+    fn compute_parents(&mut self) {
         for dim in (0..=self.dim).rev() {
             for e in &self.entities[dim as usize] {
                 let children = self.children(e);
@@ -161,7 +161,7 @@ impl Topology {
         etags: I2,
         faces: I3,
         ftags: I4,
-        topo: &mut Topology,
+        topo: &mut Self,
     ) -> (Vec<E::Face>, Vec<Tag>) {
         // Input faces
         let n_faces = faces.len() as Idx;
@@ -250,7 +250,7 @@ impl Topology {
     >(
         elems: I1,
         etags: I2,
-        topo: &mut Topology,
+        topo: &mut Self,
         ntags: &mut [TopoTag],
     ) {
         for (elem, etag) in elems.zip(etags) {
@@ -266,10 +266,10 @@ impl Topology {
 
     pub fn from_mesh<const D: usize, E: Elem>(
         mesh: &SimplexMesh<D, E>,
-    ) -> (Topology, Vec<TopoTag>) {
+    ) -> (Self, Vec<TopoTag>) {
         info!("Building topology from mesh");
 
-        let mut topo = Topology::new(E::N_VERTS as Dim - 1);
+        let mut topo = Self::new(E::N_VERTS as Dim - 1);
         let n_verts = mesh.n_verts();
         let mut vtags: Vec<TopoTag> = vec![(0, 0); n_verts as usize];
 
@@ -486,7 +486,7 @@ mod tests {
         let p = t.parents.get(&((0, 2), (1, 3)));
         assert!(p.is_none());
 
-        let mut tags = [(2 as Dim, 1 as Tag)].iter().copied();
+        let mut tags = std::iter::once(&(2 as Dim, 1 as Tag)).copied();
         let p = t.elem_tag(&mut tags);
         assert!(p.is_some());
         assert_eq!(p.unwrap().0, 2);
@@ -529,8 +529,8 @@ mod tests {
 
     #[test]
     fn test_get_faces_and_tags_2d_nobdy() {
-        let elems = vec![Triangle::new(0, 1, 2), Triangle::new(0, 2, 3)];
-        let etags = vec![1, 2];
+        let elems = [Triangle::new(0, 1, 2), Triangle::new(0, 2, 3)];
+        let etags = [1, 2];
         let faces = Vec::new();
         let ftags = Vec::new();
 
@@ -552,15 +552,15 @@ mod tests {
 
     #[test]
     fn test_get_faces_and_tags_2d() {
-        let elems = vec![Triangle::new(0, 1, 2), Triangle::new(0, 2, 3)];
-        let etags = vec![1, 2];
-        let faces = vec![
+        let elems = [Triangle::new(0, 1, 2), Triangle::new(0, 2, 3)];
+        let etags = [1, 2];
+        let faces = [
             Edge::new(0, 1),
             Edge::new(1, 2),
             Edge::new(2, 3),
             Edge::new(3, 0),
         ];
-        let ftags = vec![1, 2, 3, 4];
+        let ftags = [1, 2, 3, 4];
 
         let mut topo = Topology::new(2);
         topo.insert((2, 1), &[]);

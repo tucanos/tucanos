@@ -163,11 +163,12 @@ impl CSRGraph {
         }
     }
 
+    #[must_use]
     pub fn new(edgs: &[[Idx; 2]]) -> Self {
         let mut res = Self::set_ptr(edgs);
         res.m = res.n();
 
-        for e in edgs.iter() {
+        for e in edgs {
             let i0 = e[0] as usize;
             let i1 = e[1] as usize;
             let mut ok = false;
@@ -222,7 +223,7 @@ impl CSRGraph {
     }
 
     #[must_use]
-    pub fn m(&self) -> Idx {
+    pub const fn m(&self) -> Idx {
         self.m
     }
 

@@ -16,6 +16,7 @@ use nalgebra::{SMatrix, SVector, SymmetricEigen};
 /// touch vertex p. As shown by Max (1999), this produces more
 /// accurate normal estimates than other weighting approaches,
 /// and is exact for vertices that lie on a sphere."
+#[must_use]
 pub fn compute_vertex_normals<const D: usize, E: Elem>(mesh: &SimplexMesh<D, E>) -> Vec<Point<D>> {
     debug!("Compute the surface normals at the vertices");
 
@@ -25,7 +26,7 @@ pub fn compute_vertex_normals<const D: usize, E: Elem>(mesh: &SimplexMesh<D, E>)
         let ge = mesh.gelem(e);
         let n = ge.normal();
         let w = ge.vol();
-        for i_vert in e.into_iter() {
+        for i_vert in e {
             normals[i_vert as usize] += w * n;
         }
     }
@@ -55,6 +56,7 @@ fn bound_curvature(x: f64) -> f64 {
 /// (2D version of <https://gfx.cs.princeton.edu/pubs/Rusinkiewicz_2004_ECA/curvpaper.pdf>)
 /// NB: curvature should not be computed across non smooth patches
 /// NB: curvature estimation is not accurate near the boundaires
+#[must_use]
 pub fn compute_curvature_tensor_2d(smesh: &SimplexMesh<2, Edge>) -> Vec<Point<2>> {
     debug!("Compute curvature tensors (2d)");
     let vertex_normals = compute_vertex_normals(smesh);
@@ -88,6 +90,7 @@ pub fn compute_curvature_tensor_2d(smesh: &SimplexMesh<2, Edge>) -> Vec<Point<2>
 /// the algorithm is taken from <https://gfx.cs.princeton.edu/pubs/Rusinkiewicz_2004_ECA/curvpaper.pdf>
 /// NB: curvature should not be computed across non smooth patches
 /// NB: curvature estimation is not accurate near the boundaires
+#[must_use]
 pub fn compute_curvature_tensor(
     smesh: &SimplexMesh<3, Triangle>,
 ) -> (Vec<Point<3>>, Vec<Point<3>>) {
@@ -335,7 +338,7 @@ mod tests {
             let theta = 3.0 * p[1];
             let x = r * f64::cos(theta);
             let y = r * f64::sin(theta);
-            *p = Point::<2>::new(x, y)
+            *p = Point::<2>::new(x, y);
         });
 
         let u = compute_curvature_tensor_2d(&mesh);
@@ -389,7 +392,7 @@ mod tests {
             let theta = 3.0 * p[1];
             let x = r * f64::cos(theta);
             let y = r * f64::sin(theta);
-            *p = Point::<2>::new(x, y)
+            *p = Point::<2>::new(x, y);
         });
 
         mesh.compute_elem_to_elems();

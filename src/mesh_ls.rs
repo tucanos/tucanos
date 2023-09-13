@@ -316,17 +316,13 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             let dx_df_w = neighbors.iter().map(|&(i, order)| {
                 let dx = self.vert(i) - self.vert(i_vert);
                 let df = f[i as usize] - f[i_vert as usize];
-                let w = if let Some(weight_exp) = weight_exp {
+                let w = weight_exp.map_or(if order == 1 { 1.0 } else { 0.1 }, |weight_exp| {
                     if weight_exp > 0 {
                         1. / dx.norm().powi(weight_exp)
                     } else {
                         1.0
                     }
-                } else if order == 1 {
-                    1.0
-                } else {
-                    0.1
-                };
+                });
                 (dx, df, w)
             });
             let w0 = if weight_exp.is_some() {

@@ -321,7 +321,7 @@ mod tests {
 
         let mut coords = Vec::with_capacity(2 * (n as usize) * dim);
         for i in 0..n {
-            let theta = 2.0 * PI * i as f64 / n as f64;
+            let theta = 2.0 * PI * f64::from(i) / f64::from(n);
             coords.push(Point::<3>::new(
                 r_in * f64::cos(theta),
                 r_in * f64::sin(theta),

@@ -17,9 +17,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         elem_data: Option<HashMap<String, &[f64]>>,
     ) -> Result<()> {
         info!("Write {file_name}");
-        let connectivity = self.elems().flatten().map(|i| i as u64).collect();
+        let connectivity = self.elems().flatten().map(u64::from).collect();
         let offsets = (0..self.n_elems())
-            .map(|i| (E::N_VERTS * (i + 1)) as u64)
+            .map(|i| u64::from(E::N_VERTS * (i + 1)))
             .collect();
         let cell_type = match E::N_VERTS {
             4 => CellType::Tetra,
@@ -29,7 +29,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         };
         let mut point_data = Vec::new();
         if let Some(vertex_data) = vertex_data {
-            for (name, arr) in vertex_data.iter() {
+            for (name, arr) in &vertex_data {
                 debug!("Write vertex data {name}");
                 let num_comp = arr.len() / self.n_verts() as usize;
                 point_data.push(Attribute::DataArray(DataArrayBase {
@@ -54,7 +54,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         }));
 
         if let Some(elem_data) = elem_data {
-            for (name, arr) in elem_data.iter() {
+            for (name, arr) in &elem_data {
                 debug!("Write element data {name}");
                 let num_comp = arr.len() / self.n_verts() as usize;
                 cell_data.push(Attribute::DataArray(DataArrayBase {

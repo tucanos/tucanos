@@ -20,7 +20,7 @@ pub fn read_stl(file_name: &str) -> SimplexMesh<3, Triangle> {
     verts.extend(
         stl.vertices
             .iter()
-            .map(|v| Point::<3>::new(v[0] as f64, v[1] as f64, v[2] as f64)),
+            .map(|v| Point::<3>::new(f64::from(v[0]), f64::from(v[1]), f64::from(v[2]))),
     );
 
     let mut elems = Vec::with_capacity(3 * stl.faces.len());

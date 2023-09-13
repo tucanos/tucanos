@@ -103,13 +103,13 @@ pub struct IsoMetric<const D: usize>(f64);
 impl<const D: usize> IsoMetric<D> {
     /// Create an `IsoMetric` from size h
     #[must_use]
-    pub fn from(h: f64) -> Self {
+    pub const fn from(h: f64) -> Self {
         Self(h)
     }
 
     /// Get the size h from a metric
     #[must_use]
-    pub fn h(&self) -> f64 {
+    pub const fn h(&self) -> f64 {
         self.0
     }
 }
@@ -248,6 +248,7 @@ where
     /// ```
     ///
     /// NB: A threshold is applied to the eigenvalues of $`\mathcal M`$.
+    #[must_use]
     fn from_mat(mat: SMatrix<f64, D, D>) -> Self {
         let mut eig = mat.symmetric_eigen();
         // Ensure that the metric is valid, i.e. that all the eigenvalues are >0
@@ -268,7 +269,7 @@ where
     }
 
     fn is_near_zero(&self, tol: f64) -> bool {
-        self.into_iter().map(|x| x.abs()).sum::<f64>() < tol
+        self.into_iter().map(f64::abs).sum::<f64>() < tol
     }
 
     fn from_diagonal(s: &[f64]) -> Self;
@@ -279,7 +280,7 @@ where
 impl fmt::Display for AnisoMetric3d {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mat = self.as_mat();
-        writeln!(f, "M = {:?}", mat)?;
+        writeln!(f, "M = {mat:?}")?;
 
         let eig = mat.symmetric_eigen();
         for i in 0..3 {
@@ -287,12 +288,12 @@ impl fmt::Display for AnisoMetric3d {
                 f,
                 "--> h = {}, {:?}",
                 1. / eig.eigenvalues[i].sqrt(),
-                eig.eigenvectors.row(i).to_owned()
+                eig.eigenvectors.row(i).clone()
             )?;
         }
 
         let vol = 1. / eig.eigenvalues.iter().product::<f64>().sqrt();
-        writeln!(f, "vol = {}", vol)?;
+        writeln!(f, "vol = {vol}")?;
         Ok(())
     }
 }
@@ -333,7 +334,7 @@ where
         let mut s_max: f64 = 0.0;
         let mut s_min: f64 = S_MAX;
 
-        for s in eig.eigenvalues.iter().cloned() {
+        for s in eig.eigenvalues.iter().copied() {
             assert!(s > (1.0 - eps) * S_MIN, "s < S_MIN");
             assert!(s < (1.0 + eps) * S_MAX, "s > S_MAX");
             s_max = s_max.max(s);
@@ -452,7 +453,7 @@ where
 
     fn differs_from(&self, other: &Self, tol: f64) -> bool {
         self.into_iter()
-            .zip(other.into_iter())
+            .zip(*other)
             .any(|(x, y)| f64::abs(x - y) > tol * x)
     }
 
@@ -596,7 +597,7 @@ impl Index<usize> for AnisoMetric2d {
 impl fmt::Display for AnisoMetric2d {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mat = self.as_mat();
-        writeln!(f, "M = {:?}", mat)?;
+        writeln!(f, "M = {mat:?}")?;
 
         let eig = mat.symmetric_eigen();
         for i in 0..2 {
@@ -604,12 +605,12 @@ impl fmt::Display for AnisoMetric2d {
                 f,
                 "--> h = {}, {:?}",
                 1. / eig.eigenvalues[i].sqrt(),
-                eig.eigenvectors.row(i).to_owned()
+                eig.eigenvectors.row(i).clone()
             )?;
         }
 
         let vol = 1. / eig.eigenvalues.iter().product::<f64>().sqrt();
-        writeln!(f, "vol = {}", vol)?;
+        writeln!(f, "vol = {vol}")?;
         Ok(())
     }
 }

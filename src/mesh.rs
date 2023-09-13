@@ -104,6 +104,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         }
     }
 
+    #[must_use]
     pub fn empty() -> Self {
         Self {
             verts: Vec::new(),
@@ -127,16 +128,19 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Get the number of vertices
+    #[must_use]
     pub fn n_verts(&self) -> Idx {
         self.verts.len() as Idx
     }
 
     /// Get the number or elements
+    #[must_use]
     pub fn n_elems(&self) -> Idx {
         self.elems.len() as Idx
     }
 
     /// Get the number of faces
+    #[must_use]
     pub fn n_faces(&self) -> Idx {
         self.faces.len() as Idx
     }
@@ -148,6 +152,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Get an iterator through the vertices
+    #[must_use]
     pub fn verts(&self) -> impl ExactSizeIterator<Item = Point<D>> + '_ {
         self.verts.iter().copied()
     }
@@ -164,6 +169,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Get an iterator through the elements
+    #[must_use]
     pub fn elems(&self) -> impl ExactSizeIterator<Item = E> + '_ {
         self.elems.iter().copied()
     }
@@ -180,6 +186,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Get an iterator through the elements tags
+    #[must_use]
     pub fn etags(&self) -> impl ExactSizeIterator<Item = Tag> + '_ {
         self.etags.iter().copied()
     }
@@ -197,6 +204,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Get an iterator through the geometric elements
+    #[must_use]
     pub fn gelems(&self) -> impl ExactSizeIterator<Item = E::Geom<D, IsoMetric<D>>> + '_ {
         self.elems().map(|e| self.gelem(e))
     }
@@ -208,6 +216,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Get an iterator through the faces
+    #[must_use]
     pub fn faces(&self) -> impl ExactSizeIterator<Item = E::Face> + '_ {
         self.faces.iter().copied()
     }
@@ -224,6 +233,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Get an iterator through the face tags
+    #[must_use]
     pub fn ftags(&self) -> impl ExactSizeIterator<Item = Tag> + '_ {
         self.ftags.iter().copied()
     }
@@ -313,7 +323,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             let f2e = self.faces_to_elems.as_ref().unwrap();
 
             let mut g = Vec::new();
-            for (_, val) in f2e.iter() {
+            for val in f2e.values() {
                 for (i, i_elem) in val.iter().copied().enumerate() {
                     for j_elem in val.iter().skip(i + 1).copied() {
                         g.push([i_elem, j_elem]);
@@ -569,7 +579,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let mut next_internal_tag = new_faces_tag + 1;
         let mut internal_faces_tags: HashMap<Tag, Vec<Tag>> = HashMap::new();
 
-        for (k, v) in f2e.iter() {
+        for (k, v) in f2e {
             if v.len() == 1 {
                 // This is a boundary face
                 let elem = self.elems[v[0] as usize];
@@ -601,7 +611,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                         .copied()
                         .map(|i| self.etags[i as usize])
                         .collect::<Vec<_>>();
-                    etags.sort();
+                    etags.sort_unstable();
                     if let Some(etags_ref) = internal_faces_tags.get(tag) {
                         // Check that the tags are the same
                         let mut is_ok = etags.len() == etags_ref.len();
@@ -610,8 +620,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                         }
                         if !is_ok {
                             return Err(Error::from(&format!(
-                                "internal faces with tag {} belong to {:?} and {:?}",
-                                tag, etags, etags_ref
+                                "internal faces with tag {tag} belong to {etags:?} and {etags_ref:?}"
                             )));
                         }
                     } else {
@@ -623,10 +632,10 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                         .copied()
                         .map(|i| self.etags[i as usize])
                         .collect::<Vec<_>>();
-                    etags.sort();
+                    etags.sort_unstable();
                     if etags.len() > 2 || etags[0] != etags[1] {
                         let mut new_tag = true;
-                        for (tag, etags_ref) in internal_faces_tags.iter() {
+                        for (tag, etags_ref) in &internal_faces_tags {
                             let mut is_same = etags.len() == etags_ref.len();
                             for (t0, t1) in etags.iter().zip(etags_ref.iter()) {
                                 is_same = is_same && (t0 == t1);
@@ -667,7 +676,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         if n_untagged > 0 {
             info!("Added {} untagged faces with tag={}", n_untagged, new_tag);
         }
-        for (tag, etags) in internal_faces.iter() {
+        for (tag, etags) in &internal_faces {
             if *tag > new_tag {
                 info!(
                     "Added tag {} to internal faces belonging to elements with tags {:?}",
@@ -723,6 +732,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Return a bool vector that indicates wether a vertex in on a face
+    #[must_use]
     pub fn boundary_flag(&self) -> Vec<bool> {
         let mut res = vec![false; self.n_verts() as usize];
         self.faces().flatten().for_each(|i| res[i as usize] = true);
@@ -732,6 +742,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Extract a sub-mesh containing all the elements with a specific tag
     /// Return the sub-mesh and the indices of the vertices, elements and faces in the
     /// parent mesh
+    #[must_use]
     pub fn extract_tag(&self, tag: Tag) -> SubSimplexMesh<D, E> {
         self.extract(|t| t == tag)
     }
@@ -763,8 +774,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         for (i_elem, v) in self.gelems().map(|ge| ge.vol()).enumerate() {
             if v < 0.0 {
                 return Err(Error::from(&format!(
-                    "The volume of element {} is {}",
-                    i_elem, v,
+                    "The volume of element {i_elem} is {v}",
                 )));
             }
         }
@@ -785,7 +795,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         }
 
         let f2e = self.faces_to_elems.as_ref().unwrap();
-        for (f, els) in f2e.iter() {
+        for (f, els) in f2e {
             let tmp = tagged_faces.get(f);
             match els.len() {
                 1 => {
@@ -945,7 +955,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 added_verts.push(i as Idx);
                 *x = next;
                 next += 1;
-                self.verts.push(other.verts[i])
+                self.verts.push(other.verts[i]);
             }
         });
 
@@ -1003,6 +1013,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Get the number of faces with a given tag
+    #[must_use]
     pub fn n_tagged_faces(&self, tag: Tag) -> Idx {
         self.ftags.iter().filter(|&&t| t == tag).count() as Idx
     }
