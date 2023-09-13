@@ -4,10 +4,6 @@ version = "0.1.0"
 edition = "2021"
 links = "tucanos"
 
-[[bin]]
-name = "test_perf"
-path = "src/test_perf.rs"
-
 [dependencies]
 nalgebra = { version = "0.32", features = ["rand"] }
 env_logger = "0.10.0"
