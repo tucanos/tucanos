@@ -28,7 +28,7 @@ impl<T: Copy> Vec<T> {
         }
     }
 
-    pub fn with_single(v: T) -> Self {
+    pub const fn with_single(v: T) -> Self {
         Self { data: Data::One(v) }
     }
 

@@ -295,25 +295,25 @@ pub enum ElementType {
 impl ElementType {
     fn n_verts(self) -> Idx {
         match self {
-            ElementType::Edge => 2,
-            ElementType::Triangle => 3,
-            ElementType::Quadrangle => 4,
-            ElementType::Tetrahedron => 4,
-            ElementType::Pyramids => 5,
-            ElementType::Prism => 6,
-            ElementType::Hexahedron => 8,
+            Self::Edge => 2,
+            Self::Triangle => 3,
+            Self::Quadrangle => 4,
+            Self::Tetrahedron => 4,
+            Self::Pyramids => 5,
+            Self::Prism => 6,
+            Self::Hexahedron => 8,
         }
     }
 
     fn dim(self) -> Idx {
         match self {
-            ElementType::Edge => 1,
-            ElementType::Triangle => 2,
-            ElementType::Quadrangle => 2,
-            ElementType::Tetrahedron => 3,
-            ElementType::Pyramids => 3,
-            ElementType::Prism => 3,
-            ElementType::Hexahedron => 3,
+            Self::Edge => 1,
+            Self::Triangle => 2,
+            Self::Quadrangle => 2,
+            Self::Tetrahedron => 3,
+            Self::Pyramids => 3,
+            Self::Prism => 3,
+            Self::Hexahedron => 3,
         }
     }
 }
@@ -516,16 +516,19 @@ impl<const D: usize> MultiElementMesh<D> {
         (tets, tet_tags, tris, tri_tags, edgs, edg_tags)
     }
 
+    #[must_use]
     pub fn to_tet_mesh(self) -> SimplexMesh<D, Tetrahedron> {
         let (tets, tet_tags, tris, tri_tags, _, _) = self.to_simplices();
         SimplexMesh::new(self.verts, tets, tet_tags, tris, tri_tags)
     }
 
+    #[must_use]
     pub fn to_tri_mesh(self) -> SimplexMesh<D, Triangle> {
         let (_, _, tris, tri_tags, edgs, edg_tags) = self.to_simplices();
         SimplexMesh::new(self.verts, tris, tri_tags, edgs, edg_tags)
     }
 
+    #[must_use]
     pub fn to_edg_mesh(self) -> SimplexMesh<D, Edge> {
         let (_, _, _, _, edgs, edg_tags) = self.to_simplices();
         SimplexMesh::new(self.verts, edgs, edg_tags, Vec::new(), Vec::new())

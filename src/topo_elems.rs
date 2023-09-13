@@ -82,7 +82,8 @@ pub trait Elem:
 pub struct Tetrahedron([Idx; 4]);
 
 impl Tetrahedron {
-    pub fn new(i0: Idx, i1: Idx, i2: Idx, i3: Idx) -> Self {
+    #[must_use]
+    pub const fn new(i0: Idx, i1: Idx, i2: Idx, i3: Idx) -> Self {
         Self([i0, i1, i2, i3])
     }
 }
@@ -173,7 +174,8 @@ impl IndexMut<usize> for Tetrahedron {
 pub struct Triangle([Idx; 3]);
 
 impl Triangle {
-    pub fn new(i0: Idx, i1: Idx, i2: Idx) -> Self {
+    #[must_use]
+    pub const fn new(i0: Idx, i1: Idx, i2: Idx) -> Self {
         Self([i0, i1, i2])
     }
 }
@@ -257,6 +259,7 @@ impl IndexMut<usize> for Triangle {
 pub struct Edge([Idx; 2]);
 
 impl Edge {
+    #[must_use]
     pub fn new(i0: Idx, i1: Idx) -> Self {
         Self([i0, i1])
     }
@@ -345,7 +348,7 @@ impl Elem for Vertex {
     const N_EDGES: Idx = 0;
     const DIM: Idx = 0;
     const NAME: &'static str = "Polyvertex";
-    type Face = Vertex;
+    type Face = Self;
     type Geom<const D: usize, M: Metric<D>> = GVertex<D, M>;
 
     fn iter(&self) -> Iter<Idx> {
@@ -431,8 +434,8 @@ mod tests {
 
     #[test]
     fn test_2d() {
-        let elems = vec![Triangle([0, 1, 2]), Triangle([0, 2, 3])];
-        let faces = get_face_to_elem(elems.iter().cloned());
+        let elems = [Triangle([0, 1, 2]), Triangle([0, 2, 3])];
+        let faces = get_face_to_elem(elems.iter().copied());
         assert_eq!(faces.len(), 5);
 
         let face = Edge([0 as Idx, 1 as Idx]);

@@ -16,12 +16,12 @@ use log::{debug, info, trace, warn};
 use nlopt::{Algorithm, Nlopt, Target};
 use rustc_hash::FxHashMap;
 use sorted_vec::SortedVec;
-use std::fs::File;
-use std::io::Write;
-use std::time::Instant;
 use std::{
     cmp::{min, Ordering},
+    fs::File,
     hash::BuildHasherDefault,
+    io::Write,
+    time::Instant,
 };
 
 // /// Get edged indices such that they are sorted by increasing tag dimension and then by
@@ -206,9 +206,8 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     /// Initialize the remesher
     pub fn new<G: Geometry<D>>(mesh: &SimplexMesh<D, E>, m: &[M], geom: &G) -> Result<Self> {
         info!(
-            "Initialize the remesher with {} {}D vertices / {} {}",
+            "Initialize the remesher with {} {D}D vertices / {} {}",
             mesh.n_verts(),
-            D,
             mesh.n_elems(),
             E::NAME
         );
@@ -378,6 +377,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     /// Create a `SimplexMesh`
+    #[must_use]
     pub fn to_mesh(&self, only_bdy_faces: bool) -> SimplexMesh<D, E> {
         info!("Build a mesh");
 
@@ -395,8 +395,8 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
         let mut etags: Vec<Tag> = vec![0; self.n_elems() as usize];
         for (elem, val) in elems.iter().zip(etags.iter_mut()) {
-            let mut vtags = elem.iter().map(|i| self.verts.get(i).unwrap().tag);
-            let etag = self.topo.elem_tag(&mut vtags).unwrap();
+            let vtags = elem.iter().map(|i| self.verts.get(i).unwrap().tag);
+            let etag = self.topo.elem_tag(vtags).unwrap();
             if etag.0 < E::DIM as Dim {
                 warn!("Element {:?} has tag {:?}", elem, etag);
                 let node = self.topo.get(etag).unwrap();
@@ -482,11 +482,13 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     /// Get the coordinates, tag and metric of a vertex
+    #[must_use]
     pub fn get_vertex(&self, i: Idx) -> Option<(Point<D>, TopoTag, M)> {
         self.verts.get(&i).map(|v| (v.vx, v.tag, v.m))
     }
 
     /// Get the number of vertices
+    #[must_use]
     pub fn n_verts(&self) -> Idx {
         self.verts.len() as Idx
     }
@@ -494,8 +496,8 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     /// Insert a new element
     pub fn insert_elem(&mut self, el: E) {
         // To remove after debug
-        let mut vtags = el.iter().map(|i| self.verts.get(i).unwrap().tag);
-        let etag = self.topo.elem_tag(&mut vtags).unwrap();
+        let vtags = el.iter().map(|i| self.verts.get(i).unwrap().tag);
+        let etag = self.topo.elem_tag(vtags).unwrap();
         assert!(etag.0 >= E::DIM as Dim, "Invalid tag, {etag:?}");
         let ge = self.gelem(&el);
         let q = ge.quality();
@@ -549,16 +551,19 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     /// Get the i-th element
+    #[must_use]
     pub fn get_elem(&self, i: Idx) -> Option<ElemInfo<E>> {
         self.elems.get(&i).copied()
     }
 
     /// Get the number of elements
+    #[must_use]
     pub fn n_elems(&self) -> Idx {
         self.elems.len() as Idx
     }
 
     /// Get the number of edges
+    #[must_use]
     pub fn n_edges(&self) -> Idx {
         self.edges.len() as Idx
     }
@@ -572,6 +577,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     /// Estimate the complexity
+    #[must_use]
     pub fn complexity(&self) -> f64 {
         let mut c = 0.0;
         let weights = vec![1. / f64::from(E::N_VERTS); E::N_VERTS as usize];
@@ -643,6 +649,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     /// Get the metric at every vertex
+    #[must_use]
     pub fn metric(&self) -> Vec<f64> {
         self.verts.iter().flat_map(|(_k, v)| v.m).collect()
     }
@@ -653,13 +660,14 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     /// Get an iterator over edge topo dimension and length
-    pub fn dims_and_lengths_iter(&self) -> impl Iterator<Item = (Dim, f64)> + '_ {
+    fn dims_and_lengths_iter(&self) -> impl Iterator<Item = (Dim, f64)> + '_ {
         self.edges
             .keys()
             .map(|k| self.dim_and_scaled_edge_length(*k))
     }
 
     /// Get the edge lengths
+    #[must_use]
     pub fn lengths(&self) -> Vec<f64> {
         self.lengths_iter().collect()
     }
@@ -670,11 +678,13 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     /// Get the metrics
+    #[must_use]
     pub fn metrics(&self) -> Vec<M> {
         self.verts.values().map(|v| v.m).collect()
     }
 
     /// Get the element qualities
+    #[must_use]
     pub fn qualities(&self) -> Vec<f64> {
         self.qualities_iter().collect()
     }
@@ -724,7 +734,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     trace!("Try to split edge {:?}, l = {}", edg, length);
                     self.compute_cavity_edge(edg, &mut cavity);
                     // TODO: move to Cavity?
-                    let CavityType::Edge(local_edg) = cavity.ctype else { unreachable!() };
+                    let CavityType::Edge(local_edg) = cavity.ctype else {
+                        unreachable!()
+                    };
                     let i0 = local_edg[0] as usize;
                     let i1 = local_edg[1] as usize;
                     let p0 = &cavity.points[i0];
@@ -815,7 +827,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             return TrySwapResult::QualitySufficient;
         }
 
-        let CavityType::Edge(local_edg) = cavity.ctype else { unreachable!() };
+        let CavityType::Edge(local_edg) = cavity.ctype else {
+            unreachable!()
+        };
         let i0 = local_edg[0] as usize;
         let i1 = local_edg[1] as usize;
         let mut q_ref = cavity.q_min;
@@ -990,23 +1004,17 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         loop {
             n_iter += 1;
 
-            let mut edges = Vec::with_capacity(self.edges.len());
-            edges.extend(self.edges.keys().copied());
-
-            let mut dims_and_lengths = Vec::with_capacity(self.edges.len());
-            dims_and_lengths.extend(self.dims_and_lengths_iter());
-
+            let edges: Vec<_> = self.edges.keys().copied().collect();
+            let dims_and_lengths: Vec<_> = self.dims_and_lengths_iter().collect();
             let indices = argsort_edges_increasing_length(&dims_and_lengths);
 
             let mut n_collapses = 0;
             let mut n_fails = 0;
             for i_edge in indices {
                 let edg = edges[i_edge];
-                let l = dims_and_lengths[i_edge].1;
-                if l < f64::sqrt(0.5) {
+                if dims_and_lengths[i_edge].1 < f64::sqrt(0.5) {
                     trace!("Try to collapse edgs {:?}", edg);
-                    let mut i0 = edg[0];
-                    let mut i1 = edg[1];
+                    let (mut i0, mut i1) = edg.into();
                     if self.verts.get(&i0).is_none() {
                         trace!("Cannot collapse: vertex deleted");
                         continue;
@@ -1060,7 +1068,6 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     }
 
                     // proposition 1?
-
                     // lower the min quality threshold if the min quality in the cavity increases
                     let q_min = q_min.min(cavity.q_min);
                     if filled_cavity.check(0.0, l_max, q_min) > 0.0 {
@@ -1074,8 +1081,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                         for f in filled_cavity.faces() {
                             let f = cavity.global_face(&f);
                             assert!(!f.contains_vertex(i1));
-                            let e = E::from_vertex_and_face(i1, &f);
-                            self.insert_elem(e);
+                            self.insert_elem(E::from_vertex_and_face(i1, &f));
                         }
                         n_collapses += 1;
                     } else {
@@ -1103,7 +1109,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     /// TODO: move to Cavity
     fn get_smoothing_neighbors(&self, cavity: &Cavity<D, E, M>) -> (bool, Vec<Idx>) {
         let mut res = Vec::<Idx>::with_capacity(cavity.n_verts() as usize);
-        let CavityType::Vertex(i0) = cavity.ctype else { unreachable!() };
+        let CavityType::Vertex(i0) = cavity.ctype else {
+            unreachable!()
+        };
 
         let m0 = &cavity.metrics[i0 as usize];
         let t0 = cavity.tags[i0 as usize];
@@ -1139,7 +1147,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     fn smooth_laplacian(cavity: &Cavity<D, E, M>, neighbors: &[Idx]) -> Point<D> {
-        let CavityType::Vertex(i0) = cavity.ctype else { unreachable!() };
+        let CavityType::Vertex(i0) = cavity.ctype else {
+            unreachable!()
+        };
         let (p0, _, _) = cavity.vert(i0);
         let mut p0_new = Point::<D>::zeros();
         for i1 in neighbors {
@@ -1153,7 +1163,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     fn smooth_laplacian_2(cavity: &Cavity<D, E, M>, neighbors: &[Idx]) -> Point<D> {
-        let CavityType::Vertex(i0) = cavity.ctype else { unreachable!() };
+        let CavityType::Vertex(i0) = cavity.ctype else {
+            unreachable!()
+        };
         let (p0, _, m0) = cavity.vert(i0);
         let mut p0_new = Point::<D>::zeros();
         let mut w = 0.0;
@@ -1169,7 +1181,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     fn smooth_avro(cavity: &Cavity<D, E, M>, neighbors: &[Idx]) -> Point<D> {
-        let CavityType::Vertex(i0) = cavity.ctype else { unreachable!() };
+        let CavityType::Vertex(i0) = cavity.ctype else {
+            unreachable!()
+        };
         let (p0, _, m0) = cavity.vert(i0);
         let mut p0_new = Point::<D>::zeros();
         for i1 in neighbors {
@@ -1187,7 +1201,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
     #[cfg(feature = "nlopt")]
     fn smooth_nlopt(cavity: &Cavity<D, E, M>, neighbors: &[Idx]) -> Point<D> {
-        let CavityType::Vertex(i0) = cavity.ctype else { unreachable!() };
+        let CavityType::Vertex(i0) = cavity.ctype else {
+            unreachable!()
+        };
         let (_, t0, m0) = cavity.vert(i0);
         if t0.0 == E::DIM as Dim {
             let mut p0_new = Point::<D>::zeros();
@@ -1264,7 +1280,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 trace!("Try to smooth vertex {}", i0);
 
                 self.compute_cavity_vertex(i0, &mut cavity);
-                let CavityType::Vertex(i0_local) = cavity.ctype else {unreachable!()};
+                let CavityType::Vertex(i0_local) = cavity.ctype else {
+                    unreachable!()
+                };
                 if cavity.tags[i0_local as usize].1 < 0 {
                     continue;
                 }
@@ -1282,7 +1300,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     continue;
                 }
 
-                let CavityType::Vertex(i0_local) = cavity.ctype else { unreachable!() };
+                let CavityType::Vertex(i0_local) = cavity.ctype else {
+                    unreachable!()
+                };
                 let p0 = &cavity.points[i0_local as usize];
                 let m0 = &cavity.metrics[i0_local as usize];
                 let t0 = &cavity.tags[i0_local as usize];
@@ -1299,7 +1319,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 let mut p0_new = Point::<D>::zeros();
                 let mut valid = false;
 
-                for omega in params.smooth_relax.iter().cloned() {
+                for omega in params.smooth_relax.iter().copied() {
                     p0_new = (1.0 - omega) * p0 + omega * p0_smoothed;
 
                     if t0.0 < E::DIM as Dim {
@@ -1440,6 +1460,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     /// Return the stats at each remeshing step as a json string
+    #[must_use]
     pub fn stats_json(&self) -> String {
         serde_json::to_string_pretty(&self.stats).unwrap()
     }

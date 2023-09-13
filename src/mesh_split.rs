@@ -141,7 +141,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Create a new mesh by splitting all the mesh elements and faces
     /// TODO: transfer the vertex and cell data
     #[must_use]
-    pub fn split(&self) -> SimplexMesh<D, E> {
+    pub fn split(&self) -> Self {
         info!("Split all the elements uniformly");
 
         let mut edges: FxHashMap<[Idx; 2], Idx> =
@@ -164,7 +164,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         verts.extend(self.verts());
         verts.resize(new_n_verts as usize, Point::<D>::zeros());
 
-        for (edg, &i) in edges.iter() {
+        for (edg, &i) in &edges {
             let p0 = self.vert(edg[0]);
             let p1 = self.vert(edg[1]);
             verts[i as usize] = 0.5 * (p0 + p1);
@@ -175,13 +175,13 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 Self::split_tris(self.n_elems(), self.elems().zip(self.etags()), &edges);
             let (faces, ftags) =
                 Self::split_edgs(self.n_faces(), self.faces().zip(self.ftags()), &edges);
-            SimplexMesh::<D, E>::new(verts, elems, etags, faces, ftags)
+            Self::new(verts, elems, etags, faces, ftags)
         } else {
             let (elems, etags) =
                 Self::split_tets(self.n_elems(), self.elems().zip(self.etags()), &edges);
             let (faces, ftags) =
                 Self::split_tris(self.n_faces(), self.faces().zip(self.ftags()), &edges);
-            SimplexMesh::<D, E>::new(verts, elems, etags, faces, ftags)
+            Self::new(verts, elems, etags, faces, ftags)
         }
     }
 }

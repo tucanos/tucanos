@@ -210,7 +210,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
         (0..(self.n_faces())).map(|i_face| self.faces[i_face as usize])
     }
 
-    /// Convert the filled cavity to a SimplexMesh to export it (for debug)
+    /// Convert the filled cavity to a `SimplexMesh` to export it (for debug)
     #[allow(dead_code)]
     pub fn to_mesh(&self) -> SimplexMesh<D, E> {
         let etags = vec![1; self.elems.len()];
@@ -256,7 +256,7 @@ pub struct FilledCavity<'a, const D: usize, E: Elem, M: Metric<D>> {
 
 impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
     /// Construct a `FilledCavity` from a Cavity and one of its vertices
-    pub fn from_cavity_and_vertex_id(cavity: &'a Cavity<D, E, M>, node: Idx) -> Self {
+    pub const fn from_cavity_and_vertex_id(cavity: &'a Cavity<D, E, M>, node: Idx) -> Self {
         Self {
             cavity,
             id: Some(node),
@@ -266,7 +266,11 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
     }
 
     /// Construct a `FilledCavity` from a Cavity and a new vertex
-    pub fn from_cavity_and_new_vertex(cavity: &'a Cavity<D, E, M>, pt: &Point<D>, m: &M) -> Self {
+    pub const fn from_cavity_and_new_vertex(
+        cavity: &'a Cavity<D, E, M>,
+        pt: &Point<D>,
+        m: &M,
+    ) -> Self {
         Self {
             cavity,
             id: None,
@@ -311,7 +315,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
             .map(|f| (E::from_vertex_and_face(self.id.unwrap(), &f), f))
     }
 
-    /// Convert the filled cavity to a SimplexMesh to export it (for debug)
+    /// Convert the filled cavity to a `SimplexMesh` to export it (for debug)
     #[allow(dead_code)]
     pub fn to_mesh(&self) -> SimplexMesh<D, E> {
         let mut elems = Vec::new();
@@ -456,10 +460,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
         geom: &G,
         threshold_degrees: f64,
     ) -> bool {
-        if D < 3 {
-            // No issue in 2d
-            true
-        } else {
+        if D >= 3 {
             // when both the edge & reconstruction vertex are on a boundary
             let check = match self.cavity.ctype {
                 CavityType::Edge(edg) => {
@@ -467,7 +468,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
                         && self.cavity.tags[edg[1] as usize].0 < E::DIM as Dim
                 }
                 CavityType::Vertex(vx) => self.cavity.tags[vx as usize].0 < E::DIM as Dim,
-                _ => unreachable!(),
+                CavityType::No => unreachable!(),
             };
             let node_on_bdy = self.cavity.tags[self.id.unwrap() as usize].0 < E::DIM as Dim;
             if check && node_on_bdy {
@@ -497,7 +498,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
                     }
                 }
             }
-            true
         }
+        true
     }
 }

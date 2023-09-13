@@ -156,7 +156,7 @@ impl<const D: usize, M: Metric<D>> GTetrahedron<D, M> {
     /// element to the orthogonal element, stored as `Self::J_EQ`
     ///  - the Jacobian $`J_1`$ of the transformation from the orthogonal element to
     /// the physical element
-    /// (reference: PhD P. Caplan, p. 35)
+    /// (reference: Ph.D. P. Caplan, p. 35)
     pub fn implied_metric(&self) -> AnisoMetric3d {
         let j = self.jacobian() * Self::J_EQ;
         let m = j * j.transpose();
@@ -323,7 +323,7 @@ impl<const D: usize, M: Metric<D>> GTriangle<D, M> {
     /// element to the orthogonal element, stored as `Self::J_EQ`
     ///  - the Jacobian $`J_1`$ of the transformation from the orthogonal element to
     /// the physical element
-    /// (reference: PhD P. Caplan, p. 35)
+    /// (reference: Ph.D. P. Caplan, p. 35)
     pub fn implied_metric(&self) -> AnisoMetric2d {
         let j = self.jacobian() * Self::J_EQ;
         let m = j * j.transpose();
@@ -549,7 +549,7 @@ impl<const D: usize, M: Metric<D>> GVertex<D, M> {
 }
 
 impl<const D: usize, M: Metric<D>> GElem<D, M> for GVertex<D, M> {
-    type Face = GVertex<D, M>;
+    type Face = Self;
     type BCoords = Vector1<f64>;
     const IDEAL_VOL: f64 = 1.0;
 

@@ -16,7 +16,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn metric_info<M: Metric<D>>(&self, m: &[M]) -> (f64, f64, f64, f64) {
         let (h_min, h_max, aniso_max) =
             m.iter()
-                .map(|m| m.sizes())
+                .map(Metric::sizes)
                 .fold((f64::MAX, 0.0, 0.0), |(a, b, c), d| {
                     (
                         f64::min(a, d[0]),
@@ -285,10 +285,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
                 debug!("Complexity of the constrain metric: {}", constrain_c);
 
-                if constrain_c > n_elems as f64 {
+                if constrain_c > f64::from(n_elems) {
                     return Err(Error::from(&format!(
-                        "The complexity of the constrain metric is {:.2e} > n_elems = {}",
-                        constrain_c, n_elems
+                        "The complexity of the constrain metric is {constrain_c:.2e} > n_elems = {n_elems}"
                     )));
                 }
 
@@ -314,7 +313,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                         return Err(Error::from("Unable to scale the metric (bisection)"));
                     }
 
-                    if c < n_elems as f64 {
+                    if c < f64::from(n_elems) {
                         break;
                     }
                     scale_high *= 1.5;
@@ -334,7 +333,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                         return Err(Error::from("Unable to scale the metric (bisection)"));
                     }
 
-                    if c > n_elems as f64 {
+                    if c > f64::from(n_elems) {
                         break;
                     }
                     scale_low /= 1.5;
@@ -355,7 +354,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     if iter == max_iter - 1 {
                         return Err(Error::from("Unable to scale the metric (bisection)"));
                     }
-                    if c < n_elems as f64 {
+                    if c < f64::from(n_elems) {
                         scale_high = scale;
                     } else {
                         scale_low = scale;
@@ -465,7 +464,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         let mut c_max = 0.0;
         let mut n_larger_than_target = 0;
-        for edg in edges.iter() {
+        for edg in edges {
             let i0 = edg[0];
             let i1 = edg[1];
             let c = self.edge_gradation(m, i0, i1);
@@ -475,7 +474,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             c_max = f64::max(c_max, c);
         }
 
-        Ok((c_max, n_larger_than_target as f64 / n_edgs as f64))
+        Ok((c_max, f64::from(n_larger_than_target) / n_edgs as f64))
     }
 
     /// Enforce a maximum gradiation on a metric field
@@ -561,14 +560,10 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         beta: f64,
     ) -> Result<()>
     where
-        Const<D>: nalgebra::ToTypenum,
-        Const<D>: nalgebra::DimSub<nalgebra::U1>,
+        Const<D>: nalgebra::ToTypenum + nalgebra::DimSub<nalgebra::U1>,
         DefaultAllocator: Allocator<f64, <Const<D> as nalgebra::DimSub<nalgebra::U1>>::Output>,
     {
-        info!(
-            "Extend the metric into the domain using gradation = {}",
-            beta
-        );
+        info!("Extend the metric into the domain using gradation = {beta}");
 
         let n_verts = self.n_verts() as usize;
         let n_set = flg.iter().filter(|&&x| x).count();
@@ -667,11 +662,7 @@ impl SimplexMesh<3, Tetrahedron> {
         // Set the metric at the boundary vertices
         for tag in bdy_tags {
             let ids = bdy.extract_tag(tag).parent_vert_ids;
-            let use_h_n = if let Some(h_n_tags) = h_n_tags {
-                h_n_tags.iter().any(|&t| t == tag)
-            } else {
-                false
-            };
+            let use_h_n = h_n_tags.map_or(false, |h_n_tags| h_n_tags.iter().any(|&t| t == tag));
             ids.iter()
                 .map(|&i| (i, boundary_vertex_ids[i as usize]))
                 .for_each(|(i_bdy_vert, i_vert)| {
@@ -743,11 +734,7 @@ impl SimplexMesh<2, Triangle> {
         // Set the metric at the boundary vertices
         for tag in bdy_tags {
             let ids = bdy.extract_tag(tag).parent_vert_ids;
-            let use_h_n = if let Some(h_n_tags) = h_n_tags {
-                h_n_tags.iter().any(|&t| t == tag)
-            } else {
-                false
-            };
+            let use_h_n = h_n_tags.map_or(false, |h_n_tags| h_n_tags.iter().any(|&t| t == tag));
             ids.iter()
                 .map(|&i| (i, boundary_vertex_ids[i as usize]))
                 .for_each(|(i_bdy_vert, i_vert)| {
@@ -1048,7 +1035,7 @@ mod tests {
         assert!(frac_large_c < 1e-12);
 
         let edges = mesh.get_edges().unwrap();
-        for &e in edges.iter() {
+        for &e in edges {
             let i0 = e[0] as usize;
             let i1 = e[1] as usize;
 
@@ -1213,7 +1200,7 @@ mod tests {
         mesh.compute_volumes();
 
         mesh.scale_metric(&mut m, 1e-2, 0.2, 10000, Some(&m_curv), None, None, 20)?;
-        let c = mesh.complexity(m.iter().cloned(), 0.0, 1.0);
+        let c = mesh.complexity(m.iter().copied(), 0.0, 1.0);
         assert!(f64::abs(c - 10000.) < 1000.);
 
         for (i_vert, &m) in m.iter().enumerate() {
