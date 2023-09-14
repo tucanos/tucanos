@@ -11,7 +11,7 @@ use crate::{
 use core::fmt;
 use log::trace;
 use rustc_hash::FxHashMap;
-use std::{cmp::Ordering, hash::BuildHasherDefault};
+use std::{cmp::{Ordering, min}, hash::BuildHasherDefault};
 
 #[derive(Debug, Clone, Copy)]
 pub enum CavityType {
@@ -88,8 +88,37 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
         }
     }
 
+    /// Intersect two sorted slices
+    fn intersection(a: &[Idx], b: &[Idx]) -> Vec<Idx> {
+        let mut result = Vec::with_capacity(min(a.len(), b.len()));
+        let mut i = 0;
+        let mut j = 0;
+        while i < a.len() && j < b.len() {
+            match a[i].cmp(&b[j]) {
+                Ordering::Equal => {
+                    result.push(a[i]);
+                    i += 1;
+                    j += 1;
+                }
+                Ordering::Less => i += 1,
+                Ordering::Greater => j += 1,
+            }
+        }
+        result
+    }
+
+    pub fn init_from_edge(&mut self, edg: [Idx; 2], r: &Remesher<D, E, M>) {
+        let global_elems = Self::intersection(r.vertex_elements(edg[0]), r.vertex_elements(edg[1]));
+        debug_assert!(!global_elems.is_empty());
+        self.compute(r, &global_elems, CavityType::Edge(edg));
+    }
+
+    pub fn init_from_vertex(&mut self, i: Idx, r: &Remesher<D, E, M>) {
+        self.compute(r, r.vertex_elements(i), CavityType::Vertex(i));
+    }
+
     /// Build the local cavity from a list of elements
-    pub fn compute(&mut self, r: &Remesher<D, E, M>, global_elems: &[Idx], x: CavityType) {
+    fn compute(&mut self, r: &Remesher<D, E, M>, global_elems: &[Idx], x: CavityType) {
         self.clear();
         self.q_min = f64::INFINITY;
 
