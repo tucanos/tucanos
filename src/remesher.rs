@@ -16,13 +16,7 @@ use log::{debug, info, trace, warn};
 use nlopt::{Algorithm, Nlopt, Target};
 use rustc_hash::FxHashMap;
 use sorted_vec::SortedVec;
-use std::{
-    cmp::{min, Ordering},
-    fs::File,
-    hash::BuildHasherDefault,
-    io::Write,
-    time::Instant,
-};
+use std::{cmp::Ordering, fs::File, hash::BuildHasherDefault, io::Write, time::Instant};
 
 // /// Get edged indices such that they are sorted by increasing tag dimension and then by
 // /// increasing edge length
@@ -487,6 +481,12 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         self.verts.get(&i).map(|v| (v.vx, v.tag, v.m))
     }
 
+    /// Return indices of elements around a `i` vertex
+    #[must_use]
+    pub fn vertex_elements(&self, i: Idx) -> &[Idx] {
+        &self.verts.get(&i).unwrap().els
+    }
+
     /// Get the number of vertices
     #[must_use]
     pub fn n_verts(&self) -> Idx {
@@ -593,42 +593,6 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         c
     }
 
-    /// Get a vertex cavity
-    /// TODO: move as a method of Cavity
-    fn compute_cavity_vertex(&self, i: Idx, c: &mut Cavity<D, E, M>) {
-        let global_elems = &self.verts.get(&i).unwrap().els;
-        c.compute(self, global_elems, CavityType::Vertex(i));
-    }
-
-    /// Intersect two sorted slices
-    fn intersection(a: &[Idx], b: &[Idx]) -> Vec<Idx> {
-        let mut result = Vec::with_capacity(min(a.len(), b.len()));
-        let mut i = 0;
-        let mut j = 0;
-        while i < a.len() && j < b.len() {
-            match a[i].cmp(&b[j]) {
-                Ordering::Equal => {
-                    result.push(a[i]);
-                    i += 1;
-                    j += 1;
-                }
-                Ordering::Less => i += 1,
-                Ordering::Greater => j += 1,
-            }
-        }
-        result
-    }
-
-    /// Get an edge cavity
-    /// TODO: move as a method of Cavity
-    fn compute_cavity_edge(&self, edg: [Idx; 2], c: &mut Cavity<D, E, M>) {
-        let c0 = self.verts.get(&edg[0]).unwrap().els.as_slice();
-        let c1 = self.verts.get(&edg[1]).unwrap().els.as_slice();
-        let global_elems = Self::intersection(c0, c1);
-        debug_assert!(!global_elems.is_empty());
-        c.compute(self, &global_elems, CavityType::Edge(edg));
-    }
-
     /// Compute the length of an edge in metric space
     fn scaled_edge_length(&self, edg: [Idx; 2]) -> f64 {
         let p0 = self.verts.get(&edg[0]).unwrap();
@@ -732,7 +696,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 let length = dims_and_lengths[i_edge].1;
                 if length > l_0 {
                     trace!("Try to split edge {:?}, l = {}", edg, length);
-                    self.compute_cavity_edge(edg, &mut cavity);
+                    cavity.init_from_edge(edg, self);
                     // TODO: move to Cavity?
                     let CavityType::Edge(local_edg) = cavity.ctype else {
                         unreachable!()
@@ -815,8 +779,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         geom: &G,
     ) -> TrySwapResult {
         trace!("Try to swap edge {:?}", edg);
-        self.compute_cavity_edge(edg, cavity);
-
+        cavity.init_from_edge(edg, self);
         if cavity.global_elem_ids.len() == 1 {
             trace!("Cannot swap, only one adjacent cell");
             return TrySwapResult::QualitySufficient;
@@ -1042,9 +1005,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                             continue;
                         }
                     }
-
-                    self.compute_cavity_vertex(i0, &mut cavity);
-
+                    cavity.init_from_vertex(i0, self);
                     let local_i1 = cavity
                         .local2global
                         .iter()
@@ -1278,8 +1239,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             let mut n_smooth = 0;
             for i0 in verts.iter().copied() {
                 trace!("Try to smooth vertex {}", i0);
-
-                self.compute_cavity_vertex(i0, &mut cavity);
+                cavity.init_from_vertex(i0, self);
                 let CavityType::Vertex(i0_local) = cavity.ctype else {
                     unreachable!()
                 };
