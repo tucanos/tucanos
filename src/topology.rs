@@ -20,7 +20,9 @@ pub struct TopoNode {
 #[derive(Debug, Clone)]
 pub struct Topology {
     dim: Dim,
+    /// List of topology nodes for each dimension (i.e. entities.len() == 4 in dimension 3)
     entities: Vec<Vec<TopoNode>>,
+    /// Map a pair of tag to the closest common parent of those tags
     parents: FxHashMap<(TopoTag, TopoTag), TopoTag>,
 }
 
@@ -114,9 +116,11 @@ impl Topology {
             self.add_children(self.get((e.tag.0 - 1, *c)).unwrap(), res);
         }
     }
-    fn children(&self, e: &TopoNode) -> HashSet<TopoTag> {
+
+    /// Return the list containing the tag of `node` and the tags of its descendants
+    fn children(&self, node: &TopoNode) -> HashSet<TopoTag> {
         let mut res = HashSet::new();
-        self.add_children(e, &mut res);
+        self.add_children(node, &mut res);
         res
     }
 
@@ -137,7 +141,9 @@ impl Topology {
         self.parents.get(&(topo0, topo1)).copied()
     }
 
+    /// Compute the tag of an element from the `tags` of its vertices
     pub fn elem_tag<I: Iterator<Item = TopoTag>>(&self, mut tags: I) -> Option<TopoTag> {
+        // Look for the closest common parent of all vertices tags
         let first = tags.next()?;
         let second = tags.next();
         if second.is_none() {
@@ -264,9 +270,7 @@ impl Topology {
         }
     }
 
-    pub fn from_mesh<const D: usize, E: Elem>(
-        mesh: &SimplexMesh<D, E>,
-    ) -> (Self, Vec<TopoTag>) {
+    pub fn from_mesh<const D: usize, E: Elem>(mesh: &SimplexMesh<D, E>) -> (Self, Vec<TopoTag>) {
         info!("Building topology from mesh");
 
         let mut topo = Self::new(E::N_VERTS as Dim - 1);
