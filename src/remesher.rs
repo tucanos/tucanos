@@ -501,7 +501,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         assert!(etag.0 >= E::DIM as Dim, "Invalid tag, {etag:?}");
         let ge = self.gelem(&el);
         let q = ge.quality();
-        assert!(q > 0.0);
+        assert!(q > 0.0, "{ge:?} q={q}");
         self.elems.insert(self.next_elem, ElemInfo { el, q });
 
         // update the vertex-to-element info
@@ -1957,7 +1957,7 @@ mod tests {
         remesher.check()?;
 
         let mesh = remesher.to_mesh(true);
-        assert!(f64::abs(mesh.vol() - 1.0) < 1e-12);
+        assert!(f64::abs(mesh.vol() - 1.0) < 1e-12, "{} != 1", mesh.vol());
 
         Ok(())
     }
