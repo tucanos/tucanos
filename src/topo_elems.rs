@@ -75,6 +75,13 @@ pub trait Elem:
     fn contains_edge(&self, edg: [Idx; 2]) -> bool {
         self.contains_vertex(edg[0]) && self.contains_vertex(edg[1])
     }
+
+    #[must_use]
+    fn sorted(&self)->Self {
+        let mut r = *self;
+        r.sort();
+        r
+    }
 }
 
 /// Tetrahedron
