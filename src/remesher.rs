@@ -701,21 +701,14 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     let CavityType::Edge(local_edg) = cavity.ctype else {
                         unreachable!()
                     };
-                    let i0 = local_edg[0] as usize;
-                    let i1 = local_edg[1] as usize;
-                    let p0 = &cavity.points[i0];
-                    let p1 = &cavity.points[i1];
-                    let m0 = &cavity.metrics[i0];
-                    let m1 = &cavity.metrics[i1];
-                    let t0 = cavity.tags[i0];
-                    let t1 = cavity.tags[i1];
-
-                    // edge center
-                    let mut new_p = (p0 + p1) * 0.5;
-                    // metric
-                    let new_m = M::interpolate([(0.5, m0), (0.5, m1)].into_iter());
-                    // tag
-                    let tag = self.topo.parent(t0, t1).unwrap();
+                    let (mut edge_center, new_metric) = cavity.barycenter();
+                    let tag = self
+                        .topo
+                        .parent(
+                            cavity.tags[local_edg[0] as usize],
+                            cavity.tags[local_edg[1] as usize],
+                        )
+                        .unwrap();
 
                     // tag < 0 on fixed boundaries
                     if tag.1 < 0 {
@@ -723,11 +716,14 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     }
                     // projection if needed
                     if tag.0 < E::DIM as Dim {
-                        geom.project(&mut new_p, &tag);
+                        geom.project(&mut edge_center, &tag);
                     }
 
-                    let filled_cavity =
-                        FilledCavity::from_cavity_and_new_vertex(&cavity, &new_p, &new_m);
+                    let filled_cavity = FilledCavity::from_cavity_and_new_vertex(
+                        &cavity,
+                        &edge_center,
+                        &new_metric,
+                    );
 
                     // lower the min quality threshold if the min quality in the cavity increases
                     let q_min = q_min.min(cavity.q_min);
@@ -736,7 +732,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                         for i in &cavity.global_elem_ids {
                             self.remove_elem(*i);
                         }
-                        let ip = self.insert_vertex(new_p, &tag, &new_m);
+                        let ip = self.insert_vertex(edge_center, &tag, &new_metric);
                         for face in cavity.faces() {
                             let f = cavity.global_face(&face);
                             assert!(!f.contains_edge(edg));

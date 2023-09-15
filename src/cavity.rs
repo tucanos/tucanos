@@ -149,6 +149,26 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
         );
     }
 
+    /// Return the coordinate and the metric of the barycenter of the points used
+    /// to generate this cavity (ex: 2 points after using `init_from_edge`)
+    pub fn barycenter(&self) -> (Point<D>, M) {
+        let local_ids = match &self.ctype {
+            CavityType::No => unreachable!(),
+            CavityType::Vertex(x) => std::slice::from_ref(x),
+            CavityType::Edge(x) => x.as_slice(),
+            CavityType::Face(x) => x.as_slice(),
+        };
+        let scale = 1. / local_ids.len() as f64;
+        (
+            local_ids
+                .iter()
+                .map(|&i| self.points[i as usize])
+                .sum::<Point<D>>()
+                * scale,
+            M::interpolate(self.metrics.iter().map(|x| (scale, x))),
+        )
+    }
+
     /// Build the local cavity from a list of elements
     fn compute(&mut self, r: &Remesher<D, E, M>, global_elems: &[Idx], x: CavityType<D>) {
         self.clear();
