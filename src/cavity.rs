@@ -11,13 +11,18 @@ use crate::{
 use core::fmt;
 use log::trace;
 use rustc_hash::FxHashMap;
-use std::{cmp::{Ordering, min}, hash::BuildHasherDefault};
+use std::{
+    array,
+    cmp::{min, Ordering},
+    hash::BuildHasherDefault,
+};
 
 #[derive(Debug, Clone, Copy)]
-pub enum CavityType {
+pub enum CavityType<const D: usize> {
     No,
     Vertex(Idx),
     Edge([Idx; 2]),
+    Face([Idx; D]),
 }
 
 /// Local cavity built from a mesh entity (vertex or edge)
@@ -40,7 +45,7 @@ pub struct Cavity<const D: usize, E: Elem, M: Metric<D>> {
     /// Faces shared by the cavity with the rest of the mesh. The faces lying on the mesh boundary are not included.
     pub faces: Vec<E::Face>,
     /// Cavity type (vertex / edge)
-    pub ctype: CavityType,
+    pub ctype: CavityType<D>,
     /// Minimum element quality in the cavity
     pub q_min: f64,
 }
@@ -117,8 +122,35 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
         self.compute(r, r.vertex_elements(i), CavityType::Vertex(i));
     }
 
+    pub fn init_from_face(&mut self, face: &E::Face, r: &Remesher<D, E, M>) {
+        let global_elems = face
+            .iter()
+            .map(|&x| r.vertex_elements(x).to_vec())
+            .reduce(|a, b| Self::intersection(&a, &b))
+            .unwrap();
+        debug_assert!(
+            !global_elems.is_empty(),
+            "Cannot create cavity for face {:?} with these elements: {:?}",
+            face,
+            face.iter()
+                .map(|&x| (
+                    x,
+                    r.vertex_elements(x)
+                        .iter()
+                        .map(|&i| r.get_elem(i).unwrap().el)
+                        .collect::<Vec<_>>()
+                ))
+                .collect::<Vec<_>>()
+        );
+        self.compute(
+            r,
+            &global_elems,
+            CavityType::Face(array::from_fn(|i| face[i])),
+        );
+    }
+
     /// Build the local cavity from a list of elements
-    fn compute(&mut self, r: &Remesher<D, E, M>, global_elems: &[Idx], x: CavityType) {
+    fn compute(&mut self, r: &Remesher<D, E, M>, global_elems: &[Idx], x: CavityType<D>) {
         self.clear();
         self.q_min = f64::INFINITY;
 
@@ -146,11 +178,15 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
         }
         trace!("Cavity: elems & vertices built");
 
-        match x {
-            CavityType::Vertex(i) => self.compute_boundary_vertex(i),
-            CavityType::Edge(edg) => self.compute_boundary_edge(edg),
+        self.ctype = match x {
+            CavityType::Vertex(i) => {
+                let i: [Idx; 1] = self.compute_boundary_faces(std::iter::once(i));
+                CavityType::Vertex(i[0])
+            }
+            CavityType::Edge(edg) => CavityType::Edge(self.compute_boundary_faces(edg.into_iter())),
+            CavityType::Face(f) => CavityType::Face(self.compute_boundary_faces(f.into_iter())),
             CavityType::No => unreachable!(),
-        }
+        };
         trace!("Cavity built: {:?}", self);
     }
 
@@ -206,32 +242,20 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
         res
     }
 
-    /// Compute the boundary faces for a vertex cavity
-    fn compute_boundary_vertex(&mut self, i0: Idx) {
-        let i0_local = self.get_local_index(i0).unwrap();
+    fn compute_boundary_faces<const N: usize, I: Iterator<Item = Idx>>(
+        &mut self,
+        mut point_indices: I,
+    ) -> [Idx; N] {
+        let local =
+            array::from_fn(|_| self.get_local_index(point_indices.next().unwrap()).unwrap());
         self.faces.extend(self.elems.iter().flat_map(|e| {
             (0..E::N_FACES)
                 .map(|i| e.face(i))
-                .filter(|f| !f.contains_vertex(i0_local))
+                // faces which does not contains cavity vertices
+                .filter(|f| local.iter().any(|&i| !f.contains_vertex(i)))
         }));
-        self.ctype = CavityType::Vertex(i0_local);
-    }
-
-    /// Compute the boundary faces for an edge cavity
-    fn compute_boundary_edge(&mut self, edg: [Idx; 2]) {
-        let edg_local = [
-            self.get_local_index(edg[0]).unwrap(),
-            self.get_local_index(edg[1]).unwrap(),
-        ];
-        for e in &self.elems {
-            for idxf in 0..E::N_FACES {
-                let f = e.face(idxf);
-                if !f.contains_edge(edg_local) {
-                    self.faces.push(f);
-                }
-            }
-        }
-        self.ctype = CavityType::Edge(edg_local);
+        debug_assert!(!self.faces.is_empty());
+        local
     }
 
     /// Return an iterator through the cavity faces
@@ -497,6 +521,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
                         && self.cavity.tags[edg[1] as usize].0 < E::DIM as Dim
                 }
                 CavityType::Vertex(vx) => self.cavity.tags[vx as usize].0 < E::DIM as Dim,
+                CavityType::Face(_) => todo!("Face cavity are never used on a boundary"),
                 CavityType::No => unreachable!(),
             };
             let node_on_bdy = self.cavity.tags[self.id.unwrap() as usize].0 < E::DIM as Dim;
