@@ -196,7 +196,18 @@ impl Topology {
                 if let Some(tagged_face) = tagged_face {
                     face_tag = *tagged_face;
                     let e = topo.get((E::Face::DIM as Dim, face_tag));
-                    if e.is_none() {
+                    if let Some(e) = e {
+                        assert_eq!(
+                            e.parents.len(),
+                            1,
+                            "a boundary face belongs to elements with multiple tags"
+                        );
+                        let p = e.parents.iter().next().unwrap();
+                        assert_eq!(
+                            elem_tag, *p,
+                            "a boundary face belongs to elements with multiple tags"
+                        );
+                    } else {
                         topo.insert((E::Face::DIM as Dim, face_tag), &[elem_tag]);
                     }
                 } else {
@@ -647,5 +658,28 @@ mod tests {
         //     topo.get_from_parents(0, vec![2, 3, 5]).unwrap().tag
         // );
         // assert_eq!(vtags[3], topo.get_from_parents(0, vec![3, 4]).unwrap().tag);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_invalid_tags() {
+        let mut mesh = test_mesh_2d();
+        mesh.mut_ftags().for_each(|tag| *tag = 1);
+        mesh.compute_topology();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_invalid_tags_2() {
+        let mut mesh = test_mesh_2d();
+        mesh.mut_ftags().zip([2, 1, 1, 3]).for_each(|(tag, v)| *tag = v);
+        mesh.compute_topology();
+    }
+
+    #[test]
+    fn test_valid_tags() {
+        let mut mesh = test_mesh_2d();
+        mesh.mut_ftags().zip([1, 1, 2, 2]).for_each(|(tag, v)| *tag = v);
+        mesh.compute_topology();
     }
 }
