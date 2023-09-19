@@ -7,7 +7,7 @@ use crate::{
     metric::Metric,
     min_iter, min_max_iter,
     stats::{CollapseStats, InitStats, SmoothStats, SplitStats, Stats, StepStats, SwapStats},
-    topo_elems::{get_face_to_elem, Elem},
+    topo_elems::{get_face_to_elem, Edge, Elem},
     topology::Topology,
     Dim, Error, Idx, Result, Tag, TopoTag,
 };
@@ -254,13 +254,13 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
         res.print_stats();
         res.stats.push(StepStats::Init(InitStats::new(&res)));
-        res.split_wrong_topo_face(mesh);
+        res.try_fix_topology(mesh)?;
         Ok(res)
     }
 
     /// Return true if the `TopoTag` of the element can be guessed from the `TopoTag` of its
     /// vertices
-    fn valid_tags(&self, e: &E) -> bool {
+    fn valid_tags<E2: Elem>(&self, e: &E2) -> bool {
         if e.iter()
             .map(|vid| self.verts.get(vid).unwrap().tag.0)
             .any(|x| x == E::DIM as Dim)
@@ -272,13 +272,15 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             // The safe way
             let vtags = e.iter().map(|i| self.verts.get(i).unwrap().tag);
             let etag = self.topo.elem_tag(vtags).unwrap();
-            etag.0 >= E::DIM as Dim
+            etag.0 >= E2::DIM as Dim
         }
     }
 
-    /// Split faces which are inside a volume but whose all vertices are on a tagged face.
-    /// For elements with such faces, self.topo is unable to return a valid label
-    fn split_wrong_topo_face(&mut self, mesh: &SimplexMesh<D, E>) {
+    /// For some elements, self.topo fails to return a valid tag, e.g. because all the element
+    /// vertices belong to the same surface.
+    /// For such elements for which exactly one face is not tagged, split this face in order
+    /// to have valid tags.
+    fn try_fix_topology(&mut self, mesh: &SimplexMesh<D, E>) -> Result<()> {
         let tagged_faces: FxHashSet<_> = mesh.faces().map(|f| f.sorted()).collect();
         let mut elems_to_split: FxHashMap<_, _> = self
             .elems
@@ -290,12 +292,13 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             let Some((_, (e, _))) = elems_to_split.iter().next() else {
                 break;
             };
-            // let (e, etag) = (*e, *etag);
-            let face_to_split = (0..(E::N_FACES))
-                .map(|i| (i, e.face(i).sorted()))
-                .find(|(_, f)| !tagged_faces.contains(f))
-                .unwrap()
-                .0;
+            let untagged_faces: Vec<_> = (0..(E::N_FACES))
+                .filter(|&i| !tagged_faces.contains(&e.face(i).sorted()))
+                .collect();
+            if untagged_faces.len() != 1 {
+                return Err(Error::from("Cannot fix the topology"));
+            }
+            let face_to_split = untagged_faces[0];
             warn!("Split face {:?}", e.face(face_to_split));
             cavity.init_from_face(&e.face(face_to_split), self);
             let (face_center, metric) = cavity.barycenter();
@@ -326,6 +329,25 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             for face in cavity.faces() {
                 self.insert_elem(E::from_vertex_and_face(ip, &cavity.global_face(&face)));
             }
+        }
+
+        if self.elems.iter().any(|(_, e)| !self.valid_tags(&e.el)) {
+            Err(Error::from("At least one element if not properly tagged"))
+        } else if self
+            .elems
+            .iter()
+            .flat_map(|(_, e)| (0..(E::N_FACES)).map(|i| e.el.face(i)))
+            .any(|f| !self.valid_tags(&f))
+        {
+            Err(Error::from("At least one face if not properly tagged"))
+        } else if self
+            .edges
+            .keys()
+            .any(|&[i0, i1]| !self.valid_tags(&Edge::new(i0, i1)))
+        {
+            Err(Error::from("At least one edge if not properly tagged"))
+        } else {
+            Ok(())
         }
     }
 
@@ -2335,6 +2357,34 @@ mod tests {
         let geom = NoGeometry();
         let metric: Vec<_> = mesh.verts().map(|_| IsoMetric::from(0.5)).collect();
         let mut remesher = Remesher::new(&mesh, &metric, &geom).unwrap();
+        assert_eq!(remesher.n_verts(), mesh.n_verts() + 1);
+
+        remesher.remesh(RemesherParams::default(), &geom);
+        remesher.check().unwrap();
+        let _ = remesher.to_mesh(true);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_bad_topo_in_corner_2d_add() {
+        let mut mesh = test_mesh_2d();
+        assert_eq!(mesh.n_verts(), 4);
+
+        for (i, tag) in mesh.mut_ftags().enumerate() {
+            if i == 0 || i == 1 {
+                *tag = 1;
+            } else if i == 2 || i == 3 {
+                *tag = 2;
+            } else {
+                *tag = 3;
+            }
+        }
+        mesh.add_boundary_faces();
+        mesh.compute_topology();
+        let geom = NoGeometry();
+        let metric: Vec<_> = mesh.verts().map(|_| IsoMetric::from(0.5)).collect();
+        let mut remesher = Remesher::new(&mesh, &metric, &geom).unwrap();
+        // TODO: find a way to make it work!
         assert_eq!(remesher.n_verts(), mesh.n_verts() + 1);
 
         remesher.remesh(RemesherParams::default(), &geom);
