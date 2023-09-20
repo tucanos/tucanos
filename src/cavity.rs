@@ -18,7 +18,7 @@ use std::{
 };
 
 #[derive(Debug, Clone, Copy)]
-pub enum CavityType<const D: usize> {
+pub enum Seed<const D: usize> {
     No,
     Vertex(Idx),
     Edge([Idx; 2]),
@@ -44,8 +44,8 @@ pub struct Cavity<const D: usize, E: Elem, M: Metric<D>> {
     pub global_elem_ids: Vec<Idx>,
     /// Faces shared by the cavity with the rest of the mesh. The faces lying on the mesh boundary are not included.
     pub faces: Vec<E::Face>,
-    /// Cavity type (vertex / edge)
-    pub ctype: CavityType<D>,
+    /// From what the cavity was created (vertex, edge or face)
+    pub seed: Seed<D>,
     /// Minimum element quality in the cavity
     pub q_min: f64,
 }
@@ -61,7 +61,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
             elems: Vec::new(),
             global_elem_ids: Vec::new(),
             faces: Vec::new(),
-            ctype: CavityType::No,
+            seed: Seed::No,
             q_min: -1.0,
         }
     }
@@ -75,7 +75,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
         self.elems.clear();
         self.global_elem_ids.clear();
         self.faces.clear();
-        self.ctype = CavityType::No;
+        self.seed = Seed::No;
         self.q_min = -1.0;
     }
 
@@ -115,11 +115,11 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
     pub fn init_from_edge(&mut self, edg: [Idx; 2], r: &Remesher<D, E, M>) {
         let global_elems = Self::intersection(r.vertex_elements(edg[0]), r.vertex_elements(edg[1]));
         debug_assert!(!global_elems.is_empty());
-        self.compute(r, &global_elems, CavityType::Edge(edg));
+        self.compute(r, &global_elems, Seed::Edge(edg));
     }
 
     pub fn init_from_vertex(&mut self, i: Idx, r: &Remesher<D, E, M>) {
-        self.compute(r, r.vertex_elements(i), CavityType::Vertex(i));
+        self.compute(r, r.vertex_elements(i), Seed::Vertex(i));
     }
 
     pub fn init_from_face(&mut self, face: &E::Face, r: &Remesher<D, E, M>) {
@@ -145,18 +145,18 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
         self.compute(
             r,
             &global_elems,
-            CavityType::Face(array::from_fn(|i| face[i])),
+            Seed::Face(array::from_fn(|i| face[i])),
         );
     }
 
     /// Return the coordinate and the metric of the barycenter of the points used
     /// to generate this cavity (ex: 2 points after using `init_from_edge`)
-    pub fn barycenter(&self) -> (Point<D>, M) {
-        let local_ids = match &self.ctype {
-            CavityType::No => unreachable!(),
-            CavityType::Vertex(x) => std::slice::from_ref(x),
-            CavityType::Edge(x) => x.as_slice(),
-            CavityType::Face(x) => x.as_slice(),
+    pub fn seed_barycenter(&self) -> (Point<D>, M) {
+        let local_ids = match &self.seed {
+            Seed::No => unreachable!(),
+            Seed::Vertex(x) => std::slice::from_ref(x),
+            Seed::Edge(x) => x.as_slice(),
+            Seed::Face(x) => x.as_slice(),
         };
         let scale = 1. / local_ids.len() as f64;
         (
@@ -170,7 +170,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
     }
 
     /// Build the local cavity from a list of elements
-    fn compute(&mut self, r: &Remesher<D, E, M>, global_elems: &[Idx], x: CavityType<D>) {
+    fn compute(&mut self, r: &Remesher<D, E, M>, global_elems: &[Idx], x: Seed<D>) {
         self.clear();
         self.q_min = f64::INFINITY;
 
@@ -198,14 +198,14 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
         }
         trace!("Cavity: elems & vertices built");
 
-        self.ctype = match x {
-            CavityType::Vertex(i) => {
+        self.seed = match x {
+            Seed::Vertex(i) => {
                 let i: [Idx; 1] = self.compute_boundary_faces(std::iter::once(i));
-                CavityType::Vertex(i[0])
+                Seed::Vertex(i[0])
             }
-            CavityType::Edge(edg) => CavityType::Edge(self.compute_boundary_faces(edg.into_iter())),
-            CavityType::Face(f) => CavityType::Face(self.compute_boundary_faces(f.into_iter())),
-            CavityType::No => unreachable!(),
+            Seed::Edge(edg) => Seed::Edge(self.compute_boundary_faces(edg.into_iter())),
+            Seed::Face(f) => Seed::Face(self.compute_boundary_faces(f.into_iter())),
+            Seed::No => unreachable!(),
         };
         trace!("Cavity built: {:?}", self);
     }
@@ -313,7 +313,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> fmt::Display for Cavity<D, E, M> {
             writeln!(f, " {e:?}")?;
         }
 
-        writeln!(f, "Type: {:?}", self.ctype)?;
+        writeln!(f, "Type: {:?}", self.seed)?;
 
         Ok(())
     }
@@ -354,7 +354,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
 
     /// Construct a `FilledCavity` from a Cavity when its center is moved
     pub fn from_cavity_and_moved_vertex(cavity: &'a Cavity<D, E, M>, pt: &Point<D>, m: &M) -> Self {
-        if let CavityType::Vertex(vx) = cavity.ctype {
+        if let Seed::Vertex(vx) = cavity.seed {
             Self {
                 cavity,
                 id: Some(vx),
@@ -372,10 +372,10 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
             if self.id.is_some() && f.contains_vertex(self.id.unwrap()) {
                 return false;
             }
-            if let CavityType::Edge(edg) = self.cavity.ctype {
+            if let Seed::Edge(edg) = self.cavity.seed {
                 assert!(!f.contains_edge(edg));
             }
-            if let CavityType::Vertex(v) = self.cavity.ctype {
+            if let Seed::Vertex(v) = self.cavity.seed {
                 assert!(!f.contains_vertex(v));
             }
             true
@@ -535,14 +535,14 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
     ) -> bool {
         if D >= 3 {
             // when both the edge & reconstruction vertex are on a boundary
-            let check = match self.cavity.ctype {
-                CavityType::Edge(edg) => {
+            let check = match self.cavity.seed {
+                Seed::Edge(edg) => {
                     self.cavity.tags[edg[0] as usize].0 < E::DIM as Dim
                         && self.cavity.tags[edg[1] as usize].0 < E::DIM as Dim
                 }
-                CavityType::Vertex(vx) => self.cavity.tags[vx as usize].0 < E::DIM as Dim,
-                CavityType::Face(_) => todo!("Face cavity are never used on a boundary"),
-                CavityType::No => unreachable!(),
+                Seed::Vertex(vx) => self.cavity.tags[vx as usize].0 < E::DIM as Dim,
+                Seed::Face(_) => todo!("Face cavity are never used on a boundary"),
+                Seed::No => unreachable!(),
             };
             let node_on_bdy = self.cavity.tags[self.id.unwrap() as usize].0 < E::DIM as Dim;
             if check && node_on_bdy {

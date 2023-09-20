@@ -1,5 +1,5 @@
 use crate::{
-    cavity::{Cavity, CavityType, FilledCavity},
+    cavity::{self, Cavity, FilledCavity},
     geom_elems::{AsSliceF64, GElem},
     geometry::Geometry,
     max_iter,
@@ -300,7 +300,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 .unwrap()
                 .0;
             cavity.init_from_face(&e.face(face_to_split), self);
-            let (face_center, metric) = cavity.barycenter();
+            let (face_center, metric) = cavity.seed_barycenter();
             assert!(
                 cavity
                     .global_elem_ids
@@ -748,10 +748,10 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     trace!("Try to split edge {:?}, l = {}", edg, length);
                     cavity.init_from_edge(edg, self);
                     // TODO: move to Cavity?
-                    let CavityType::Edge(local_edg) = cavity.ctype else {
+                    let cavity::Seed::Edge(local_edg) = cavity.seed else {
                         unreachable!()
                     };
-                    let (mut edge_center, new_metric) = cavity.barycenter();
+                    let (mut edge_center, new_metric) = cavity.seed_barycenter();
                     let tag = self
                         .topo
                         .parent(
@@ -836,7 +836,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             return TrySwapResult::QualitySufficient;
         }
 
-        let CavityType::Edge(local_edg) = cavity.ctype else {
+        let cavity::Seed::Edge(local_edg) = cavity.seed else {
             unreachable!()
         };
         let i0 = local_edg[0] as usize;
@@ -1116,7 +1116,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     /// TODO: move to Cavity
     fn get_smoothing_neighbors(&self, cavity: &Cavity<D, E, M>) -> (bool, Vec<Idx>) {
         let mut res = Vec::<Idx>::with_capacity(cavity.n_verts() as usize);
-        let CavityType::Vertex(i0) = cavity.ctype else {
+        let cavity::Seed::Vertex(i0) = cavity.seed else {
             unreachable!()
         };
 
@@ -1154,7 +1154,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     fn smooth_laplacian(cavity: &Cavity<D, E, M>, neighbors: &[Idx]) -> Point<D> {
-        let CavityType::Vertex(i0) = cavity.ctype else {
+        let cavity::Seed::Vertex(i0) = cavity.seed else {
             unreachable!()
         };
         let (p0, _, _) = cavity.vert(i0);
@@ -1170,7 +1170,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     fn smooth_laplacian_2(cavity: &Cavity<D, E, M>, neighbors: &[Idx]) -> Point<D> {
-        let CavityType::Vertex(i0) = cavity.ctype else {
+        let cavity::Seed::Vertex(i0) = cavity.seed else {
             unreachable!()
         };
         let (p0, _, m0) = cavity.vert(i0);
@@ -1188,7 +1188,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     fn smooth_avro(cavity: &Cavity<D, E, M>, neighbors: &[Idx]) -> Point<D> {
-        let CavityType::Vertex(i0) = cavity.ctype else {
+        let cavity::Seed::Vertex(i0) = cavity.seed else {
             unreachable!()
         };
         let (p0, _, m0) = cavity.vert(i0);
@@ -1208,7 +1208,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
     #[cfg(feature = "nlopt")]
     fn smooth_nlopt(cavity: &Cavity<D, E, M>, neighbors: &[Idx]) -> Point<D> {
-        let CavityType::Vertex(i0) = cavity.ctype else {
+        let cavity::Seed::Vertex(i0) = cavity.seed else {
             unreachable!()
         };
         let (_, t0, m0) = cavity.vert(i0);
@@ -1286,7 +1286,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             for i0 in verts.iter().copied() {
                 trace!("Try to smooth vertex {}", i0);
                 cavity.init_from_vertex(i0, self);
-                let CavityType::Vertex(i0_local) = cavity.ctype else {
+                let cavity::Seed::Vertex(i0_local) = cavity.seed else {
                     unreachable!()
                 };
                 if cavity.tags[i0_local as usize].1 < 0 {
@@ -1306,7 +1306,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     continue;
                 }
 
-                let CavityType::Vertex(i0_local) = cavity.ctype else {
+                let cavity::Seed::Vertex(i0_local) = cavity.seed else {
                     unreachable!()
                 };
                 let p0 = &cavity.points[i0_local as usize];
