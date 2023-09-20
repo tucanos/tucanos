@@ -276,18 +276,21 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         }
     }
 
-    /// Split faces which are inside a volume but whose all vertices are on a tagged face.
-    /// For tetrahedrons with such faces, self.topo is unable to return a valid label
+    /// For some elements, self.topo fails to return a valid tag, e.g. because all the element
+    /// vertices belong to the same surface.
+    /// For such elements for which exactly one face is not tagged, split this face in order
+    /// to have valid tags.
     fn split_wrong_topo_face(&mut self, mesh: &SimplexMesh<D, E>) {
         let tagged_faces: FxHashSet<_> = mesh.faces().map(|f| f.sorted()).collect();
-        let mut elem_to_split: FxHashMap<_, _> = self
+        let mut elems_to_split: FxHashMap<_, _> = self
             .elems
             .iter()
-            .filter_map(|(&k, e)| (!self.valid_tags(&e.el)).then(|| (k, (e.el, mesh.etag(k)))))
+            .filter(|(_, e)| (!self.valid_tags(&e.el)))
+            .map(|(&k, e)| (k, (e.el, mesh.etag(k))))
             .collect();
         let mut cavity = Cavity::new();
         loop {
-            let Some((_, (e, etag))) = elem_to_split.iter().next() else {
+            let Some((_, (e, etag))) = elems_to_split.iter().next() else {
                 break;
             };
             let (e, etag) = (*e, *etag);
@@ -298,9 +301,17 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 .0;
             cavity.init_from_face(&e.face(face_to_split), self);
             let (face_center, metric) = cavity.barycenter();
+            assert!(
+                cavity
+                    .global_elem_ids
+                    .iter()
+                    .filter(|&&i| (i < mesh.n_elems())).map(|&i| mesh.etag(i))
+                    .all(|t| t == etag),
+                "Unsupported tag configuration around {face_center}"
+            );
             for &i in &cavity.global_elem_ids {
                 self.remove_elem(i);
-                elem_to_split.remove(&i);
+                elems_to_split.remove(&i);
             }
             let ip = self.insert_vertex(face_center, &(E::DIM as Dim, etag), &metric);
             for face in cavity.faces() {
@@ -2296,12 +2307,10 @@ mod tests {
         let _ = remesher.to_mesh(true);
     }
 
-    #[test]
-    fn test_bad_topo_in_corner_2d() {
+    fn bad_topo_in_corner_2d(etags: [i16; 2]) {
         let mut mesh = test_mesh_2d();
-        for tag in mesh.mut_ftags() {
-            *tag = 1;
-        }
+        mesh.mut_ftags().for_each(|v| *v = 1);
+        mesh.mut_etags().zip(etags).for_each(|(e, t)| *e = t);
         mesh.compute_topology();
         let geom = NoGeometry();
         let metric: Vec<_> = mesh.verts().map(|_| IsoMetric::from(0.5)).collect();
@@ -2309,5 +2318,16 @@ mod tests {
         remesher.remesh(RemesherParams::default(), &geom);
         remesher.check().unwrap();
         let _ = remesher.to_mesh(true);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_bad_topo_in_corner_2d_2dom() {
+        bad_topo_in_corner_2d([1, 2]);
+    }
+
+    #[test]
+    fn test_bad_topo_in_corner_2d() {
+        bad_topo_in_corner_2d([1, 1]);
     }
 }
