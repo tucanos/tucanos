@@ -54,7 +54,7 @@ jobs:
     needs: [libmeshb, libol]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - run: sudo apt-get install -y libmetis-dev libscotch-dev libnlopt-dev
     - name: libOL cache
       uses: actions/cache@v3
@@ -66,12 +66,12 @@ jobs:
       with:
         path: ${{ env.LIBMESHB_DIR }}
         key: libmeshb-${{ env.LIBMESHB_COMMIT }}
-    - name: Install Rust
-      uses: actions-rs/toolchain@v1
+    - id: toolchain
+      uses: dtolnay/rust-toolchain@master
       with:
         components: clippy
         toolchain: nightly
-        override: true
+    - run: rustup override set ${{steps.toolchain.outputs.name}}
     - name: Rust cache
       uses: actions/cache@v3
       with:
@@ -84,16 +84,14 @@ jobs:
           key: ${{ runner.os }}-cargo-nightly-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-nightly-
     - name: Run clippy
-      uses: actions-rs/clippy-check@v1
-      with:
-        token: ${{ github.token }}
+      uses: clechasseur/rs-clippy-check@v3
     - name: Run cargo test
-      uses: actions-rs/cargo@v1
+      uses: clechasseur/rs-cargo@v2
       with:
         command: test 
         args: --features=meshb,scotch,metis,nlopt
     - name: Run cargo test --release
-      uses: actions-rs/cargo@v1
+      uses: clechasseur/rs-cargo@v2
       with:
         command: test
         args: --release --features=meshb,scotch,metis,nlopt
@@ -101,7 +99,7 @@ jobs:
     needs: [libmeshb, libol]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - run: sudo apt-get install -y libmetis-dev libscotch-dev libnlopt-dev
     - name: libOL cache
       uses: actions/cache@v3
@@ -113,13 +111,12 @@ jobs:
       with:
         path: ${{ env.LIBMESHB_DIR }}
         key: libmeshb-${{ env.LIBMESHB_COMMIT }}
-    - name: Install Rust
-      uses: actions-rs/toolchain@v1
+    - id: toolchain
+      uses: dtolnay/rust-toolchain@master
       with:
         components: clippy
-        # because of https://github.com/actions-rs/toolchain/pull/209
         toolchain: stable
-        override: true
+    - run: rustup override set ${{steps.toolchain.outputs.name}}
     - name: Rust cache
       uses: actions/cache@v3
       with:
@@ -132,16 +129,14 @@ jobs:
           key: ${{ runner.os }}-cargo-stable-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-stable-
     - name: Run clippy
-      uses: actions-rs/clippy-check@v1
-      with:
-        token: ${{ github.token }}
+      uses: clechasseur/rs-clippy-check@v3
     - name: Run cargo test
-      uses: actions-rs/cargo@v1
+      uses: clechasseur/rs-cargo@v2
       with:
         command: test 
         args: --features=meshb,scotch,metis,nlopt
     - name: Run cargo test --release
-      uses: actions-rs/cargo@v1
+      uses: clechasseur/rs-cargo@v2
       with:
         command: test
         args: --release --features=meshb,scotch,metis,nlopt
