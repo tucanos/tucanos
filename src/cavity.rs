@@ -165,7 +165,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
                 .map(|&i| self.points[i as usize])
                 .sum::<Point<D>>()
                 * scale,
-            M::interpolate(self.metrics.iter().map(|x| (scale, x))),
+            M::interpolate(local_ids.iter().map(|&i| (scale, &self.metrics[i as usize])))
         )
     }
 
