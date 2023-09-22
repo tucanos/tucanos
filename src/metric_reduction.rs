@@ -41,6 +41,27 @@ where
     (tmp.transpose() * s * tmp, det)
 }
 
+/// Compute the step between two metrics $`\mathcal M_1`$ and $`\mathcal M_2`$, i.e.
+/// the min and max of
+/// ```math
+/// \frac{\sqrt{e^T \mathcal M_2 e}}{\sqrt{e^T \mathcal M_1 e}}
+/// ```
+/// over all edges $`e`$.
+pub fn step<const D: usize>(mat_a: SMatrix<f64, D, D>, mat_b: SMatrix<f64, D, D>) -> (f64, f64)
+where
+    Const<D>: nalgebra::ToTypenum,
+    Const<D>: nalgebra::DimSub<nalgebra::U1>,
+    DefaultAllocator: Allocator<f64, <Const<D> as nalgebra::DimSub<nalgebra::U1>>::Output>,
+{
+    let mut eig = mat_a.symmetric_eigen();
+    eig.eigenvalues.iter_mut().for_each(|x| *x = 1.0 / x.sqrt());
+    let tmp = eig.recompose();
+
+    let s = tmp * mat_b * tmp;
+    let eig2 = s.symmetric_eigen();
+    (eig2.eigenvalues.min().sqrt(), eig2.eigenvalues.max().sqrt())
+}
+
 /// Bound the step between two metrics $`\mathcal M_1`$ and $`\mathcal M_2`$.
 ///
 /// The goal is to find $`\mathcal M`$ as close as possible from $`\mathcal M_2`$ such that
