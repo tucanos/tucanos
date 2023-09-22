@@ -305,7 +305,8 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 cavity
                     .global_elem_ids
                     .iter()
-                    .filter(|&&i| (i < mesh.n_elems())).map(|&i| mesh.etag(i))
+                    .filter(|&&i| (i < mesh.n_elems()))
+                    .map(|&i| mesh.etag(i))
                     .all(|t| t == etag),
                 "Unsupported tag configuration around {face_center}"
             );
@@ -1492,13 +1493,13 @@ mod tests {
         geom_elems::GElem,
         geometry::NoGeometry,
         mesh::{Point, SimplexMesh},
-        metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
+        metric::{AnisoMetric, AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
         remesher::{Remesher, SmoothingType},
         test_meshes::{
             h_2d, h_3d, test_mesh_2d, test_mesh_3d, test_mesh_3d_single_tet, test_mesh_3d_two_tets,
             test_mesh_moon_2d, GeomHalfCircle2d,
         },
-        topo_elems::{Edge, Elem, Triangle},
+        topo_elems::{Edge, Elem, Tetrahedron, Triangle},
         Result,
     };
 
@@ -1965,7 +1966,7 @@ mod tests {
         let mut mesh = test_mesh_2d().split().split();
         mesh.compute_topology();
 
-        for _iter in 0..2 {
+        for _iter in 0..3 {
             let h: Vec<_> = (0..mesh.n_verts())
                 .map(|i| IsoMetric::<2>::from(h_2d(&mesh.vert(i))))
                 .collect();
@@ -2186,24 +2187,53 @@ mod tests {
         Ok(())
     }
 
+    fn get_implied_metric_3d(
+        mesh: &SimplexMesh<3, Tetrahedron>,
+        pt: Point<3>,
+    ) -> Option<AnisoMetric3d> {
+        for ge in mesh.gelems() {
+            let bcoords = ge.bcoords(&pt);
+            if bcoords.min() > -1e-12 {
+                return Some(ge.implied_metric());
+            }
+        }
+        None
+    }
+
     #[test]
     fn test_adapt_3d() -> Result<()> {
         let mut mesh = test_mesh_3d().split().split();
         mesh.compute_topology();
 
-        let h: Vec<_> = mesh
-            .verts()
-            .map(|p| IsoMetric::<3>::from(h_3d(&p)))
-            .collect();
         let geom = NoGeometry();
-        let mut remesher = Remesher::new(&mesh, &h, &geom)?;
 
-        remesher.remesh(RemesherParams::default(), &geom);
+        let pts = [
+            Point::<3>::new(0.5, 0.35, 0.35),
+            Point::<3>::new(0.0, 0.0, 0.0),
+        ];
 
-        remesher.check()?;
+        for _ in 0..3 {
+            let h: Vec<_> = mesh
+                .verts()
+                .map(|p| IsoMetric::<3>::from(h_3d(&p)))
+                .collect();
+            let mut remesher = Remesher::new(&mesh, &h, &geom)?;
 
-        let mesh = remesher.to_mesh(true);
-        assert!(f64::abs(mesh.vol() - 1.) < 1e-12);
+            remesher.remesh(RemesherParams::default(), &geom);
+
+            remesher.check()?;
+
+            mesh = remesher.to_mesh(true);
+            mesh.compute_topology();
+            assert!(f64::abs(mesh.vol() - 1.) < 1e-12);
+        }
+
+        for p in &pts {
+            let m = get_implied_metric_3d(&mesh, *p).unwrap();
+            let (a, b) = m.step(&AnisoMetric3d::from_iso(&IsoMetric::<3>::from(h_3d(p))));
+            let c = b.max(1. / a);
+            assert!(c < 2.5);
+        }
 
         Ok(())
     }
