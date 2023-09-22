@@ -69,6 +69,9 @@ pub trait GElem<const D: usize, M: Metric<D>>: Clone + Copy + Debug {
     ///     - $`\beta_3 = \sqrt{3}/ 4 `$
     fn quality(&self) -> f64;
 
+    /// Get the coordinates of the i-th vertex
+    fn vert(&self, i: Idx) -> Point<D>;
+
     /// Get the coordinates of a vertex given its barycentric coordnates
     fn point(&self, x: &[f64]) -> Point<D>;
 
@@ -169,6 +172,10 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GTetrahedron<D, M> {
     type Face = GTriangle<D, M>;
     type BCoords = Vector4<f64>;
     const IDEAL_VOL: f64 = 1.0 / (6.0 * std::f64::consts::SQRT_2);
+
+    fn vert(&self, i: Idx) -> Point<D> {
+        self.points[i as usize]
+    }
 
     fn from_verts<I: Iterator<Item = (Point<D>, M)>>(mut points_n_metrics: I) -> Self {
         assert_eq!(D, 3);
@@ -347,6 +354,10 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GTriangle<D, M> {
     type BCoords = Vector3<f64>;
     const IDEAL_VOL: f64 = SQRT_3 / 4.;
 
+    fn vert(&self, i: Idx) -> Point<D> {
+        self.points[i as usize]
+    }
+
     fn from_verts<I: Iterator<Item = (Point<D>, M)>>(mut points_n_metrics: I) -> Self {
         let p: [_; 3] = std::array::from_fn(|_| points_n_metrics.next().unwrap());
         assert!(points_n_metrics.next().is_none());
@@ -477,6 +488,10 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GEdge<D, M> {
     type BCoords = Vector2<f64>;
     const IDEAL_VOL: f64 = 1.0;
 
+    fn vert(&self, i: Idx) -> Point<D> {
+        self.points[i as usize]
+    }
+
     fn from_verts<I: Iterator<Item = (Point<D>, M)>>(mut points_n_metrics: I) -> Self {
         let p: [_; 2] = std::array::from_fn(|_| points_n_metrics.next().unwrap());
         assert!(points_n_metrics.next().is_none());
@@ -552,6 +567,10 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GVertex<D, M> {
     type Face = Self;
     type BCoords = Vector1<f64>;
     const IDEAL_VOL: f64 = 1.0;
+
+    fn vert(&self, i: Idx) -> Point<D> {
+        self.points[i as usize]
+    }
 
     fn from_verts<I: Iterator<Item = (Point<D>, M)>>(mut points_n_metrics: I) -> Self {
         let (p, m) = points_n_metrics.next().unwrap();
