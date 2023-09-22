@@ -247,7 +247,7 @@ pub fn h_3d(p: &Point<3>) -> f64 {
     let x = p[0];
     let y = p[1];
     let z = p[2];
-    let hmin = 0.1;
+    let hmin = 0.03;
     let hmax = 0.3;
     let sigma: f64 = 0.25;
     let var = -((x - 0.5).powi(2) + (y - 0.35).powi(2) + (z - 0.35).powi(2)) / sigma.powi(2);
