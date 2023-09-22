@@ -1,4 +1,4 @@
-use crate::metric_reduction::{control_step, simultaneous_reduction};
+use crate::metric_reduction::{control_step, simultaneous_reduction, step};
 use crate::{mesh::Point, Error, Result};
 use crate::{H_MAX, S_MAX, S_MIN, S_RATIO_MAX};
 use nalgebra::allocator::Allocator;
@@ -40,6 +40,12 @@ pub trait Metric<const D: usize>:
     fn span(&self, e: &Point<D>, beta: f64) -> Self;
     /// Check if metrics are different with a given tolerance
     fn differs_from(&self, other: &Self, tol: f64) -> bool;
+    /// Compute the step between two metrics, i.e. the min and max of
+    /// ```math
+    /// \frac{\sqrt{e^T \mathcal M_2 e}}{\sqrt{e^T \mathcal M_1 e}}
+    /// ```
+    /// over all edges $`e`$.
+    fn step(&self, other: &Self) -> (f64, f64);
     /// Limit a metric so the required sizes between 1/f and f times those required by other
     /// The directions are not changed
     fn control_step(&mut self, other: &Self, f: f64);
@@ -187,6 +193,10 @@ impl<const D: usize> Metric<D> for IsoMetric<D> {
 
     fn differs_from(&self, other: &Self, tol: f64) -> bool {
         f64::abs(self.0 - other.0) > tol * self.0
+    }
+
+    fn step(&self, other: &Self) -> (f64, f64) {
+        (self.0 / other.0, self.0 / other.0)
     }
 
     fn control_step(&mut self, other: &Self, f: f64) {
@@ -457,20 +467,10 @@ where
             .any(|(x, y)| f64::abs(x - y) > tol * x)
     }
 
-    /// Apply bounds on the metric sizes while keeping the directions unchanged:
-    /// if
-    /// ```math
-    /// \mathcal M_0 = \mathcal P ^T \Lambda \mathcal P
-    /// ```
-    /// with $`\mathcal P = (e_0 | ... | e_d)`$
-    /// then the limited metric is
-    /// ```math
-    /// \mathcal L(\mathcal M_0, \mathcal M_1, f) = \mathcal P ^T \tilde \Lambda \mathcal P
-    /// ```
-    /// with
-    /// ```math
-    /// \tilde \Lambda_{ii} = min(max(\Lambda_{ii}, \sqrt{e_i^T \mathcal M_1 e_i }) / f^2), \sqrt{e_i^T \mathcal M_1 e_i })  f^2)
-    /// ```
+    fn step(&self, other: &Self) -> (f64, f64) {
+        step(self.as_mat(), other.as_mat())
+    }
+
     fn control_step(&mut self, other: &Self, f: f64) {
         let res = control_step(other.as_mat(), self.as_mat(), f);
         if let Some(res) = res {
@@ -1026,6 +1026,15 @@ mod tests {
     fn test_limit_iso() {
         let mut m0 = IsoMetric::<2>::from(1.0);
         let m1 = IsoMetric::<2>::from(10.0);
+
+        let (a, b) = m0.step(&m1);
+        assert!(f64::abs(a - 0.1) < 1e-12);
+        assert!(f64::abs(b - 0.1) < 1e-12);
+
+        let (a, b) = m1.step(&m0);
+        assert!(f64::abs(a - 10.) < 1e-12);
+        assert!(f64::abs(b - 10.) < 1e-12);
+
         m0.control_step(&m1, 2.0);
         assert!(f64::abs(m0.h() - 5.0) < 1e-12);
 
@@ -1041,9 +1050,23 @@ mod tests {
         let ey = Point::<2>::new(0.0, 1.0);
 
         let mut m0 = AnisoMetric2d::from_sizes(&ex, &ey);
+        let m1 = AnisoMetric2d::from_sizes(&(10.0 * ex), &(10.0 * ey));
+
+        let (a, b) = m0.step(&m1);
+        assert!(f64::abs(a - 0.1) < 1e-12);
+        assert!(f64::abs(b - 0.1) < 1e-12);
+
         let m1 = AnisoMetric2d::from_sizes(&(10.0 * ex), &(0.1 * ey));
 
+        let (a, b) = m0.step(&m1);
+        assert!(f64::abs(a - 0.1) < 1e-12);
+        assert!(f64::abs(b - 10.0) < 1e-12);
+
         m0.control_step(&m1, 2.0);
+
+        let (a, b) = m0.step(&m1);
+        assert!(f64::abs(a - 0.5) < 1e-12);
+        assert!(f64::abs(b - 2.0) < 1e-12);
 
         assert!(f64::abs(m0.sizes()[0] - 0.2) < 1e-12);
         assert!(f64::abs(m0.sizes()[1] - 5.0) < 1e-12);
@@ -1058,7 +1081,14 @@ mod tests {
         let mut m0 = AnisoMetric3d::from_sizes(&ex, &ey, &ez);
         let m1 = AnisoMetric3d::from_sizes(&(10.0 * ex), &(0.1 * ey), &(0.001 * ez));
 
+        let (a, b) = m0.step(&m1);
+        assert!(f64::abs(a - 0.1) < 1e-12);
+        assert!(f64::abs(b - 1000.0) < 1e-12);
+
         m0.control_step(&m1, 2.0);
+        let (a, b) = m0.step(&m1);
+        assert!(f64::abs(a - 0.5) < 1e-12);
+        assert!(f64::abs(b - 2.0) < 1e-12);
 
         assert!(f64::abs(m0.sizes()[0] - 0.002) < 1e-12);
         assert!(f64::abs(m0.sizes()[1] - 0.2) < 1e-12);
