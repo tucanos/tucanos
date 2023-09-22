@@ -228,6 +228,8 @@ where
 {
     const N: usize;
 
+    fn from_iso(iso: &IsoMetric<D>) -> Self;
+
     fn slice_to_mat(m: &[f64]) -> SMatrix<f64, D, D>;
 
     fn from_mat_and_vol(mat: SMatrix<f64, D, D>, vol: f64) -> Self;
@@ -558,6 +560,14 @@ impl AnisoMetric<2> for AnisoMetric2d {
         Self::slice_to_mat(&self.m)
     }
 
+    fn from_iso(iso: &IsoMetric<2>) -> Self {
+        let s = 1. / (iso.0 * iso.0);
+        Self {
+            m: [s, s, 0.0],
+            v: iso.0.powi(2),
+        }
+    }
+
     fn from_diagonal(s: &[f64]) -> Self {
         Self {
             m: [s[0], s[1], 0.0],
@@ -706,6 +716,14 @@ impl AnisoMetric<3> for AnisoMetric3d {
 
     fn as_mat(&self) -> SMatrix<f64, 3, 3> {
         Self::slice_to_mat(&self.m)
+    }
+
+    fn from_iso(iso: &IsoMetric<3>) -> Self {
+        let s = 1. / (iso.0 * iso.0);
+        Self {
+            m: [s, s, s, 0.0, 0.0, 0.0],
+            v: iso.0.powi(3),
+        }
     }
 
     fn from_diagonal(s: &[f64]) -> Self {
