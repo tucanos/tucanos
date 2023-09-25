@@ -56,7 +56,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         if let Some(elem_data) = elem_data {
             for (name, arr) in &elem_data {
                 debug!("Write element data {name}");
-                let num_comp = arr.len() / self.n_verts() as usize;
+                let num_comp = arr.len() / self.n_elems() as usize;
                 cell_data.push(Attribute::DataArray(DataArrayBase {
                     name: name.to_string(),
                     elem: ElementType::Scalars {
