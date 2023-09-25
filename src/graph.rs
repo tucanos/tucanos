@@ -257,6 +257,10 @@ impl ConnectedComponents {
         res
     }
 
+    pub fn tags(&self) -> &[u16] {
+        &self.vtag
+    }
+
     fn compute_from(&mut self, g: &CSRGraph, start: Idx, component: u16) {
         for i in g.row(start).iter().copied() {
             if self.vtag[i as usize] == u16::MAX {
@@ -343,7 +347,7 @@ mod tests {
     fn test_cc() {
         let g = vec![[0, 1], [1, 2], [2, 0], [3, 4]];
         let g = CSRGraph::new(&g);
-        let components = ConnectedComponents::new(&g).vtag;
-        assert_eq!(components, [0, 0, 0, 1, 1]);
+        let cc = ConnectedComponents::new(&g);
+        assert_eq!(cc.tags(), [0, 0, 0, 1, 1]);
     }
 }

@@ -7,6 +7,7 @@ pub mod graph;
 #[allow(dead_code)]
 #[allow(clippy::enum_variant_names)]
 pub mod mesh;
+pub mod mesh_autotag;
 mod mesh_interpolate;
 mod mesh_l2proj;
 mod mesh_ls;
