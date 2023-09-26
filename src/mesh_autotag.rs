@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
+use log::info;
+
 use crate::{
     geom_elems::GElem,
     graph::{CSRGraph, ConnectedComponents},
-    mesh::SimplexMesh,
+    mesh::{Point, SimplexMesh},
     topo_elems::Elem,
     Result, Tag,
 };
@@ -71,10 +73,43 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         Ok(new_tags)
     }
+
+    /// Transfer the tag information to another mesh.
+    /// For each element or face in `mesh` (depending on the dimension), its tag is updated
+    /// to the tag of the element of `self` onto which the element center is projected.
+    pub fn transfer_tags<E2: Elem>(&self, mesh: &mut SimplexMesh<D, E2>) -> Result<()> {
+        let tree = self.get_octree()?;
+        let get_tag = |pt: &Point<D>| {
+            let idx = tree.nearest(pt);
+            self.etag(idx)
+        };
+
+        if E2::DIM == E::DIM {
+            info!("Computing the mesh element tags");
+            let tags = mesh
+                .gelems()
+                .map(|ge| get_tag(&ge.center()))
+                .collect::<Vec<_>>();
+            mesh.mut_etags().zip(tags).for_each(|(t, new_t)| *t = new_t);
+        } else if E2::DIM == E::DIM + 1 {
+            info!("Computing the mesh face tags");
+            let tags = mesh
+                .gfaces()
+                .map(|gf| get_tag(&gf.center()))
+                .collect::<Vec<_>>();
+            mesh.mut_ftags().zip(tags).for_each(|(t, new_t)| *t = new_t);
+        } else {
+            panic!("Invalid mesh element dimension");
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use crate::test_meshes::{test_mesh_2d, test_mesh_3d};
 
     #[test]
@@ -121,7 +156,35 @@ mod tests {
         assert_eq!(new_tags.len(), 2);
         assert_eq!(*new_tags.get(&1).unwrap(), vec![1, 4, 8]);
         assert_eq!(*new_tags.get(&2).unwrap(), vec![2, 3, 5, 6, 7, 9]);
+    }
 
-        mesh.boundary().0.write_vtk("test.vtu", None, None).unwrap();
+    #[test]
+    fn test_cube_geom() {
+        let mut mesh = test_mesh_3d().split();
+        let tmp = mesh.faces().collect::<Vec<_>>();
+        mesh.mut_ftags().zip(tmp).for_each(|(t, _)| *t = 1);
+
+        let mut bdy = mesh.boundary().0.split();
+        bdy.compute_face_to_elems();
+        let new_tags = bdy.autotag(30.0).unwrap();
+
+        assert_eq!(new_tags.len(), 1);
+        assert_eq!(*new_tags.get(&1).unwrap(), vec![1, 2, 3, 4, 5, 6]);
+
+        bdy.compute_octree();
+        bdy.transfer_tags(&mut mesh).unwrap();
+
+        let mut res = HashMap::new();
+        for t in mesh.ftags() {
+            if let Some(c) = res.get_mut(&t) {
+                *c += 1;
+            } else {
+                res.insert(t, 1);
+            }
+        }
+        assert_eq!(res.len(), 6);
+        for t in 1..7 {
+            assert_eq!(*res.get(&t).unwrap(), 8);
+        }
     }
 }
