@@ -1483,6 +1483,25 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
         Ok(())
     }
+
+    /// Check the edge lengths
+    pub fn check_edge_lengths_analytical<F: Fn(&Point<D>) -> M>(&self, f: F) -> (f64, f64, f64) {
+        let (mut mini, mut maxi, mut avg) = (f64::MAX, 0.0_f64, 0.0_f64);
+        let mut count = 0;
+        for [i0, i1] in self.edges.keys() {
+            let p0 = &self.verts.get(i0).unwrap().vx;
+            let p1 = &self.verts.get(i1).unwrap().vx;
+            let m0 = f(p0);
+            let m1 = f(p1);
+            let l = M::edge_length(p0, &m0, p1, &m1);
+            mini = mini.min(l);
+            maxi = maxi.max(l);
+            avg += l;
+            count += 1;
+        }
+        avg /= count as f64;
+        (mini, maxi, avg)
+    }
 }
 
 #[cfg(test)]
@@ -1966,7 +1985,7 @@ mod tests {
         let mut mesh = test_mesh_2d().split().split();
         mesh.compute_topology();
 
-        for _iter in 0..3 {
+        for iter in 0..3 {
             let h: Vec<_> = (0..mesh.n_verts())
                 .map(|i| IsoMetric::<2>::from(h_2d(&mesh.vert(i))))
                 .collect();
@@ -1978,6 +1997,13 @@ mod tests {
 
             mesh = remesher.to_mesh(true);
             mesh.compute_topology();
+
+            if iter == 2 {
+                let (mini, maxi, _) =
+                    remesher.check_edge_lengths_analytical(|x| IsoMetric::<2>::from(h_2d(x)));
+                assert!(mini > 0.5);
+                assert!(maxi < 2.5);
+            }
         }
 
         Ok(())
@@ -2006,6 +2032,10 @@ mod tests {
         let mesh = remesher.to_mesh(true);
         assert!(f64::abs(mesh.vol() - 1.0) < 1e-12, "{} != 1", mesh.vol());
 
+        let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
+        assert!(mini > 0.3);
+        assert!(maxi < 1.5);
+
         Ok(())
     }
 
@@ -2016,7 +2046,7 @@ mod tests {
 
         let ref_vol = 0.5 * PI - 2.0 * (0.5 * 1.25 * 1.25 * f64::atan2(1., 0.75) - 0.5 * 0.75);
 
-        for _ in 1..4 {
+        for iter in 1..4 {
             let h: Vec<_> = mesh
                 .verts()
                 .map(|p| IsoMetric::<2>::from(h_2d(&p)))
@@ -2032,6 +2062,13 @@ mod tests {
 
             let vol = mesh.vol();
             assert!(f64::abs(vol - ref_vol) < 0.05);
+
+            let (mini, maxi, _) =
+                remesher.check_edge_lengths_analytical(|x| IsoMetric::<2>::from(h_2d(x)));
+            if iter == 3 {
+                assert!(mini > 0.7);
+                assert!(maxi < 2.8);
+            }
         }
 
         Ok(())
@@ -2212,7 +2249,7 @@ mod tests {
             Point::<3>::new(0.0, 0.0, 0.0),
         ];
 
-        for _ in 0..3 {
+        for iter in 0..3 {
             let h: Vec<_> = mesh
                 .verts()
                 .map(|p| IsoMetric::<3>::from(h_3d(&p)))
@@ -2226,6 +2263,13 @@ mod tests {
             mesh = remesher.to_mesh(true);
             mesh.compute_topology();
             assert!(f64::abs(mesh.vol() - 1.) < 1e-12);
+
+            let (mini, maxi, _) =
+                remesher.check_edge_lengths_analytical(|x| IsoMetric::<3>::from(h_3d(x)));
+            if iter == 2 {
+                assert!(mini > 0.5);
+                assert!(maxi < 2.0);
+            }
         }
 
         for p in &pts {
@@ -2259,6 +2303,10 @@ mod tests {
 
         let mesh = remesher.to_mesh(true);
         assert!(f64::abs(mesh.vol() - 1.0) < 1e-12);
+
+        let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
+        assert!(mini > 0.4);
+        assert!(maxi < 2.0);
 
         Ok(())
     }
