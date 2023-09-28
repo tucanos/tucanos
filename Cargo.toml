@@ -13,7 +13,7 @@ ndarray = "0.15.6"
 numpy = "0.19.0"
 pyo3 = { version = "0.19.2", features = ["extension-module", "multiple-pymethods"] }
 pyo3-log = "0.8.3"
-tucanos = { git = "https://github.com/tucanos/tucanos.git", rev = "3c5adb5c" }
+tucanos = { git = "https://github.com/tucanos/tucanos.git", rev = "e81e019" }
 
 [features]
 nlopt = ["tucanos/nlopt"]
