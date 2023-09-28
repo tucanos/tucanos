@@ -258,6 +258,14 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         Ok(res)
     }
 
+    /// Return the tag of a face or element of this remesher
+    /// Just a wrapper for self.topo.elem_tag
+    fn elem_tag<EE: Elem>(&self, elem: &EE) -> TopoTag {
+        self.topo
+            .elem_tag(elem.iter().map(|i| self.verts.get(i).unwrap().tag))
+            .unwrap()
+    }
+
     /// Return true if the `TopoTag` of the element can be guessed from the `TopoTag` of its
     /// vertices
     fn valid_tags(&self, e: &E) -> bool {
@@ -353,8 +361,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             }
 
             // check that the element tag dimension is E::DIM
-            let vtags = e.iter().map(|i| self.verts.get(i).unwrap().tag);
-            let etag = self.topo.elem_tag(vtags).unwrap();
+            let etag = self.elem_tag(e);
             if etag.0 < E::DIM as Dim {
                 return Err(Error::from("Invalid element tag"));
             }
@@ -362,8 +369,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             // check that all faces appear once if tagged on a boundary, or twice if tagged in the domain
             for i_face in 0..E::N_FACES {
                 let f = e.face(i_face);
-                let vtags = f.iter().map(|i| self.verts.get(i).unwrap().tag);
-                let ftag = self.topo.elem_tag(vtags).unwrap();
+                let ftag = self.elem_tag(&f);
 
                 // filter the elements containing the face
                 let mut els = self.verts.get(&f[0]).unwrap().els.iter().filter(|i| {
@@ -375,9 +381,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     if els.next().is_some() {
                         return Err(Error::from("A face belongs to more than 2 elements"));
                     }
-                    let other = self.elems.get(other).unwrap().el;
-                    let vtags = other.iter().map(|i| self.verts.get(i).unwrap().tag);
-                    let otag = self.topo.elem_tag(vtags).unwrap();
+                    let otag = self.elem_tag(&self.elems.get(other).unwrap().el);
                     if etag.1 != otag.1 && ftag.0 != E::Face::DIM as Dim {
                         return Err(Error::from(
                             "A face belonging to 2 element with different tags is not tagged correctly",
@@ -444,8 +448,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
         let mut etags: Vec<Tag> = vec![0; self.n_elems() as usize];
         for (elem, val) in elems.iter().zip(etags.iter_mut()) {
-            let vtags = elem.iter().map(|i| self.verts.get(i).unwrap().tag);
-            let etag = self.topo.elem_tag(vtags).unwrap();
+            let etag = self.elem_tag(elem);
             if etag.0 < E::DIM as Dim {
                 warn!("Element {:?} has tag {:?}", elem, etag);
                 let node = self.topo.get(etag).unwrap();
