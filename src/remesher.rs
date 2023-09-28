@@ -461,8 +461,8 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         let mut ftags = Vec::new();
 
         for (face, iels) in &f2e {
-            let mut vtags = face.iter().map(|i| self.verts.get(i).unwrap().tag);
-            let ftag = self.topo.elem_tag(&mut vtags);
+            let vtags = face.iter().map(|i| self.verts.get(i).unwrap().tag);
+            let ftag = self.topo.elem_tag(vtags);
             if let Some(ftag) = ftag {
                 if ftag.0 == E::Face::DIM as Dim {
                     if iels.len() == 1 {
@@ -1499,7 +1499,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             avg += l;
             count += 1;
         }
-        avg /= count as f64;
+        avg /= f64::from(count);
         (mini, maxi, avg)
     }
 }

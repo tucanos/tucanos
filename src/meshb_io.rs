@@ -56,6 +56,7 @@ fn field_order(dim: usize, field_type: GmfFieldTypes) -> Vec<usize> {
 
 impl GmfReader {
     /// Create a new file
+    #[must_use]
     pub fn new(fname: &str) -> Self {
         info!("Open {} (read)", fname);
         let dim = 0;
@@ -69,20 +70,24 @@ impl GmfReader {
         }
     }
 
-    pub fn is_valid(&self) -> bool {
+    #[must_use]
+    pub const fn is_valid(&self) -> bool {
         self.file != 0
     }
 
-    pub fn is_invalid(&self) -> bool {
+    #[must_use]
+    pub const fn is_invalid(&self) -> bool {
         self.file == 0
     }
 
     /// Get the dimension (# or components for the coordinates)
-    pub fn dim(&self) -> usize {
+    #[must_use]
+    pub const fn dim(&self) -> usize {
         self.dim as usize
     }
 
     /// Read the vertices and return a vector of size (dim * # of vertices)
+    #[must_use]
     pub fn read_vertices(&self) -> Vec<f64> {
         match self.version {
             1 => self.read_vertices_gen::<f32>(),

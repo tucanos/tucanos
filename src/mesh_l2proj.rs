@@ -148,7 +148,7 @@ mod tests {
         [2.0 * p[0] + 3.0 * p[1], 3.0 * p[0] + 4.0 * p[1]]
     }
 
-    fn hess_2d(_p: Point<2>) -> [f64; 3] {
+    const fn hess_2d(_p: Point<2>) -> [f64; 3] {
         [2.0, 4.0, 3.0]
     }
 

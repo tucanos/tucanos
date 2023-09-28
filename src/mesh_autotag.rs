@@ -24,12 +24,12 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let threshold = angle_deg.to_radians().cos();
 
         let mut e2e = Vec::with_capacity(f2e.len());
-        for (_, elems) in f2e.iter() {
+        for elems in f2e.values() {
             if elems.len() == 2 {
                 let n0 = self.gelem(self.elem(elems[0])).normal();
                 let n1 = self.gelem(self.elem(elems[1])).normal();
                 if n0.dot(&n1) > threshold {
-                    e2e.push([elems[0], elems[1]])
+                    e2e.push([elems[0], elems[1]]);
                 }
             }
         }
@@ -128,9 +128,9 @@ mod tests {
         let tmp = mesh.faces().collect::<Vec<_>>();
         mesh.mut_ftags().zip(tmp).for_each(|(t, f)| {
             if f[0] == 0 || f[1] == 0 {
-                *t = 1
+                *t = 1;
             } else {
-                *t = 2
+                *t = 2;
             }
         });
 
@@ -146,9 +146,9 @@ mod tests {
         let tmp = mesh.faces().collect::<Vec<_>>();
         mesh.mut_ftags().zip(tmp).for_each(|(t, f)| {
             if f[0] == 0 || f[1] == 0 || f[2] == 1 {
-                *t = 1
+                *t = 1;
             } else {
-                *t = 2
+                *t = 2;
             }
         });
 

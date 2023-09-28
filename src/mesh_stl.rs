@@ -122,7 +122,7 @@ mod tests {
 
         geom.mut_elems().enumerate().for_each(|(i, e)| {
             if i % 2 == 0 {
-                *e = Triangle::new(e[0], e[2], e[1])
+                *e = Triangle::new(e[0], e[2], e[1]);
             }
         });
 
