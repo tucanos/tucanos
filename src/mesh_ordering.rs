@@ -172,12 +172,12 @@ mod tests {
         mesh::SimplexMesh,
         test_meshes::{test_mesh_2d, test_mesh_3d},
         topo_elems::Elem,
-        Idx, Result,
+        Idx,
     };
     use rand::{prelude::SliceRandom, rngs::StdRng, SeedableRng};
 
     #[test]
-    fn test_reorder_verts_2d() -> Result<()> {
+    fn test_reorder_verts_2d() {
         let mut mesh = test_mesh_2d().split().split().split();
 
         let f: Vec<f64> = mesh.verts().map(|p| p[0]).collect();
@@ -199,12 +199,10 @@ mod tests {
         for (a, b) in mesh.verts().map(|p| p[0]).zip(f_new.iter().copied()) {
             assert!(f64::abs(b - a) < 1e-10);
         }
-
-        Ok(())
     }
 
     #[test]
-    fn test_reorder_verts_3d() -> Result<()> {
+    fn test_reorder_verts_3d() {
         let mut mesh = test_mesh_3d().split().split().split();
 
         let f: Vec<f64> = mesh.verts().map(|p| p[0]).collect();
@@ -226,12 +224,10 @@ mod tests {
         for (a, b) in mesh.verts().map(|p| p[0]).zip(f_new.iter().copied()) {
             assert!(f64::abs(b - a) < 1e-10);
         }
-
-        Ok(())
     }
 
     #[test]
-    fn test_reorder_elems_2d() -> Result<()> {
+    fn test_reorder_elems_2d() {
         let mut mesh = test_mesh_2d().split().split().split();
 
         let f: Vec<f64> = mesh.gelems().map(|ge| ge.center()[0]).collect();
@@ -257,12 +253,10 @@ mod tests {
         {
             assert!(f64::abs(b - a) < 1e-10);
         }
-
-        Ok(())
     }
 
     #[test]
-    fn test_reorder_elems_3d() -> Result<()> {
+    fn test_reorder_elems_3d() {
         let mut mesh = test_mesh_3d().split().split().split();
 
         let f: Vec<f64> = mesh.gelems().map(|ge| ge.center()[0]).collect();
@@ -289,8 +283,6 @@ mod tests {
         {
             assert!(f64::abs(b - a) < 1e-10);
         }
-
-        Ok(())
     }
 
     #[test]

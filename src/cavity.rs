@@ -472,8 +472,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
             }
             f.sort();
             for j_face in 0..E::N_FACES {
-                let mut fj = e.face(j_face);
-                fj.sort();
+                let fj = e.face(j_face).sorted();
                 // if fj != f
                 if f.iter().zip(fj.iter()).any(|(x, y)| x != y) {
                     if let Some(val) = faces.get_mut(&fj) {

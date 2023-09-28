@@ -257,6 +257,7 @@ impl ConnectedComponents {
         res
     }
 
+    #[must_use]
     pub fn tags(&self) -> &[u16] {
         &self.vtag
     }

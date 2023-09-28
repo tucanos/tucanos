@@ -267,7 +267,7 @@ pub struct Edge([Idx; 2]);
 
 impl Edge {
     #[must_use]
-    pub fn new(i0: Idx, i1: Idx) -> Self {
+    pub const fn new(i0: Idx, i1: Idx) -> Self {
         Self([i0, i1])
     }
 }
