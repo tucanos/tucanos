@@ -259,70 +259,74 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     /// Return the tag of a face or element of this remesher
-    /// Just a wrapper for self.topo.elem_tag
+    /// Just a wrapper for `self.topo.elem_tag`
     fn elem_tag<EE: Elem>(&self, elem: &EE) -> TopoTag {
         self.topo
             .elem_tag(elem.iter().map(|i| self.verts.get(i).unwrap().tag))
             .unwrap()
     }
 
-    /// Return true if the `TopoTag` of the element can be guessed from the `TopoTag` of its
-    /// vertices
-    fn valid_tags(&self, e: &E) -> bool {
-        if e.iter()
-            .map(|vid| self.verts.get(vid).unwrap().tag.0)
-            .any(|x| x == E::DIM as Dim)
-        {
-            // The fast way
-            // TODO: do we realy need a fast way ?
-            true
-        } else {
-            // The safe way
-            let vtags = e.iter().map(|i| self.verts.get(i).unwrap().tag);
-            let etag = self.topo.elem_tag(vtags).unwrap();
-            etag.0 >= E::DIM as Dim
+    /// Elements and faces whose vertices are all on a boundary are falsely considered to be on
+    /// that boundary. To avoid this we cut the faces concerned. Where possible, the face is cut
+    /// on an edge which is not on the boundary. When this is not possible we insert a point in
+    /// the middle of the face.
+    fn split_wrong_topo_face(&mut self, mesh: &SimplexMesh<D, E>) {
+        let tagged_faces: FxHashSet<_> = mesh.faces().map(|f| f.sorted()).collect();
+        let tagged_edges: FxHashSet<_> = tagged_faces
+            .iter()
+            .flat_map(|f| (0..E::Face::N_EDGES).map(|i| f.sorted_edge(i)))
+            .collect();
+        let mut faces_to_split = FxHashSet::default();
+        for e in mesh.elems() {
+            for iface in 0..(E::N_FACES) {
+                let f = e.face(iface).sorted();
+                if !tagged_faces.contains(&f) && self.elem_tag(&f).0 != E::DIM as Dim {
+                    faces_to_split.insert(f);
+                }
+            }
+        }
+        drop(tagged_faces);
+        let mut edges_to_split = FxHashSet::default();
+        let mut cavity = Cavity::new();
+        for face in faces_to_split {
+            let mut edge_found = false;
+            for ie in 0..(E::Face::N_EDGES) {
+                let e = face.sorted_edge(ie);
+                if !tagged_edges.contains(&e) {
+                    edge_found = true;
+                    edges_to_split.insert(e);
+                    break;
+                }
+            }
+            if !edge_found {
+                cavity.init_from_face(&face, self);
+                self.split_cavity_at_center(&cavity, mesh);
+            }
+        }
+        for edge in edges_to_split {
+            cavity.init_from_edge(edge, self);
+            self.split_cavity_at_center(&cavity, mesh);
         }
     }
 
-    /// For some elements, self.topo fails to return a valid tag, e.g. because all the element
-    /// vertices belong to the same surface.
-    /// For such elements for which exactly one face is not tagged, split this face in order
-    /// to have valid tags.
-    fn split_wrong_topo_face(&mut self, mesh: &SimplexMesh<D, E>) {
-        let tagged_faces: FxHashSet<_> = mesh.faces().map(|f| f.sorted()).collect();
-        let mut elems_to_split: FxHashMap<_, _> = self
-            .elems
-            .iter()
-            .filter(|(_, e)| (!self.valid_tags(&e.el)))
-            .map(|(&k, e)| (k, (e.el, mesh.etag(k))))
-            .collect();
-        let mut cavity = Cavity::new();
-        loop {
-            let Some((_, (e, etag))) = elems_to_split.iter().next() else {
-                break;
-            };
-            let (e, etag) = (*e, *etag);
-            let face_to_split = (0..(E::N_FACES))
-                .map(|i| (i, e.face(i).sorted()))
-                .find(|(_, f)| !tagged_faces.contains(f))
-                .unwrap()
-                .0;
-            cavity.init_from_face(&e.face(face_to_split), self);
-            let (face_center, metric) = cavity.seed_barycenter();
-            assert!(
-                cavity
-                    .global_elem_ids
-                    .iter()
-                    .filter(|&&i| (i < mesh.n_elems()))
-                    .map(|&i| mesh.etag(i))
-                    .all(|t| t == etag),
-                "Unsupported tag configuration around {face_center}"
-            );
+    fn split_cavity_at_center(&mut self, cavity: &Cavity<D, E, M>, mesh: &SimplexMesh<D, E>) {
+        let (center, metric) = cavity.seed_barycenter();
+        let mut tags_in_cavity = cavity.global_elem_ids.iter().map(|&i| {
+            if i < mesh.n_elems() {
+                // For initial elements we cannot use Self::elem_tag because it may be wrong
+                mesh.etag(i)
+            } else {
+                self.elem_tag(&self.get_elem(i).unwrap().el).1
+            }
+        });
+        let etag = tags_in_cavity
+            .next()
+            .unwrap_or_else(|| panic!("{:?}", cavity.global_elem_ids));
+        if tags_in_cavity.all(|t| t == etag) {
             for &i in &cavity.global_elem_ids {
                 self.remove_elem(i);
-                elems_to_split.remove(&i);
             }
-            let ip = self.insert_vertex(face_center, &(E::DIM as Dim, etag), &metric);
+            let ip = self.insert_vertex(center, &(E::DIM as Dim, etag), &metric);
             for face in cavity.faces() {
                 self.insert_elem(E::from_vertex_and_face(ip, &cavity.global_face(&face)));
             }
@@ -387,9 +391,10 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                             "A face belonging to 2 element with different tags is not tagged correctly",
                         ));
                     } else if etag.1 == otag.1 && ftag.0 != E::DIM as Dim {
-                        return Err(Error::from(
-                            "A face belonging to 2 element with the same tags is not tagged correctly",
-                        ));
+                        return Err(Error::from(&format!(
+                            "A face belonging to 2 element with the same tags is not tagged \
+                            correctly. Face is {f:?}:{ftag:?} in element {i_elem}:{e:?}"
+                        )));
                     }
                 } else if ftag.0 != E::Face::DIM as Dim {
                     return Err(Error::from(
@@ -2373,7 +2378,7 @@ mod tests {
 
     #[test]
     fn test_bad_topo_in_corner_3d() {
-        let mut mesh = test_mesh_3d();
+        let mut mesh = test_mesh_3d().split().split();
         for tag in mesh.mut_ftags() {
             *tag = 1;
         }
@@ -2392,6 +2397,7 @@ mod tests {
         let mut mesh = test_mesh_2d();
         mesh.mut_ftags().for_each(|v| *v = 1);
         mesh.mut_etags().zip(etags).for_each(|(e, t)| *e = t);
+        mesh = mesh.split();
         mesh.compute_topology();
         let geom = NoGeometry();
         let metric: Vec<_> = mesh.verts().map(|_| IsoMetric::from(0.5)).collect();

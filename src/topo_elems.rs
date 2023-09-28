@@ -82,6 +82,13 @@ pub trait Elem:
         r.sort();
         r
     }
+
+    #[must_use]
+    fn sorted_edge(&self,  i: Idx) -> [Idx; 2] {
+        let mut e = self.edge(i);
+        e.sort_unstable();
+        e
+    }
 }
 
 /// Tetrahedron
