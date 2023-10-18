@@ -319,3 +319,60 @@ class TestMeshes(unittest.TestCase):
 
         vols = msh.vols()
         self.assertTrue(np.allclose(vols.sum(), 1.0))
+
+    def test_autotag_2d(self):
+
+        coords, elems, etags, faces, ftags = get_square(two_tags=False)
+        ftags[:] = 1
+
+        msh = Mesh22(coords, elems, etags, faces, ftags)
+        msh = msh.split().split().split()
+
+        bdy, _ = msh.boundary()
+        bdy.compute_octree()
+        bdy.compute_face_to_elems()
+
+        bdy.autotag(30.0)
+
+        tags = bdy.get_etags()
+        vals, counts = np.unique(tags, return_counts=True)
+        vals.sort()
+        self.assertTrue(np.array_equal(vals, [1, 2, 3, 4]))
+        self.assertTrue(np.array_equal(counts, [8, 8, 8, 8]))
+
+        bdy.transfer_tags_face(msh)
+
+        tags = msh.get_ftags()
+        vals, counts = np.unique(tags, return_counts=True)
+        vals.sort()
+        self.assertTrue(np.array_equal(vals, [1, 2, 3, 4]))
+        self.assertTrue(np.array_equal(counts, [8, 8, 8, 8]))
+
+    def test_autotag_3d(self):
+
+        coords, elems, etags, faces, ftags = get_cube()
+        ftags[:] = 1
+
+        msh = Mesh33(coords, elems, etags, faces, ftags)
+        msh = msh.split()
+
+        bdy, _ = msh.boundary()
+        bdy = bdy.split().split()
+        bdy.compute_octree()
+        bdy.compute_face_to_elems()
+
+        bdy.autotag(30.0)
+
+        tags = bdy.get_etags()
+        vals, counts = np.unique(tags, return_counts=True)
+        vals.sort()
+        self.assertTrue(np.array_equal(vals, [1, 2, 3, 4, 5, 6]))
+        self.assertTrue(np.array_equal(counts, [128, 128, 128, 128, 128, 128]))
+
+        bdy.transfer_tags_face(msh)
+
+        tags = msh.get_ftags()
+        vals, counts = np.unique(tags, return_counts=True)
+        vals.sort()
+        self.assertTrue(np.array_equal(vals, [1, 2, 3, 4, 5, 6]))
+        self.assertTrue(np.array_equal(counts, [8, 8, 8, 8, 8, 8]))

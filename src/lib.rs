@@ -3,7 +3,7 @@ use numpy::{PyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::{
     exceptions::{PyRuntimeError, PyValueError},
     pyclass, pyfunction, pymethods, pymodule,
-    types::{PyModule, PyType},
+    types::{PyDict, PyModule, PyType},
     wrap_pyfunction, PyResult, Python,
 };
 use std::collections::HashMap;
@@ -505,6 +505,34 @@ macro_rules! create_mesh {
             pub fn clear_topology(&mut self) {
                 self.mesh.clear_topology();
             }
+
+            /// Automatically tag the elements based on a feature angle
+            pub fn autotag<'py>(&mut self, py: Python<'py>, angle_deg: f64) -> PyResult<&'py PyDict> {
+                let res = self.mesh.autotag(angle_deg);
+                if let Err(res) = res {
+                     Err(PyRuntimeError::new_err(res.to_string()))
+                } else {
+                    let dict = PyDict::new(py);
+                    for (k, v) in res.unwrap().iter() {
+                        dict.set_item(k, to_numpy_1d(py, v.to_vec()));
+                    }
+                    Ok(dict)
+                }
+            }
+
+            /// Automatically tag the faces based on a feature angle
+            pub fn autotag_bdy<'py>(&mut self, py: Python<'py>, angle_deg: f64) -> PyResult<&'py PyDict> {
+                let res = self.mesh.autotag_bdy(angle_deg);
+                if let Err(res) = res {
+                     Err(PyRuntimeError::new_err(res.to_string()))
+                } else {
+                    let dict = PyDict::new(py);
+                    for (k, v) in res.unwrap().iter() {
+                        dict.set_item(k, to_numpy_1d(py, v.to_vec()));
+                    }
+                    Ok(dict)
+                }
+            }
         }
     };
 }
@@ -667,6 +695,20 @@ impl Mesh32 {
             mesh: read_stl(fname),
         })
     }
+
+    /// Reset the face tags of other to match those in self
+    pub fn transfer_tags_face(&self, other: &mut Mesh33) -> PyResult<()> {
+        self.mesh
+            .transfer_tags(&mut other.mesh)
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+    }
+
+    /// Reset the element tags of other to match those in self
+    pub fn transfer_tags_elem(&self, other: &mut Mesh32) -> PyResult<()> {
+        self.mesh
+            .transfer_tags(&mut other.mesh)
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+    }
 }
 
 #[pymethods]
@@ -732,6 +774,23 @@ impl Mesh22 {
         let m: Vec<f64> = m.iter().flat_map(|m| m.into_iter()).collect();
 
         Ok(to_numpy_2d(py, m, 3))
+    }
+}
+
+#[pymethods]
+impl Mesh21 {
+    /// Reset the face tags of other to match those in self
+    pub fn transfer_tags_face(&self, other: &mut Mesh22) -> PyResult<()> {
+        self.mesh
+            .transfer_tags(&mut other.mesh)
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+    }
+
+    /// Reset the element tags of other to match those in self
+    pub fn transfer_tags_elem(&self, other: &mut Mesh21) -> PyResult<()> {
+        self.mesh
+            .transfer_tags(&mut other.mesh)
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
     }
 }
 

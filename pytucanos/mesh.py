@@ -165,7 +165,7 @@ def get_cube():
     return coords, elems, etags, faces, ftags
 
 
-def get_square():
+def get_square(two_tags=True):
 
     coords = np.array(
         [
@@ -182,17 +182,30 @@ def get_square():
         ],
         dtype=np.uint32,
     )
-    etags = np.array([1, 2], dtype=np.int16)
-    faces = np.array(
-        [
-            [0, 1],
-            [1, 2],
-            [2, 3],
-            [3, 0],
-            [0, 2],
-        ],
-        dtype=np.uint32,
-    )
-    ftags = np.array([1, 2, 3, 4, 5], dtype=np.int16)
+    if two_tags:
+        etags = np.array([1, 2], dtype=np.int16)
+        faces = np.array(
+            [
+                [0, 1],
+                [1, 2],
+                [2, 3],
+                [3, 0],
+                [0, 2],
+            ],
+            dtype=np.uint32,
+        )
+        ftags = np.array([1, 2, 3, 4, 5], dtype=np.int16)
+    else:
+        etags = np.array([1, 1], dtype=np.int16)
+        faces = np.array(
+            [
+                [0, 1],
+                [1, 2],
+                [2, 3],
+                [3, 0],
+            ],
+            dtype=np.uint32,
+        )
+        ftags = np.array([1, 2, 3, 4], dtype=np.int16)
 
     return coords, elems, etags, faces, ftags
