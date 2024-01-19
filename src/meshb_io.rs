@@ -24,6 +24,7 @@ pub struct GmfReader {
 
 #[derive(Clone, Copy, Debug)]
 pub enum GmfElementTypes {
+    Vertex = GmfKwdCod::GmfVertices as isize,
     Edge = GmfKwdCod::GmfEdges as isize,
     Triangle = GmfKwdCod::GmfTriangles as isize,
     Tetrahedron = GmfKwdCod::GmfTetrahedra as isize,
@@ -164,6 +165,7 @@ impl GmfReader {
         assert!(self.is_valid());
 
         let m = match etype {
+            GmfElementTypes::Vertex => 1,
             GmfElementTypes::Edge => 2,
             GmfElementTypes::Triangle => 3,
             GmfElementTypes::Tetrahedron => 4,
@@ -178,6 +180,15 @@ impl GmfReader {
         unsafe { GmfGotoKwd(self.file, etype as c_int) };
 
         match etype {
+            GmfElementTypes::Vertex => {
+                let tag: c_int = 0;
+                let i0: T2 = Default::default();
+                for _ in 0..n_elems {
+                    unsafe { GmfGetLin(self.file, etype as c_int, &i0, &tag) };
+                    elems.push(i0.clone().try_into().unwrap() - 1);
+                    etags.push(tag as Tag);
+                }
+            }
             GmfElementTypes::Edge => {
                 let tag: c_int = 0;
                 let i0: T2 = Default::default();
@@ -358,6 +369,7 @@ impl GmfWriter {
         etags: I2,
     ) {
         let etype = match E::N_VERTS {
+            1 => GmfElementTypes::Vertex,
             2 => GmfElementTypes::Edge,
             3 => GmfElementTypes::Triangle,
             4 => GmfElementTypes::Tetrahedron,
@@ -371,6 +383,10 @@ impl GmfWriter {
 
         for (e, t) in elems.zip(etags) {
             match etype {
+                GmfElementTypes::Vertex => unsafe {
+                    GmfSetLin(self.file, etype as c_int, e[0] + 1, t as c_int);
+                },
+
                 GmfElementTypes::Edge => unsafe {
                     GmfSetLin(self.file, etype as c_int, e[0] + 1, e[1] + 1, t as c_int);
                 },
@@ -492,6 +508,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let (etype, ftype) = match E::N_VERTS {
             4 => (GmfElementTypes::Tetrahedron, GmfElementTypes::Triangle),
             3 => (GmfElementTypes::Triangle, GmfElementTypes::Edge),
+            2 => (GmfElementTypes::Edge, GmfElementTypes::Vertex),
             _ => unreachable!(),
         };
         let (elems, etags) = reader.read_elements(etype);
