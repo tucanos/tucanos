@@ -142,11 +142,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
                 ))
                 .collect::<Vec<_>>()
         );
-        self.compute(
-            r,
-            &global_elems,
-            Seed::Face(array::from_fn(|i| face[i])),
-        );
+        self.compute(r, &global_elems, Seed::Face(array::from_fn(|i| face[i])));
     }
 
     /// Return the coordinate and the metric of the barycenter of the points used
@@ -165,7 +161,11 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
                 .map(|&i| self.points[i as usize])
                 .sum::<Point<D>>()
                 * scale,
-            M::interpolate(local_ids.iter().map(|&i| (scale, &self.metrics[i as usize])))
+            M::interpolate(
+                local_ids
+                    .iter()
+                    .map(|&i| (scale, &self.metrics[i as usize])),
+            ),
         )
     }
 
