@@ -21,7 +21,7 @@ use std::{cmp::Ordering, fs::File, hash::BuildHasherDefault, io::Write, time::In
 // /// Get edged indices such that they are sorted by increasing tag dimension and then by
 // /// increasing edge length
 #[must_use]
-pub fn argsort_edges_increasing_length(f: &Vec<(Dim, f64)>) -> Vec<usize> {
+pub fn argsort_edges_increasing_length(f: &[(Dim, f64)]) -> Vec<usize> {
     let mut indices = Vec::with_capacity(f.len());
     indices.extend(0..f.len());
     indices.sort_by(|i, j| match f[*i].0.cmp(&f[*j].0) {
@@ -33,7 +33,7 @@ pub fn argsort_edges_increasing_length(f: &Vec<(Dim, f64)>) -> Vec<usize> {
 }
 
 #[must_use]
-pub fn argsort_edges_decreasing_length(f: &Vec<(Dim, f64)>) -> Vec<usize> {
+pub fn argsort_edges_decreasing_length(f: &[(Dim, f64)]) -> Vec<usize> {
     let mut indices = Vec::with_capacity(f.len());
     indices.extend(0..f.len());
     indices.sort_by(|i, j| match f[*i].0.cmp(&f[*j].0) {
