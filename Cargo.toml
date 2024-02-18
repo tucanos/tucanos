@@ -6,11 +6,11 @@ links = "tucanos"
 
 [dependencies]
 nalgebra = { version = "0.32", features = ["rand"] }
-env_logger = "0.10.0"
+env_logger = "0.11"
 log = "0.4.20"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
-nlopt = { version="0.6.0", optional = true}
+nlopt = { version="0.7.0", optional = true}
 stl_io = {version="0.7.0"}
 rustc-hash = "1.1.0"
 sorted-vec = "0.8.2"
