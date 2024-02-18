@@ -77,14 +77,14 @@ pub trait Elem:
     }
 
     #[must_use]
-    fn sorted(&self)->Self {
+    fn sorted(&self) -> Self {
         let mut r = *self;
         r.sort();
         r
     }
 
     #[must_use]
-    fn sorted_edge(&self,  i: Idx) -> [Idx; 2] {
+    fn sorted_edge(&self, i: Idx) -> [Idx; 2] {
         let mut e = self.edge(i);
         e.sort_unstable();
         e

@@ -672,14 +672,18 @@ mod tests {
     #[should_panic]
     fn test_invalid_tags_2() {
         let mut mesh = test_mesh_2d();
-        mesh.mut_ftags().zip([2, 1, 1, 3]).for_each(|(tag, v)| *tag = v);
+        mesh.mut_ftags()
+            .zip([2, 1, 1, 3])
+            .for_each(|(tag, v)| *tag = v);
         mesh.compute_topology();
     }
 
     #[test]
     fn test_valid_tags() {
         let mut mesh = test_mesh_2d();
-        mesh.mut_ftags().zip([1, 1, 2, 2]).for_each(|(tag, v)| *tag = v);
+        mesh.mut_ftags()
+            .zip([1, 1, 2, 2])
+            .for_each(|(tag, v)| *tag = v);
         mesh.compute_topology();
     }
 }
