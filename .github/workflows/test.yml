@@ -69,7 +69,7 @@ jobs:
     - id: toolchain
       uses: dtolnay/rust-toolchain@master
       with:
-        components: clippy
+        components: clippy, rustfmt
         toolchain: nightly
     - run: rustup override set ${{steps.toolchain.outputs.name}}
     - name: Rust cache
@@ -85,6 +85,7 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-nightly-
     - name: Run clippy
       uses: clechasseur/rs-clippy-check@v3
+    - run: cargo fmt --check --all
     - name: Run cargo test
       uses: clechasseur/rs-cargo@v2
       with:
