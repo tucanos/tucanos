@@ -48,7 +48,7 @@ pub struct SimplexMesh<const D: usize, E: Elem> {
     /// sum(elem_vol) = sum(vert_vol)
     vert_vol: Option<Vec<f64>>,
     /// Octree
-    tree: Option<spatialindex::DefaultObjectIndex>,
+    tree: Option<spatialindex::DefaultObjectIndex<D>>,
     /// Topology
     topo: Option<Topology>,
     /// Vertex tags
@@ -476,7 +476,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn compute_octree(&mut self) {
         debug!("Compute an octree");
         if self.tree.is_none() {
-            self.tree = Some(<DefaultObjectIndex as ObjectIndex<D>>::new(self));
+            self.tree = Some(<DefaultObjectIndex<D> as ObjectIndex<D>>::new(self));
         } else {
             warn!("Octree already computed");
         }
@@ -489,7 +489,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Get the octree
-    pub fn get_octree(&self) -> Result<&DefaultObjectIndex> {
+    pub fn get_octree(&self) -> Result<&DefaultObjectIndex<D>> {
         if self.tree.is_none() {
             Err(Error::from("Octree not computed"))
         } else {
@@ -939,7 +939,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     continue;
                 }
                 println!("merge tag {tag}");
-                let tree = <DefaultPointIndex as PointIndex<D>>::new(&smsh.mesh);
+                let tree = <DefaultPointIndex<D> as PointIndex<D>>::new(&smsh.mesh);
                 flg.iter_mut().for_each(|x| *x = false);
                 other
                     .faces()
