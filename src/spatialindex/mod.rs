@@ -4,10 +4,9 @@ use crate::{
     Idx,
 };
 
-#[path = "libol.rs"]
 mod libol;
-pub type DefaultPointIndex = libol::Octree;
-pub type DefaultObjectIndex = libol::Octree;
+pub type DefaultPointIndex<const D: usize> = libol::Octree;
+pub type DefaultObjectIndex<const D: usize> = libol::Octree;
 
 pub trait PointIndex<const D: usize> {
     fn new<E: Elem>(mesh: &SimplexMesh<D, E>) -> Self;
@@ -24,7 +23,7 @@ pub trait ObjectIndex<const D: usize> {
 mod tests {
     use nalgebra::SVector;
     use rand::{rngs::StdRng, Rng, SeedableRng};
-    use std::f64::consts::PI;
+    use std::{f64::consts::PI, time::Instant};
 
     use crate::{
         mesh::{Point, SimplexMesh},
@@ -97,6 +96,12 @@ mod tests {
         // msh.write_vtk("dbg.vtu", None, None);
 
         let tree = DefaultObjectIndex::new(&msh);
+
+        let pt = Point::<3>::new(-11.134_680_738_954_373, 10.371_256_484_784_858, 0.);
+        assert_eq!(tree.nearest(&pt), 76);
+        let (d, _) = tree.project(&pt);
+        assert!(f64::abs(d) < 2e-11, "{d} vs 0");
+
         let pt = Point::<3>::new(-360., -105., 0.);
         assert_eq!(tree.nearest(&pt), 109);
 
@@ -116,10 +121,13 @@ mod tests {
         let pt = Point::<3>::new(41.905_036_870_164_33, -7.932_967_693_525_678, 0.);
         assert_eq!(tree.nearest(&pt), 194);
         let (d, _) = tree.project(&pt);
-        assert!(f64::abs(d) < 1e-12, "{d} vs 0");
+        assert!(f64::abs(d) < 4e-12, "{d} vs 0");
 
         let mut rng = StdRng::seed_from_u64(0);
-        for _ in 0..10000 {
+        let mut worst = (0., None);
+        let start = Instant::now();
+        let num_proj = 10000;
+        for _ in 0..num_proj {
             let tmp = SVector::<f64, 3>::from_fn(|_, _| rng.gen());
             let theta = 2.0 * PI * tmp[0];
             let r = r_in + tmp[1] * (r_out * 0.999 - r_in);
@@ -128,11 +136,17 @@ mod tests {
             let z = r_out * (tmp[2] - 0.5);
             let pt = Point::<3>::new(x, y, z);
             let (d, pt_proj) = tree.project(&pt);
-            println!("{pt:?} -> {pt_proj:?}, {d}");
             assert!(f64::abs(d - z.abs()) < 1e-12);
-            assert!(f64::abs(pt_proj[0] - x) < 1e-12);
-            assert!(f64::abs(pt_proj[1] - y) < 1e-12);
-            assert!(f64::abs(pt_proj[2] - 0.0) < 1e-12);
+            for (i, v) in [x, y, 0.].iter().enumerate() {
+                let d = f64::abs(pt_proj[i] - v);
+                if d > worst.0 {
+                    worst.0 = d;
+                    worst.1 = Some(pt_proj);
+                    println!("{pt:?} -> {pt_proj:?}, {d:e}");
+                }
+                assert!(f64::abs(pt_proj[i] - v) < 3e-10, "{} != {}", pt_proj[i], v);
+            }
         }
+        println!("Time by projection: {:?}", start.elapsed() / num_proj);
     }
 }

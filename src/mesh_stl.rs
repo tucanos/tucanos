@@ -49,7 +49,7 @@ pub fn orient_stl<const D: usize, E: Elem>(
     info!("Orient the boundary mesh");
 
     let (bdy, _) = mesh.boundary();
-    let tree = <DefaultObjectIndex as ObjectIndex<D>>::new(&bdy);
+    let tree = <DefaultObjectIndex<D> as ObjectIndex<D>>::new(&bdy);
     let mut dmin = 1.0;
     let mut n_inverted = 0;
     let mut new_elems = Vec::with_capacity(stl_mesh.n_elems() as usize);
