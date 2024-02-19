@@ -20,155 +20,80 @@ pub struct Octree {
     elems: Vec<c_int>,
 }
 
+fn ptr_or_null(slice: &[c_int], offset: usize) -> *const c_int {
+    if slice.is_empty() {
+        null()
+    } else {
+        slice[offset..].as_ptr()
+    }
+}
+
+fn lol_new_octree(coords: &[f64], edges: &[c_int], trias: &[c_int], tetras: &[c_int]) -> i64 {
+    unsafe {
+        LolNewOctree(
+            (coords.len() / 3).try_into().unwrap(),
+            coords.as_ptr(),
+            coords[3..].as_ptr(),
+            (edges.len() / 2).try_into().unwrap(),
+            edges.as_ptr(),
+            ptr_or_null(edges, 2),
+            (trias.len() / 3).try_into().unwrap(),
+            trias.as_ptr(),
+            ptr_or_null(trias, 3),
+            0, // Quads
+            null(),
+            null(),
+            (tetras.len() / 4).try_into().unwrap(),
+            tetras.as_ptr(),
+            ptr_or_null(tetras, 4),
+            0, // Pyr
+            null(),
+            null(),
+            0, // Prism
+            null(),
+            null(),
+            0, // Hexa
+            null(),
+            null(),
+            0,
+            1,
+        )
+    }
+}
+
 ///  Octree to identify the element closest to a vertex and perform projection if needed
 ///  This is an interface to `libOL`
 impl Octree {
     /// Build an octree from a `SimplexMesh`
     /// The coordinates and element connectivity are copied
     pub fn new<const D: usize, E: Elem>(mesh: &SimplexMesh<D, E>) -> Self {
-        let mut coords = Vec::with_capacity(mesh.n_verts() as usize);
+        let mut coords = Vec::with_capacity(3 * mesh.n_verts() as usize);
         for p in mesh.verts() {
-            for j in 0..D {
-                coords.push(p[j]);
-            }
-            for _j in D..3 {
-                coords.push(0.);
-            }
+            coords.extend(p.iter());
+            coords.extend(&[0.; 3][D..3]);
         }
-
-        let elems: Vec<c_int> = mesh.elems().flatten().map(|i| i as c_int).collect();
-
-        match E::N_VERTS {
+        let elems: Vec<_> = mesh.elems().flatten().map(|i| i as c_int).collect();
+        let (nv, ne) = (mesh.n_verts(), mesh.n_elems());
+        let (tree, etype) = match E::N_VERTS {
             2 => {
-                info!(
-                    "create an octree with {} vertices and {} edges",
-                    mesh.n_verts(),
-                    mesh.n_elems()
-                );
-                let tree = unsafe {
-                    LolNewOctree(
-                        mesh.n_verts() as c_int,
-                        coords.as_ptr(),
-                        coords[3..].as_ptr(),
-                        mesh.n_elems() as c_int,
-                        elems.as_ptr(),
-                        elems[2..].as_ptr(),
-                        0,
-                        null(),
-                        null(),
-                        0,
-                        null(),
-                        null(),
-                        0,
-                        null(),
-                        null(),
-                        0,
-                        null(),
-                        null(),
-                        0,
-                        null(),
-                        null(),
-                        0,
-                        null(),
-                        null(),
-                        0,
-                        1,
-                    )
-                };
-                Self {
-                    tree,
-                    etype: TypTag::LolTypEdg as c_int,
-                    coords,
-                    elems,
-                }
+                info!("create an octree with {nv} vertices and {ne} edges");
+                (lol_new_octree(&coords, &elems, &[], &[]), TypTag::LolTypEdg)
             }
             3 => {
-                info!(
-                    "create an octree with {} vertices and {} triangles",
-                    mesh.n_verts(),
-                    mesh.n_elems()
-                );
-                let tree = unsafe {
-                    LolNewOctree(
-                        mesh.n_verts() as c_int,
-                        coords.as_ptr(),
-                        coords[3..].as_ptr(),
-                        0,
-                        null(),
-                        null(),
-                        mesh.n_elems() as c_int,
-                        elems.as_ptr(),
-                        elems[3..].as_ptr(),
-                        0,
-                        null(),
-                        null(),
-                        0,
-                        null(),
-                        null(),
-                        0,
-                        null(),
-                        null(),
-                        0,
-                        null(),
-                        null(),
-                        0,
-                        null(),
-                        null(),
-                        0,
-                        1,
-                    )
-                };
-                Self {
-                    tree,
-                    etype: TypTag::LolTypTri as c_int,
-                    coords,
-                    elems,
-                }
+                info!("create an octree with {nv} vertices and {ne} triangles");
+                (lol_new_octree(&coords, &[], &elems, &[]), TypTag::LolTypTri)
             }
             4 => {
-                info!(
-                    "create an octree with {} vertices and {} tetrahedra",
-                    mesh.n_verts(),
-                    mesh.n_elems()
-                );
-                let tree = unsafe {
-                    LolNewOctree(
-                        mesh.n_verts() as c_int,
-                        coords.as_ptr(),
-                        coords[3..].as_ptr(),
-                        0, // Edges
-                        null(),
-                        null(),
-                        0, // Triangles
-                        null(),
-                        null(),
-                        0, // Quads
-                        null(),
-                        null(),
-                        mesh.n_elems() as c_int, // Tets
-                        elems.as_ptr(),
-                        elems[4..].as_ptr(),
-                        0, // Pyr
-                        null(),
-                        null(),
-                        0, // Pri
-                        null(),
-                        null(),
-                        0, // Hex
-                        null(),
-                        null(),
-                        0,
-                        1,
-                    )
-                };
-                Self {
-                    tree,
-                    etype: TypTag::LolTypTet as c_int,
-                    coords,
-                    elems,
-                }
+                info!("create an octree with {nv} vertices and {ne} tetrahedra");
+                (lol_new_octree(&coords, &[], &[], &elems), TypTag::LolTypTet)
             }
             _ => unreachable!(),
+        };
+        Self {
+            tree,
+            etype: etype as c_int,
+            coords,
+            elems,
         }
     }
 
@@ -194,7 +119,7 @@ impl Octree {
                 0,
             )
         };
-        idx as Idx
+        idx.try_into().unwrap()
     }
 
     pub fn nearest_vertex<const D: usize>(&self, pt: &Point<D>) -> Idx {
@@ -218,7 +143,7 @@ impl Octree {
                 0,
             )
         };
-        idx as Idx
+        idx.try_into().unwrap()
     }
 
     /// Project a vertex onto the nearest element
