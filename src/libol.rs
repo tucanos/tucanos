@@ -11,9 +11,8 @@ use std::{
     ptr::{null, null_mut},
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Octree {
-    // FIXME: Octree is clonable but the libOL tree is not cloned
     tree: i64,
     etype: c_int,
     #[allow(dead_code)]

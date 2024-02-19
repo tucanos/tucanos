@@ -15,7 +15,7 @@ use std::hash::BuildHasherDefault;
 use std::marker::PhantomData;
 
 /// A mesh containing a single type of elements in D-dimensions
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default)]
 pub struct SimplexMesh<const D: usize, E: Elem> {
     /// Coordinates of the vertices (length = D * # of vertices)
     verts: Vec<Point<D>>,
@@ -53,6 +53,18 @@ pub struct SimplexMesh<const D: usize, E: Elem> {
     topo: Option<Topology>,
     /// Vertex tags
     vtags: Option<Vec<TopoTag>>,
+}
+
+impl<const D: usize, E: Elem> Clone for SimplexMesh<D, E> {
+    fn clone(&self) -> Self {
+        Self::new(
+            self.verts.clone(),
+            self.elems.clone(),
+            self.etags.clone(),
+            self.faces.clone(),
+            self.ftags.clone(),
+        )
+    }
 }
 
 pub struct SubSimplexMesh<const D: usize, E: Elem> {
