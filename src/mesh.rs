@@ -2,7 +2,7 @@ use crate::{
     geom_elems::GElem,
     graph::{reindex, CSRGraph},
     metric::IsoMetric,
-    octree::Octree,
+    libol::Octree,
     topo_elems::{get_face_to_elem, Elem},
     topology::Topology,
     twovec, Error, Idx, Result, Tag, TopoTag,
