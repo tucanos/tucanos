@@ -22,8 +22,8 @@ pub mod meshb_io;
 pub mod metric;
 mod metric_reduction;
 pub mod multi_element_mesh;
-mod libol;
 pub mod remesher;
+mod spatialindex;
 mod stats;
 pub mod test_meshes; // to suppress warnings!
 pub mod topo_elems;

@@ -1,10 +1,11 @@
 use crate::{
     geom_elems::GElem,
     mesh::{Point, SimplexMesh},
-    libol::Octree,
+    spatialindex::{DefaultObjectIndex, ObjectIndex},
     topo_elems::{Elem, Triangle},
     Idx,
 };
+
 use log::{info, warn};
 use std::{f64::consts::PI, fs::OpenOptions};
 
@@ -48,8 +49,7 @@ pub fn orient_stl<const D: usize, E: Elem>(
     info!("Orient the boundary mesh");
 
     let (bdy, _) = mesh.boundary();
-    let tree = Octree::new(&bdy);
-
+    let tree = <DefaultObjectIndex as ObjectIndex<D>>::new(&bdy);
     let mut dmin = 1.0;
     let mut n_inverted = 0;
     let mut new_elems = Vec::with_capacity(stl_mesh.n_elems() as usize);

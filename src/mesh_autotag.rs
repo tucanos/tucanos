@@ -6,6 +6,7 @@ use crate::{
     geom_elems::GElem,
     graph::{CSRGraph, ConnectedComponents},
     mesh::{Point, SimplexMesh},
+    spatialindex::ObjectIndex as _,
     topo_elems::Elem,
     Result, Tag,
 };
