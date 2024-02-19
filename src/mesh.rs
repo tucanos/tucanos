@@ -2,7 +2,7 @@ use crate::{
     geom_elems::GElem,
     graph::{reindex, CSRGraph},
     metric::IsoMetric,
-    libol::Octree,
+    spatialindex::{self, DefaultObjectIndex, DefaultPointIndex, ObjectIndex, PointIndex},
     topo_elems::{get_face_to_elem, Elem},
     topology::Topology,
     twovec, Error, Idx, Result, Tag, TopoTag,
@@ -48,7 +48,7 @@ pub struct SimplexMesh<const D: usize, E: Elem> {
     /// sum(elem_vol) = sum(vert_vol)
     vert_vol: Option<Vec<f64>>,
     /// Octree
-    tree: Option<Octree>,
+    tree: Option<spatialindex::DefaultObjectIndex>,
     /// Topology
     topo: Option<Topology>,
     /// Vertex tags
@@ -464,7 +464,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn compute_octree(&mut self) {
         debug!("Compute an octree");
         if self.tree.is_none() {
-            self.tree = Some(Octree::new(self));
+            self.tree = Some(<DefaultObjectIndex as ObjectIndex<D>>::new(self));
         } else {
             warn!("Octree already computed");
         }
@@ -477,7 +477,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Get the octree
-    pub fn get_octree(&self) -> Result<&Octree> {
+    pub fn get_octree(&self) -> Result<&DefaultObjectIndex> {
         if self.tree.is_none() {
             Err(Error::from("Octree not computed"))
         } else {
@@ -927,7 +927,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     continue;
                 }
                 println!("merge tag {tag}");
-                let tree = Octree::new(&smsh.mesh);
+                let tree = <DefaultPointIndex as PointIndex<D>>::new(&smsh.mesh);
                 flg.iter_mut().for_each(|x| *x = false);
                 other
                     .faces()

@@ -2,6 +2,7 @@ use crate::{
     curvature::HasCurvature,
     geom_elems::GElem,
     mesh::{Point, SimplexMesh},
+    spatialindex::ObjectIndex,
     topo_elems::Elem,
     topology::Topology,
     Dim, Error, Result, Tag, TopoTag,
