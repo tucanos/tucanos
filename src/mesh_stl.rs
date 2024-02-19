@@ -1,7 +1,7 @@
 use crate::{
     geom_elems::GElem,
     mesh::{Point, SimplexMesh},
-    octree::Octree,
+    libol::Octree,
     topo_elems::{Elem, Triangle},
     Idx,
 };

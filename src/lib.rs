@@ -22,7 +22,7 @@ pub mod meshb_io;
 pub mod metric;
 mod metric_reduction;
 pub mod multi_element_mesh;
-mod octree;
+mod libol;
 pub mod remesher;
 mod stats;
 pub mod test_meshes; // to suppress warnings!
