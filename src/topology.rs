@@ -281,6 +281,62 @@ impl Topology {
         }
     }
 
+    fn from_tetra_mesh<const D: usize, E: Elem>(
+        mesh: &SimplexMesh<D, E>,
+        topo: &mut Self,
+        vtags: &mut [TopoTag],
+    ) {
+        let (next_elems, next_tags) =
+            Self::get_faces_and_tags(mesh.elems(), mesh.etags(), mesh.faces(), mesh.ftags(), topo);
+        Self::elem_tags_to_vert_tags(
+            next_elems.iter().copied(),
+            next_tags.iter().copied(),
+            topo,
+            vtags,
+        );
+
+        let (next_elems, next_tags) = Self::get_faces_and_tags(
+            next_elems.iter().copied(),
+            next_tags.iter().copied(),
+            std::iter::empty(),
+            std::iter::empty(),
+            topo,
+        );
+        Self::elem_tags_to_vert_tags(
+            next_elems.iter().copied(),
+            next_tags.iter().copied(),
+            topo,
+            vtags,
+        );
+
+        let (next_elems, next_tags) = Self::get_faces_and_tags(
+            next_elems.iter().copied(),
+            next_tags.iter().copied(),
+            std::iter::empty(),
+            std::iter::empty(),
+            topo,
+        );
+        Self::elem_tags_to_vert_tags(
+            next_elems.iter().copied(),
+            next_tags.iter().copied(),
+            topo,
+            vtags,
+        );
+
+        Self::get_faces_and_tags(
+            next_elems.iter().copied(),
+            next_tags.iter().copied(),
+            std::iter::empty(),
+            std::iter::empty(),
+            topo,
+        );
+        Self::elem_tags_to_vert_tags(
+            next_elems.iter().copied(),
+            next_tags.iter().copied(),
+            topo,
+            vtags,
+        );
+    }
     pub fn from_mesh<const D: usize, E: Elem>(mesh: &SimplexMesh<D, E>) -> (Self, Vec<TopoTag>) {
         info!("Building topology from mesh");
 
@@ -290,61 +346,7 @@ impl Topology {
 
         Self::elem_tags_to_vert_tags(mesh.elems(), mesh.etags(), &mut topo, &mut vtags);
         if E::N_VERTS == 4 {
-            let (next_elems, next_tags) = Self::get_faces_and_tags(
-                mesh.elems(),
-                mesh.etags(),
-                mesh.faces(),
-                mesh.ftags(),
-                &mut topo,
-            );
-            Self::elem_tags_to_vert_tags(
-                next_elems.iter().copied(),
-                next_tags.iter().copied(),
-                &mut topo,
-                &mut vtags,
-            );
-
-            let (next_elems, next_tags) = Self::get_faces_and_tags(
-                next_elems.iter().copied(),
-                next_tags.iter().copied(),
-                std::iter::empty(),
-                std::iter::empty(),
-                &mut topo,
-            );
-            Self::elem_tags_to_vert_tags(
-                next_elems.iter().copied(),
-                next_tags.iter().copied(),
-                &mut topo,
-                &mut vtags,
-            );
-
-            let (next_elems, next_tags) = Self::get_faces_and_tags(
-                next_elems.iter().copied(),
-                next_tags.iter().copied(),
-                std::iter::empty(),
-                std::iter::empty(),
-                &mut topo,
-            );
-            Self::elem_tags_to_vert_tags(
-                next_elems.iter().copied(),
-                next_tags.iter().copied(),
-                &mut topo,
-                &mut vtags,
-            );
-
-            Self::get_faces_and_tags(
-                next_elems.iter().copied(),
-                next_tags.iter().copied(),
-                std::iter::empty(),
-                std::iter::empty(),
-                &mut topo,
-            );
-            Self::elem_tags_to_vert_tags(
-                next_elems.iter().copied(),
-                next_tags.iter().copied(),
-                &mut topo,
-                &mut vtags,
-            );
+            Self::from_tetra_mesh(mesh, &mut topo, &mut vtags);
         } else if E::N_VERTS == 3 {
             let (next_elems, next_tags) = Self::get_faces_and_tags(
                 mesh.elems(),

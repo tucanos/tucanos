@@ -250,10 +250,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         step: Option<f64>,
         max_iter: Idx,
     ) -> Result<f64> {
-        info!(
-            "Scaling the metric (h_min = {}, h_max = {}, n_elems = {}, max_iter = {})",
-            h_min, h_max, n_elems, max_iter
-        );
+        info!("Scaling the metric (h_min = {h_min}, h_max = {h_max}, n_elems = {n_elems}, max_iter = {max_iter})");
         if fixed_m.is_some() {
             info!("Using a fixed metric");
         }
@@ -324,10 +321,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 for iter in 0..max_iter {
                     let tmp_m = m_iter(scale_low);
                     let c = self.complexity(tmp_m, h_min, h_max);
-                    debug!(
-                        "Iteration {}: scale_low = {:.2e}, complexity = {:.2e}",
-                        iter, scale_low, c
-                    );
+                    debug!("Iteration {iter}: scale_low = {scale_low:.2e}, complexity = {c:.2e}");
 
                     if iter == max_iter - 1 {
                         return Err(Error::from("Unable to scale the metric (bisection)"));
@@ -344,10 +338,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     scale = 0.5 * (scale_low + scale_high);
                     let tmp_m = m_iter(scale);
                     let c = self.complexity(tmp_m, h_min, h_max);
-                    debug!(
-                        "Iteration {}: scale = {:.2e}, complexity = {:.2e}",
-                        iter, scale, c
-                    );
+                    debug!("Iteration {iter}: scale = {scale:.2e}, complexity = {c:.2e}");
                     if f64::abs(c - f64::from(n_elems)) < 0.05 * f64::from(n_elems) {
                         break;
                     }
@@ -1097,9 +1088,7 @@ mod tests {
     #[test]
     fn test_curvature() -> Result<()> {
         // build a cylinder mesh
-        let r_in = 0.1;
-        let r_out = 0.5;
-
+        let (r_in, r_out) = (0.1, 0.5);
         let mut mesh = test_mesh_3d().split().split().split();
 
         mesh.mut_verts().for_each(|p| {
@@ -1122,8 +1111,7 @@ mod tests {
 
         // tag vertices on the interior & exterior cylinders
         let mut bdy_flg = vec![0; bdy.n_verts() as usize];
-        let tag_in = 6;
-        let tag_out = 5;
+        let (tag_in, tag_out) = (6, 5);
         bdy.elems().zip(bdy.etags()).for_each(|(f, t)| {
             if t == tag_in {
                 f.into_iter().for_each(|i| bdy_flg[i as usize] = 1);
@@ -1198,11 +1186,9 @@ mod tests {
 
         // Complexity
         mesh.compute_volumes();
-
         mesh.scale_metric(&mut m, 1e-2, 0.2, 10000, Some(&m_curv), None, None, 20)?;
         let c = mesh.complexity(m.iter().copied(), 0.0, 1.0);
         assert!(f64::abs(c - 10000.) < 1000.);
-
         for (i_vert, &m) in m.iter().enumerate() {
             let s = m.sizes();
             assert!(s[0] > 0.99 * 1e-2 && s[0] < 1.01 * 0.2);
@@ -1218,7 +1204,6 @@ mod tests {
                 assert!(l_m_curv < 1.01 * l_m);
             }
         }
-
         Ok(())
     }
 }

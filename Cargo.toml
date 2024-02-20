@@ -51,7 +51,6 @@ should_panic_without_expect = "allow"
 unreadable_literal = "allow"
 manual_clamp = "allow"
 # TODO: to remove
-too_many_lines = "allow"
 cognitive_complexity = "allow"
 useless_let_if_seq = "allow"
 needless_pass_by_value = "allow"
