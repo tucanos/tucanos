@@ -52,5 +52,4 @@ unreadable_literal = "allow"
 manual_clamp = "allow"
 # TODO: to remove
 cognitive_complexity = "allow"
-useless_let_if_seq = "allow"
 needless_pass_by_value = "allow"

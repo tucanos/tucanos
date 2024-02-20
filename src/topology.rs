@@ -187,8 +187,7 @@ impl Topology {
 
         for (face, f2e) in face2elem {
             let mut face_tag: Tag = 0;
-            let mut add = false;
-            if f2e.len() == 1 {
+            let add = if f2e.len() == 1 {
                 //boundary face
                 let i_elem = f2e[0];
                 let elem_tag = etags[i_elem as usize];
@@ -221,7 +220,7 @@ impl Topology {
                         topo.insert((E::Face::DIM as Dim, face_tag), &[elem_tag]);
                     }
                 }
-                add = true;
+                true
             } else {
                 // internal  or multiple face
                 let mut elem_tags: HashSet<Tag> = HashSet::new();
@@ -249,9 +248,11 @@ impl Topology {
                             elem_tags.iter().copied(),
                         );
                     }
-                    add = true;
+                    true
+                } else {
+                    false
                 }
-            }
+            };
             if add {
                 next_elems.push(face);
                 next_tags.push(face_tag);
