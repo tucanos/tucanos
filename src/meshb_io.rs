@@ -145,6 +145,7 @@ impl GmfReader {
     /// Read the element connectivity and element tag of a given type and return
     ///  - a connectivity vector of size (# of vertices per element * # of elements )
     ///  - a tag vector of size (# of elements)
+    #[must_use]
     pub fn read_elements(&self, etype: GmfElementTypes) -> (Vec<Idx>, Vec<Tag>) {
         match self.version {
             1 => self.read_elements_gen::<i32>(etype),
@@ -235,6 +236,7 @@ impl GmfReader {
     /// Read the field defined at the vertices (for .sol(b) files) and return a
     ///  - vector of size (m * # of vertices)
     ///  - the number of components m
+    #[must_use]
     pub fn read_solution(&self) -> (Vec<f64>, usize) {
         match self.version {
             1 => self.read_solution_gen::<f32>(),
@@ -280,7 +282,7 @@ impl GmfReader {
             unsafe {
                 GmfGetLin(self.file, GmfKwdCod::GmfSolAtVertices as c_int, &s);
             }
-            for j in order.iter().cloned() {
+            for j in order.iter().copied() {
                 res.push(s[j].try_into().unwrap());
             }
         }
@@ -307,6 +309,7 @@ pub struct GmfWriter {
 
 impl GmfWriter {
     /// Create a new file
+    #[must_use]
     pub fn new(fname: &str, dim: usize) -> Self {
         info!("Open {} (write)", fname);
         let dim = dim as c_int;
@@ -325,11 +328,13 @@ impl GmfWriter {
         self.write_elements::<E::Face, _, _>(mesh.n_faces(), mesh.faces(), mesh.ftags());
     }
 
-    pub fn is_valid(&self) -> bool {
+    #[must_use]
+    pub const fn is_valid(&self) -> bool {
         self.file != 0
     }
 
-    pub fn is_invalid(&self) -> bool {
+    #[must_use]
+    pub const fn is_invalid(&self) -> bool {
         self.file == 0
     }
 
@@ -337,7 +342,11 @@ impl GmfWriter {
         debug!("Write {} vertices", n_verts);
 
         unsafe {
-            GmfSetKwd(self.file, GmfKwdCod::GmfVertices as c_int, n_verts as i64);
+            GmfSetKwd(
+                self.file,
+                GmfKwdCod::GmfVertices as c_int,
+                i64::from(n_verts),
+            );
         }
 
         for p in verts {
@@ -378,17 +387,17 @@ impl GmfWriter {
         debug!("Write {} elements ({:?})", n_elems, etype);
 
         unsafe {
-            GmfSetKwd(self.file, etype as c_int, n_elems as i64);
+            GmfSetKwd(self.file, etype as c_int, i64::from(n_elems));
         }
 
         for (e, t) in elems.zip(etags) {
             match etype {
                 GmfElementTypes::Vertex => unsafe {
-                    GmfSetLin(self.file, etype as c_int, e[0] + 1, t as c_int);
+                    GmfSetLin(self.file, etype as c_int, e[0] + 1, i32::from(t));
                 },
 
                 GmfElementTypes::Edge => unsafe {
-                    GmfSetLin(self.file, etype as c_int, e[0] + 1, e[1] + 1, t as c_int);
+                    GmfSetLin(self.file, etype as c_int, e[0] + 1, e[1] + 1, i32::from(t));
                 },
                 GmfElementTypes::Triangle => unsafe {
                     GmfSetLin(
@@ -397,7 +406,7 @@ impl GmfWriter {
                         e[0] + 1,
                         e[1] + 1,
                         e[2] + 1,
-                        t as c_int,
+                        i32::from(t),
                     );
                 },
                 GmfElementTypes::Tetrahedron => unsafe {
@@ -408,7 +417,7 @@ impl GmfWriter {
                         e[1] + 1,
                         e[2] + 1,
                         e[3] + 1,
-                        t as c_int,
+                        i32::from(t),
                     );
                 },
             };
@@ -445,7 +454,7 @@ impl GmfWriter {
             let start = i * n_comp;
             let end = start + n_comp;
             let s = &arr[start..end];
-            for (i, j) in order.iter().cloned().enumerate() {
+            for (i, j) in order.iter().copied().enumerate() {
                 vals[j] = s[i];
             }
 
@@ -486,7 +495,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn write_solb(&self, arr: &[f64], file_name: &str) -> Result<()> {
         let mut writer = GmfWriter::new(file_name, D);
         if writer.is_invalid() {
-            return Err(Error::from(&format!("Cannot open {}", file_name)));
+            return Err(Error::from(&format!("Cannot open {file_name}")));
         }
 
         let n_comp = arr.len() / self.n_verts() as usize;
@@ -498,7 +507,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn read_meshb(file_name: &str) -> Result<Self> {
         let reader = GmfReader::new(file_name);
         if reader.is_invalid() {
-            return Err(Error::from(&format!("Cannot open {}", file_name)));
+            return Err(Error::from(&format!("Cannot open {file_name}")));
         }
         if reader.dim() != D {
             return Err(Error::from("Invalid dimension"));
@@ -541,14 +550,14 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             })
             .collect();
 
-        Ok(SimplexMesh::<D, E>::new(verts, elems, etags, faces, ftags))
+        Ok(Self::new(verts, elems, etags, faces, ftags))
     }
 }
 
 pub fn read_solb(file_name: &str) -> Result<(Vec<f64>, usize)> {
     let reader = GmfReader::new(file_name);
     if reader.is_invalid() {
-        return Err(Error::from(&format!("Cannot open {}", file_name)));
+        return Err(Error::from(&format!("Cannot open {file_name}")));
     }
 
     let (sol, m) = reader.read_solution();

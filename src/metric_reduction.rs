@@ -49,8 +49,7 @@ where
 /// over all edges $`e`$.
 pub fn step<const D: usize>(mat_a: SMatrix<f64, D, D>, mat_b: SMatrix<f64, D, D>) -> (f64, f64)
 where
-    Const<D>: nalgebra::ToTypenum,
-    Const<D>: nalgebra::DimSub<nalgebra::U1>,
+    Const<D>: nalgebra::ToTypenum + nalgebra::DimSub<nalgebra::U1>,
     DefaultAllocator: Allocator<f64, <Const<D> as nalgebra::DimSub<nalgebra::U1>>::Output>,
 {
     let mut eig = mat_a.symmetric_eigen();
@@ -83,8 +82,7 @@ pub fn control_step<const D: usize>(
     f: f64,
 ) -> Option<SMatrix<f64, D, D>>
 where
-    Const<D>: nalgebra::ToTypenum,
-    Const<D>: nalgebra::DimSub<nalgebra::U1>,
+    Const<D>: nalgebra::ToTypenum + nalgebra::DimSub<nalgebra::U1>,
     DefaultAllocator: Allocator<f64, <Const<D> as nalgebra::DimSub<nalgebra::U1>>::Output>,
 {
     let f = f * f;

@@ -136,13 +136,8 @@ impl Geometry<2> for GeomHalfCircle2d {
                 (*pt) *= 1. / r;
             }
             (0, 1) => {
-                if pt[0] < 0. {
-                    pt[0] = -1.;
-                    pt[1] = 0.;
-                } else {
-                    pt[0] = 1.;
-                    pt[1] = 0.;
-                }
+                pt[0] = if pt[0] < 0. { -1. } else { 1. };
+                pt[1] = 0.;
             }
             _ => unreachable!(),
         }

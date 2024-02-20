@@ -1240,7 +1240,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                         let ge1 = E::Geom::from_vert_and_face(&p, m0, gf);
                         q_avg += ge1.quality();
                     }
-                    q_avg / cavity.n_faces() as f64
+                    q_avg / f64::from(cavity.n_faces())
                 };
 
                 let mut opt = Nlopt::new(Algorithm::Cobyla, n - 1, func, Target::Maximize, ());
@@ -1358,9 +1358,8 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     if filled_cavity.check(0.0, f64::MAX, cavity.q_min) > 0. {
                         valid = true;
                         break;
-                    } else {
-                        trace!("Smooth, quality would decrease for omega={}", omega,);
                     }
+                    trace!("Smooth, quality would decrease for omega={}", omega,);
                 }
 
                 if !valid {

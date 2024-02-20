@@ -4,9 +4,9 @@ use crate::{
     Idx, Tag,
 };
 
-/// Subdivision of standard elements to triangles and tetrahedra maintaining a consistent mesh. The algorithms are taken from
-/// How to Subdivide Pyramids, Prisms and Hexahedra into Tetrahedra
-/// Julien Dompierre Paul Labbé Marie-Gabrielle Vallet Ricardo Camarero
+// Subdivision of standard elements to triangles and tetrahedra maintaining a consistent mesh. The algorithms are taken from
+// How to Subdivide Pyramids, Prisms and Hexahedra into Tetrahedra
+// Julien Dompierre Paul Labbé Marie-Gabrielle Vallet Ricardo Camarero
 
 const INDIRECTION_PRI: [[usize; 6]; 6] = [
     [0, 1, 2, 3, 4, 5],
@@ -87,7 +87,6 @@ fn pyr2tets(pyr: &[Idx]) -> [Tetrahedron; 2] {
         tet2[0] = pyr[0];
         tet2[1] = pyr[2];
         tet2[2] = pyr[3];
-        tet2[3] = pyr[4];
     } else {
         tet1[0] = pyr[1];
         tet1[1] = pyr[2];
@@ -96,9 +95,8 @@ fn pyr2tets(pyr: &[Idx]) -> [Tetrahedron; 2] {
         tet2[0] = pyr[1];
         tet2[1] = pyr[3];
         tet2[2] = pyr[0];
-        tet2[3] = pyr[4];
     }
-
+    tet2[3] = pyr[4];
     [tet1, tet2]
 }
 
@@ -114,34 +112,26 @@ fn pri2tets(pri: &[Idx]) -> [Tetrahedron; 3] {
     let mut tet1 = Tetrahedron::default();
     let mut tet2 = Tetrahedron::default();
     let mut tet3 = Tetrahedron::default();
+    tet1[0] = idx[0];
+    tet1[1] = idx[1];
+    tet1[2] = idx[2];
     if compare_edges(idx[1], idx[5], idx[2], idx[4]) {
-        tet1[0] = idx[0];
-        tet1[1] = idx[1];
-        tet1[2] = idx[2];
         tet1[3] = idx[5];
         tet2[0] = idx[0];
         tet2[1] = idx[1];
         tet2[2] = idx[5];
         tet2[3] = idx[4];
-        tet3[0] = idx[0];
-        tet3[1] = idx[4];
-        tet3[2] = idx[5];
-        tet3[3] = idx[3];
     } else {
-        tet1[0] = idx[0];
-        tet1[1] = idx[1];
-        tet1[2] = idx[2];
         tet1[3] = idx[4];
         tet2[0] = idx[0];
         tet2[1] = idx[4];
         tet2[2] = idx[2];
         tet2[3] = idx[5];
-        tet3[0] = idx[0];
-        tet3[1] = idx[4];
-        tet3[2] = idx[5];
-        tet3[3] = idx[3];
     }
-
+    tet3[0] = idx[0];
+    tet3[1] = idx[4];
+    tet3[2] = idx[5];
+    tet3[3] = idx[3];
     [tet1, tet2, tet3]
 }
 
@@ -293,7 +283,7 @@ pub enum ElementType {
 }
 
 impl ElementType {
-    fn n_verts(self) -> Idx {
+    const fn n_verts(self) -> Idx {
         match self {
             Self::Edge => 2,
             Self::Triangle => 3,
@@ -305,7 +295,7 @@ impl ElementType {
         }
     }
 
-    fn dim(self) -> Idx {
+    const fn dim(self) -> Idx {
         match self {
             Self::Edge => 1,
             Self::Triangle => 2,
@@ -538,10 +528,10 @@ impl<const D: usize> MultiElementMesh<D> {
 #[cfg(test)]
 mod tests {
     use super::{ElementType, MultiElementMesh};
-    use crate::{mesh::Point, Result};
+    use crate::mesh::Point;
 
     #[test]
-    fn test_2d() -> Result<()> {
+    fn test_2d() {
         let coords = vec![
             Point::<2>::new(0., 0.),
             Point::<2>::new(1., 0.),
@@ -570,12 +560,10 @@ mod tests {
         assert_eq!(msh.n_faces(), 5);
 
         assert!(f64::abs(msh.vol() - 1.25) < 1e-10);
-
-        Ok(())
     }
 
     #[test]
-    fn test_3d() -> Result<()> {
+    fn test_3d() {
         let coords = vec![
             Point::<3>::new(0., 0., 0.),
             Point::<3>::new(1., 0., 0.),
@@ -615,12 +603,10 @@ mod tests {
         assert_eq!(msh.n_faces(), 14);
 
         assert!(f64::abs(msh.vol() - 7. / 6.) < 1e-10);
-
-        Ok(())
     }
 
     #[test]
-    fn test_3d_bdy() -> Result<()> {
+    fn test_3d_bdy() {
         let coords = vec![
             Point::<3>::new(0., 0., 0.),
             Point::<3>::new(1., 0., 0.),
@@ -661,7 +647,5 @@ mod tests {
         assert_eq!(bmsh.n_verts(), 9);
         assert_eq!(bmsh.n_elems(), 14);
         assert_eq!(bmsh.n_faces(), 0);
-
-        Ok(())
     }
 }
