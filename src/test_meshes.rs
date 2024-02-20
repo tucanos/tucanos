@@ -6,6 +6,8 @@ use std::fs::File;
 use std::io::Write;
 
 /// Build a 2d mesh of a square with 2 triangles tagged differently
+/// WARNING: the mesh tags are not valid as the diagonal (0, 2) is between
+/// two different element tags not is not tagged
 #[must_use]
 pub fn test_mesh_2d() -> SimplexMesh<2, Triangle> {
     let coords = vec![
