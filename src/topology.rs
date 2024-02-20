@@ -650,17 +650,6 @@ mod tests {
         assert_eq!(topo.entities[1].len(), 12);
         assert_eq!(topo.entities[2].len(), 6);
         assert_eq!(topo.entities[3].len(), 1);
-
-        // assert_eq!(
-        //     vtags[0],
-        //     topo.get_from_parents(0, vec![1, 4, 5]).unwrap().tag
-        // );
-        // assert_eq!(vtags[1], topo.get_from_parents(0, vec![1, 2]).unwrap().tag);
-        // assert_eq!(
-        //     vtags[2],
-        //     topo.get_from_parents(0, vec![2, 3, 5]).unwrap().tag
-        // );
-        // assert_eq!(vtags[3], topo.get_from_parents(0, vec![3, 4]).unwrap().tag);
     }
 
     #[test]
