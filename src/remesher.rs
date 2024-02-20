@@ -1278,6 +1278,123 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         }
     }
 
+    fn smooth_iter<G: Geometry<D>>(
+        &mut self,
+        params: &RemesherParams,
+        geom: &G,
+        cavity: &mut Cavity<D, E, M>,
+        verts: &[Idx],
+    ) -> (Idx, Idx, Idx) {
+        let (mut n_fails, mut n_min, mut n_smooth) = (0, 0, 0);
+        for i0 in verts.iter().copied() {
+            trace!("Try to smooth vertex {}", i0);
+            cavity.init_from_vertex(i0, self);
+            let cavity::Seed::Vertex(i0_local) = cavity.seed else {
+                unreachable!()
+            };
+            if cavity.tags[i0_local as usize].1 < 0 {
+                continue;
+            }
+
+            let (is_local_minimum, neighbors) = self.get_smoothing_neighbors(cavity);
+
+            if is_local_minimum {
+                trace!("Won't smooth, local minimum of m");
+                n_min += 1;
+                continue;
+            }
+
+            if neighbors.is_empty() {
+                trace!("Cannot smooth, no suitable neighbor");
+                continue;
+            }
+
+            let cavity::Seed::Vertex(i0_local) = cavity.seed else {
+                unreachable!()
+            };
+            let p0 = &cavity.points[i0_local as usize];
+            let m0 = &cavity.metrics[i0_local as usize];
+            let t0 = &cavity.tags[i0_local as usize];
+
+            let mut h0_new = Default::default();
+            let p0_smoothed = match params.smooth_type {
+                SmoothingType::Laplacian => Self::smooth_laplacian(cavity, &neighbors),
+                SmoothingType::Laplacian2 => Self::smooth_laplacian_2(cavity, &neighbors),
+                SmoothingType::Avro => Self::smooth_avro(cavity, &neighbors),
+                #[cfg(feature = "nlopt")]
+                SmoothingType::NLOpt => Self::smooth_nlopt(cavity, &neighbors),
+            };
+
+            let mut p0_new = Point::<D>::zeros();
+            let mut valid = false;
+
+            for omega in params.smooth_relax.iter().copied() {
+                p0_new = (1.0 - omega) * p0 + omega * p0_smoothed;
+
+                if t0.0 < E::DIM as Dim {
+                    geom.project(&mut p0_new, t0);
+                }
+
+                trace!(
+                    "Smooth, vertex moved by {} -> {p0_new:?}",
+                    (p0 - p0_new).norm()
+                );
+
+                let filled_cavity = FilledCavity::from_cavity_and_moved_vertex(cavity, &p0_new, m0);
+
+                if !filled_cavity.check_boundary_normals(&self.topo, geom, params.max_angle) {
+                    trace!("Cannot smooth, would create a non smooth surface");
+                    continue;
+                }
+
+                if filled_cavity.check(0.0, f64::MAX, cavity.q_min) > 0. {
+                    valid = true;
+                    break;
+                }
+                trace!("Smooth, quality would decrease for omega={}", omega,);
+            }
+
+            if !valid {
+                n_fails += 1;
+                trace!("Smooth, no smoothing is valid");
+                continue;
+            }
+
+            // Smoothing is valid, interpolate the metric at the new vertex location
+            let mut best = f64::NEG_INFINITY;
+            for i_elem in 0..cavity.n_elems() {
+                let ge = cavity.gelem(i_elem);
+                let x = ge.bcoords(&p0_new);
+                let cmin = min_iter(x.as_slice_f64().iter().copied());
+                if cmin > best {
+                    let elem = &cavity.elems[i_elem as usize];
+                    let metrics = elem.iter().map(|i| &cavity.metrics[*i as usize]);
+                    let wm = x.as_slice_f64().iter().copied().zip(metrics);
+                    h0_new = M::interpolate(wm);
+                    best = cmin;
+                    if best > 0.0 {
+                        break;
+                    }
+                }
+            }
+
+            trace!("Smooth, update vertex");
+            {
+                let vert = self.verts.get_mut(&i0).unwrap();
+                vert.vx = p0_new;
+                assert!(h0_new.vol() > 0.0);
+                vert.m = h0_new;
+            }
+
+            for (i_local, i_global) in cavity.global_elem_ids.iter().enumerate() {
+                // update the quality
+                let ge = cavity.gelem(i_local as Idx); // todo: precompute all ge
+                self.elems.get_mut(i_global).unwrap().q = ge.quality();
+            }
+            n_smooth += 1;
+        }
+        (n_fails, n_min, n_smooth)
+    }
     /// Perform mesh smoothing
     pub fn smooth<G: Geometry<D>>(&mut self, params: &RemesherParams, geom: &G) {
         info!("Smooth vertices");
@@ -1289,124 +1406,10 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
         let mut cavity = Cavity::new();
         for iter in 0..params.smooth_iter {
-            let mut n_fails = 0;
-            let mut n_min = 0;
-            let mut n_smooth = 0;
-            for i0 in verts.iter().copied() {
-                trace!("Try to smooth vertex {}", i0);
-                cavity.init_from_vertex(i0, self);
-                let cavity::Seed::Vertex(i0_local) = cavity.seed else {
-                    unreachable!()
-                };
-                if cavity.tags[i0_local as usize].1 < 0 {
-                    continue;
-                }
-
-                let (is_local_minimum, neighbors) = self.get_smoothing_neighbors(&cavity);
-
-                if is_local_minimum {
-                    trace!("Won't smooth, local minimum of m");
-                    n_min += 1;
-                    continue;
-                }
-
-                if neighbors.is_empty() {
-                    trace!("Cannot smooth, no suitable neighbor");
-                    continue;
-                }
-
-                let cavity::Seed::Vertex(i0_local) = cavity.seed else {
-                    unreachable!()
-                };
-                let p0 = &cavity.points[i0_local as usize];
-                let m0 = &cavity.metrics[i0_local as usize];
-                let t0 = &cavity.tags[i0_local as usize];
-
-                let mut h0_new = Default::default();
-                let p0_smoothed = match params.smooth_type {
-                    SmoothingType::Laplacian => Self::smooth_laplacian(&cavity, &neighbors),
-                    SmoothingType::Laplacian2 => Self::smooth_laplacian_2(&cavity, &neighbors),
-                    SmoothingType::Avro => Self::smooth_avro(&cavity, &neighbors),
-                    #[cfg(feature = "nlopt")]
-                    SmoothingType::NLOpt => Self::smooth_nlopt(&cavity, &neighbors),
-                };
-
-                let mut p0_new = Point::<D>::zeros();
-                let mut valid = false;
-
-                for omega in params.smooth_relax.iter().copied() {
-                    p0_new = (1.0 - omega) * p0 + omega * p0_smoothed;
-
-                    if t0.0 < E::DIM as Dim {
-                        geom.project(&mut p0_new, t0);
-                    }
-
-                    trace!(
-                        "Smooth, vertex moved by {} -> {:?}",
-                        (p0 - p0_new).norm(),
-                        p0_new
-                    );
-
-                    let filled_cavity =
-                        FilledCavity::from_cavity_and_moved_vertex(&cavity, &p0_new, m0);
-
-                    if !filled_cavity.check_boundary_normals(&self.topo, geom, params.max_angle) {
-                        trace!("Cannot smooth, would create a non smooth surface");
-                        continue;
-                    }
-
-                    if filled_cavity.check(0.0, f64::MAX, cavity.q_min) > 0. {
-                        valid = true;
-                        break;
-                    }
-                    trace!("Smooth, quality would decrease for omega={}", omega,);
-                }
-
-                if !valid {
-                    n_fails += 1;
-                    trace!("Smooth, no smoothing is valid");
-                    continue;
-                }
-
-                // Smoothing is valid, interpolate the metric at the new vertex location
-                let mut best = f64::NEG_INFINITY;
-                for i_elem in 0..cavity.n_elems() {
-                    let ge = cavity.gelem(i_elem);
-                    let x = ge.bcoords(&p0_new);
-                    let cmin = min_iter(x.as_slice_f64().iter().copied());
-                    if cmin > best {
-                        let elem = &cavity.elems[i_elem as usize];
-                        let metrics = elem.iter().map(|i| &cavity.metrics[*i as usize]);
-                        let wm = x.as_slice_f64().iter().copied().zip(metrics);
-                        h0_new = M::interpolate(wm);
-                        best = cmin;
-                        if best > 0.0 {
-                            break;
-                        }
-                    }
-                }
-
-                trace!("Smooth, update vertex");
-                {
-                    let vert = self.verts.get_mut(&i0).unwrap();
-                    vert.vx = p0_new;
-                    assert!(h0_new.vol() > 0.0);
-                    vert.m = h0_new;
-                }
-
-                for (i_local, i_global) in cavity.global_elem_ids.iter().enumerate() {
-                    // update the quality
-                    let ge = cavity.gelem(i_local as Idx); // todo: precompute all ge
-                    self.elems.get_mut(i_global).unwrap().q = ge.quality();
-                }
-                n_smooth += 1;
-            }
+            let (n_smooth, n_fails, n_min) = self.smooth_iter(params, geom, &mut cavity, &verts);
             debug!(
-                "Iteration {}: {} vertices moved, {} fails, {} local minima",
+                "Iteration {}: {n_smooth} vertices moved, {n_fails} fails, {n_min} local minima",
                 iter + 1,
-                n_smooth,
-                n_fails,
-                n_min
             );
             self.stats
                 .push(StepStats::Smooth(SmoothStats::new(n_fails, self)));
