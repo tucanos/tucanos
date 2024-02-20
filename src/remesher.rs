@@ -14,7 +14,7 @@ use crate::{
 use log::{debug, info, trace, warn};
 #[cfg(feature = "nlopt")]
 use nlopt::{Algorithm, Nlopt, Target};
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 use sorted_vec::SortedVec;
 use std::{cmp::Ordering, fs::File, hash::BuildHasherDefault, io::Write, time::Instant};
 
@@ -45,6 +45,7 @@ pub fn argsort_edges_decreasing_length(f: &[(Dim, f64)]) -> Vec<usize> {
 }
 
 /// Vertex information
+#[derive(Debug)]
 pub struct VtxInfo<const D: usize, M: Metric<D>> {
     /// Vertex coordinates
     pub vx: Point<D>,
@@ -254,82 +255,39 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
         res.print_stats();
         res.stats.push(StepStats::Init(InitStats::new(&res)));
-        res.split_wrong_topo_face(mesh);
         Ok(res)
     }
 
     /// Return the tag of a face or element of this remesher
     /// Just a wrapper for `self.topo.elem_tag`
-    fn elem_tag<EE: Elem>(&self, elem: &EE) -> TopoTag {
-        self.topo
+    fn elem_tag<EE: Elem>(&self, elem: &EE, min_dim: Option<Dim>) -> TopoTag {
+        let (dim, tag) = self
+            .topo
             .elem_tag(elem.iter().map(|i| self.verts.get(i).unwrap().tag))
-            .unwrap()
-    }
-
-    /// Elements and faces whose vertices are all on a boundary are falsely considered to be on
-    /// that boundary. To avoid this we cut the faces concerned. Where possible, the face is cut
-    /// on an edge which is not on the boundary. When this is not possible we insert a point in
-    /// the middle of the face.
-    fn split_wrong_topo_face(&mut self, mesh: &SimplexMesh<D, E>) {
-        let tagged_faces: FxHashSet<_> = mesh.faces().map(|f| f.sorted()).collect();
-        let tagged_edges: FxHashSet<_> = tagged_faces
-            .iter()
-            .flat_map(|f| (0..E::Face::N_EDGES).map(|i| f.sorted_edge(i)))
-            .collect();
-        let mut faces_to_split = FxHashSet::default();
-        for e in mesh.elems() {
-            for iface in 0..(E::N_FACES) {
-                let f = e.face(iface).sorted();
-                if !tagged_faces.contains(&f) && self.elem_tag(&f).0 != E::DIM as Dim {
-                    faces_to_split.insert(f);
-                }
+            .unwrap();
+        let min_dim = min_dim.unwrap_or(EE::DIM as Dim);
+        if dim >= min_dim {
+            (dim, tag)
+        } else {
+            // Make sure that there is only one topological entity that is the parent of all vertex tags
+            // of dimension EE::DIM
+            let mut node = self.topo.get((dim, tag)).unwrap();
+            let mut current_dim = dim;
+            while current_dim < min_dim {
+                assert_eq!(
+                    node.parents.len(),
+                    1,
+                    "Unable to get the element tag for {:?}: no unique parent for topo entity {:?}",
+                    elem,
+                    node
+                );
+                current_dim += 1;
+                node = self
+                    .topo
+                    .get((current_dim, *node.parents.iter().next().unwrap()))
+                    .unwrap();
             }
-        }
-        drop(tagged_faces);
-        let mut edges_to_split = FxHashSet::default();
-        let mut cavity = Cavity::new();
-        for face in faces_to_split {
-            let mut edge_found = false;
-            for ie in 0..(E::Face::N_EDGES) {
-                let e = face.sorted_edge(ie);
-                if !tagged_edges.contains(&e) {
-                    edge_found = true;
-                    edges_to_split.insert(e);
-                    break;
-                }
-            }
-            if !edge_found {
-                cavity.init_from_face(&face, self);
-                self.split_cavity_at_center(&cavity, mesh);
-            }
-        }
-        for edge in edges_to_split {
-            cavity.init_from_edge(edge, self);
-            self.split_cavity_at_center(&cavity, mesh);
-        }
-    }
-
-    fn split_cavity_at_center(&mut self, cavity: &Cavity<D, E, M>, mesh: &SimplexMesh<D, E>) {
-        let (center, metric) = cavity.seed_barycenter();
-        let mut tags_in_cavity = cavity.global_elem_ids.iter().map(|&i| {
-            if i < mesh.n_elems() {
-                // For initial elements we cannot use Self::elem_tag because it may be wrong
-                mesh.etag(i)
-            } else {
-                self.elem_tag(&self.get_elem(i).unwrap().el).1
-            }
-        });
-        let etag = tags_in_cavity
-            .next()
-            .unwrap_or_else(|| panic!("{:?}", cavity.global_elem_ids));
-        if tags_in_cavity.all(|t| t == etag) {
-            for &i in &cavity.global_elem_ids {
-                self.remove_elem(i);
-            }
-            let ip = self.insert_vertex(center, &(E::DIM as Dim, etag), &metric);
-            for face in cavity.faces() {
-                self.insert_elem(E::from_vertex_and_face(ip, &cavity.global_face(&face)));
-            }
+            node.tag
         }
     }
 
@@ -365,7 +323,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             }
 
             // check that the element tag dimension is E::DIM
-            let etag = self.elem_tag(e);
+            let etag = self.elem_tag(e, None);
             if etag.0 < E::DIM as Dim {
                 return Err(Error::from("Invalid element tag"));
             }
@@ -373,33 +331,57 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             // check that all faces appear once if tagged on a boundary, or twice if tagged in the domain
             for i_face in 0..E::N_FACES {
                 let f = e.face(i_face);
-                let ftag = self.elem_tag(&f);
 
                 // filter the elements containing the face
-                let mut els = self.verts.get(&f[0]).unwrap().els.iter().filter(|i| {
-                    let other = self.elems.get(i).unwrap().el;
-                    *i != i_elem && f.iter().all(|j| other.contains_vertex(*j))
-                });
-                if let Some(other) = els.next() {
+                let iels = self
+                    .verts
+                    .get(&f[0])
+                    .unwrap()
+                    .els
+                    .iter()
+                    .filter(|i| {
+                        let other = self.elems.get(i).unwrap().el;
+                        *i != i_elem && f.iter().all(|j| other.contains_vertex(*j))
+                    })
+                    .collect::<Vec<_>>();
+                let min_dim = if !iels.is_empty() {
+                    let etags = iels
+                        .iter()
+                        .map(|e| self.elem_tag(&self.elems.get(e).unwrap().el, None))
+                        .collect::<Vec<_>>();
+                    let is_internal = etags.iter().all(|&item| item == etag);
+
+                    if is_internal {
+                        Some(E::DIM as Dim)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                let ftag = self.elem_tag(&f, min_dim);
+
+                if !iels.is_empty() {
                     // At least 3 elements
-                    if els.next().is_some() {
+                    if iels.len() > 1 {
                         return Err(Error::from("A face belongs to more than 2 elements"));
                     }
-                    let otag = self.elem_tag(&self.elems.get(other).unwrap().el);
+                    let other = self.elems.get(iels[0]).unwrap().el;
+                    let otag = self.elem_tag(&other, None);
                     if etag.1 != otag.1 && ftag.0 != E::Face::DIM as Dim {
-                        return Err(Error::from(
-                            "A face belonging to 2 element with different tags is not tagged correctly",
-                        ));
+                        return Err(Error::from(&format!(
+                            "A face ({f:?}:{ftag:?}) belonging to 2 elements ({e:?}:{etag:?}, {other:?}:{otag:?}) with different tags is not tagged correctly. ",
+                        )));
                     } else if etag.1 == otag.1 && ftag.0 != E::DIM as Dim {
                         return Err(Error::from(&format!(
-                            "A face belonging to 2 element with the same tags is not tagged \
-                            correctly. Face is {f:?}:{ftag:?} in element {i_elem}:{e:?}"
+                            "A face (({f:?}:{ftag:?})) belonging to 2 elements ({e:?}:{etag:?}, {other:?}:{otag:?}) with the same tags is not tagged \
+                            correctly."
                         )));
                     }
                 } else if ftag.0 != E::Face::DIM as Dim {
                     return Err(Error::from(
-                        "A face belonging to 1 element is not tagged correctly",
-                    ));
+                        &format!("A face (({f:?}:{ftag:?})) belonging to 1 element ({e:?}:{etag:?}) is not tagged correctly"
+                    )));
                 }
             }
         }
@@ -453,7 +435,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
         let mut etags: Vec<Tag> = vec![0; self.n_elems() as usize];
         for (elem, val) in elems.iter().zip(etags.iter_mut()) {
-            let etag = self.elem_tag(elem);
+            let etag = self.elem_tag(elem, None);
             if etag.0 < E::DIM as Dim {
                 warn!("Element {:?} has tag {:?}", elem, etag);
                 let node = self.topo.get(etag).unwrap();
@@ -469,36 +451,50 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         let mut ftags = Vec::new();
 
         for (face, iels) in &f2e {
-            let vtags = face.iter().map(|i| self.verts.get(i).unwrap().tag);
-            let ftag = self.topo.elem_tag(vtags);
-            if let Some(ftag) = ftag {
-                if ftag.0 == E::Face::DIM as Dim {
-                    if iels.len() == 1 {
-                        // Orient the face outwards
-                        let elem = elems[iels[0] as usize];
-                        let mut ok = false;
-                        for i_face in 0..E::N_FACES {
-                            let mut f = elem.face(i_face);
-                            f.sort();
-                            let is_same = !f.iter().zip(face.iter()).any(|(x, y)| x != y);
-                            if is_same {
-                                let f = elem.face(i_face);
-                                faces.push(E::Face::from_iter(
-                                    f.iter().map(|&i| *vidx.get(&i).unwrap()),
-                                ));
+            let min_dim = if iels.len() > 1 {
+                let etags = iels
+                    .iter()
+                    .map(|&e| {
+                        let el = elems[e as usize];
+                        self.elem_tag(&el, None)
+                    })
+                    .collect::<Vec<_>>();
+                let is_internal = etags.iter().skip(1).all(|&item| item == etags[0]);
+                if is_internal {
+                    Some(E::DIM as Dim)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            let ftag = self.elem_tag(face, min_dim);
+            if ftag.0 == E::Face::DIM as Dim {
+                if iels.len() == 1 {
+                    // Orient the face outwards
+                    let elem = elems[iels[0] as usize];
+                    let mut ok = false;
+                    for i_face in 0..E::N_FACES {
+                        let mut f = elem.face(i_face);
+                        f.sort();
+                        let is_same = !f.iter().zip(face.iter()).any(|(x, y)| x != y);
+                        if is_same {
+                            let f = elem.face(i_face);
+                            faces.push(E::Face::from_iter(
+                                f.iter().map(|&i| *vidx.get(&i).unwrap()),
+                            ));
 
-                                ftags.push(ftag.1);
-                                ok = true;
-                                break;
-                            }
+                            ftags.push(ftag.1);
+                            ok = true;
+                            break;
                         }
-                        assert!(ok);
-                    } else if !only_bdy_faces {
-                        faces.push(E::Face::from_iter(
-                            face.iter().map(|&i| *vidx.get(&i).unwrap()),
-                        ));
-                        ftags.push(ftag.1);
                     }
+                    assert!(ok);
+                } else if !only_bdy_faces {
+                    faces.push(E::Face::from_iter(
+                        face.iter().map(|&i| *vidx.get(&i).unwrap()),
+                    ));
+                    ftags.push(ftag.1);
                 }
             }
         }
@@ -1515,9 +1511,208 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::f64::consts::PI;
+mod tests_topo {
+    use std::hash::BuildHasherDefault;
 
+    use rustc_hash::{FxHashMap, FxHashSet};
+
+    /// Test the topology representation
+    use crate::{
+        geometry::NoGeometry,
+        mesh::Point,
+        metric::IsoMetric,
+        remesher::Remesher,
+        test_meshes::{test_mesh_2d, test_mesh_3d},
+    };
+
+    fn test_topo_2d(etags: [i16; 2], ftags: [i16; 4], add_boundary_faces: bool, n_split: i32) {
+        let mut mesh = test_mesh_2d();
+        mesh.mut_etags().zip(etags).for_each(|(e, t)| *e = t);
+        mesh.mut_ftags().zip(ftags).for_each(|(e, t)| *e = t);
+
+        if add_boundary_faces {
+            mesh.add_boundary_faces();
+        }
+        for _ in 0..n_split {
+            mesh = mesh.split();
+        }
+
+        let bdy = mesh.boundary().0;
+        let ftags = mesh.ftags().collect::<FxHashSet<_>>();
+        let mut stats = FxHashMap::with_hasher(BuildHasherDefault::default());
+        for tag in ftags {
+            if stats.get(&tag).is_none() {
+                let smsh = bdy.extract_tag(tag).mesh;
+                let center = smsh.verts().sum::<Point<2>>() / smsh.n_verts() as f64;
+                stats.insert(tag, (smsh.vol(), center));
+            }
+        }
+
+        mesh.compute_topology();
+
+        mesh.compute_face_to_elems();
+        mesh.check().unwrap();
+
+        let geom = NoGeometry();
+        let metric: Vec<_> = mesh.verts().map(|_| IsoMetric::from(0.5)).collect();
+        let remesher = Remesher::new(&mesh, &metric, &geom).unwrap();
+        remesher.check().unwrap();
+        let mut mesh = remesher.to_mesh(false);
+        mesh.compute_face_to_elems();
+        mesh.check().unwrap();
+
+        let ftags = mesh.ftags().collect::<FxHashSet<_>>();
+        let bdy = mesh.boundary().0;
+        assert_eq!(ftags.len(), stats.len());
+        for (&tag, (vol, center)) in stats.iter() {
+            let smsh = bdy.extract_tag(tag).mesh;
+            assert!((vol - smsh.vol()).abs() < 1e-10 * vol);
+            let new_center = smsh.verts().sum::<Point<2>>() / smsh.n_verts() as f64;
+            assert!((center - new_center).norm() < 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_topo_2d_1() {
+        test_topo_2d([1, 1], [1, 2, 3, 4], false, 0);
+    }
+
+    #[test]
+    fn test_topo_2d_2() {
+        test_topo_2d([1, 1], [1, 2, 3, 4], false, 2);
+    }
+
+    // Inconsistent face tags (diagonal missing) --> panic
+    #[test]
+    #[should_panic]
+    fn test_topo_2d_3() {
+        test_topo_2d([1, 2], [1, 2, 3, 4], false, 0);
+    }
+
+    #[test]
+    fn test_topo_2d_4() {
+        test_topo_2d([1, 2], [1, 2, 3, 4], true, 0);
+    }
+
+    #[test]
+    fn test_topo_2d_5() {
+        test_topo_2d([1, 2], [1, 2, 3, 4], true, 2);
+    }
+
+    #[test]
+    fn test_topo_2d_6() {
+        test_topo_2d([1, 1], [1, 1, 1, 1], false, 0);
+    }
+
+    #[test]
+    fn test_topo_2d_7() {
+        test_topo_2d([1, 1], [1, 1, 1, 1], false, 2);
+    }
+
+    // Configuration not handled: boundary 2 has only one edge, and both
+    // vertices belong to the same two face tags
+    #[test]
+    #[should_panic]
+    fn test_topo_2d_8() {
+        test_topo_2d([1, 1], [1, 1, 1, 2], false, 0);
+    }
+
+    #[test]
+    fn test_topo_2d_9() {
+        test_topo_2d([1, 1], [1, 1, 1, 2], false, 2);
+    }
+
+    // Configuration not handled: all boundaries have only one edge, and both
+    // vertices belong to the same two face tags
+    #[test]
+    #[should_panic]
+    fn test_topo_2d_10() {
+        test_topo_2d([1, 1], [1, 2, 1, 2], false, 0);
+    }
+
+    #[test]
+    fn test_topo_2d_11() {
+        test_topo_2d([1, 1], [1, 2, 1, 2], false, 2);
+    }
+
+    fn test_topo_3d(ftags: [i16; 12], n_split: i32) {
+        let mut mesh = test_mesh_3d();
+        mesh.mut_ftags().zip(ftags).for_each(|(e, t)| *e = t);
+
+        for _ in 0..n_split {
+            mesh = mesh.split();
+        }
+        mesh.compute_topology();
+
+        mesh.compute_face_to_elems();
+        mesh.check().unwrap();
+
+        let bdy = mesh.boundary().0;
+        let mut stats = FxHashMap::with_hasher(BuildHasherDefault::default());
+        for tag in ftags {
+            if stats.get(&tag).is_none() {
+                let smsh = bdy.extract_tag(tag).mesh;
+                let center = smsh.verts().sum::<Point<3>>() / smsh.n_verts() as f64;
+                stats.insert(tag, (smsh.vol(), center));
+            }
+        }
+
+        let geom = NoGeometry();
+        let metric: Vec<_> = mesh.verts().map(|_| IsoMetric::from(0.5)).collect();
+        let remesher = Remesher::new(&mesh, &metric, &geom).unwrap();
+        remesher.check().unwrap();
+        let mut mesh = remesher.to_mesh(false);
+        mesh.compute_face_to_elems();
+        mesh.check().unwrap();
+
+        let ftags = mesh.ftags().collect::<FxHashSet<_>>();
+        let bdy = mesh.boundary().0;
+        assert_eq!(ftags.len(), stats.len());
+        for (&tag, (vol, center)) in stats.iter() {
+            let smsh = bdy.extract_tag(tag).mesh;
+            assert!((vol - smsh.vol()).abs() < 1e-10 * vol);
+            let new_center = smsh.verts().sum::<Point<3>>() / smsh.n_verts() as f64;
+            assert!((center - new_center).norm() < 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_topo_3d_1() {
+        test_topo_3d([1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6], 0);
+    }
+
+    #[test]
+    fn test_topo_3d_2() {
+        test_topo_3d([1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6], 2);
+    }
+
+    #[test]
+    fn test_topo_3d_3() {
+        test_topo_3d([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], 0);
+    }
+
+    #[test]
+    fn test_topo_3d_4() {
+        test_topo_3d([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], 2);
+    }
+
+    // Configuration not handled: for all faces with tag 2, all vertices are
+    // on edges between faces tagged 1 and 2
+    #[test]
+    #[should_panic]
+    fn test_topo_3d_5() {
+        test_topo_3d([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2], 0);
+    }
+
+    #[test]
+    fn test_topo_3d_6() {
+        test_topo_3d([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2], 2);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RemesherParams;
     use crate::{
         geom_elems::GElem,
         geometry::NoGeometry,
@@ -1531,12 +1726,12 @@ mod tests {
         topo_elems::{Edge, Elem, Tetrahedron, Triangle},
         Result,
     };
-
-    use super::RemesherParams;
+    use std::f64::consts::PI;
 
     #[test]
     fn test_init() -> Result<()> {
         let mut mesh = test_mesh_2d();
+        mesh.add_boundary_faces();
         mesh.compute_topology();
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
         let geom = NoGeometry();
@@ -1599,6 +1794,7 @@ mod tests {
     #[should_panic]
     fn test_remove_vertex_error_2() {
         let mut mesh = test_mesh_2d();
+        mesh.add_boundary_faces();
         mesh.compute_topology();
 
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
@@ -1611,6 +1807,7 @@ mod tests {
     #[test]
     fn test_remove_elem() -> Result<()> {
         let mut mesh = test_mesh_2d();
+        mesh.add_boundary_faces();
         mesh.compute_topology();
 
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
@@ -1632,6 +1829,7 @@ mod tests {
     #[should_panic]
     fn test_remove_elem_2() {
         let mut mesh = test_mesh_2d();
+        mesh.add_boundary_faces();
         mesh.compute_topology();
 
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
@@ -1644,6 +1842,7 @@ mod tests {
     #[test]
     fn test_split_2d() -> Result<()> {
         let mut mesh = test_mesh_2d().split().split();
+        mesh.add_boundary_faces();
         mesh.compute_topology();
 
         let h: Vec<_> = mesh
@@ -1670,6 +1869,7 @@ mod tests {
     #[test]
     fn test_swap_2d() -> Result<()> {
         let mut mesh = test_mesh_2d().split().split();
+        mesh.add_boundary_faces();
         mesh.compute_topology();
 
         // collapse to lower the quality
@@ -1690,7 +1890,7 @@ mod tests {
         remesher.check()?;
 
         // swap
-        let mut mesh = remesher.to_mesh(true);
+        let mut mesh = remesher.to_mesh(false);
         mesh.compute_topology();
         let h = vec![IsoMetric::<2>::from(2.); mesh.n_verts() as usize];
         let mut remesher = Remesher::new(&mesh, &h, &geom)?;
@@ -1710,6 +1910,7 @@ mod tests {
     #[test]
     fn test_collapse_2d() -> Result<()> {
         let mut mesh = test_mesh_2d().split().split();
+        mesh.add_boundary_faces();
         mesh.compute_topology();
 
         let h = vec![IsoMetric::<2>::from(2.); mesh.n_verts() as usize];
@@ -1993,6 +2194,7 @@ mod tests {
     #[test]
     fn test_adapt_2d() -> Result<()> {
         let mut mesh = test_mesh_2d().split().split();
+        mesh.add_boundary_faces();
         mesh.compute_topology();
 
         for iter in 0..3 {
@@ -2005,7 +2207,7 @@ mod tests {
             remesher.remesh(RemesherParams::default(), &geom);
             remesher.check()?;
 
-            mesh = remesher.to_mesh(true);
+            mesh = remesher.to_mesh(false);
             mesh.compute_topology();
 
             if iter == 2 {
@@ -2324,6 +2526,7 @@ mod tests {
     #[test]
     fn test_complexity_2d() -> Result<()> {
         let mut mesh = test_mesh_2d().split().split();
+        mesh.add_boundary_faces();
         mesh.compute_topology();
         mesh.compute_volumes();
 
@@ -2376,47 +2579,5 @@ mod tests {
         let _mesh = remesher.to_mesh(true);
 
         Ok(())
-    }
-
-    #[test]
-    fn test_bad_topo_in_corner_3d() {
-        let mut mesh = test_mesh_3d().split().split();
-        for tag in mesh.mut_ftags() {
-            *tag = 1;
-        }
-        mesh.compute_topology();
-        let (mut bdy, _) = mesh.boundary();
-        bdy.compute_octree();
-        let geom = crate::geometry::LinearGeometry::new(&mesh, bdy).unwrap();
-        let m: Vec<_> = mesh.verts().map(|_| IsoMetric::from(0.5)).collect();
-        let mut remesher = Remesher::new(&mesh, &m, &geom).unwrap();
-        remesher.remesh(RemesherParams::default(), &geom);
-        remesher.check().unwrap();
-        let _ = remesher.to_mesh(true);
-    }
-
-    fn bad_topo_in_corner_2d(etags: [i16; 2]) {
-        let mut mesh = test_mesh_2d();
-        mesh.mut_ftags().for_each(|v| *v = 1);
-        mesh.mut_etags().zip(etags).for_each(|(e, t)| *e = t);
-        mesh = mesh.split();
-        mesh.compute_topology();
-        let geom = NoGeometry();
-        let metric: Vec<_> = mesh.verts().map(|_| IsoMetric::from(0.5)).collect();
-        let mut remesher = Remesher::new(&mesh, &metric, &geom).unwrap();
-        remesher.remesh(RemesherParams::default(), &geom);
-        remesher.check().unwrap();
-        let _ = remesher.to_mesh(true);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_bad_topo_in_corner_2d_2dom() {
-        bad_topo_in_corner_2d([1, 2]);
-    }
-
-    #[test]
-    fn test_bad_topo_in_corner_2d() {
-        bad_topo_in_corner_2d([1, 1]);
     }
 }
