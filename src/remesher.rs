@@ -260,6 +260,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
     /// Return the tag of a face or element of this remesher
     /// Just a wrapper for `self.topo.elem_tag`
+    #[allow(clippy::uninlined_format_args)]
     fn elem_tag<EE: Elem>(&self, elem: &EE, min_dim: Option<Dim>) -> TopoTag {
         let (dim, tag) = self
             .topo
@@ -291,99 +292,124 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         }
     }
 
+    fn check_vert_to_elems(&self, i_elem: Idx, e: &E) -> Result<()> {
+        for i_vert in e.iter() {
+            let res = self.verts.get(i_vert);
+            if res.is_none() {
+                return Err(Error::from("Vertex not found"));
+            }
+            let v2e = &res.unwrap().els;
+            if !v2e.iter().any(|&x| x == i_elem) {
+                return Err(Error::from("Invalid vertex to element (missing vertex)"));
+            }
+        }
+        Ok(())
+    }
+
+    fn check_elem_volume(&self, e: &E) -> Result<()> {
+        let ge = self.gelem(e);
+        if ge.vol() < 0. {
+            return Err(Error::from("Negative volume"));
+        }
+        Ok(())
+    }
+
+    fn check_edges(&self, e: &E) -> Result<()> {
+        for i_edge in 0..E::N_EDGES {
+            let mut edg = e.edge(i_edge);
+            edg.sort_unstable();
+            if self.edges.get(&edg).is_none() {
+                return Err(Error::from("Missing edge"));
+            }
+        }
+        Ok(())
+    }
+
+    fn check_faces(&self, i_elem: Idx, e: &E) -> Result<()> {
+        let etag = self.elem_tag(e, None);
+
+        for i_face in 0..E::N_FACES {
+            let f = e.face(i_face);
+
+            // filter the elements containing the face
+            let iels = self
+                .verts
+                .get(&f[0])
+                .unwrap()
+                .els
+                .iter()
+                .filter(|i| {
+                    let other = self.elems.get(i).unwrap().el;
+                    **i != i_elem && f.iter().all(|j| other.contains_vertex(*j))
+                })
+                .collect::<Vec<_>>();
+            let min_dim = if iels.is_empty() {
+                None
+            } else {
+                let etags = iels
+                    .iter()
+                    .map(|e| self.elem_tag(&self.elems.get(e).unwrap().el, None))
+                    .collect::<Vec<_>>();
+                let is_internal = etags.iter().all(|&item| item == etag);
+
+                if is_internal {
+                    Some(E::DIM as Dim)
+                } else {
+                    None
+                }
+            };
+            let ftag = self.elem_tag(&f, min_dim);
+
+            if !iels.is_empty() {
+                // At least 3 elements
+                if iels.len() > 1 {
+                    return Err(Error::from("A face belongs to more than 2 elements"));
+                }
+                let other = self.elems.get(iels[0]).unwrap().el;
+                let otag = self.elem_tag(&other, None);
+                if etag.1 != otag.1 && ftag.0 != E::Face::DIM as Dim {
+                    return Err(Error::from(&format!(
+                        "A face ({f:?}:{ftag:?}) belonging to 2 elements ({e:?}:{etag:?}, {other:?}:{otag:?}) with different tags is not tagged correctly. ",
+                    )));
+                } else if etag.1 == otag.1 && ftag.0 != E::DIM as Dim {
+                    return Err(Error::from(&format!(
+                        "A face (({f:?}:{ftag:?})) belonging to 2 elements ({e:?}:{etag:?}, {other:?}:{otag:?}) with the same tags is not tagged \
+                        correctly."
+                    )));
+                }
+            } else if ftag.0 != E::Face::DIM as Dim {
+                return Err(Error::from(
+                    &format!("A face (({f:?}:{ftag:?})) belonging to 1 element ({e:?}:{etag:?}) is not tagged correctly"
+                )));
+            }
+        }
+        Ok(())
+    }
+
     /// Check that the remesher holds a valid mesh
     pub fn check(&self) -> Result<()> {
         info!("Check the mesh");
 
-        for (i_elem, e) in &self.elems {
+        for (&i_elem, e) in &self.elems {
             let e = &e.el;
             // Is element-to-vertex and vertex-to-element info consistent?
-            for i_vert in e.iter() {
-                let res = self.verts.get(i_vert);
-                if res.is_none() {
-                    return Err(Error::from("Vertex not found"));
-                }
-                let v2e = &res.unwrap().els;
-                if !v2e.iter().any(|x| x == i_elem) {
-                    return Err(Error::from("Invalid vertex to element (missing vertex)"));
-                }
-            }
+            self.check_vert_to_elems(i_elem, e)?;
+
             // Is the element valid?
-            let ge = self.gelem(e);
-            if ge.vol() < 0. {
-                return Err(Error::from("Negative volume"));
-            }
+            self.check_elem_volume(e)?;
+
             // Are the edges present?
-            for i_edge in 0..E::N_EDGES {
-                let mut edg = e.edge(i_edge);
-                edg.sort_unstable();
-                if self.edges.get(&edg).is_none() {
-                    return Err(Error::from("Missing edge"));
-                }
-            }
+            self.check_edges(e)?;
 
             // check that the element tag dimension is E::DIM
+            // should no longer be needed
             let etag = self.elem_tag(e, None);
             if etag.0 < E::DIM as Dim {
                 return Err(Error::from("Invalid element tag"));
             }
 
             // check that all faces appear once if tagged on a boundary, or twice if tagged in the domain
-            for i_face in 0..E::N_FACES {
-                let f = e.face(i_face);
-
-                // filter the elements containing the face
-                let iels = self
-                    .verts
-                    .get(&f[0])
-                    .unwrap()
-                    .els
-                    .iter()
-                    .filter(|i| {
-                        let other = self.elems.get(i).unwrap().el;
-                        *i != i_elem && f.iter().all(|j| other.contains_vertex(*j))
-                    })
-                    .collect::<Vec<_>>();
-                let min_dim = if !iels.is_empty() {
-                    let etags = iels
-                        .iter()
-                        .map(|e| self.elem_tag(&self.elems.get(e).unwrap().el, None))
-                        .collect::<Vec<_>>();
-                    let is_internal = etags.iter().all(|&item| item == etag);
-
-                    if is_internal {
-                        Some(E::DIM as Dim)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-                let ftag = self.elem_tag(&f, min_dim);
-
-                if !iels.is_empty() {
-                    // At least 3 elements
-                    if iels.len() > 1 {
-                        return Err(Error::from("A face belongs to more than 2 elements"));
-                    }
-                    let other = self.elems.get(iels[0]).unwrap().el;
-                    let otag = self.elem_tag(&other, None);
-                    if etag.1 != otag.1 && ftag.0 != E::Face::DIM as Dim {
-                        return Err(Error::from(&format!(
-                            "A face ({f:?}:{ftag:?}) belonging to 2 elements ({e:?}:{etag:?}, {other:?}:{otag:?}) with different tags is not tagged correctly. ",
-                        )));
-                    } else if etag.1 == otag.1 && ftag.0 != E::DIM as Dim {
-                        return Err(Error::from(&format!(
-                            "A face (({f:?}:{ftag:?})) belonging to 2 elements ({e:?}:{etag:?}, {other:?}:{otag:?}) with the same tags is not tagged \
-                            correctly."
-                        )));
-                    }
-                } else if ftag.0 != E::Face::DIM as Dim {
-                    return Err(Error::from(
-                        &format!("A face (({f:?}:{ftag:?})) belonging to 1 element ({e:?}:{etag:?}) is not tagged correctly"
-                    )));
-                }
-            }
+            self.check_faces(i_elem, e)?;
         }
 
         for vert in self.verts.values() {
@@ -398,11 +424,15 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         }
 
         for edg in self.edges.keys() {
+            // Check that the edge vertices are ok
             for i in edg {
+                // Does the vertex exist ?
                 let vert = self.verts.get(i);
                 if vert.is_none() {
                     return Err(Error::from("Invalid edge (missing vertex)"));
                 }
+
+                // Do all the elements contain the edge ?
                 let v2e = &vert.unwrap().els;
                 for i_elem in v2e.iter() {
                     let e = &self.elems.get(i_elem).unwrap().el;
@@ -1543,7 +1573,7 @@ mod tests_topo {
         for tag in ftags {
             if stats.get(&tag).is_none() {
                 let smsh = bdy.extract_tag(tag).mesh;
-                let center = smsh.verts().sum::<Point<2>>() / smsh.n_verts() as f64;
+                let center = smsh.verts().sum::<Point<2>>() / f64::from(smsh.n_verts());
                 stats.insert(tag, (smsh.vol(), center));
             }
         }
@@ -1564,10 +1594,10 @@ mod tests_topo {
         let ftags = mesh.ftags().collect::<FxHashSet<_>>();
         let bdy = mesh.boundary().0;
         assert_eq!(ftags.len(), stats.len());
-        for (&tag, (vol, center)) in stats.iter() {
+        for (&tag, (vol, center)) in &stats {
             let smsh = bdy.extract_tag(tag).mesh;
             assert!((vol - smsh.vol()).abs() < 1e-10 * vol);
-            let new_center = smsh.verts().sum::<Point<2>>() / smsh.n_verts() as f64;
+            let new_center = smsh.verts().sum::<Point<2>>() / f64::from(smsh.n_verts());
             assert!((center - new_center).norm() < 1e-10);
         }
     }
@@ -1652,7 +1682,7 @@ mod tests_topo {
         for tag in ftags {
             if stats.get(&tag).is_none() {
                 let smsh = bdy.extract_tag(tag).mesh;
-                let center = smsh.verts().sum::<Point<3>>() / smsh.n_verts() as f64;
+                let center = smsh.verts().sum::<Point<3>>() / f64::from(smsh.n_verts());
                 stats.insert(tag, (smsh.vol(), center));
             }
         }
@@ -1668,10 +1698,10 @@ mod tests_topo {
         let ftags = mesh.ftags().collect::<FxHashSet<_>>();
         let bdy = mesh.boundary().0;
         assert_eq!(ftags.len(), stats.len());
-        for (&tag, (vol, center)) in stats.iter() {
+        for (&tag, (vol, center)) in &stats {
             let smsh = bdy.extract_tag(tag).mesh;
             assert!((vol - smsh.vol()).abs() < 1e-10 * vol);
-            let new_center = smsh.verts().sum::<Point<3>>() / smsh.n_verts() as f64;
+            let new_center = smsh.verts().sum::<Point<3>>() / f64::from(smsh.n_verts());
             assert!((center - new_center).norm() < 1e-10);
         }
     }
