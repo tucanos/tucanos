@@ -4,9 +4,24 @@ use crate::{
     Idx,
 };
 
+#[cfg(not(any(feature = "libol", feature = "parry")))]
+compile_error!("One of libol or parry features must be enabled");
+#[cfg(all(feature = "libol", feature = "parry"))]
+compile_error!("Only one of libol and parry features can be enabled");
+
+#[cfg(feature = "libol")]
 mod libol;
+#[cfg(feature = "libol")]
 pub type DefaultPointIndex<const D: usize> = libol::Octree;
+#[cfg(feature = "libol")]
 pub type DefaultObjectIndex<const D: usize> = libol::Octree;
+
+#[cfg(feature = "parry")]
+mod parry;
+#[cfg(feature = "parry")]
+pub type DefaultPointIndex<const D: usize> = KiddoPointIndex<D>;
+#[cfg(feature = "parry")]
+pub type DefaultObjectIndex<const D: usize> = parry::ObjectIndex<D>;
 
 pub trait PointIndex<const D: usize> {
     fn new<E: Elem>(mesh: &SimplexMesh<D, E>) -> Self;
@@ -17,6 +32,34 @@ pub trait ObjectIndex<const D: usize> {
     fn new<E: Elem>(mesh: &SimplexMesh<D, E>) -> Self;
     fn nearest(&self, pt: &Point<D>) -> Idx;
     fn project(&self, pt: &Point<D>) -> (f64, Point<D>);
+}
+
+#[cfg(feature = "parry")]
+pub struct KiddoPointIndex<const D: usize> {
+    tree: kiddo::ImmutableKdTree<f64, D>,
+}
+
+#[cfg(feature = "parry")]
+impl<const D: usize> PointIndex<D> for KiddoPointIndex<D> {
+    fn new<E: Elem>(mesh: &SimplexMesh<D, E>) -> Self {
+        let tree = kiddo::ImmutableKdTree::new_from_slice(
+            &mesh
+                .verts()
+                .map(|p| p.as_slice().try_into().unwrap())
+                .collect::<Vec<_>>(),
+        );
+        Self { tree }
+    }
+
+    fn nearest_vertex(&self, pt: &Point<D>) -> Idx {
+        self.tree
+            .nearest_one::<kiddo::float::distance::SquaredEuclidean>(
+                pt.as_slice().try_into().unwrap(),
+            )
+            .item
+            .try_into()
+            .unwrap()
+    }
 }
 
 #[cfg(test)]
