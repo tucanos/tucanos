@@ -10,10 +10,10 @@ crate-type = ["cdylib"]
 [dependencies]
 log = "0.4.20"
 ndarray = "0.15.6"
-numpy = "0.19.0"
-pyo3 = { version = "0.19.2", features = ["extension-module", "multiple-pymethods"] }
-pyo3-log = "0.8.3"
-tucanos = { git = "https://github.com/tucanos/tucanos.git", rev = "13dbd99" }
+numpy = "0.20"
+pyo3 = { version = "0.20", features = ["extension-module", "multiple-pymethods"] }
+pyo3-log = "0.9"
+tucanos = { git = "https://github.com/tucanos/tucanos.git", rev = "fd28dc0" }
 
 [features]
 nlopt = ["tucanos/nlopt"]
