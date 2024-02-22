@@ -16,14 +16,20 @@ rustc-hash = "1.1.0"
 sorted-vec = "0.8.2"
 rand = "0.8.5"
 lindel = "0.1.1"
-marechal-libol-sys = { git = "https://github.com/tucanos/marechal-libol-sys.git" }
+marechal-libol-sys = { git = "https://github.com/tucanos/marechal-libol-sys.git", optional = true }
 libmeshb-sys = {git = "https://github.com/tucanos/libmeshb-sys.git", optional = true}
 vtkio = {version = "0.6.3"}
 scotch = { git = "https://github.com/tucanos/scotch-rs.git", version = "0.2.1", optional = true }
 metis = { git = "https://github.com/tucanos/metis-rs.git", version = "0.1.2", optional = true }
+kiddo = { version = "4.2", optional = true }
+parry3d-f64 = { version = "0.13", optional = true }
+parry2d-f64 = { version = "0.13", optional = true }
 
 [features]
+default = ["libol"]
 meshb = ["libmeshb-sys"]
+libol = ["marechal-libol-sys"]
+parry = ["kiddo", "parry3d-f64", "parry2d-f64"]
 
 [profile.release]
 debug = 1
