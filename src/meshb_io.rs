@@ -10,10 +10,7 @@ use crate::{
     topo_elems::Elem,
     Error, Idx, Result, Tag,
 };
-use std::{
-    convert::TryInto,
-    ffi::{c_int, CString},
-};
+use std::ffi::{c_int, CString};
 
 /// Reader for .mesh(b) / .sol(b) files (interface to libMeshb)
 pub struct GmfReader {
