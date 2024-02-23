@@ -6,6 +6,8 @@ This is a 2D and 3D anisotropic mesh adaptation library based on [*Four-Dimensio
 Spacetime Numerical Simulations* by
 Philip Claude Caplan](https://www.cs.middlebury.edu/~pcaplan/docs/Caplan_2019_PhD.pdf).
 
+A Python wrapper can be found [here](https://github.com/tucanos/pytucanos).
+
 # Dependencies not managed by Cargo
 
 They are all optional.
