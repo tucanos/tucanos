@@ -9,6 +9,9 @@ from .geometry import LinearGeometry2d, LinearGeometry3d
 
 
 def plot_stats(remesher):
+    """
+    Plot the remesher stats
+    """
 
     fig, axs = plt.subplots(3, 1, sharex=True, tight_layout=True)
 
@@ -71,14 +74,14 @@ def __write_tmp_meshb(msh, h):
         raise NotImplementedError()
 
 
-def __read_tmp_meshb(dim):
+def __read_tmp_meshb(dim, fname="tmp.meshb"):
 
     if dim == 2:
-        msh = Mesh22.from_meshb("tmp.meshb")
+        msh = Mesh22.from_meshb(fname)
     elif dim == 3:
-        msh = Mesh33.from_meshb("tmp.meshb")
+        msh = Mesh33.from_meshb(fname)
 
-    os.remove("tmp.meshb")
+    os.remove(fname)
 
     return msh
 
@@ -94,6 +97,9 @@ def __iso_to_aniso_3d(h):
 
 
 def remesh(msh, h, bdy=None, step=None, **remesh_params):
+    """
+    Remesh using tucanos
+    """
 
     if isinstance(msh, Mesh33):
         LinearGeometry = LinearGeometry3d
@@ -122,55 +128,52 @@ def remesh(msh, h, bdy=None, step=None, **remesh_params):
 
 
 def remesh_mmg(msh, h, hgrad=10.0, hausd=10.0):
-
+    """
+    Remesh using MMG.
+    The path to the mmg executable is given by environment variable MMG2D_EXE/MMG3D_EXE
+    """
     __write_tmp_meshb(msh, h)
 
     if isinstance(msh, Mesh22):
         dim = 2
-        subprocess.check_output(
-            [
-                "mmg2d_O3",
-                "-in",
-                "tmp.meshb",
-                "-sol",
-                "tmp.solb",
-                "-out",
-                "tmp.meshb",
-                "-hgrad",
-                repr(hgrad),
-                "-hausd",
-                repr(hausd),
-            ],
-            stderr=subprocess.STDOUT,
-        )
+        exe = os.getenv("MMG2D_EXE", "mmg2d_O3")
     else:
         dim = 3
-        subprocess.check_output(
-            [
-                "mmg3d_O3",
-                "-in",
-                "tmp.meshb",
-                "-sol",
-                "tmp.solb",
-                "-out",
-                "tmp.meshb",
-                "-hgrad",
-                repr(hgrad),
-                "-hausd",
-                repr(hausd),
-            ],
-            stderr=subprocess.STDOUT,
-        )
+        exe = os.getenv("MMG3D_EXE", "mmg3d_O3")
+
+    subprocess.check_output(
+        [
+            exe,
+            "-in",
+            "tmp.meshb",
+            "-sol",
+            "tmp.solb",
+            "-out",
+            "tmp.meshb",
+            "-hgrad",
+            repr(hgrad),
+            "-hausd",
+            repr(hausd),
+        ],
+        stderr=subprocess.STDOUT,
+    )
+
+    os.remove("tmp.solb")
 
     return __read_tmp_meshb(dim)
 
 
 def remesh_omega_h(msh, h):
+    """
+    Remesh using Omega_h.
+    The path to the osh_adapt executable is given by environment variable OSH_EXE
+    """
 
     h = __iso_to_aniso_3d(h)
 
     __write_tmp_meshb(msh, h)
 
+    exe = os.getenv("OSH_EXE", "osh_adapt")
     subprocess.check_output(
         [
             "osh_adapt",
@@ -191,23 +194,65 @@ def remesh_omega_h(msh, h):
     return __read_tmp_meshb(3)
 
 
-def remesh_refine(msh, h):
+def remesh_refine(msh, h, geom=None):
+    """
+    Remesh using refine.
+    The path to the ref executable is given by environment variable REF_EXE
+    """
 
     h = __iso_to_aniso_3d(h)
 
     __write_tmp_meshb(msh, h)
 
+    exe = os.getenv("REF_EXE", "ref")
+
+    args = [
+        exe,
+        "adapt",
+        "tmp.meshb",
+        "--metric",
+        "tmp.solb",
+        "-x",
+        "tmp.meshb",
+    ]
+    if geom is not None:
+        args += ["-g", geom]
+
+    subprocess.check_output(
+        args,
+        stderr=subprocess.STDOUT,
+    )
+
+    os.remove("tmp.solb")
+
+    return __read_tmp_meshb(3)
+
+
+def remesh_avro(msh, h, geom, limit=False):
+    """
+    Remesh using avro.
+    The path to the avro executable is given by environment variable AVRO_EXE
+    """
+
+    h = __iso_to_aniso_3d(h)
+
+    __write_tmp_meshb(msh, h)
+
+    exe = os.getenv("AVRO_EXE", "avro")
     subprocess.check_output(
         [
-            "ref",
-            "adapt",
+            exe,
+            "-adapt",
             "tmp.meshb",
-            "--metric",
+            geom,
             "tmp.solb",
-            "-x",
-            "tmp.meshb",
+            "tmp.mesh",
+            "limit=%s" % ("true" if limit else "false"),
         ],
         stderr=subprocess.STDOUT,
     )
 
-    return __read_tmp_meshb(3)
+    os.remove("tmp.solb")
+    os.remove("tmp_0.sol")
+
+    return __read_tmp_meshb(3, "tmp_0.mesh")

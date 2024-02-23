@@ -7,8 +7,9 @@ from pytucanos.mesh import Mesh33, Mesh32
 from pytucanos.remesh import (
     remesh,
     remesh_mmg,
-    remesh_omega_h,
+    # remesh_omega_h,
     remesh_refine,
+    remesh_avro,
 )
 from pytucanos.quality import qualities_and_lengths
 
@@ -54,22 +55,18 @@ def get_metric(msh):
     return m
 
 
-def run_loop(remesh, name, with_geom):
+def run_loop(remesh, name):
 
     pth = os.path.dirname(__file__)
-    msh = Mesh33.from_meshb(os.path.join(pth, "cube-cylinder.mesh"))
-    if with_geom:
-        bdy = Mesh32.from_meshb(os.path.join(pth, "cube-cylinder-boundary.mesh"))
+    if name == "tucanos":
+        msh = Mesh33.from_meshb(os.path.join(pth, "cube-cylinder.mesh"))
     else:
-        print(f"WARNING: geometry not used for {name}")
+        msh = Mesh33.from_meshb(os.path.join(pth, "cube-cylinder.meshb"))
 
     t0 = time()
     for _ in range(5):
         h = get_metric(msh)
-        if with_geom:
-            msh = remesh(msh, h, bdy)
-        else:
-            msh = remesh(msh, h)
+        msh = remesh(msh, h)
     t1 = time()
 
     return msh, t1 - t0
@@ -84,16 +81,11 @@ def run(cases):
     fig_q, axs_q = plt.subplots(2, 1, tight_layout=True)
     fig_p, axs_p = plt.subplots(2, 1, tight_layout=True, sharex=True)
 
-    names = ["tucanos", "MMG", "Omega_h", "refine"]
-    fns = [remesh, remesh_mmg, remesh_omega_h, remesh_refine]
-
     perf = []
-    for name, (with_geom, fn) in cases.items():
-        if name == "Omega_h":
-            continue
+    for name, fn in cases.items():
         print("Running %s" % name)
         try:
-            msh, t = run_loop(fn, name, with_geom)
+            msh, t = run_loop(fn, name)
             perf.append((name, t, msh.n_elems()))
             print("%s: %d elems, %f s" % (name, msh.n_elems(), t))
 
@@ -178,18 +170,14 @@ if __name__ == "__main__":
         ),
     }
 
+    pth = os.path.dirname(__file__)
+    bdy = Mesh32.from_meshb(os.path.join(pth, "cube-cylinder-boundary.mesh"))
+
     cases_benchmark = {
-        "tucanos": (
-            True,
-            lambda mesh, h, bdy: remesh(
-                mesh,
-                h,
-                bdy,
-                step=4.0,
-            ),
-        ),
-        "MMG": (False, remesh_mmg),
-        "refine": (False, remesh_refine),
+        "tucanos": lambda mesh, h: remesh(mesh, h, bdy),
+        "MMG": remesh_mmg,
+        "refine": lambda mesh, h: remesh_refine(mesh, h, "cube-cylinder.egads"),
+        "avro": lambda mesh, h: remesh_avro(mesh, h, "cube-cylinder.egads", limit=True),
     }
 
     run(cases_benchmark)

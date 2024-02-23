@@ -7,8 +7,9 @@ from pytucanos.mesh import Mesh33, get_cube
 from pytucanos.remesh import (
     remesh,
     remesh_mmg,
-    remesh_omega_h,
+    # remesh_omega_h,
     remesh_refine,
+    remesh_avro,
 )
 from pytucanos.quality import qualities_and_lengths
 
@@ -132,6 +133,8 @@ if __name__ == "__main__":
         ),
         "MMG": remesh_mmg,
         "refine": remesh_refine,
+        "avro": lambda mesh, h: remesh_avro(mesh, h, "box"),
+        # "Omega_h": remesh_omega_h,
     }
 
     run(cases_benchmark)

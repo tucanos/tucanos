@@ -14,13 +14,6 @@ The target anisotropic cell size are
 
 The initial mesh only contains two triangles. 4 iterations are performed to avoid differences with the metric interpolation.
 
-As the quality of the initial mesh is quite high, one should allow a decrease of the mesh quality during split and collapse loops, e.g. by setting
-```python
-remesher.remesh(
-    split_min_q_rel=0.5,
-    collapse_min_q_rel=0.5,
-)
-```
 
 ## Results after 5 iterations
 
