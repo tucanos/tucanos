@@ -60,12 +60,11 @@ impl GmfReader {
         let dim = 0;
         let version = 0;
 
-        let fname = CString::new(fname).unwrap();
-        Self {
-            file: unsafe { GmfOpenMesh(fname.as_ptr(), GmfRead as c_int, &version, &dim) },
-            dim,
-            version,
-        }
+        let cfname = CString::new(fname).unwrap();
+        let file = unsafe { GmfOpenMesh(cfname.as_ptr(), GmfRead as c_int, &version, &dim) };
+        assert!(file == 0 || version > 0, "Invalid version in {fname}");
+        assert!(file == 0 || dim > 0, "Invalid dimension in {fname}");
+        Self { file, dim, version }
     }
 
     #[must_use]
@@ -92,7 +91,7 @@ impl GmfReader {
             2 => self.read_vertices_gen::<f64>(),
             3 => self.read_vertices_gen::<f64>(),
             4 => self.read_vertices_gen::<f64>(),
-            _ => unreachable!(),
+            _ => panic!("Unsupported meshb version: {}", self.version),
         }
     }
 
@@ -149,7 +148,7 @@ impl GmfReader {
             2 => self.read_elements_gen::<i32>(etype),
             3 => self.read_elements_gen::<i32>(etype),
             4 => self.read_elements_gen::<i64>(etype),
-            _ => unreachable!(),
+            _ => panic!("Unsupported meshb version: {}", self.version),
         }
     }
 
@@ -240,7 +239,7 @@ impl GmfReader {
             2 => self.read_solution_gen::<f64>(),
             3 => self.read_solution_gen::<f64>(),
             4 => self.read_solution_gen::<f64>(),
-            _ => unreachable!(),
+            _ => panic!("Unsupported meshb version: {}", self.version),
         }
     }
 
