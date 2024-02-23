@@ -9,7 +9,7 @@ use crate::{
     stats::{CollapseStats, InitStats, SmoothStats, SplitStats, Stats, StepStats, SwapStats},
     topo_elems::{get_face_to_elem, Elem},
     topology::Topology,
-    Dim, Error, Idx, Result, Tag, TopoTag,
+    Dim, Error, Idx, Result, TopoTag,
 };
 use log::{debug, info, trace, warn};
 #[cfg(feature = "nlopt")]
