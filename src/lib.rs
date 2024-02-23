@@ -1169,6 +1169,42 @@ macro_rules! create_remesher {
                 self.remesher.n_edges()
             }
 
+            /// Get the default remesher parameters
+            pub fn default_params<'py>(&mut self, py: Python<'py>) -> &'py PyDict {
+                let default_params = RemesherParams::default();
+                let dict = PyDict::new(py);
+                dict.set_item("num_iter", default_params.num_iter).unwrap();
+                dict.set_item("two_steps", default_params.two_steps).unwrap();
+                dict.set_item("split_max_iter", default_params.split_max_iter).unwrap();
+                dict.set_item("split_min_l_rel", default_params.split_min_l_rel).unwrap();
+                dict.set_item("split_min_l_abs", default_params.split_min_l_abs).unwrap();
+                dict.set_item("split_min_q_rel", default_params.split_min_q_rel).unwrap();
+                dict.set_item("split_min_q_abs", default_params.split_min_q_abs).unwrap();
+                dict.set_item("collapse_max_iter", default_params.collapse_max_iter).unwrap();
+                dict.set_item("collapse_max_l_rel", default_params.collapse_max_l_rel).unwrap();
+                dict.set_item("collapse_max_l_abs", default_params.collapse_max_l_abs).unwrap();
+                dict.set_item("collapse_min_q_rel", default_params.collapse_min_q_rel).unwrap();
+                dict.set_item("collapse_min_q_abs", default_params.collapse_min_q_abs).unwrap();
+                dict.set_item("swap_max_iter", default_params.swap_max_iter).unwrap();
+                dict.set_item("swap_max_l_rel", default_params.swap_max_l_rel).unwrap();
+                dict.set_item("swap_max_l_abs", default_params.swap_max_l_abs).unwrap();
+                dict.set_item("swap_min_l_rel", default_params.swap_min_l_rel).unwrap();
+                dict.set_item("swap_min_l_abs", default_params.swap_min_l_abs).unwrap();
+                dict.set_item("smooth_iter", default_params.smooth_iter).unwrap();
+                let smooth_type = match default_params.smooth_type {
+                    tucanos::remesher::SmoothingType::Laplacian => "laplacian",
+                    tucanos::remesher::SmoothingType::Avro => "avro",
+                    #[cfg(feature = "nlopt")]
+                    tucanos::remesher::SmoothingType::NLOpt => "nlopt",
+                    tucanos::remesher::SmoothingType::Laplacian2 => "laplacian2",
+                };
+                dict.set_item("smooth_type", smooth_type).unwrap();
+                dict.set_item("smooth_relax", to_numpy_1d(py, default_params.smooth_relax)).unwrap();
+                dict.set_item("max_angle", default_params.max_angle).unwrap();
+
+                dict
+            }
+
             /// Perform a remeshing iteration
             #[allow(clippy::too_many_arguments)]
             pub fn remesh(
