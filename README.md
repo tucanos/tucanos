@@ -4,13 +4,13 @@ Python bindings to [tucanos](https://github.com/tucanos/tucanos.git)
 
 # Install
 
-* Build *libOL* and *libMeshb* as explained in the [tucanos README](https://github.com/tucanos/tucanos#dependencies)
+* Build *libMeshb* as explained in the [tucanos README](https://github.com/tucanos/tucanos#dependencies)
 * [Install Rust](https://www.rust-lang.org/tools/install)
-* Optionnaly enter your prefered `conda` or `venv` or `virtualenv`
+* Optionally enter your prefered `conda` or `venv` or `virtualenv`
 * Run:
 
 ```bash
-LIBMESHB_DIR=/path/to/libmeshb_prefix LIBOL_DIR=/path/to/libol_prefix \
+LIBMESHB_DIR=/path/to/libmeshb_prefix \
 pip install git+https://github.com/tucanos/pytucanos.git`
 ```
 
