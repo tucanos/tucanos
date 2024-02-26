@@ -12,7 +12,9 @@ A Python wrapper can be found [here](https://github.com/tucanos/pytucanos).
 
 They are all optional.
 
-* [libOL](https://github.com/LoicMarechal/libOL) is required and must be installed before building this library. It may be installed with:
+* [libOL](https://github.com/LoicMarechal/libOL) is used by default (can be
+  replaced by [parry](https://github.com/dimforge/parry)) for spatial indexing
+  and projection. It may be installed with:
 ```
 cmake .. -DCMAKE_INSTALL_PREFIX=$PREFIX -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON
 make -j install
