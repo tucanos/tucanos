@@ -26,7 +26,7 @@ parry3d-f64 = { version = "0.13", optional = true }
 parry2d-f64 = { version = "0.13", optional = true }
 
 [features]
-default = ["libol"]
+default = ["parry"]
 meshb = ["libmeshb-sys"]
 libol = ["marechal-libol-sys"]
 parry = ["kiddo", "parry3d-f64", "parry2d-f64"]
