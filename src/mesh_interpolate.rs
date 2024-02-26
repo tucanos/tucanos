@@ -40,6 +40,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Instant;
+
     use crate::{
         test_meshes::{test_mesh_2d, test_mesh_3d},
         Result,
@@ -71,20 +73,48 @@ mod tests {
 
     #[test]
     fn test_interpolate_3d() -> Result<()> {
-        let mut mesh = test_mesh_3d().split().split().split();
+        let add_split = 0;
+        let mut mesh = test_mesh_3d();
+        for _ in 0..(3 + add_split) {
+            mesh = mesh.split();
+        }
+        let start = Instant::now();
         mesh.compute_octree();
+        println!(
+            "Time to compute spatial index of {} cells: {:?}",
+            mesh.n_elems(),
+            start.elapsed()
+        );
 
         let f: Vec<f64> = mesh.verts().map(|p| p[0]).collect();
 
-        let other = test_mesh_3d().split().split().split().split();
+        let mut other = test_mesh_3d();
+        for _ in 0..(4 + add_split) {
+            other = other.split();
+        }
+        let start = Instant::now();
         let f_other = mesh.interpolate_check(&other, &f, true)?;
+        println!(
+            "Time to interpolate a {} cells mesh: {:?}",
+            other.n_elems(),
+            start.elapsed()
+        );
 
         for (a, b) in other.verts().map(|p| p[0]).zip(f_other.iter().copied()) {
             assert!(f64::abs(b - a) < 1e-10);
         }
 
-        let other = test_mesh_3d().split();
+        let mut other = test_mesh_3d();
+        (0..=add_split).for_each(|_| {
+            other = other.split();
+        });
+        let start = Instant::now();
         let f_other = mesh.interpolate_check(&other, &f, true)?;
+        println!(
+            "Time to interpolate a {} cells mesh: {:?}",
+            other.n_elems(),
+            start.elapsed()
+        );
 
         for (a, b) in other.verts().map(|p| p[0]).zip(f_other.iter().copied()) {
             assert!(f64::abs(b - a) < 1e-10);
