@@ -40,7 +40,7 @@ const SQRT_6: f64 = std::f64::consts::SQRT_2 * SQRT_3;
 /// Geometric element defined by the coordinate of its vertices as well as metric information
 pub trait GElem<const D: usize, M: Metric<D>>: Clone + Copy + Debug {
     type Face: GElem<D, M>;
-    type BCoords: AsSliceF64;
+    type BCoords: AsSliceF64 + Debug;
     const IDEAL_VOL: f64;
 
     /// Create a `GElem` from its vertices and the metric at each vertex
