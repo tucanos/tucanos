@@ -1,6 +1,6 @@
 use crate::{topo_elems::Elem, Idx};
 use rustc_hash::FxHashMap;
-use std::hash::BuildHasherDefault;
+use std::{collections::hash_map::Entry, hash::BuildHasherDefault};
 
 // pub trait Connectivity {
 //     fn elem(&self, i: Idx) -> &[Idx];
@@ -111,8 +111,8 @@ pub fn reindex<E: Elem>(elems: &[E]) -> (Vec<E>, FxHashMap<Idx, Idx>) {
     let mut map = FxHashMap::with_hasher(BuildHasherDefault::default());
     let mut next = 0 as Idx;
     for i in elems.iter().copied().flatten() {
-        if map.get(&i).is_none() {
-            map.insert(i, next);
+        if let Entry::Vacant(e) = map.entry(i) {
+            e.insert(next);
             next += 1;
         }
     }

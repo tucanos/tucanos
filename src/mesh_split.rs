@@ -224,7 +224,7 @@ mod tests {
         let mut areas = [0.0; 7];
         for (i_face, (mut f, tag)) in mesh.faces().zip(mesh.ftags()).enumerate() {
             f.sort();
-            assert!(f2e.get(&f).is_some());
+            assert!(f2e.contains_key(&f));
             areas[tag as usize] += mesh.gface(mesh.face(i_face as Idx)).vol();
         }
         for a in areas.iter().skip(1) {
