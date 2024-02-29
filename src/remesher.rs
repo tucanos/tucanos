@@ -337,7 +337,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         for i_edge in 0..E::N_EDGES {
             let mut edg = e.edge(i_edge);
             edg.sort_unstable();
-            if self.edges.get(&edg).is_none() {
+            if !self.edges.contains_key(&edg) {
                 return Err(Error::from("Missing edge"));
             }
         }
@@ -434,7 +434,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         for vert in self.verts.values() {
             // Do all element exist ?
             for i_elem in vert.els.iter() {
-                if self.elems.get(i_elem).is_none() {
+                if !self.elems.contains_key(i_elem) {
                     return Err(Error::from("Invalid vertex to element (missing element)"));
                 }
             }
@@ -1069,11 +1069,11 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 if dims_and_lengths[i_edge].1 < f64::sqrt(0.5) {
                     trace!("Try to collapse edgs {:?}", edg);
                     let (mut i0, mut i1) = edg.into();
-                    if self.verts.get(&i0).is_none() {
+                    if !self.verts.contains_key(&i0) {
                         trace!("Cannot collapse: vertex deleted");
                         continue;
                     }
-                    if self.verts.get(&i1).is_none() {
+                    if !self.verts.contains_key(&i1) {
                         trace!("Cannot collapse: vertex deleted");
                         continue;
                     }
