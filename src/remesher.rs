@@ -169,6 +169,8 @@ pub struct RemesherParams {
     pub smooth_type: SmoothingType,
     /// Smoothing relaxation
     pub smooth_relax: Vec<f64>,
+    /// Don't smooth vertices that are a local metric minimum
+    pub smooth_keep_local_minima: bool,
     /// Max angle between the normals of the new faces and the geometry (in degrees)
     pub max_angle: f64,
     /// Debug mode
@@ -198,6 +200,7 @@ impl Default for RemesherParams {
             smooth_iter: 2,
             smooth_type: SmoothingType::Laplacian,
             smooth_relax: vec![0.5, 0.25, 0.125],
+            smooth_keep_local_minima: false,
             max_angle: 20.0,
             debug: false,
         }
@@ -1339,7 +1342,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
             let (is_local_minimum, neighbors) = self.get_smoothing_neighbors(cavity);
 
-            if is_local_minimum {
+            if params.smooth_keep_local_minima && is_local_minimum {
                 trace!("Won't smooth, local minimum of m");
                 n_min += 1;
                 continue;
