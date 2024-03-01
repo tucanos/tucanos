@@ -256,37 +256,18 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         // Insert the elements
         let n_elems = mesh.n_elems();
         for (e, t) in mesh.elems().zip(mesh.etags()) {
-            res.insert_elem(e, t);
+            res.insert_elem(e, t)?;
         }
         assert_eq!(n_elems, res.n_elems());
 
         // Insert the tagged faces
         mesh.faces()
             .zip(mesh.ftags())
-            .for_each(|(f, t)| res.add_tagged_face(f, t));
+            .for_each(|(f, t)| res.add_tagged_face(f, t).unwrap());
 
         res.print_stats();
         res.stats.push(StepStats::Init(InitStats::new(&res)));
         Ok(res)
-    }
-
-    /// Return the tag of a face
-    pub fn face_tag(&self, face: &E::Face) -> Option<Tag> {
-        let face = face.sorted();
-        self.tagged_faces.get(&face).copied()
-    }
-
-    /// Return the tag of a face
-    fn add_tagged_face(&mut self, face: E::Face, tag: Tag) {
-        let face = face.sorted();
-        debug_assert!(self.tagged_faces.get(&face).is_none());
-        self.tagged_faces.insert(face, tag);
-    }
-
-    /// Return the tag of a face
-    fn remove_tagged_face(&mut self, face: E::Face) {
-        let face = face.sorted();
-        self.tagged_faces.remove(&face).unwrap();
     }
 
     fn check_vert_to_elems(&self, i_elem: Idx, e: &E) -> Result<()> {
@@ -418,6 +399,14 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             }
         }
 
+        for (face, tag) in &self.tagged_faces {
+            if face.iter().any(|i| !self.verts.contains_key(i)) {
+                return Err(Error::from(&format!(
+                    "Invalid tagged face {face:?} - tag={tag}"
+                )));
+            }
+        }
+
         Ok(())
     }
 
@@ -492,11 +481,16 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     /// Remove a vertex
-    pub fn remove_vertex(&mut self, idx: Idx) {
+    pub fn remove_vertex(&mut self, idx: Idx) -> Result<()> {
         let vx = self.verts.get(&idx);
-        assert!(vx.is_some());
-        assert!(vx.unwrap().els.is_empty());
+        if vx.is_none() {
+            return Err(Error::from("Vertex not present"));
+        };
+        if !vx.unwrap().els.is_empty() {
+            return Err(Error::from("Vertex used"));
+        }
         self.verts.remove(&idx);
+        Ok(())
     }
 
     /// Get the coordinates, tag and metric of a vertex
@@ -524,15 +518,20 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     /// Insert a new element
-    pub fn insert_elem(&mut self, el: E, tag: Tag) {
+    pub fn insert_elem(&mut self, el: E, tag: Tag) -> Result<()> {
         let ge = self.gelem(&el);
         let q = ge.quality();
-        assert!(q > 0.0, "{ge:?} q={q}");
+        if q <= 0.0 {
+            return Err(Error::from("Invalid element"));
+        }
         self.elems.insert(self.next_elem, ElemInfo { el, tag, q });
 
         // update the vertex-to-element info
         for idx in el.iter() {
             let vx = self.verts.get_mut(idx);
+            if vx.is_none() {
+                return Err(Error::from("Element vertex not present"));
+            }
             assert!(vx.is_some());
             vx.unwrap().els.push(self.next_elem);
         }
@@ -549,12 +548,15 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             }
         }
         self.next_elem += 1;
+        Ok(())
     }
 
     /// Remove an element
-    pub fn remove_elem(&mut self, idx: Idx) {
+    pub fn remove_elem(&mut self, idx: Idx) -> Result<()> {
         let el = self.elems.get(&idx);
-        assert!(el.is_some());
+        if el.is_none() {
+            return Err(Error::from("Element not present"));
+        }
         let el = &el.unwrap().el;
 
         // update the vertex-to-element info
@@ -574,6 +576,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             }
         }
         self.elems.remove(&idx);
+        Ok(())
     }
 
     /// Get the i-th element
@@ -600,6 +603,35 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             let pt = self.verts.get(j).unwrap();
             (pt.vx, pt.m)
         }))
+    }
+
+    /// Return the tag of a face
+    pub fn face_tag(&self, face: &E::Face) -> Option<Tag> {
+        let face = face.sorted();
+        self.tagged_faces.get(&face).copied()
+    }
+
+    /// Return the tag of a face
+    fn add_tagged_face(&mut self, face: E::Face, tag: Tag) -> Result<()> {
+        let face = face.sorted();
+        if self.tagged_faces.contains_key(&face) {
+            return Err(Error::from("Tagged face already present"));
+        }
+        if face.iter().any(|i| !self.verts.contains_key(i)) {
+            return Err(Error::from("At least a vertex is not in the mesh"));
+        }
+        self.tagged_faces.insert(face, tag);
+        Ok(())
+    }
+
+    /// Return the tag of a face
+    fn remove_tagged_face(&mut self, face: E::Face) -> Result<()> {
+        let face = face.sorted();
+        if !self.tagged_faces.contains_key(&face) {
+            return Err(Error::from("Tagged face not present"));
+        }
+        self.tagged_faces.remove(&face).unwrap();
+        Ok(())
     }
 
     /// Estimate the complexity
@@ -686,7 +718,12 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     ///   - no element with a quality lower than
     ///       max(params.collapse_min_q_abs, params.collapse_min_q_rel * min(q)))
     ///   where min(l) and min(q) as the max edge length and min quality over the entire mesh
-    pub fn split<G: Geometry<D>>(&mut self, l_0: f64, params: &RemesherParams, geom: &G) -> u32 {
+    pub fn split<G: Geometry<D>>(
+        &mut self,
+        l_0: f64,
+        params: &RemesherParams,
+        geom: &G,
+    ) -> Result<u32> {
         info!("Split edges with length > {:.2e}", l_0);
 
         let mesh_l_min = min_iter(self.lengths_iter());
@@ -753,21 +790,21 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     if filled_cavity.check(l_min, f64::MAX, q_min) > 0. {
                         trace!("Edge split");
                         for i in &cavity.global_elem_ids {
-                            self.remove_elem(*i);
+                            self.remove_elem(*i)?;
                         }
                         let ip = self.insert_vertex(edge_center, &tag, &new_metric);
                         for (face, tag) in filled_cavity.faces() {
                             let f = cavity.global_elem(&face);
                             assert!(!f.contains_edge(edg));
                             let e = E::from_vertex_and_face(ip, &f);
-                            self.insert_elem(e, tag);
+                            self.insert_elem(e, tag)?;
                         }
                         for (f, _) in cavity.global_tagged_faces() {
-                            self.remove_tagged_face(f);
+                            self.remove_tagged_face(f)?;
                         }
 
                         for (b, t) in filled_cavity.tagged_faces_boundary_global() {
-                            self.add_tagged_face(E::Face::from_vertex_and_face(ip, &b), t);
+                            self.add_tagged_face(E::Face::from_vertex_and_face(ip, &b), t)?;
                         }
                         n_splits += 1;
                     } else {
@@ -787,7 +824,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 if params.debug {
                     self.check().unwrap();
                 }
-                return n_iter;
+                return Ok(n_iter);
             }
         }
     }
@@ -807,17 +844,17 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         max_angle: f64,
         cavity: &mut Cavity<D, E, M>,
         geom: &G,
-    ) -> TrySwapResult {
+    ) -> Result<TrySwapResult> {
         trace!("Try to swap edge {:?}", edg);
         cavity.init_from_edge(edg, self);
         if cavity.global_elem_ids.len() == 1 {
             trace!("Cannot swap, only one adjacent cell");
-            return TrySwapResult::QualitySufficient;
+            return Ok(TrySwapResult::QualitySufficient);
         }
 
         if cavity.q_min > q_min {
             trace!("No need to swap, quality sufficient");
-            return TrySwapResult::QualitySufficient;
+            return Ok(TrySwapResult::QualitySufficient);
         }
 
         let cavity::Seed::Edge(local_edg) = cavity.seed else {
@@ -836,11 +873,11 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             .unwrap();
         // tag < 0 on fixed boundaries
         if etag.1 < 0 {
-            return TrySwapResult::FixedEdge;
+            return Ok(TrySwapResult::FixedEdge);
         }
 
         if etag.0 < E::Face::DIM as Dim {
-            return TrySwapResult::CouldNotSwap;
+            return Ok(TrySwapResult::CouldNotSwap);
         }
 
         for n in 0..cavity.n_verts() {
@@ -894,7 +931,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             let ftype = FilledCavityType::ExistingVertex(vx);
             let filled_cavity = FilledCavity::new(cavity, ftype);
             for e in &cavity.global_elem_ids {
-                self.remove_elem(*e);
+                self.remove_elem(*e)?;
             }
             let global_vx = cavity.local2global[vx as usize];
             for (f, t) in filled_cavity.faces() {
@@ -902,19 +939,19 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 assert!(!f.contains_vertex(global_vx));
                 assert!(!f.contains_edge(edg));
                 let e = E::from_vertex_and_face(global_vx, &f);
-                self.insert_elem(e, t);
+                self.insert_elem(e, t)?;
             }
             for (f, _) in cavity.global_tagged_faces() {
-                self.remove_tagged_face(f);
+                self.remove_tagged_face(f)?;
             }
             for (b, t) in filled_cavity.tagged_faces_boundary_global() {
-                self.add_tagged_face(E::Face::from_vertex_and_face(global_vx, &b), t);
+                self.add_tagged_face(E::Face::from_vertex_and_face(global_vx, &b), t)?;
             }
 
-            return TrySwapResult::CouldSwap;
+            return Ok(TrySwapResult::CouldSwap);
         }
 
-        TrySwapResult::CouldNotSwap
+        Ok(TrySwapResult::CouldNotSwap)
     }
 
     /// Loop over the edges and perform edge swaps if
@@ -932,7 +969,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         q_target: f64,
         params: &RemesherParams,
         geom: &G,
-    ) -> u32 {
+    ) -> Result<u32> {
         info!("Swap edges: target quality = {}", q_target);
 
         let (mesh_l_min, mesh_l_max) = min_max_iter(self.lengths_iter());
@@ -970,7 +1007,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     params.max_angle,
                     &mut cavity,
                     geom,
-                );
+                )?;
                 match res {
                     TrySwapResult::CouldNotSwap => n_fails += 1,
                     TrySwapResult::CouldSwap => n_swaps += 1,
@@ -988,7 +1025,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 if params.debug {
                     self.check().unwrap();
                 }
-                return n_iter;
+                return Ok(n_iter);
             }
         }
     }
@@ -1003,7 +1040,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     ///       max(params.collapse_min_q_abs, params.collapse_min_q_rel * min(q)))
     ///   where max(l) and min(q) as the max edge length and min quality over the entire mesh
     #[allow(clippy::too_many_lines)]
-    pub fn collapse<G: Geometry<D>>(&mut self, params: &RemesherParams, geom: &G) -> u32 {
+    pub fn collapse<G: Geometry<D>>(&mut self, params: &RemesherParams, geom: &G) -> Result<u32> {
         info!("Collapse elements");
 
         let mesh_l_max = max_iter(self.lengths_iter());
@@ -1087,22 +1124,22 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     if filled_cavity.check(0.0, l_max, q_min) > 0.0 {
                         trace!("Collapse edge");
                         for i in &cavity.global_elem_ids {
-                            self.remove_elem(*i);
+                            self.remove_elem(*i)?;
                         }
 
-                        self.remove_vertex(i0);
+                        self.remove_vertex(i0)?;
 
                         for (f, t) in filled_cavity.faces() {
                             let f = cavity.global_elem(&f);
                             assert!(!f.contains_vertex(i1));
-                            self.insert_elem(E::from_vertex_and_face(i1, &f), t);
+                            self.insert_elem(E::from_vertex_and_face(i1, &f), t)?;
                         }
                         for (f, _) in cavity.global_tagged_faces() {
-                            self.remove_tagged_face(f);
+                            self.remove_tagged_face(f)?;
                         }
                         for (b, t) in filled_cavity.tagged_faces_boundary_global() {
                             assert!(!b.contains_vertex(i1));
-                            self.add_tagged_face(E::Face::from_vertex_and_face(i1, &b), t);
+                            self.add_tagged_face(E::Face::from_vertex_and_face(i1, &b), t)?;
                         }
 
                         n_collapses += 1;
@@ -1121,7 +1158,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 if params.debug {
                     self.check().unwrap();
                 }
-                return n_iter;
+                return Ok(n_iter);
             }
         }
     }
@@ -1423,7 +1460,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     /// Perform a remeshing iteration
-    pub fn remesh<G: Geometry<D>>(&mut self, params: RemesherParams, geom: &G) {
+    pub fn remesh<G: Geometry<D>>(&mut self, params: RemesherParams, geom: &G) -> Result<()> {
         info!("Adapt the mesh");
         let now = Instant::now();
 
@@ -1438,13 +1475,13 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     ..params.clone()
                 };
                 for _ in 0..params.num_iter {
-                    self.collapse(&first_step_params, geom);
+                    self.collapse(&first_step_params, geom)?;
 
-                    self.split(l_0, &first_step_params, geom);
+                    self.split(l_0, &first_step_params, geom)?;
 
-                    self.swap(0.4, &first_step_params, geom);
+                    self.swap(0.4, &first_step_params, geom)?;
 
-                    self.swap(0.8, &first_step_params, geom);
+                    self.swap(0.8, &first_step_params, geom)?;
 
                     self.smooth(&first_step_params, geom);
                 }
@@ -1454,23 +1491,24 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         }
 
         for _ in 0..params.num_iter {
-            self.collapse(&params, geom);
+            self.collapse(&params, geom)?;
 
-            self.split(f64::sqrt(2.0), &params, geom);
+            self.split(f64::sqrt(2.0), &params, geom)?;
 
-            self.swap(0.4, &params, geom);
+            self.swap(0.4, &params, geom)?;
 
-            self.swap(0.8, &params, geom);
+            self.swap(0.8, &params, geom)?;
 
             self.smooth(&params, geom);
         }
 
-        self.swap(0.4, &params, geom);
+        self.swap(0.4, &params, geom)?;
 
-        self.swap(0.8, &params, geom);
+        self.swap(0.8, &params, geom)?;
 
         info!("Done in {}s", now.elapsed().as_secs_f32());
         self.print_stats();
+        Ok(())
     }
 
     /// Print length and quality stats on the mesh / metric
@@ -1787,7 +1825,7 @@ mod tests {
 
         let mut remesher = Remesher::new(&mesh, &h, &NoGeometry()).unwrap();
 
-        remesher.remove_vertex(5);
+        remesher.remove_vertex(5).unwrap();
     }
 
     #[test]
@@ -1801,7 +1839,7 @@ mod tests {
 
         let mut remesher = Remesher::new(&mesh, &h, &NoGeometry()).unwrap();
 
-        remesher.remove_vertex(1);
+        remesher.remove_vertex(1).unwrap();
     }
 
     #[test]
@@ -1815,8 +1853,8 @@ mod tests {
         let geom = NoGeometry();
         let mut remesher = Remesher::new(&mesh, &h, &geom)?;
 
-        remesher.remove_elem(0);
-        remesher.remove_vertex(1);
+        remesher.remove_elem(0)?;
+        remesher.remove_vertex(1)?;
 
         assert_eq!(remesher.n_verts(), 3);
         assert_eq!(remesher.n_elems(), 1);
@@ -1836,7 +1874,7 @@ mod tests {
 
         let mut remesher = Remesher::new(&mesh, &h, &NoGeometry()).unwrap();
 
-        remesher.remove_elem(3);
+        remesher.remove_elem(3).unwrap();
     }
 
     #[test]
@@ -1856,7 +1894,7 @@ mod tests {
             split_max_iter: 10,
             ..Default::default()
         };
-        let n_iter = remesher.split(f64::sqrt(2.0), &params, &geom);
+        let n_iter = remesher.split(f64::sqrt(2.0), &params, &geom)?;
         assert!(n_iter < 10);
 
         remesher.check()?;
@@ -1883,7 +1921,7 @@ mod tests {
             swap_max_iter: 10,
             ..Default::default()
         };
-        let n_iter = remesher.collapse(&params, &geom);
+        let n_iter = remesher.collapse(&params, &geom)?;
         assert!(n_iter < 10);
         let mesh = remesher.to_mesh(true);
         assert!(f64::abs(mesh.vol() - 1.) < 1e-12);
@@ -1895,7 +1933,7 @@ mod tests {
         let h = vec![IsoMetric::<2>::from(2.); mesh.n_verts() as usize];
         let mut remesher = Remesher::new(&mesh, &h, &geom)?;
 
-        let n_iter = remesher.swap(0.8, &params, &geom);
+        let n_iter = remesher.swap(0.8, &params, &geom)?;
         assert!(n_iter < 10);
         let mesh = remesher.to_mesh(true);
         assert!(f64::abs(mesh.vol() - 1.) < 1e-12);
@@ -1922,7 +1960,7 @@ mod tests {
             collapse_max_iter: 10,
             ..Default::default()
         };
-        let n_iter = remesher.collapse(&params, &geom);
+        let n_iter = remesher.collapse(&params, &geom)?;
         assert!(n_iter < 10);
 
         remesher.check()?;
@@ -2204,7 +2242,7 @@ mod tests {
             let geom = NoGeometry();
             let mut remesher = Remesher::new(&mesh, &h, &geom)?;
 
-            remesher.remesh(RemesherParams::default(), &geom);
+            remesher.remesh(RemesherParams::default(), &geom)?;
             remesher.check()?;
 
             mesh = remesher.to_mesh(false);
@@ -2238,7 +2276,7 @@ mod tests {
         let geom = NoGeometry();
         let mut remesher = Remesher::new(&mesh, &h, &geom)?;
 
-        remesher.remesh(RemesherParams::default(), &geom);
+        remesher.remesh(RemesherParams::default(), &geom)?;
         remesher.check()?;
 
         let mesh = remesher.to_mesh(true);
@@ -2266,7 +2304,7 @@ mod tests {
             let geom = GeomHalfCircle2d();
             let mut remesher = Remesher::new(&mesh, &h, &geom)?;
 
-            remesher.remesh(RemesherParams::default(), &geom);
+            remesher.remesh(RemesherParams::default(), &geom)?;
             remesher.check()?;
 
             mesh = remesher.to_mesh(true);
@@ -2301,7 +2339,7 @@ mod tests {
             ..Default::default()
         };
 
-        let n_iter = remesher.split(f64::sqrt(2.0), &params, &geom);
+        let n_iter = remesher.split(f64::sqrt(2.0), &params, &geom)?;
         assert!(n_iter < 10);
         remesher.check()?;
 
@@ -2327,7 +2365,7 @@ mod tests {
             split_max_iter: 10,
             ..Default::default()
         };
-        let n_iter = remesher.split(f64::sqrt(2.0), &params, &geom);
+        let n_iter = remesher.split(f64::sqrt(2.0), &params, &geom)?;
         assert!(n_iter < 10);
 
         remesher.check()?;
@@ -2352,7 +2390,7 @@ mod tests {
             collapse_max_iter: 10,
             ..Default::default()
         };
-        let n_iter = remesher.collapse(&params, &geom);
+        let n_iter = remesher.collapse(&params, &geom)?;
         assert!(n_iter < 10);
 
         remesher.check()?;
@@ -2383,7 +2421,7 @@ mod tests {
             ..Default::default()
         };
 
-        let n_iter = remesher.swap(0.8, &params, &geom);
+        let n_iter = remesher.swap(0.8, &params, &geom)?;
         assert!(n_iter < 10);
         let mesh = remesher.to_mesh(true);
         assert!(f64::abs(mesh.vol() - 2.0 * 0.1 / 6.) < 1e-12);
@@ -2410,7 +2448,7 @@ mod tests {
             ..Default::default()
         };
 
-        let n_iter = remesher.collapse(&params, &geom);
+        let n_iter = remesher.collapse(&params, &geom)?;
         assert!(n_iter < 10);
         let mesh = remesher.to_mesh(true);
         assert!(f64::abs(mesh.vol() - 1.) < 1e-12);
@@ -2424,7 +2462,7 @@ mod tests {
         let geom = NoGeometry();
         let mut remesher = Remesher::new(&mesh, &h, &geom)?;
 
-        let n_iter = remesher.swap(0.8, &params, &geom);
+        let n_iter = remesher.swap(0.8, &params, &geom)?;
         assert!(n_iter < 10);
         let mesh = remesher.to_mesh(true);
         assert!(f64::abs(mesh.vol() - 1.) < 1e-12);
@@ -2468,7 +2506,7 @@ mod tests {
                 .collect();
             let mut remesher = Remesher::new(&mesh, &h, &geom)?;
 
-            remesher.remesh(RemesherParams::default(), &geom);
+            remesher.remesh(RemesherParams::default(), &geom)?;
 
             remesher.check()?;
 
@@ -2510,7 +2548,7 @@ mod tests {
         let geom = NoGeometry();
         let mut remesher = Remesher::new(&mesh, &h, &geom)?;
 
-        remesher.remesh(RemesherParams::default(), &geom);
+        remesher.remesh(RemesherParams::default(), &geom)?;
         remesher.check()?;
 
         let mesh = remesher.to_mesh(true);
