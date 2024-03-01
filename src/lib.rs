@@ -27,7 +27,7 @@ mod spatialindex;
 mod stats;
 pub mod test_meshes; // to suppress warnings!
 pub mod topo_elems;
-mod topology;
+pub mod topology;
 mod twovec;
 
 const H_MAX: f64 = 1e8;
