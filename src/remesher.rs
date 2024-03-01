@@ -1,5 +1,5 @@
 use crate::{
-    cavity::{self, Cavity, FilledCavity},
+    cavity::{self, Cavity, FilledCavity, FilledCavityType},
     geom_elems::{AsSliceF64, GElem},
     geometry::Geometry,
     max_iter,
@@ -9,7 +9,7 @@ use crate::{
     stats::{CollapseStats, InitStats, SmoothStats, SplitStats, Stats, StepStats, SwapStats},
     topo_elems::{get_face_to_elem, Elem},
     topology::Topology,
-    Dim, Error, Idx, Result, TopoTag,
+    Dim, Error, Idx, Result, Tag, TopoTag,
 };
 use log::{debug, info, trace, warn};
 #[cfg(feature = "nlopt")]
@@ -62,6 +62,8 @@ pub struct VtxInfo<const D: usize, M: Metric<D>> {
 pub struct ElemInfo<E: Elem> {
     /// Element connectivity
     pub el: E,
+    /// Tag
+    pub tag: Tag,
     /// Quality
     pub q: f64,
 }
@@ -76,6 +78,8 @@ pub struct Remesher<const D: usize, E: Elem, M: Metric<D>> {
     elems: FxHashMap<Idx, ElemInfo<E>>,
     /// Edges
     edges: FxHashMap<[Idx; 2], i16>,
+    /// Tagged faces
+    tagged_faces: FxHashMap<E::Face, Tag>,
     /// Next vertex Id
     next_vert: Idx,
     /// Next element Id
@@ -228,6 +232,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 mesh.n_elems() as usize,
                 BuildHasherDefault::default(),
             ),
+            tagged_faces: FxHashMap::default(),
             edges: FxHashMap::default(),
             next_vert: 0,
             next_elem: 0,
@@ -250,67 +255,38 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
         // Insert the elements
         let n_elems = mesh.n_elems();
-        for e in mesh.elems() {
-            res.insert_elem(e);
+        for (e, t) in mesh.elems().zip(mesh.etags()) {
+            res.insert_elem(e, t);
         }
         assert_eq!(n_elems, res.n_elems());
+
+        // Insert the tagged faces
+        mesh.faces()
+            .zip(mesh.ftags())
+            .for_each(|(f, t)| res.add_tagged_face(f, t));
 
         res.print_stats();
         res.stats.push(StepStats::Init(InitStats::new(&res)));
         Ok(res)
     }
 
-    pub fn split_invalid_boundary_faces(&mut self, mesh: &SimplexMesh<D, E>) -> Idx {
-        let mut n_split = 0;
-        let mut cavity = Cavity::new();
-        for (f, tag) in mesh.faces().zip(mesh.ftags()) {
-            if let Ok(remesher_tag) = self.elem_tag(&f, None) {
-                assert_eq!(tag, remesher_tag.1);
-            } else {
-                // Split the face by adding a vertex at its barycenter
-                cavity.init_from_face(&f, self);
-                let (center, metric) = cavity.seed_barycenter();
-                for &i in &cavity.global_elem_ids {
-                    self.remove_elem(i);
-                }
-                let ip = self.insert_vertex(center, &(E::Face::DIM as Dim, tag), &metric);
-                for face in cavity.faces() {
-                    self.insert_elem(E::from_vertex_and_face(ip, &cavity.global_face(&face)));
-                }
-                n_split += 1;
-            }
-        }
-        n_split
+    /// Return the tag of a face
+    pub fn face_tag(&self, face: &E::Face) -> Option<Tag> {
+        let face = face.sorted();
+        self.tagged_faces.get(&face).copied()
     }
 
-    /// Return the tag of a face or element of this remesher
-    fn elem_tag<EE: Elem>(&self, elem: &EE, min_dim: Option<Dim>) -> Result<TopoTag> {
-        let (dim, tag) = self
-            .topo
-            .elem_tag(elem.iter().map(|i| self.verts.get(i).unwrap().tag))
-            .unwrap();
-        let min_dim = min_dim.unwrap_or(EE::DIM as Dim);
-        if dim >= min_dim {
-            Ok((dim, tag))
-        } else {
-            // Make sure that there is only one topological entity that is the parent of all vertex tags
-            // of dimension EE::DIM
-            let mut node = self.topo.get((dim, tag)).unwrap();
-            let mut current_dim = dim;
-            while current_dim < min_dim {
-                if node.parents.len() != 1 {
-                    return Err(Error::from(&format!(
-                        "Unable to get the tag for {elem:?} with min_dim={min_dim}: {} parents at dim={current_dim}", node.parents.len()
-                    )));
-                }
-                current_dim += 1;
-                node = self
-                    .topo
-                    .get((current_dim, *node.parents.iter().next().unwrap()))
-                    .unwrap();
-            }
-            Ok(node.tag)
-        }
+    /// Return the tag of a face
+    fn add_tagged_face(&mut self, face: E::Face, tag: Tag) {
+        let face = face.sorted();
+        debug_assert!(self.tagged_faces.get(&face).is_none());
+        self.tagged_faces.insert(face, tag);
+    }
+
+    /// Return the tag of a face
+    fn remove_tagged_face(&mut self, face: E::Face) {
+        let face = face.sorted();
+        self.tagged_faces.remove(&face).unwrap();
     }
 
     fn check_vert_to_elems(&self, i_elem: Idx, e: &E) -> Result<()> {
@@ -346,13 +322,13 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         Ok(())
     }
 
-    fn check_faces(&self, i_elem: Idx, e: &E) -> Result<()> {
-        let etag = self.elem_tag(e, None).unwrap();
+    fn check_faces(&self, i_elem: Idx, e: &ElemInfo<E>) -> Result<()> {
+        let etag = e.tag;
 
         for i_face in 0..E::N_FACES {
-            let f = e.face(i_face);
+            let f = e.el.face(i_face);
 
-            // filter the elements containing the face
+            // filter the other elements containing the face
             let iels = self
                 .verts
                 .get(&f[0])
@@ -364,43 +340,29 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     **i != i_elem && f.iter().all(|j| other.contains_vertex(*j))
                 })
                 .collect::<Vec<_>>();
-            let min_dim = if iels.is_empty() {
-                None
-            } else {
-                let etags = iels
-                    .iter()
-                    .map(|e| self.elem_tag(&self.elems.get(e).unwrap().el, None).unwrap())
-                    .collect::<Vec<_>>();
-                let is_internal = etags.iter().all(|&item| item == etag);
 
-                if is_internal {
-                    Some(E::DIM as Dim)
-                } else {
-                    None
-                }
-            };
-            let ftag = self.elem_tag(&f, min_dim)?;
+            let ftag = self.face_tag(&f);
 
             if !iels.is_empty() {
                 // At least 3 elements
                 if iels.len() > 1 {
                     return Err(Error::from("A face belongs to more than 2 elements"));
                 }
-                let other = self.elems.get(iels[0]).unwrap().el;
-                let otag = self.elem_tag(&other, None).unwrap();
-                if etag.1 != otag.1 && ftag.0 != E::Face::DIM as Dim {
+                let other = self.elems.get(iels[0]).unwrap();
+                let otag = other.tag;
+                if etag != otag && ftag.is_none() {
                     return Err(Error::from(&format!(
-                        "A face ({f:?}:{ftag:?}) belonging to 2 elements ({e:?}:{etag:?}, {other:?}:{otag:?}) with different tags is not tagged correctly. ",
+                        "A face ({f:?}:{ftag:?}) belonging to 2 elements ({:?}:{etag:?}, {:?}:{otag:?}) with different tags is not tagged correctly. ", e.el, other.el
                     )));
-                } else if etag.1 == otag.1 && ftag.0 != E::DIM as Dim {
+                } else if etag == otag && ftag.is_some() {
                     return Err(Error::from(&format!(
-                        "A face (({f:?}:{ftag:?})) belonging to 2 elements ({e:?}:{etag:?}, {other:?}:{otag:?}) with the same tags is not tagged \
-                        correctly."
+                        "A face (({f:?}:{ftag:?})) belonging to 2 elements ({:?}:{etag:?}, {:?}:{otag:?}) with the same tags is not tagged \
+                        correctly.", e.el, other.el
                     )));
                 }
-            } else if ftag.0 != E::Face::DIM as Dim {
+            } else if ftag.is_none() {
                 return Err(Error::from(
-                    &format!("A face (({f:?}:{ftag:?})) belonging to 1 element ({e:?}:{etag:?}) is not tagged correctly"
+                    &format!("A face (({f:?}:{ftag:?})) belonging to 1 element ({:?}:{etag:?}) is not tagged correctly", e.el
                 )));
             }
         }
@@ -412,22 +374,14 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         info!("Check the consistency of the remesher data");
 
         for (&i_elem, e) in &self.elems {
-            let e = &e.el;
             // Is element-to-vertex and vertex-to-element info consistent?
-            self.check_vert_to_elems(i_elem, e)?;
+            self.check_vert_to_elems(i_elem, &e.el)?;
 
             // Is the element valid?
-            self.check_elem_volume(e)?;
+            self.check_elem_volume(&e.el)?;
 
             // Are the edges present?
-            self.check_edges(e)?;
-
-            // check that the element tag dimension is E::DIM
-            // should no longer be needed
-            let etag = self.elem_tag(e, None).unwrap();
-            if etag.0 < E::DIM as Dim {
-                return Err(Error::from("Invalid element tag"));
-            }
+            self.check_edges(&e.el)?;
 
             // check that all faces appear once if tagged on a boundary, or twice if tagged in the domain
             self.check_faces(i_elem, e)?;
@@ -481,76 +435,45 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
         let verts = self.verts.values().map(|v| v.vx).collect();
 
-        // Keep the remesher node ids for now to get the tags
-        let elems: Vec<_> = self.elems.values().map(|e| e.el).collect();
-        let etags: Vec<_> = elems
-            .iter()
-            .map(|e| self.elem_tag(e, None).unwrap().1)
-            .collect();
+        let mut elems = Vec::with_capacity(self.n_elems() as usize);
+        let mut etags = Vec::with_capacity(self.n_elems() as usize);
+        for e in self.elems.values() {
+            elems.push(E::from_iter(e.el.iter().map(|&i| *vidx.get(&i).unwrap())));
+            etags.push(e.tag);
+        }
 
         let f2e = get_face_to_elem(elems.iter().copied());
         let mut faces = Vec::new();
         let mut ftags = Vec::new();
 
-        for (face, iels) in &f2e {
-            let min_dim = if iels.len() > 1 {
-                let etags = iels
-                    .iter()
-                    .map(|&e| {
-                        let el = elems[e as usize];
-                        self.elem_tag(&el, None).unwrap()
-                    })
-                    .collect::<Vec<_>>();
-                let is_internal = etags.iter().skip(1).all(|&item| item == etags[0]);
-                if is_internal {
-                    Some(E::DIM as Dim)
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-            let ftag = self.elem_tag(face, min_dim).unwrap();
-            if ftag.0 == E::Face::DIM as Dim {
-                if iels.len() == 1 {
-                    // Orient the face outwards
-                    let elem = elems[iels[0] as usize];
-                    let mut ok = false;
-                    for i_face in 0..E::N_FACES {
-                        let mut f = elem.face(i_face);
-                        f.sort();
-                        let is_same = !f.iter().zip(face.iter()).any(|(x, y)| x != y);
-                        if is_same {
-                            let f = elem.face(i_face);
-                            faces.push(E::Face::from_iter(
-                                f.iter().map(|&i| *vidx.get(&i).unwrap()),
-                            ));
-
-                            ftags.push(ftag.1);
-                            ok = true;
-                            break;
-                        }
+        for (face, &ftag) in &self.tagged_faces {
+            let face = E::Face::from_iter(face.iter().map(|&i| *vidx.get(&i).unwrap()));
+            let face = face.sorted();
+            let iels = f2e.get(&face).unwrap();
+            if iels.len() == 1 {
+                // Orient the face outwards
+                let elem = elems[iels[0] as usize];
+                let mut ok = false;
+                for i_face in 0..E::N_FACES {
+                    let mut f = elem.face(i_face);
+                    f.sort();
+                    let is_same = !f.iter().zip(face.iter()).any(|(x, y)| x != y);
+                    if is_same {
+                        let f = elem.face(i_face);
+                        faces.push(f);
+                        ftags.push(ftag);
+                        ok = true;
+                        break;
                     }
-                    assert!(ok);
-                } else if !only_bdy_faces {
-                    faces.push(E::Face::from_iter(
-                        face.iter().map(|&i| *vidx.get(&i).unwrap()),
-                    ));
-                    ftags.push(ftag.1);
                 }
+                assert!(ok);
+            } else if !only_bdy_faces {
+                faces.push(face);
+                ftags.push(ftag);
             }
         }
 
-        SimplexMesh::<D, E>::new(
-            verts,
-            elems
-                .iter()
-                .map(|e| E::from_iter(e.iter().map(|&i| *vidx.get(&i).unwrap())))
-                .collect(),
-            etags,
-            faces,
-            ftags,
-        )
+        SimplexMesh::<D, E>::new(verts, elems, etags, faces, ftags)
     }
 
     /// Insert a new vertex, and get its index
@@ -601,11 +524,11 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     /// Insert a new element
-    pub fn insert_elem(&mut self, el: E) {
+    pub fn insert_elem(&mut self, el: E, tag: Tag) {
         let ge = self.gelem(&el);
         let q = ge.quality();
         assert!(q > 0.0, "{ge:?} q={q}");
-        self.elems.insert(self.next_elem, ElemInfo { el, q });
+        self.elems.insert(self.next_elem, ElemInfo { el, tag, q });
 
         // update the vertex-to-element info
         for idx in el.iter() {
@@ -822,11 +745,8 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                         geom.project(&mut edge_center, &tag);
                     }
 
-                    let filled_cavity = FilledCavity::from_cavity_and_new_vertex(
-                        &cavity,
-                        &edge_center,
-                        &new_metric,
-                    );
+                    let ftype = FilledCavityType::EdgeCenter((local_edg, edge_center, new_metric));
+                    let filled_cavity = FilledCavity::new(&cavity, ftype);
 
                     // lower the min quality threshold if the min quality in the cavity increases
                     let q_min = q_min.min(cavity.q_min);
@@ -836,11 +756,18 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                             self.remove_elem(*i);
                         }
                         let ip = self.insert_vertex(edge_center, &tag, &new_metric);
-                        for face in cavity.faces() {
-                            let f = cavity.global_face(&face);
+                        for (face, tag) in filled_cavity.faces() {
+                            let f = cavity.global_elem(&face);
                             assert!(!f.contains_edge(edg));
                             let e = E::from_vertex_and_face(ip, &f);
-                            self.insert_elem(e);
+                            self.insert_elem(e, tag);
+                        }
+                        for (f, _) in cavity.global_tagged_faces() {
+                            self.remove_tagged_face(f);
+                        }
+
+                        for (b, t) in filled_cavity.tagged_faces_boundary_global() {
+                            self.add_tagged_face(E::Face::from_vertex_and_face(ip, &b), t);
                         }
                         n_splits += 1;
                     } else {
@@ -870,6 +797,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     ///   - no edge smaller that `l_min` or longer that `l_max` is created
     /// TODO: move to Cavity?
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_lines)]
     fn try_swap<G: Geometry<D>>(
         &mut self,
         edg: [Idx; 2],
@@ -895,21 +823,28 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         let cavity::Seed::Edge(local_edg) = cavity.seed else {
             unreachable!()
         };
-        let i0 = local_edg[0] as usize;
-        let i1 = local_edg[1] as usize;
+        let local_i0 = local_edg[0] as usize;
+        let local_i1 = local_edg[1] as usize;
         let mut q_ref = cavity.q_min;
 
         let mut vx = 0;
         let mut succeed = false;
 
-        let etag = self.topo.parent(cavity.tags[i0], cavity.tags[i1]).unwrap();
+        let etag = self
+            .topo
+            .parent(cavity.tags[local_i0], cavity.tags[local_i1])
+            .unwrap();
         // tag < 0 on fixed boundaries
         if etag.1 < 0 {
             return TrySwapResult::FixedEdge;
         }
 
+        if etag.0 < E::Face::DIM as Dim {
+            return TrySwapResult::CouldNotSwap;
+        }
+
         for n in 0..cavity.n_verts() {
-            if n == i0 as Idx || n == i1 as Idx {
+            if n == local_i0 as Idx || n == local_i1 as Idx {
                 continue;
             }
 
@@ -925,10 +860,18 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 continue;
             }
 
-            let filled_cavity = FilledCavity::from_cavity_and_vertex_id(cavity, n);
+            // too difficult otherwise!
+            if !cavity.tagged_faces.is_empty() {
+                assert!(cavity.tagged_faces.len() == 2);
+                if !cavity.tagged_faces().any(|(f, _)| f.contains_vertex(n)) {
+                    continue;
+                }
+            }
 
-            if !filled_cavity.check_tags(&self.topo) {
-                trace!("Cannot swap, would create an element/face with an invalid tag");
+            let ftype = FilledCavityType::ExistingVertex(n);
+            let filled_cavity = FilledCavity::new(cavity, ftype);
+
+            if filled_cavity.is_same() {
                 continue;
             }
 
@@ -948,17 +891,24 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
         if succeed {
             trace!("Swap from {}", vx);
+            let ftype = FilledCavityType::ExistingVertex(vx);
+            let filled_cavity = FilledCavity::new(cavity, ftype);
             for e in &cavity.global_elem_ids {
                 self.remove_elem(*e);
             }
-            let filled_cavity = FilledCavity::from_cavity_and_vertex_id(cavity, vx);
-            for f in filled_cavity.faces() {
-                let global_vx = cavity.local2global[vx as usize];
-                let f = cavity.global_face(&f);
+            let global_vx = cavity.local2global[vx as usize];
+            for (f, t) in filled_cavity.faces() {
+                let f = cavity.global_elem(&f);
                 assert!(!f.contains_vertex(global_vx));
                 assert!(!f.contains_edge(edg));
                 let e = E::from_vertex_and_face(global_vx, &f);
-                self.insert_elem(e);
+                self.insert_elem(e, t);
+            }
+            for (f, _) in cavity.global_tagged_faces() {
+                self.remove_tagged_face(f);
+            }
+            for (b, t) in filled_cavity.tagged_faces_boundary_global() {
+                self.add_tagged_face(E::Face::from_vertex_and_face(global_vx, &b), t);
             }
 
             return TrySwapResult::CouldSwap;
@@ -1052,6 +1002,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     ///   - no element with a quality lower than
     ///       max(params.collapse_min_q_abs, params.collapse_min_q_rel * min(q)))
     ///   where max(l) and min(q) as the max edge length and min quality over the entire mesh
+    #[allow(clippy::too_many_lines)]
     pub fn collapse<G: Geometry<D>>(&mut self, params: &RemesherParams, geom: &G) -> u32 {
         info!("Collapse elements");
 
@@ -1111,22 +1062,19 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                         }
                     }
                     cavity.init_from_vertex(i0, self);
-                    let local_i1 = cavity
-                        .local2global
-                        .iter()
-                        .copied()
-                        .enumerate()
-                        .find(|(_x, y)| *y == i1)
-                        .unwrap()
-                        .0;
+                    let local_i1 = cavity.get_local_index(i1).unwrap();
 
-                    let filled_cavity =
-                        FilledCavity::from_cavity_and_vertex_id(&cavity, local_i1 as Idx);
-
-                    if !filled_cavity.check_tags(&self.topo) {
-                        trace!("Cannot collapse, would create an element/face with an invalid tag");
+                    // too difficult otherwise!
+                    if !cavity.tagged_faces.is_empty()
+                        && !cavity
+                            .tagged_faces()
+                            .any(|(f, _)| f.contains_vertex(local_i1))
+                    {
                         continue;
                     }
+
+                    let ftype = FilledCavityType::ExistingVertex(local_i1);
+                    let filled_cavity = FilledCavity::new(&cavity, ftype);
 
                     if !filled_cavity.check_boundary_normals(&self.topo, geom, params.max_angle) {
                         trace!("Cannot collapse, would create a non smooth surface");
@@ -1144,11 +1092,19 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
                         self.remove_vertex(i0);
 
-                        for f in filled_cavity.faces() {
-                            let f = cavity.global_face(&f);
+                        for (f, t) in filled_cavity.faces() {
+                            let f = cavity.global_elem(&f);
                             assert!(!f.contains_vertex(i1));
-                            self.insert_elem(E::from_vertex_and_face(i1, &f));
+                            self.insert_elem(E::from_vertex_and_face(i1, &f), t);
                         }
+                        for (f, _) in cavity.global_tagged_faces() {
+                            self.remove_tagged_face(f);
+                        }
+                        for (b, t) in filled_cavity.tagged_faces_boundary_global() {
+                            assert!(!b.contains_vertex(i1));
+                            self.add_tagged_face(E::Face::from_vertex_and_face(i1, &b), t);
+                        }
+
                         n_collapses += 1;
                     } else {
                         n_fails += 1;
@@ -1156,10 +1112,6 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 }
             }
 
-            debug!(
-                "Iteration {}: {} edges collapsed ({} failed)",
-                n_iter, n_collapses, n_fails
-            );
             self.stats.push(StepStats::Collapse(CollapseStats::new(
                 n_collapses,
                 n_fails,
@@ -1277,7 +1229,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         if t0.0 == E::DIM as Dim {
             let mut p0_new = Point::<D>::zeros();
             let mut qmax = cavity.q_min;
-            let gfaces: Vec<_> = cavity.faces().map(|f| cavity.gface(&f)).collect();
+            let gfaces: Vec<_> = cavity.faces().map(|(f, _)| cavity.gface(&f)).collect();
 
             for i_elem in 0..cavity.n_elems() {
                 let ge = cavity.gelem(i_elem);
@@ -1288,12 +1240,11 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 let func = |x: &[f64], _grad: Option<&mut [f64]>, _params: &mut ()| -> f64 {
                     let p = ge.point(x);
                     let mut q_avg = 0.0;
-                    for i_face in 0..cavity.n_faces() {
-                        let gf = &gfaces[i_face as usize];
+                    for gf in &gfaces {
                         let ge1 = E::Geom::from_vert_and_face(&p, m0, gf);
                         q_avg += ge1.quality();
                     }
-                    q_avg / f64::from(cavity.n_faces())
+                    q_avg / (gfaces.len() as f64)
                 };
 
                 let mut opt = Nlopt::new(Algorithm::Cobyla, n - 1, func, Target::Maximize, ());
@@ -1390,7 +1341,8 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     (p0 - p0_new).norm()
                 );
 
-                let filled_cavity = FilledCavity::from_cavity_and_moved_vertex(cavity, &p0_new, m0);
+                let ftype = FilledCavityType::MovedVertex((i0_local, p0_new, *m0));
+                let filled_cavity = FilledCavity::new(cavity, ftype);
 
                 if !filled_cavity.check_boundary_normals(&self.topo, geom, params.max_angle) {
                     trace!("Cannot smooth, would create a non smooth surface");
@@ -1443,6 +1395,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             }
             n_smooth += 1;
         }
+
         (n_fails, n_min, n_smooth)
     }
     /// Perform mesh smoothing
@@ -1580,16 +1533,9 @@ mod tests_topo {
         metric::IsoMetric,
         remesher::Remesher,
         test_meshes::{test_mesh_2d, test_mesh_3d},
-        Idx,
     };
 
-    fn test_topo_2d(
-        etags: [i16; 2],
-        ftags: [i16; 4],
-        add_boundary_faces: bool,
-        n_split: i32,
-        n_invalid: Option<Idx>,
-    ) {
+    fn test_topo_2d(etags: [i16; 2], ftags: [i16; 4], add_boundary_faces: bool, n_split: i32) {
         let mut mesh = test_mesh_2d();
         mesh.mut_etags().zip(etags).for_each(|(e, t)| *e = t);
         mesh.mut_ftags().zip(ftags).for_each(|(e, t)| *e = t);
@@ -1619,11 +1565,7 @@ mod tests_topo {
 
         let geom = NoGeometry();
         let metric: Vec<_> = mesh.verts().map(|_| IsoMetric::from(0.5)).collect();
-        let mut remesher = Remesher::new(&mesh, &metric, &geom).unwrap();
-        if let Some(n_invalid) = n_invalid {
-            let n = remesher.split_invalid_boundary_faces(&mesh);
-            assert_eq!(n, n_invalid);
-        }
+        let remesher = Remesher::new(&mesh, &metric, &geom).unwrap();
         remesher.check().unwrap();
         let mut mesh = remesher.to_mesh(false);
         mesh.compute_face_to_elems();
@@ -1642,82 +1584,61 @@ mod tests_topo {
 
     #[test]
     fn test_topo_2d_1() {
-        test_topo_2d([1, 1], [1, 2, 3, 4], false, 0, None);
+        test_topo_2d([1, 1], [1, 2, 3, 4], false, 0);
     }
 
     #[test]
     fn test_topo_2d_2() {
-        test_topo_2d([1, 1], [1, 2, 3, 4], false, 2, None);
+        test_topo_2d([1, 1], [1, 2, 3, 4], false, 2);
     }
 
     // Inconsistent face tags (diagonal missing) --> panic
     #[test]
     #[should_panic]
     fn test_topo_2d_3() {
-        test_topo_2d([1, 2], [1, 2, 3, 4], false, 0, None);
+        test_topo_2d([1, 2], [1, 2, 3, 4], false, 0);
     }
 
     #[test]
     fn test_topo_2d_4() {
-        test_topo_2d([1, 2], [1, 2, 3, 4], true, 0, None);
+        test_topo_2d([1, 2], [1, 2, 3, 4], true, 0);
     }
 
     #[test]
     fn test_topo_2d_5() {
-        test_topo_2d([1, 2], [1, 2, 3, 4], true, 2, None);
+        test_topo_2d([1, 2], [1, 2, 3, 4], true, 2);
     }
 
     #[test]
     fn test_topo_2d_6() {
-        test_topo_2d([1, 1], [1, 1, 1, 1], false, 0, None);
+        test_topo_2d([1, 1], [1, 1, 1, 1], false, 0);
     }
 
     #[test]
     fn test_topo_2d_7() {
-        test_topo_2d([1, 1], [1, 1, 1, 1], false, 2, None);
+        test_topo_2d([1, 1], [1, 1, 1, 1], false, 2);
     }
 
-    // Configuration not handled: boundary 2 has only one edge, and both
-    // vertices belong to the same two face tags
     #[test]
-    #[should_panic]
     fn test_topo_2d_8() {
-        test_topo_2d([1, 1], [1, 1, 1, 2], false, 0, None);
+        test_topo_2d([1, 1], [1, 1, 1, 2], false, 0);
     }
-
-    #[test]
-    fn test_topo_2d_8_split() {
-        test_topo_2d([1, 1], [1, 1, 1, 2], false, 0, Some(1));
-    }
-
     #[test]
     fn test_topo_2d_9() {
-        test_topo_2d([1, 1], [1, 1, 1, 2], false, 2, None);
+        test_topo_2d([1, 1], [1, 1, 1, 2], false, 2);
     }
 
-    // Configuration not handled: all boundaries have only one edge, and both
-    // vertices belong to the same two face tags
     #[test]
-    #[should_panic]
     fn test_topo_2d_10() {
-        test_topo_2d([1, 1], [1, 2, 1, 2], false, 0, None);
-    }
-
-    // Configuration not handled: the diagonal has vertices with tags (0, 1)
-    // and even if the elem_tag is computed with min_dim=2, it fails at dim=1
-    // as there are two possible choices
-    #[test]
-    #[should_panic]
-    fn test_topo_2d_10_split() {
-        test_topo_2d([1, 1], [1, 2, 1, 2], false, 0, Some(4));
+        test_topo_2d([1, 1], [1, 2, 1, 2], false, 0);
     }
 
     #[test]
     fn test_topo_2d_11() {
-        test_topo_2d([1, 1], [1, 2, 1, 2], false, 2, None);
+        test_topo_2d([1, 1], [1, 2, 1, 2], false, 2);
     }
 
-    fn test_topo_3d(ftags: [i16; 12], n_split: i32, n_invalid: Option<Idx>) {
+    fn test_topo_3d(ftags: [i16; 12], n_split: i32) {
         let mut mesh = test_mesh_3d();
         mesh.mut_ftags().zip(ftags).for_each(|(e, t)| *e = t);
 
@@ -1741,11 +1662,7 @@ mod tests_topo {
 
         let geom = NoGeometry();
         let metric: Vec<_> = mesh.verts().map(|_| IsoMetric::from(0.5)).collect();
-        let mut remesher = Remesher::new(&mesh, &metric, &geom).unwrap();
-        if let Some(n_invalid) = n_invalid {
-            let n = remesher.split_invalid_boundary_faces(&mesh);
-            assert_eq!(n, n_invalid);
-        }
+        let remesher = Remesher::new(&mesh, &metric, &geom).unwrap();
         remesher.check().unwrap();
         let mut mesh = remesher.to_mesh(false);
         mesh.compute_face_to_elems();
@@ -1764,43 +1681,32 @@ mod tests_topo {
 
     #[test]
     fn test_topo_3d_1() {
-        test_topo_3d([1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6], 0, None);
+        test_topo_3d([1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6], 0);
     }
 
     #[test]
     fn test_topo_3d_2() {
-        test_topo_3d([1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6], 2, None);
+        test_topo_3d([1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6], 2);
     }
 
     #[test]
     fn test_topo_3d_3() {
-        test_topo_3d([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], 0, None);
+        test_topo_3d([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], 0);
     }
 
     #[test]
     fn test_topo_3d_4() {
-        test_topo_3d([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], 2, None);
+        test_topo_3d([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], 2);
     }
 
-    // Configuration not handled: for all faces with tag 2, all vertices are
-    // on edges between faces tagged 1 and 2
     #[test]
-    #[should_panic]
     fn test_topo_3d_5() {
-        test_topo_3d([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2], 0, None);
+        test_topo_3d([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2], 0);
     }
 
-    // Configuration not handled: for two of the faces (the corners) with tag 2,
-    // all vertices are on edges between faces tagged 1 and 2
     #[test]
-    #[should_panic]
     fn test_topo_3d_6() {
-        test_topo_3d([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2], 2, None);
-    }
-
-    #[test]
-    fn test_topo_3d_6_split() {
-        test_topo_3d([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2], 2, Some(2));
+        test_topo_3d([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2], 2);
     }
 }
 
@@ -1850,7 +1756,7 @@ mod tests {
             match tag {
                 1 => p.copy_from_slice(&[2. / 3., 1. / 3.]),
                 2 => p.copy_from_slice(&[1. / 3., 2. / 3.]),
-                _ => p.copy_from_slice(&[-1., -1.]),
+                _ => unreachable!(),
             }
             let d = (c - p).norm();
             assert!(d < 1e-8);
@@ -1863,7 +1769,7 @@ mod tests {
                 2 => p.copy_from_slice(&[1., 0.5]),
                 3 => p.copy_from_slice(&[0.5, 1.]),
                 4 => p.copy_from_slice(&[0., 0.5]),
-                _ => p.copy_from_slice(&[-1., -1.]),
+                _ => unreachable!(),
             }
             let d = (c - p).norm();
             assert!(d < 1e-8);
