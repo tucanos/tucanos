@@ -409,7 +409,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
     /// Check that the remesher holds a valid mesh
     pub fn check(&self) -> Result<()> {
-        info!("Check the mesh");
+        info!("Check the consistency of the remesher data");
 
         for (&i_elem, e) in &self.elems {
             let e = &e.el;
