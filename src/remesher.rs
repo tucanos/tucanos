@@ -234,10 +234,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         // Insert the vertices (project on the geometry for boundary vertices)
         assert_eq!(mesh.n_verts() as usize, vtag.len());
         let mut dmax = 0.0;
-        for (i_vert, (p, tag)) in mesh.verts().zip(vtag.iter()).enumerate() {
+        for (i_vert, (mut p, tag)) in mesh.verts().zip(vtag.iter()).enumerate() {
             if tag.0 < E::DIM as Dim {
-                let mut p_proj = p;
-                let d = geom.project(&mut p_proj, tag);
+                let d = geom.project(&mut p, tag);
                 dmax = f64::max(dmax, d);
             }
             res.insert_vertex(p, tag, &m[i_vert]);
