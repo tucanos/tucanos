@@ -6,23 +6,17 @@ use crate::{
     remesher::Remesher,
     topo_elems::Elem,
     topology::Topology,
-    Dim, Idx, TopoTag,
+    Dim, Idx, Tag, TopoTag,
 };
 use core::fmt;
 use log::trace;
-use rustc_hash::FxHashMap;
-use std::{
-    array,
-    cmp::{min, Ordering},
-    hash::BuildHasherDefault,
-};
+use std::cmp::{min, Ordering};
 
 #[derive(Debug, Clone, Copy)]
-pub enum Seed<const D: usize> {
+pub enum Seed {
     No,
     Vertex(Idx),
     Edge([Idx; 2]),
-    Face([Idx; D]),
 }
 
 /// Local cavity built from a mesh entity (vertex or edge)
@@ -40,12 +34,20 @@ pub struct Cavity<const D: usize, E: Elem, M: Metric<D>> {
     pub tags: Vec<TopoTag>,
     /// Elements stored using the local vertex numbering
     pub elems: Vec<E>,
+    /// Element tags
+    pub etags: Vec<Tag>,
     /// Global element IDs
     pub global_elem_ids: Vec<Idx>,
-    /// Faces shared by the cavity with the rest of the mesh. The faces lying on the mesh boundary are not included.
-    pub faces: Vec<E::Face>,
+    /// Faces shared by the cavity with the rest of the mesh.
+    /// The faces lying on the mesh boundary are not included.
+    /// The tag of the cavity element that contains the face is stored
+    pub faces: Vec<(E::Face, Tag)>,
+    /// Tagged faces
+    pub tagged_faces: Vec<(E::Face, Tag)>,
+    /// Tagged faces faces
+    pub tagged_bdys: Vec<(<E::Face as Elem>::Face, Tag)>,
     /// From what the cavity was created (vertex, edge or face)
-    pub seed: Seed<D>,
+    pub seed: Seed,
     /// Minimum element quality in the cavity
     pub q_min: f64,
 }
@@ -59,8 +61,11 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
             metrics: Vec::new(),
             tags: Vec::new(),
             elems: Vec::new(),
+            etags: Vec::new(),
             global_elem_ids: Vec::new(),
             faces: Vec::new(),
+            tagged_faces: Vec::new(),
+            tagged_bdys: Vec::new(),
             seed: Seed::No,
             q_min: -1.0,
         }
@@ -73,8 +78,11 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
         self.metrics.clear();
         self.tags.clear();
         self.elems.clear();
+        self.etags.clear();
         self.global_elem_ids.clear();
         self.faces.clear();
+        self.tagged_faces.clear();
+        self.tagged_bdys.clear();
         self.seed = Seed::No;
         self.q_min = -1.0;
     }
@@ -130,29 +138,6 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
         self.compute(r, r.vertex_elements(i), Seed::Vertex(i));
     }
 
-    pub fn init_from_face(&mut self, face: &E::Face, r: &Remesher<D, E, M>) {
-        let global_elems = face
-            .iter()
-            .map(|&x| r.vertex_elements(x).to_vec())
-            .reduce(|a, b| Self::intersection(&a, &b))
-            .unwrap();
-        debug_assert!(
-            !global_elems.is_empty(),
-            "Cannot create cavity for face {:?} with these elements: {:?}",
-            face,
-            face.iter()
-                .map(|&x| (
-                    x,
-                    r.vertex_elements(x)
-                        .iter()
-                        .map(|&i| r.get_elem(i).unwrap().el)
-                        .collect::<Vec<_>>()
-                ))
-                .collect::<Vec<_>>()
-        );
-        self.compute(r, &global_elems, Seed::Face(array::from_fn(|i| face[i])));
-    }
-
     /// Return the coordinate and the metric of the barycenter of the points used
     /// to generate this cavity (ex: 2 points after using `init_from_edge`)
     pub fn seed_barycenter(&self) -> (Point<D>, M) {
@@ -160,7 +145,6 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
             Seed::No => unreachable!(),
             Seed::Vertex(x) => std::slice::from_ref(x),
             Seed::Edge(x) => x.as_slice(),
-            Seed::Face(x) => x.as_slice(),
         };
         let scale = 1. / local_ids.len() as f64;
         (
@@ -178,7 +162,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
     }
 
     /// Build the local cavity from a list of elements
-    fn compute(&mut self, r: &Remesher<D, E, M>, global_elems: &[Idx], x: Seed<D>) {
+    fn compute(&mut self, r: &Remesher<D, E, M>, global_elems: &[Idx], x: Seed) {
         self.clear();
         self.q_min = f64::INFINITY;
 
@@ -203,18 +187,21 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
                 }
             }
             self.elems.push(local);
+            self.etags.push(e.tag);
         }
         trace!("Cavity: elems & vertices built");
 
         self.seed = match x {
-            Seed::Vertex(i) => {
-                let i: [Idx; 1] = self.compute_boundary_faces(std::iter::once(i));
-                Seed::Vertex(i[0])
-            }
-            Seed::Edge(edg) => Seed::Edge(self.compute_boundary_faces(edg.into_iter())),
-            Seed::Face(f) => Seed::Face(self.compute_boundary_faces(f.into_iter())),
+            Seed::Vertex(i) => Seed::Vertex(self.get_local_index(i).unwrap()),
+            Seed::Edge(edg) => Seed::Edge([
+                self.get_local_index(edg[0]).unwrap(),
+                self.get_local_index(edg[1]).unwrap(),
+            ]),
             Seed::No => unreachable!(),
         };
+
+        self.compute_faces(r);
+
         trace!("Cavity built: {:?}", self);
     }
 
@@ -226,11 +213,6 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
     /// Get the number of elements in the cavity
     pub fn n_elems(&self) -> Idx {
         self.elems.len() as Idx
-    }
-
-    /// Get the number of faces in the cavity
-    pub fn n_faces(&self) -> Idx {
-        self.faces.len() as Idx
     }
 
     /// Get the i-the vertex & the associated tag and metric
@@ -262,42 +244,100 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
     }
 
     /// Convert a face from local to global vertex numbering
-    pub fn global_face(&self, face: &E::Face) -> E::Face {
-        let mut res = E::Face::default();
-        for (i, j) in face.iter().enumerate() {
-            res[i] = self.local2global[*j as usize];
-        }
-        res
+    pub fn global_elem<EE: Elem>(&self, face: &EE) -> EE {
+        EE::from_iter(face.iter().map(|&i| self.local2global[i as usize]))
     }
 
-    fn compute_boundary_faces<const N: usize, I: Iterator<Item = Idx>>(
-        &mut self,
-        mut point_indices: I,
-    ) -> [Idx; N] {
-        let local =
-            array::from_fn(|_| self.get_local_index(point_indices.next().unwrap()).unwrap());
-        self.faces.extend(self.elems.iter().flat_map(|e| {
-            (0..E::N_FACES)
-                .map(|i| e.face(i))
-                // faces which does not contains cavity vertices
-                .filter(|f| local.iter().any(|&i| !f.contains_vertex(i)))
-        }));
+    fn compute_faces(&mut self, r: &Remesher<D, E, M>) {
+        for (face, tag) in self
+            .elems
+            .iter()
+            .zip(self.etags.iter())
+            .flat_map(|(e, &t)| (0..E::N_FACES).map(|i| e.face(i)).map(move |f| (f, t)))
+        {
+            match self.seed {
+                Seed::Vertex(i) => {
+                    if face.contains_vertex(i) {
+                        if let Some(face_tag) = r.face_tag(&self.global_elem(&face)) {
+                            let sorted = face.sorted();
+                            if !self.tagged_faces.iter().any(|(f, _)| f.sorted() == sorted) {
+                                self.tagged_faces.push((face, face_tag));
+                                for i_bdy in 0..<E::Face as Elem>::N_FACES {
+                                    let b = face.face(i_bdy).sorted();
+                                    if !b.contains_vertex(i)
+                                        && !self.tagged_bdys.iter().any(|(f, _)| f.sorted() == b)
+                                    {
+                                        self.tagged_bdys.push((b, face_tag));
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        self.faces.push((face, tag));
+                    }
+                }
+                Seed::Edge(edg) => {
+                    if face.contains_edge(edg) {
+                        if let Some(face_tag) = r.face_tag(&self.global_elem(&face)) {
+                            let sorted = face.sorted();
+                            if !self.tagged_faces.iter().any(|(f, _)| f.sorted() == sorted) {
+                                self.tagged_faces.push((face, face_tag));
+                                for i_bdy in 0..<E::Face as Elem>::N_FACES {
+                                    let b = face.face(i_bdy).sorted();
+                                    if !b.contains_edge(edg)
+                                        && !self.tagged_bdys.iter().any(|(f, _)| f.sorted() == b)
+                                    {
+                                        self.tagged_bdys.push((b, face_tag));
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        self.faces.push((face, tag));
+                    }
+                }
+                Seed::No => unreachable!(),
+            }
+        }
+
         debug_assert!(!self.faces.is_empty());
-        local
     }
 
     /// Return an iterator through the cavity faces
-    pub fn faces(&self) -> impl Iterator<Item = E::Face> + '_ {
-        (0..(self.n_faces())).map(|i_face| self.faces[i_face as usize])
+    pub fn faces(&self) -> impl Iterator<Item = (E::Face, Tag)> + '_ {
+        self.faces.iter().copied()
+    }
+
+    /// Return an iterator through the cavity tagged faces (local indices)
+    pub fn tagged_faces(&self) -> impl Iterator<Item = (E::Face, Tag)> + '_ {
+        self.tagged_faces.iter().copied()
+    }
+
+    /// Return an iterator through the cavity tagged faces (global indices)
+    pub fn global_tagged_faces(&self) -> impl Iterator<Item = (E::Face, Tag)> + '_ {
+        self.tagged_faces().map(|(f, t)| (self.global_elem(&f), t))
     }
 
     /// Convert the filled cavity to a `SimplexMesh` to export it (for debug)
     #[allow(dead_code)]
     pub fn to_mesh(&self) -> SimplexMesh<D, E> {
-        let etags = vec![1; self.elems.len()];
-        let faces = Vec::new();
-        let ftags = Vec::new();
-        SimplexMesh::<D, E>::new(self.points.clone(), self.elems.clone(), etags, faces, ftags)
+        let mut faces = Vec::new();
+        let mut ftags = Vec::new();
+        for (f, t) in self.faces() {
+            faces.push(f);
+            ftags.push(-t - 1);
+        }
+        for (f, t) in self.tagged_faces() {
+            faces.push(f);
+            ftags.push(t);
+        }
+        SimplexMesh::<D, E>::new(
+            self.points.clone(),
+            self.elems.clone(),
+            self.etags.clone(),
+            faces,
+            ftags,
+        )
     }
 }
 
@@ -327,110 +367,118 @@ impl<const D: usize, E: Elem, M: Metric<D>> fmt::Display for Cavity<D, E, M> {
     }
 }
 
+/// Filled cavity type
+pub enum FilledCavityType<const D: usize, M: Metric<D>> {
+    ExistingVertex(Idx),
+    MovedVertex((Idx, Point<D>, M)),
+    EdgeCenter(([Idx; 2], Point<D>, M)),
+}
+
 /// Cavity reconstructed either from an existing cavity vertex or from a new one
 pub struct FilledCavity<'a, const D: usize, E: Elem, M: Metric<D>> {
     pub cavity: &'a Cavity<D, E, M>,
-    pub id: Option<Idx>,
-    pub pt: Option<Point<D>>,
-    pub m: Option<M>,
+    pub ftype: FilledCavityType<D, M>,
 }
 
 impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
-    /// Construct a `FilledCavity` from a Cavity and one of its vertices
-    pub const fn from_cavity_and_vertex_id(cavity: &'a Cavity<D, E, M>, node: Idx) -> Self {
-        Self {
-            cavity,
-            id: Some(node),
-            pt: None,
-            m: None,
-        }
+    /// Construct a `FilledCavity`
+    pub const fn new(cavity: &'a Cavity<D, E, M>, ftype: FilledCavityType<D, M>) -> Self {
+        Self { cavity, ftype }
     }
 
-    /// Construct a `FilledCavity` from a Cavity and a new vertex
-    pub const fn from_cavity_and_new_vertex(
-        cavity: &'a Cavity<D, E, M>,
-        pt: &Point<D>,
-        m: &M,
-    ) -> Self {
-        Self {
-            cavity,
-            id: None,
-            pt: Some(*pt),
-            m: Some(*m),
-        }
-    }
-
-    /// Construct a `FilledCavity` from a Cavity when its center is moved
-    pub fn from_cavity_and_moved_vertex(cavity: &'a Cavity<D, E, M>, pt: &Point<D>, m: &M) -> Self {
-        if let Seed::Vertex(vx) = cavity.seed {
-            Self {
-                cavity,
-                id: Some(vx),
-                pt: Some(*pt),
-                m: Some(*m),
-            }
+    pub fn is_same(&self) -> bool {
+        if let FilledCavityType::ExistingVertex(i) = self.ftype {
+            self.cavity.elems.iter().all(|e| e.contains_vertex(i))
         } else {
-            panic!("from_cavity_and_moved_vertex can only be used for vertex cavities")
+            false
         }
     }
 
     /// Return an iterator through the cavity faces
-    pub fn faces(&self) -> impl Iterator<Item = E::Face> + '_ {
-        self.cavity.faces().filter(|f| {
-            if self.id.is_some() && f.contains_vertex(self.id.unwrap()) {
-                return false;
+    pub fn faces(&self) -> impl Iterator<Item = (E::Face, Tag)> + '_ {
+        self.cavity.faces().filter(|(f, _)| {
+            // if let FilledCavityType::ExistingVertex(_) = self.ftype {
+            //     if let Seed::Edge(edg) = self.cavity.seed {
+            //         if f.contains_edge(edg) {
+            //             return false;
+            //         }
+            //     }
+            // }
+
+            match self.ftype {
+                FilledCavityType::ExistingVertex(i) => !f.contains_vertex(i),
+                FilledCavityType::MovedVertex((i, _, _)) => !f.contains_vertex(i),
+                FilledCavityType::EdgeCenter((edg, _, _)) => !f.contains_edge(edg),
             }
-            if let Seed::Edge(edg) = self.cavity.seed {
-                assert!(!f.contains_edge(edg));
-            }
-            if let Seed::Vertex(v) = self.cavity.seed {
-                assert!(!f.contains_vertex(v));
-            }
-            true
         })
     }
 
-    /// Return an iterator through the cavity faces and the corresponding new elements
-    pub fn elems_and_faces(&self) -> impl Iterator<Item = (E, E::Face)> + '_ {
-        self.faces()
-            .map(|f| (E::from_vertex_and_face(self.id.unwrap(), &f), f))
+    /// Return the tagged faces
+    pub fn tagged_faces_boundary_global(
+        &self,
+    ) -> impl Iterator<Item = (<E::Face as Elem>::Face, Tag)> + '_ {
+        self.cavity
+            .tagged_bdys
+            .iter()
+            .filter(|(b, _)| match self.ftype {
+                FilledCavityType::ExistingVertex(i) => !b.contains_vertex(i),
+                FilledCavityType::MovedVertex((i, _, _)) => !b.contains_vertex(i),
+                FilledCavityType::EdgeCenter((edg, _, _)) => !b.contains_edge(edg),
+            })
+            .map(|(b, t)| (self.cavity.global_elem(b), *t))
     }
 
     /// Convert the filled cavity to a `SimplexMesh` to export it (for debug)
     #[allow(dead_code)]
     pub fn to_mesh(&self) -> SimplexMesh<D, E> {
+        let mut verts = self.cavity.points.clone();
+        if let FilledCavityType::EdgeCenter((_, x, _)) = self.ftype {
+            verts.push(x);
+        } else if let FilledCavityType::MovedVertex((i, x, _)) = self.ftype {
+            verts[i as usize] = x;
+        }
+
         let mut elems = Vec::new();
         let mut faces = Vec::new();
-        for (e, f) in self.elems_and_faces() {
-            elems.push(e);
+        let mut etags = Vec::new();
+        for (f, t) in self.faces() {
+            match self.ftype {
+                FilledCavityType::ExistingVertex(i) => elems.push(E::from_vertex_and_face(i, &f)),
+                FilledCavityType::MovedVertex((i, _, _)) => {
+                    elems.push(E::from_vertex_and_face(i, &f));
+                }
+                FilledCavityType::EdgeCenter(_) => {
+                    let i = verts.len() as Idx - 1;
+                    elems.push(E::from_vertex_and_face(i, &f));
+                }
+            }
+            etags.push(t);
             faces.push(f);
         }
-        let etags = vec![1; elems.len()];
         let ftags = vec![1; faces.len()];
-        SimplexMesh::<D, E>::new(self.cavity.points.clone(), elems, etags, faces, ftags)
+        SimplexMesh::<D, E>::new(verts, elems, etags, faces, ftags)
     }
 
     /// Get the location and metric for the reconstruction vertex
-    fn point(&self) -> (&Point<D>, &M) {
-        if self.pt.is_some() {
-            (self.pt.as_ref().unwrap(), self.m.as_ref().unwrap())
-        } else {
-            (
-                &self.cavity.points[self.id.unwrap() as usize],
-                &self.cavity.metrics[self.id.unwrap() as usize],
-            )
+    fn point(&self) -> (Point<D>, M) {
+        match self.ftype {
+            FilledCavityType::ExistingVertex(i) => (
+                self.cavity.points[i as usize],
+                self.cavity.metrics[i as usize],
+            ),
+            FilledCavityType::MovedVertex((_, pt, m)) => (pt, m),
+            FilledCavityType::EdgeCenter((_, pt, m)) => (pt, m),
         }
     }
 
     pub fn check(&self, l_min: f64, l_max: f64, q_min: f64) -> f64 {
         let (p0, m0) = self.point();
-
         let mut min_quality = 1.;
-        for f in self.faces() {
+        for (f, _) in self.faces() {
             for i in f.iter() {
                 let pi = &self.cavity.points[*i as usize];
                 let mi = &self.cavity.metrics[*i as usize];
-                let l = M::edge_length(p0, m0, pi, mi);
+                let l = M::edge_length(&p0, &m0, pi, mi);
                 if l < l_min {
                     trace!("cavity check failed: short edge");
                     return -1.0;
@@ -442,7 +490,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
             }
 
             let gf = self.cavity.gface(&f);
-            let ge = E::Geom::from_vert_and_face(p0, m0, &gf);
+            let ge = E::Geom::from_vert_and_face(&p0, &m0, &gf);
 
             let q = ge.quality();
             if q < 0.0 {
@@ -455,81 +503,6 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
             min_quality = f64::min(min_quality, q);
         }
         min_quality
-    }
-
-    pub fn check_tags(&self, topo: &Topology) -> bool {
-        // Check if there may be a face on the boundary
-        let mut n = 0;
-        for t in &self.cavity.tags {
-            if t.0 < (E::DIM as Dim) {
-                n += 1;
-            }
-        }
-        if n < E::Face::N_VERTS {
-            return true;
-        }
-
-        let mut faces = FxHashMap::with_hasher(BuildHasherDefault::default());
-
-        // Build the cavity internal & boundary faces
-        for (e, mut f) in self.elems_and_faces() {
-            let vtags = e.iter().map(|i| self.cavity.tags[*i as usize]);
-            let etag = topo.elem_tag(vtags).unwrap();
-            if etag.0 != E::DIM as Dim {
-                return false;
-            }
-            f.sort();
-            for j_face in 0..E::N_FACES {
-                let fj = e.face(j_face).sorted();
-                // if fj != f
-                if f.iter().zip(fj.iter()).any(|(x, y)| x != y) {
-                    if let Some(val) = faces.get_mut(&fj) {
-                        *val += 1;
-                    } else {
-                        faces.insert(fj, 1);
-                    }
-                }
-            }
-        }
-
-        // Check that none of the internal faces are incorectly tagged
-        for (fj, n) in &faces {
-            let vtags = fj.iter().map(|i| self.cavity.tags[*i as usize]);
-            let tag = topo.elem_tag(vtags).unwrap();
-            match (tag.0).cmp(&(E::Face::DIM as Dim)) {
-                Ordering::Greater => {
-                    continue;
-                }
-                Ordering::Less => {
-                    return false;
-                }
-                Ordering::Equal => {
-                    let topo_node = topo.get(tag).unwrap();
-                    let mut parents = topo_node.parents.clone();
-
-                    if parents.len() == 1 {
-                        // a boundary face shound belong to only one element
-                        if *n != 1 {
-                            return false;
-                        }
-                    } else {
-                        // otherwise, check that all parent tags are present
-                        for (e, _f) in self.elems_and_faces() {
-                            let fj_in_e = fj.iter().all(|i| e.contains_vertex(*i));
-                            if fj_in_e {
-                                let vtags = e.iter().map(|i| self.cavity.tags[*i as usize]);
-                                let etag = topo.elem_tag(vtags).unwrap();
-                                let _ok = parents.remove(&etag.1);
-                            }
-                        }
-                        if !parents.is_empty() {
-                            return false;
-                        }
-                    }
-                }
-            }
-        }
-        true
     }
 
     /// Check the the angle between the normal of the boundary faces and the normal given by the geometry is smaller than a threshold
@@ -548,17 +521,23 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
                         && self.cavity.tags[edg[1] as usize].0 < E::DIM as Dim
                 }
                 Seed::Vertex(vx) => self.cavity.tags[vx as usize].0 < E::DIM as Dim,
-                Seed::Face(_) => todo!("Face cavity are never used on a boundary"),
                 Seed::No => unreachable!(),
             };
-            let node_on_bdy = self.cavity.tags[self.id.unwrap() as usize].0 < E::DIM as Dim;
+            let i_vx = match self.ftype {
+                FilledCavityType::ExistingVertex(i) => i,
+                FilledCavityType::MovedVertex((i, _, _)) => i,
+                FilledCavityType::EdgeCenter(_) => unreachable!(),
+            };
+
+            let node_on_bdy = self.cavity.tags[i_vx as usize].0 < E::DIM as Dim;
+
             if check && node_on_bdy {
                 let (p0, _) = self.point();
                 // Check for boundary faces
-                for f in self.faces() {
+                for (f, _) in self.faces() {
                     for i_edge in 0..E::Face::N_FACES {
                         let e = f.face(i_edge);
-                        let new_f = E::Face::from_vertex_and_face(self.id.unwrap(), &e);
+                        let new_f = E::Face::from_vertex_and_face(i_vx, &e);
                         let vtags = new_f.iter().map(|i| self.cavity.tags[*i as usize]);
                         let ftag = topo.elem_tag(vtags).unwrap();
                         let topo_node = topo.get(ftag).unwrap();
