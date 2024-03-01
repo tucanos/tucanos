@@ -1095,7 +1095,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     }
 
                     if topo_0.0 != tag.0 || topo_0.1 != tag.1 {
-                        if topo_1.0 == tag.0 || !topo_1.1 == tag.1 {
+                        if topo_1.0 == tag.0 && topo_1.1 == tag.1 {
                             trace!("Swap vertices");
                             std::mem::swap(&mut i1, &mut i0);
                             std::mem::swap(&mut topo_1, &mut topo_0);
