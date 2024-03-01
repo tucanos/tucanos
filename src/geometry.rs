@@ -21,7 +21,7 @@ pub trait Geometry<const D: usize> {
     fn project(&self, pt: &mut Point<D>, tag: &TopoTag) -> f64;
 
     /// Compute the angle between a vector n and the normal at the projection of pt onto the geometry
-    fn angle(&self, pt: &mut Point<D>, n: &Point<D>, tag: &TopoTag) -> f64;
+    fn angle(&self, pt: &Point<D>, n: &Point<D>, tag: &TopoTag) -> f64;
 
     /// Compute the max distance between the face centers and the geometry normals
     fn max_distance<E2: Elem>(&self, mesh: &SimplexMesh<D, E2>) -> f64 {
@@ -38,9 +38,9 @@ pub trait Geometry<const D: usize> {
     fn max_normal_angle<E2: Elem>(&self, mesh: &SimplexMesh<D, E2>) -> f64 {
         let mut a_max = 0.0;
         for (gf, tag) in mesh.gfaces().zip(mesh.ftags()) {
-            let mut c = gf.center();
+            let c = gf.center();
             let n = gf.normal();
-            let a = self.angle(&mut c, &n, &(E2::Face::DIM as Dim, tag));
+            let a = self.angle(&c, &n, &(E2::Face::DIM as Dim, tag));
             a_max = f64::max(a_max, a);
         }
         a_max
@@ -60,7 +60,7 @@ impl<const D: usize> Geometry<D> for NoGeometry<D> {
         0.
     }
 
-    fn angle(&self, _pt: &mut Point<D>, _n: &Point<D>, tag: &TopoTag) -> f64 {
+    fn angle(&self, _pt: &Point<D>, _n: &Point<D>, tag: &TopoTag) -> f64 {
         assert_eq!(tag.0, D as Dim - 1);
         0.
     }
@@ -287,7 +287,7 @@ where
         dist
     }
 
-    fn angle(&self, pt: &mut Point<D>, n: &Point<D>, tag: &TopoTag) -> f64 {
+    fn angle(&self, pt: &Point<D>, n: &Point<D>, tag: &TopoTag) -> f64 {
         assert_eq!(tag.0, D as Dim - 1);
 
         let patch = self.patches.get(&tag.1).unwrap();

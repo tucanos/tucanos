@@ -146,7 +146,7 @@ impl Geometry<2> for GeomHalfCircle2d {
         (*pt - p).norm()
     }
 
-    fn angle(&self, _pt: &mut Point<2>, _n: &Point<2>, _tag: &TopoTag) -> f64 {
+    fn angle(&self, _pt: &Point<2>, _n: &Point<2>, _tag: &TopoTag) -> f64 {
         0.0
     }
 }

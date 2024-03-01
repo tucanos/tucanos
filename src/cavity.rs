@@ -562,8 +562,8 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
                             let p2 = &self.cavity.points[new_f[2] as usize];
                             let mut n = (p2 - p0).cross(&(p1 - p0));
                             n.normalize_mut();
-                            let mut c = (p0 + p1 + p2) / 3.0;
-                            let a = geom.angle(&mut c, &n, &ftag);
+                            let c = (p0 + p1 + p2) / 3.0;
+                            let a = geom.angle(&c, &n, &ftag);
                             if a > threshold_degrees {
                                 return false;
                             }
