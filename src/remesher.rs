@@ -1456,7 +1456,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
         let mut cavity = Cavity::new();
         for iter in 0..params.smooth_iter {
-            let (n_smooth, n_fails, n_min) = self.smooth_iter(params, geom, &mut cavity, &verts);
+            let (n_fails, n_min, n_smooth) = self.smooth_iter(params, geom, &mut cavity, &verts);
             debug!(
                 "Iteration {}: {n_smooth} vertices moved, {n_fails} fails, {n_min} local minima",
                 iter + 1,
