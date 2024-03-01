@@ -594,6 +594,12 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         self.verts.len() as Idx
     }
 
+    /// Get the number of elements that contain an edge
+    #[must_use]
+    pub fn elem_count(&self, edg: [Idx; 2]) -> i16 {
+        self.edges.get(&edg).copied().unwrap_or(0)
+    }
+
     /// Insert a new element
     pub fn insert_elem(&mut self, el: E) {
         let ge = self.gelem(&el);

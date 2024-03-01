@@ -114,7 +114,15 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
 
     pub fn init_from_edge(&mut self, edg: [Idx; 2], r: &Remesher<D, E, M>) {
         let global_elems = Self::intersection(r.vertex_elements(edg[0]), r.vertex_elements(edg[1]));
-        debug_assert!(!global_elems.is_empty());
+        assert!(
+            !global_elems.is_empty(),
+            "Empty edge cavity: edg = {edg:?} ({})--> elements = {:?} & {:?}",
+            r.elem_count(edg),
+            r.vertex_elements(edg[0]),
+            r.vertex_elements(edg[1])
+        );
+
+        assert!(!global_elems.is_empty());
         self.compute(r, &global_elems, Seed::Edge(edg));
     }
 
