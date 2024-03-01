@@ -1362,9 +1362,6 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 continue;
             }
 
-            let cavity::Seed::Vertex(i0_local) = cavity.seed else {
-                unreachable!()
-            };
             let p0 = &cavity.points[i0_local as usize];
             let m0 = &cavity.metrics[i0_local as usize];
             let t0 = &cavity.tags[i0_local as usize];
