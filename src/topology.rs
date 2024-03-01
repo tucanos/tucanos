@@ -43,6 +43,7 @@ impl fmt::Display for Topology {
 }
 
 impl Topology {
+    #[must_use]
     pub fn new(dim: Dim) -> Self {
         Self {
             dim,
@@ -50,15 +51,18 @@ impl Topology {
             parents: FxHashMap::default(),
         }
     }
+    #[must_use]
     pub fn ntags(&self, dim: Dim) -> usize {
         self.entities[dim as usize].len()
     }
+    #[must_use]
     pub fn tags(&self, dim: Dim) -> Vec<Tag> {
         self.entities[dim as usize]
             .iter()
             .map(|x| x.tag.1)
             .collect()
     }
+    #[must_use]
     pub fn get(&self, tag: TopoTag) -> Option<&TopoNode> {
         assert!(tag.0 >= 0, "Invalid dimension");
         assert!(tag.0 <= self.dim, "Invalid dimension");
@@ -96,6 +100,7 @@ impl Topology {
         }
     }
 
+    #[must_use]
     pub fn get_from_parents(&self, dim: Dim, parents: &[Tag]) -> Option<&TopoNode> {
         self.get_from_parents_iter(dim, parents.iter().copied())
     }
@@ -137,6 +142,7 @@ impl Topology {
         }
     }
 
+    #[must_use]
     pub fn parent(&self, topo0: TopoTag, topo1: TopoTag) -> Option<TopoTag> {
         self.parents.get(&(topo0, topo1)).copied()
     }
@@ -338,6 +344,8 @@ impl Topology {
             vtags,
         );
     }
+
+    #[must_use]
     pub fn from_mesh<const D: usize, E: Elem>(mesh: &SimplexMesh<D, E>) -> (Self, Vec<TopoTag>) {
         info!("Building topology from mesh");
 
