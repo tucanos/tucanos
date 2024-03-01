@@ -167,6 +167,8 @@ pub struct RemesherParams {
     pub smooth_relax: Vec<f64>,
     /// Max angle between the normals of the new faces and the geometry (in degrees)
     pub max_angle: f64,
+    /// Debug mode
+    pub debug: bool,
 }
 
 impl Default for RemesherParams {
@@ -193,6 +195,7 @@ impl Default for RemesherParams {
             smooth_type: SmoothingType::Laplacian,
             smooth_relax: vec![0.5, 0.25, 0.125],
             max_angle: 20.0,
+            debug: false,
         }
     }
 }
@@ -848,6 +851,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 .push(StepStats::Split(SplitStats::new(n_splits, n_fails, self)));
 
             if n_splits == 0 || n_iter == params.split_max_iter {
+                if params.debug {
+                    self.check().unwrap();
+                }
                 return n_iter;
             }
         }
@@ -1023,6 +1029,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             self.stats
                 .push(StepStats::Swap(SwapStats::new(n_swaps, n_fails, self)));
             if n_swaps == 0 || n_iter == params.swap_max_iter {
+                if params.debug {
+                    self.check().unwrap();
+                }
                 return n_iter;
             }
         }
@@ -1151,6 +1160,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 self,
             )));
             if n_collapses == 0 || n_iter == params.collapse_max_iter {
+                if params.debug {
+                    self.check().unwrap();
+                }
                 return n_iter;
             }
         }
@@ -1448,6 +1460,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             );
             self.stats
                 .push(StepStats::Smooth(SmoothStats::new(n_fails, self)));
+        }
+        if params.debug {
+            self.check().unwrap();
         }
     }
 
