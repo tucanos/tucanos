@@ -35,6 +35,10 @@ meshb = ["libmeshb-sys"]
 libol = ["marechal-libol-sys"]
 parry = ["kiddo", "parry3d-f64", "parry2d-f64"]
 
+[[bin]]
+name = "test_simple3d"
+required-features = ["meshb"]
+
 [profile.release]
 debug = 1
 
