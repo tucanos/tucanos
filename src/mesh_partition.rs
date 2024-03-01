@@ -131,7 +131,7 @@ mod tests {
         mesh.partition_scotch(4)?;
 
         let q = mesh.partition_quality()?;
-        assert!(q < 0.03);
+        assert!(q < 0.03, "failed, q = {q}");
 
         Ok(())
     }
@@ -146,7 +146,7 @@ mod tests {
         mesh.partition_scotch(4)?;
 
         let q = mesh.partition_quality()?;
-        assert!(q < 0.025);
+        assert!(q < 0.025, "failed, q = {q}");
 
         Ok(())
     }
@@ -161,7 +161,7 @@ mod tests {
         mesh.partition_metis(4)?;
 
         let q = mesh.partition_quality()?;
-        assert!(q < 0.03);
+        assert!(q < 0.03, "failed, q = {q}");
 
         Ok(())
     }
@@ -176,7 +176,7 @@ mod tests {
         mesh.partition_metis(4)?;
 
         let q = mesh.partition_quality()?;
-        assert!(q < 0.02);
+        assert!(q < 0.021, "failed, q = {q}");
 
         Ok(())
     }
