@@ -42,6 +42,7 @@ pub struct KiddoPointIndex<const D: usize> {
 #[cfg(feature = "parry")]
 impl<const D: usize> PointIndex<D> for KiddoPointIndex<D> {
     fn new<E: Elem>(mesh: &SimplexMesh<D, E>) -> Self {
+        assert!(mesh.n_verts() > 0);
         let tree = kiddo::ImmutableKdTree::new_from_slice(
             &mesh
                 .verts()
