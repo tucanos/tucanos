@@ -246,7 +246,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         assert_eq!(mesh.n_verts() as usize, vtag.len());
         let mut dmax = 0.0;
         for (i_vert, (mut p, tag)) in mesh.verts().zip(vtag.iter()).enumerate() {
-            if tag.0 < E::DIM as Dim {
+            if tag.0 < E::DIM as Dim && tag.1 >= 0 {
                 let d = geom.project(&mut p, tag);
                 dmax = f64::max(dmax, d);
             }
