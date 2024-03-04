@@ -780,6 +780,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     if tag.1 < 0 {
                         continue;
                     }
+
                     // projection if needed
                     if tag.0 < E::DIM as Dim {
                         geom.project(&mut edge_center, &tag);
@@ -915,7 +916,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 continue;
             }
 
-            if !filled_cavity.check_boundary_normals(&self.topo, geom, max_angle) {
+            if !filled_cavity.check_boundary_normals(geom, max_angle) {
                 trace!("Cannot swap, would create a non smooth surface");
                 continue;
             }
@@ -1116,7 +1117,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     let ftype = FilledCavityType::ExistingVertex(local_i1);
                     let filled_cavity = FilledCavity::new(&cavity, ftype);
 
-                    if !filled_cavity.check_boundary_normals(&self.topo, geom, params.max_angle) {
+                    if !filled_cavity.check_boundary_normals(geom, params.max_angle) {
                         trace!("Cannot collapse, would create a non smooth surface");
                         continue;
                     }
@@ -1384,7 +1385,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 let ftype = FilledCavityType::MovedVertex((i0_local, p0_new, *m0));
                 let filled_cavity = FilledCavity::new(cavity, ftype);
 
-                if !filled_cavity.check_boundary_normals(&self.topo, geom, params.max_angle) {
+                if !filled_cavity.check_boundary_normals(geom, params.max_angle) {
                     trace!("Cannot smooth, would create a non smooth surface");
                     continue;
                 }
