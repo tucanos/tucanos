@@ -5,7 +5,6 @@ use crate::{
     metric::Metric,
     remesher::Remesher,
     topo_elems::Elem,
-    topology::Topology,
     Dim, Idx, Tag, TopoTag,
 };
 use core::fmt;
@@ -414,7 +413,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
     }
 
     /// Return the tagged faces
-    pub fn tagged_faces_boundary_global(
+    pub fn tagged_faces_boundary(
         &self,
     ) -> impl Iterator<Item = (<E::Face as Elem>::Face, Tag)> + '_ {
         self.cavity
@@ -425,7 +424,15 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
                 FilledCavityType::MovedVertex((i, _, _)) => !b.contains_vertex(i),
                 FilledCavityType::EdgeCenter((edg, _, _)) => !b.contains_edge(edg),
             })
-            .map(|(b, t)| (self.cavity.global_elem(b), *t))
+            .map(|(b, t)| (*b, *t))
+    }
+
+    /// Return the tagged faces
+    pub fn tagged_faces_boundary_global(
+        &self,
+    ) -> impl Iterator<Item = (<E::Face as Elem>::Face, Tag)> + '_ {
+        self.tagged_faces_boundary()
+            .map(|(b, t)| (self.cavity.global_elem(&b), t))
     }
 
     /// Convert the filled cavity to a `SimplexMesh` to export it (for debug)
@@ -507,56 +514,22 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
 
     /// Check the the angle between the normal of the boundary faces and the normal given by the geometry is smaller than a threshold
     /// This is only required for swaps in 3D
-    pub fn check_boundary_normals<G: Geometry<D>>(
-        &self,
-        topo: &Topology,
-        geom: &G,
-        threshold_degrees: f64,
-    ) -> bool {
-        if D >= 3 {
-            // when both the edge & reconstruction vertex are on a boundary
-            let check = match self.cavity.seed {
-                Seed::Edge(edg) => {
-                    self.cavity.tags[edg[0] as usize].0 < E::DIM as Dim
-                        && self.cavity.tags[edg[1] as usize].0 < E::DIM as Dim
-                }
-                Seed::Vertex(vx) => self.cavity.tags[vx as usize].0 < E::DIM as Dim,
-                Seed::No => unreachable!(),
-            };
-            let i_vx = match self.ftype {
-                FilledCavityType::ExistingVertex(i) => i,
-                FilledCavityType::MovedVertex((i, _, _)) => i,
-                FilledCavityType::EdgeCenter(_) => unreachable!(),
-            };
+    pub fn check_boundary_normals<G: Geometry<D>>(&self, geom: &G, threshold_degrees: f64) -> bool {
+        let (p0, m0) = self.point();
 
-            let node_on_bdy = self.cavity.tags[i_vx as usize].0 < E::DIM as Dim;
-
-            if check && node_on_bdy {
-                let (p0, _) = self.point();
-                // Check for boundary faces
-                for (f, _) in self.faces() {
-                    for i_edge in 0..E::Face::N_FACES {
-                        let e = f.face(i_edge);
-                        let new_f = E::Face::from_vertex_and_face(i_vx, &e);
-                        let vtags = new_f.iter().map(|i| self.cavity.tags[*i as usize]);
-                        let ftag = topo.elem_tag(vtags).unwrap();
-                        let topo_node = topo.get(ftag).unwrap();
-                        let parents = &topo_node.parents;
-                        if ftag.0 == E::Face::DIM as Dim && parents.len() == 1 {
-                            // boundary face.
-                            // let p0 = &self.cavity.points[new_f[0] as usize];
-                            let p1 = &self.cavity.points[new_f[1] as usize];
-                            let p2 = &self.cavity.points[new_f[2] as usize];
-                            let mut n = (p2 - p0).cross(&(p1 - p0));
-                            n.normalize_mut();
-                            let c = (p0 + p1 + p2) / 3.0;
-                            let a = geom.angle(&c, &n, &ftag);
-                            if a > threshold_degrees {
-                                return false;
-                            }
-                        }
-                    }
-                }
+        for (b, tag) in self.tagged_faces_boundary() {
+            let gb = <<E::Face as Elem>::Geom<D, M> as GElem<D, M>>::Face::from_verts(
+                b.iter().map(|&i| {
+                    let (vx, _, m) = self.cavity.vert(i);
+                    (*vx, *m)
+                }),
+            );
+            let gf = <E::Face as Elem>::Geom::from_vert_and_face(&p0, &m0, &gb);
+            let center = gf.center();
+            let normal = gf.normal();
+            let a = geom.angle(&center, &normal, &(E::DIM as Dim - 1, tag));
+            if a > threshold_degrees {
+                return false;
             }
         }
         true
