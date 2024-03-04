@@ -205,6 +205,61 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
         trace!("Cavity built: {:?}", self);
     }
 
+    fn compute_faces(&mut self, r: &Remesher<D, E, M>) {
+        for (face, tag) in self
+            .elems
+            .iter()
+            .zip(self.etags.iter())
+            .flat_map(|(e, &t)| (0..E::N_FACES).map(|i| e.face(i)).map(move |f| (f, t)))
+        {
+            match self.seed {
+                Seed::Vertex(i) => {
+                    if face.contains_vertex(i) {
+                        if let Some(face_tag) = r.face_tag(&self.global_elem(&face)) {
+                            let sorted = face.sorted();
+                            if !self.tagged_faces.iter().any(|(f, _)| f.sorted() == sorted) {
+                                self.tagged_faces.push((face, face_tag));
+                                for i_bdy in 0..<E::Face as Elem>::N_FACES {
+                                    let b = face.face(i_bdy);
+                                    if !b.contains_vertex(i)
+                                        && !self.tagged_bdys.iter().any(|(f, _)| f.sorted() == b)
+                                    {
+                                        self.tagged_bdys.push((b, face_tag));
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        self.faces.push((face, tag));
+                    }
+                }
+                Seed::Edge(edg) => {
+                    if face.contains_edge(edg) {
+                        if let Some(face_tag) = r.face_tag(&self.global_elem(&face)) {
+                            let sorted = face.sorted();
+                            if !self.tagged_faces.iter().any(|(f, _)| f.sorted() == sorted) {
+                                self.tagged_faces.push((face, face_tag));
+                                for i_bdy in 0..<E::Face as Elem>::N_FACES {
+                                    let b = face.face(i_bdy);
+                                    if !b.contains_edge(edg)
+                                        && !self.tagged_bdys.iter().any(|(f, _)| f.sorted() == b)
+                                    {
+                                        self.tagged_bdys.push((b, face_tag));
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        self.faces.push((face, tag));
+                    }
+                }
+                Seed::No => unreachable!(),
+            }
+        }
+
+        debug_assert!(!self.faces.is_empty());
+    }
+
     /// Get the number of vertices in the cavity
     pub fn n_verts(&self) -> Idx {
         self.points.len() as Idx
@@ -246,61 +301,6 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
     /// Convert a face from local to global vertex numbering
     pub fn global_elem<EE: Elem>(&self, face: &EE) -> EE {
         EE::from_iter(face.iter().map(|&i| self.local2global[i as usize]))
-    }
-
-    fn compute_faces(&mut self, r: &Remesher<D, E, M>) {
-        for (face, tag) in self
-            .elems
-            .iter()
-            .zip(self.etags.iter())
-            .flat_map(|(e, &t)| (0..E::N_FACES).map(|i| e.face(i)).map(move |f| (f, t)))
-        {
-            match self.seed {
-                Seed::Vertex(i) => {
-                    if face.contains_vertex(i) {
-                        if let Some(face_tag) = r.face_tag(&self.global_elem(&face)) {
-                            let sorted = face.sorted();
-                            if !self.tagged_faces.iter().any(|(f, _)| f.sorted() == sorted) {
-                                self.tagged_faces.push((face, face_tag));
-                                for i_bdy in 0..<E::Face as Elem>::N_FACES {
-                                    let b = face.face(i_bdy).sorted();
-                                    if !b.contains_vertex(i)
-                                        && !self.tagged_bdys.iter().any(|(f, _)| f.sorted() == b)
-                                    {
-                                        self.tagged_bdys.push((b, face_tag));
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        self.faces.push((face, tag));
-                    }
-                }
-                Seed::Edge(edg) => {
-                    if face.contains_edge(edg) {
-                        if let Some(face_tag) = r.face_tag(&self.global_elem(&face)) {
-                            let sorted = face.sorted();
-                            if !self.tagged_faces.iter().any(|(f, _)| f.sorted() == sorted) {
-                                self.tagged_faces.push((face, face_tag));
-                                for i_bdy in 0..<E::Face as Elem>::N_FACES {
-                                    let b = face.face(i_bdy).sorted();
-                                    if !b.contains_edge(edg)
-                                        && !self.tagged_bdys.iter().any(|(f, _)| f.sorted() == b)
-                                    {
-                                        self.tagged_bdys.push((b, face_tag));
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        self.faces.push((face, tag));
-                    }
-                }
-                Seed::No => unreachable!(),
-            }
-        }
-
-        debug_assert!(!self.faces.is_empty());
     }
 
     /// Return an iterator through the cavity faces
