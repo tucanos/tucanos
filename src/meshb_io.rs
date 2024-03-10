@@ -1,5 +1,6 @@
 extern crate libmeshb_sys;
 use log::{debug, info};
+use std::ptr::addr_of_mut;
 
 use self::libmeshb_sys::{
     GmfCloseMesh, GmfGetLin, GmfGotoKwd, GmfKwdCod, GmfOpenMesh, GmfRead, GmfSca, GmfSetKwd,
@@ -57,11 +58,17 @@ impl GmfReader {
     #[must_use]
     pub fn new(fname: &str) -> Self {
         info!("Open {} (read)", fname);
-        let dim = 0;
-        let version = 0;
-
+        let mut dim: c_int = 0;
+        let mut version: c_int = 0;
         let cfname = CString::new(fname).unwrap();
-        let file = unsafe { GmfOpenMesh(cfname.as_ptr(), GmfRead as c_int, &version, &dim) };
+        let file = unsafe {
+            GmfOpenMesh(
+                cfname.as_ptr(),
+                GmfRead as c_int,
+                addr_of_mut!(version),
+                addr_of_mut!(dim),
+            )
+        };
         assert!(file == 0 || version > 0, "Invalid version in {fname}");
         assert!(file == 0 || dim > 0, "Invalid dimension in {fname}");
         Self { file, dim, version }
