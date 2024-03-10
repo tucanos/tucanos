@@ -16,6 +16,10 @@ pip install git+https://github.com/tucanos/pytucanos.git`
 
 # Benchmarks
 
+## `.meshb/.solb` I/O
+
+*libMeshb* is required to run the benchmarks with the reference codes below. It can be built as explained in the [tucanos README](https://github.com/tucanos/tucanos#dependencies).
+
 ## Reference codes
 
 ### [MMG](https://github.com/MmgTools/mmg)
@@ -49,6 +53,10 @@ A minimal version can be installed with:
 cmake .. -DCMAKE_INSTALL_PREFIX=$PREFIX -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON
 make -j$(nproc) install
 ```
+
+### [Avro](https://philipclaude.gitlab.io/avro/)
+
+Detailed installation instructions are available [here](https://philipclaude.gitlab.io/avro/)
 
 ## Test cases
 

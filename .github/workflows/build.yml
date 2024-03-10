@@ -70,8 +70,7 @@ jobs:
       uses: actions-rs/toolchain@v1
       with:
         components: clippy
-        # Version from 2024-02-14 to 2024-02-23 have broken C99 varargs binding
-        toolchain: nightly-2024-02-13
+        toolchain: nightly
         override: true
     - name: Rust cache
       uses: actions/cache@v3

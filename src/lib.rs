@@ -1210,7 +1210,9 @@ macro_rules! create_remesher {
                     smooth_iter: smooth_iter.unwrap_or(default_params.smooth_iter),
                     smooth_type,
                     smooth_relax: smooth_relax.map(|x| x.to_vec().unwrap()).unwrap_or(default_params.smooth_relax),
+                    smooth_keep_local_minima: false,
                     max_angle: max_angle.unwrap_or(default_params.max_angle),
+                    debug: false,
                 };
                 self.remesher.remesh(params, &geometry.geom);
             }

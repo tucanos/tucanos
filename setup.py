@@ -1,8 +1,7 @@
 import setuptools
 from setuptools_rust import Binding, RustExtension
-import platform
 
-features = ["meshb"]
+features = []
 
 setuptools.setup(
     name="pytucanos",
