@@ -25,10 +25,6 @@ kiddo = { version = "4.2", optional = true }
 parry3d-f64 = { version = "0.13", optional = true }
 parry2d-f64 = { version = "0.13", optional = true }
 
-[patch.crates-io]
-# https://github.com/sdd/kiddo/issues/154
-generator = { git = "https://github.com/Xudong-Huang/generator-rs", rev = "e3f16af" }
-
 [features]
 default = ["parry"]
 meshb = ["libmeshb-sys"]
