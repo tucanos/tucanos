@@ -25,7 +25,7 @@ pub type DefaultObjectIndex<const D: usize> = parry::ObjectIndex<D>;
 
 pub trait PointIndex<const D: usize> {
     fn new<E: Elem>(mesh: &SimplexMesh<D, E>) -> Self;
-    fn nearest_vertex(&self, pt: &Point<D>) -> Idx;
+    fn nearest_vertex(&self, pt: &Point<D>) -> (Idx, f64);
 }
 
 pub trait ObjectIndex<const D: usize> {
@@ -50,12 +50,12 @@ impl<const D: usize> PointIndex<D> for KdTreePointIndex<D> {
         Self { tree }
     }
 
-    fn nearest_vertex(&self, pt: &Point<D>) -> Idx {
-        *self
+    fn nearest_vertex(&self, pt: &Point<D>) -> (Idx, f64) {
+        let r = self
             .tree
             .nearest(pt.as_slice(), 1, &kdtree::distance::squared_euclidean)
-            .unwrap()[0]
-            .1 as Idx
+            .unwrap()[0];
+        (*r.1 as Idx, r.0)
     }
 }
 
