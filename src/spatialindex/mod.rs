@@ -19,7 +19,7 @@ pub type DefaultObjectIndex<const D: usize> = libol::Octree;
 #[cfg(feature = "parry")]
 mod parry;
 #[cfg(feature = "parry")]
-pub type DefaultPointIndex<const D: usize> = KiddoPointIndex<D>;
+pub type DefaultPointIndex<const D: usize> = KdTreePointIndex<D>;
 #[cfg(feature = "parry")]
 pub type DefaultObjectIndex<const D: usize> = parry::ObjectIndex<D>;
 
@@ -35,31 +35,27 @@ pub trait ObjectIndex<const D: usize> {
 }
 
 #[cfg(feature = "parry")]
-pub struct KiddoPointIndex<const D: usize> {
-    tree: kiddo::ImmutableKdTree<f64, D>,
+pub struct KdTreePointIndex<const D: usize> {
+    tree: kdtree::KdTree<f64, usize, [f64; D]>,
 }
 
 #[cfg(feature = "parry")]
-impl<const D: usize> PointIndex<D> for KiddoPointIndex<D> {
+impl<const D: usize> PointIndex<D> for KdTreePointIndex<D> {
     fn new<E: Elem>(mesh: &SimplexMesh<D, E>) -> Self {
         assert!(mesh.n_verts() > 0);
-        let tree = kiddo::ImmutableKdTree::new_from_slice(
-            &mesh
-                .verts()
-                .map(|p| p.as_slice().try_into().unwrap())
-                .collect::<Vec<_>>(),
-        );
+        let mut tree = kdtree::KdTree::new(D);
+        for (i, pt) in mesh.verts().enumerate() {
+            tree.add(pt.as_slice().try_into().unwrap(), i).unwrap();
+        }
         Self { tree }
     }
 
     fn nearest_vertex(&self, pt: &Point<D>) -> Idx {
-        self.tree
-            .nearest_one::<kiddo::float::distance::SquaredEuclidean>(
-                pt.as_slice().try_into().unwrap(),
-            )
-            .item
-            .try_into()
-            .unwrap()
+        *self
+            .tree
+            .nearest(pt.as_slice(), 1, &kdtree::distance::squared_euclidean)
+            .unwrap()[0]
+            .1 as Idx
     }
 }
 
