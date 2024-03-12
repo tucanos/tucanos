@@ -950,7 +950,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 for i_vert in 0..n_verts_other {
                     if flg[i_vert as usize] && new_vert_ids[i_vert as usize] == Idx::MAX - 1 {
                         let vx = other.verts[i_vert as usize];
-                        let i = tree.nearest_vertex(&vx);
+                        let (i, _) = tree.nearest_vertex(&vx);
                         let i = ids[smsh.parent_vert_ids[i as usize] as usize];
                         new_vert_ids[i_vert as usize] = i;
                     }
