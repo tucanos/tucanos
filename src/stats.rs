@@ -3,7 +3,7 @@ use core::fmt;
 use serde::Serialize;
 
 /// Simple statistics (histogram + mean) to be used on edge lengths and element qualities
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct Stats {
     /// Histogram bins (length = n+1)
     pub bins: Vec<f64>,
@@ -93,7 +93,7 @@ impl fmt::Display for Stats {
 }
 
 /// Statistics on the remesher state
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct RemesherStats {
     /// The # of vertices in the mesh
     n_verts: Idx,
@@ -120,7 +120,7 @@ impl RemesherStats {
 }
 
 /// Statistics for each remeshing step that include `RemesherStats` and additional step-dependent info
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub enum StepStats {
     Init(InitStats),
     Split(SplitStats),
@@ -129,7 +129,7 @@ pub enum StepStats {
     Smooth(SmoothStats),
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct InitStats {
     r_stats: RemesherStats,
 }
@@ -142,7 +142,7 @@ impl InitStats {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct SplitStats {
     n_splits: Idx,
     n_fails: Idx,
@@ -163,7 +163,7 @@ impl SplitStats {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct SwapStats {
     n_swaps: Idx,
     n_fails: Idx,
@@ -184,7 +184,7 @@ impl SwapStats {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct CollapseStats {
     n_collapses: Idx,
     n_fails: Idx,
@@ -205,7 +205,7 @@ impl CollapseStats {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct SmoothStats {
     n_fails: Idx,
     r_stats: RemesherStats,

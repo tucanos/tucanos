@@ -1533,6 +1533,12 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         serde_json::to_string_pretty(&self.stats).unwrap()
     }
 
+    /// Return the stats at each remeshing step
+    #[must_use]
+    pub fn stats(&self) -> &[StepStats] {
+        &self.stats
+    }
+
     /// Save the stats at each remeshing step as a json file
     pub fn save_stats(&self, fname: &str) -> Result<()> {
         let mut file = File::create(fname)?;
