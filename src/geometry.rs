@@ -12,7 +12,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::{collections::HashMap, hash::BuildHasherDefault};
 
 /// Representation of a D-dimensional geometry
-pub trait Geometry<const D: usize> {
+pub trait Geometry<const D: usize>: Send + Sync {
     /// Check that the geometry is consistent with a Topology
     fn check(&self, topo: &Topology) -> Result<()>;
 

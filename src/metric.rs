@@ -11,7 +11,7 @@ use std::ops::Index;
 
 /// Metric in D-dimensions (iso or anisotropic)
 pub trait Metric<const D: usize>:
-    Debug + Clone + Copy + IntoIterator<Item = f64> + Default + Display
+    Debug + Clone + Copy + IntoIterator<Item = f64> + Default + Display + Send + Sync
 {
     const N: usize;
     /// Create a metric from m
