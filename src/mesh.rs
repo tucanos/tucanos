@@ -765,7 +765,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     {
         let mut res = Self::empty();
         let (parent_vert_ids, parent_elem_ids, parent_face_ids) =
-            res.add(self, elem_filter, |_| true, None::<fn(Tag) -> bool>);
+            res.add(self, elem_filter, |_| true, None::<fn(Tag) -> bool>, None);
 
         SubSimplexMesh {
             mesh: res,
@@ -906,6 +906,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         mut elem_filter: F1,
         mut face_filter: F2,
         face_merge_filter: Option<F3>,
+        merge_tol: Option<f64>,
     ) -> (Vec<Idx>, Vec<Idx>, Vec<Idx>)
     where
         F1: FnMut(Tag) -> bool,
@@ -927,34 +928,30 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         // If needed, merge some face tags
         if let Some(mut face_merge_filter) = face_merge_filter {
-            let merge_face_tags = other
-                .ftags()
-                .filter(|&t| face_merge_filter(t))
-                .collect::<HashSet<_>>();
+            // flag the vertices in other that should be merged
             let mut flg = vec![false; n_verts_other as usize];
+            other
+                .faces()
+                .zip(other.ftags())
+                .filter(|(_, t)| face_merge_filter(*t))
+                .flat_map(|(f, _)| f)
+                .for_each(|i| flg[i as usize] = true);
+
             let (bdy, ids) = self.boundary();
-            for tag in merge_face_tags {
-                let smsh = bdy.extract_tag(tag);
-                if smsh.mesh.n_verts() == 0 {
-                    continue;
-                }
-                debug!("merge faces with tag {tag}");
+            let smsh = bdy.extract(face_merge_filter);
+            if smsh.mesh.n_verts() > 0 {
                 let tree = <DefaultPointIndex<D> as PointIndex<D>>::new(&smsh.mesh);
-                flg.iter_mut().for_each(|x| *x = false);
                 other
-                    .faces()
-                    .zip(other.ftags())
-                    .filter(|(_, t)| *t == tag)
-                    .flat_map(|(f, _)| f)
-                    .for_each(|i| flg[i as usize] = true);
-                for i_vert in 0..n_verts_other {
-                    if flg[i_vert as usize] && new_vert_ids[i_vert as usize] == Idx::MAX - 1 {
-                        let vx = other.verts[i_vert as usize];
+                    .verts()
+                    .enumerate()
+                    .filter(|(i_other, _)| flg[*i_other])
+                    .for_each(|(i_other, vx)| {
                         let (i, _) = tree.nearest_vertex(&vx);
                         let i = ids[smsh.parent_vert_ids[i as usize] as usize];
-                        new_vert_ids[i_vert as usize] = i;
-                    }
-                }
+                        if (vx - self.vert(i)).norm() < merge_tol.unwrap() {
+                            new_vert_ids[i_other] = i;
+                        }
+                    });
             }
         }
 

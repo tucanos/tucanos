@@ -188,7 +188,7 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
                     .for_each(|(t0, t1)| *t0 = *t1);
                 let (bdy_tag, interface_tags) = local_mesh.add_boundary_faces();
                 assert_eq!(local_mesh.n_tagged_faces(bdy_tag), 0);
-                
+
                 if interface_tags.is_empty() {
                     warn!("All the elements are in the interface");
                 } else {
@@ -202,7 +202,13 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
                     local_mesh.write_vtk(&fname, None, None).unwrap();
                 }
                 let mut res = res.lock().unwrap();
-                res.add(&local_mesh, |t| t == 1, |_| true, None::<fn(Tag) -> bool>);
+                res.add(
+                    &local_mesh,
+                    |t| t == 1,
+                    |_| true,
+                    None::<fn(Tag) -> bool>,
+                    None,
+                );
                 drop(res);
                 let mut interface_mesh = interface_mesh.lock().unwrap();
                 let (ids, _, _) = interface_mesh.add(
@@ -210,6 +216,7 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
                     |t| t == 2,
                     |_t| true,
                     Some(|t| t != Tag::MIN && t < 0),
+                    Some(1e-12),
                 );
                 drop(interface_mesh);
                 let mut interface_m = interface_m.lock().unwrap();
@@ -217,20 +224,20 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
             });
 
         let mut interface_mesh = interface_mesh.into_inner().unwrap();
+        interface_mesh.remove_faces(|t| t < 0 && t > Tag::MIN);
+
         if self.debug {
+            interface_mesh
+                .write_vtk("interface.vtu", None, None)
+                .unwrap();
             interface_mesh
                 .boundary()
                 .0
                 .write_vtk("interface_bdy.vtu", None, None)
                 .unwrap();
         }
-        interface_mesh.remove_faces(|t| t < 0 && t > Tag::MIN);
+
         interface_mesh.compute_topology();
-        if self.debug {
-            interface_mesh
-                .write_vtk("interface.vtu", None, None)
-                .unwrap();
-        }
         let interface_m = interface_m.into_inner().unwrap();
         // todo
         let interface_mesh = if true {
@@ -250,7 +257,13 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
                 .unwrap();
         }
         let mut res = res.into_inner().unwrap();
-        res.add(&interface_mesh, |_| true, |_| true, Some(|t| t == Tag::MIN));
+        res.add(
+            &interface_mesh,
+            |_| true,
+            |_| true,
+            Some(|t| t == Tag::MIN),
+            Some(1e-12),
+        );
         res.remove_faces(|t| t < 0);
 
         match repart {
@@ -397,7 +410,7 @@ mod tests {
         let mesh = test_mesh_3d().split().split().split();
 
         let mut dd = DomainDecomposition::new(mesh, ptype)?;
-
+        // dd.set_debug(true);
         info!("Partition quality: {:?}", dd.partition_quality().unwrap());
 
         let h = |p: Point<3>| {
