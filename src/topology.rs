@@ -3,7 +3,6 @@ use crate::{
     topo_elems::{get_face_to_elem, Elem},
     Dim, Idx, Tag, TopoTag,
 };
-use core::cmp::max;
 use log::info;
 use rustc_hash::FxHashMap;
 use std::collections::HashSet;
@@ -51,10 +50,12 @@ impl Topology {
             parents: FxHashMap::default(),
         }
     }
+
     #[must_use]
     pub fn ntags(&self, dim: Dim) -> usize {
         self.entities[dim as usize].len()
     }
+
     #[must_use]
     pub fn tags(&self, dim: Dim) -> Vec<Tag> {
         self.entities[dim as usize]
@@ -62,6 +63,17 @@ impl Topology {
             .map(|x| x.tag.1)
             .collect()
     }
+
+    #[must_use]
+    pub fn first_available_tag(&self, dim: Dim) -> Tag {
+        self.entities[dim as usize]
+            .iter()
+            .map(|x| x.tag.1.abs())
+            .max()
+            .unwrap_or(0)
+            + 1
+    }
+
     #[must_use]
     pub fn get(&self, tag: TopoTag) -> Option<&TopoNode> {
         assert!(tag.0 >= 0, "Invalid dimension");
@@ -70,6 +82,7 @@ impl Topology {
             .iter()
             .find(|&e| e.tag.1 == tag.1)
     }
+
     fn get_mut(&mut self, tag: TopoTag) -> Option<&mut TopoNode> {
         assert!(tag.0 >= 0, "Invalid dimension");
         assert!(tag.0 <= self.dim + 1, "Invalid dimension");
@@ -77,6 +90,7 @@ impl Topology {
             .iter_mut()
             .find(|e| e.tag.1 == tag.1)
     }
+
     pub fn insert(&mut self, tag: TopoTag, parents: &[Tag]) {
         self.insert_iter(tag, parents.iter().copied());
     }
@@ -85,7 +99,11 @@ impl Topology {
     where
         I: Iterator<Item = Tag> + Clone,
     {
-        assert!(self.get(tag).is_none(), "Tag {tag:?} already exists");
+        if let Some(node) = self.get(tag) {
+            let existing_parents = &node.parents;
+            let parents = parents.collect::<Vec<_>>();
+            panic!("Tag {tag:?} already exists with parents {existing_parents:?}. parents = {parents:?}");
+        }
 
         self.entities[tag.0 as usize].push(TopoNode {
             tag,
@@ -130,6 +148,7 @@ impl Topology {
     }
 
     fn compute_parents(&mut self) {
+        self.parents.clear();
         for dim in (0..=self.dim).rev() {
             for e in &self.entities[dim as usize] {
                 let children = self.children(e);
@@ -162,27 +181,27 @@ impl Topology {
         Some(*tag)
     }
 
-    fn get_faces_and_tags<
+    fn update_from_faces_and_tags<
         E: Elem,
         I1: ExactSizeIterator<Item = E>,
         I2: ExactSizeIterator<Item = Tag>,
         I3: ExactSizeIterator<Item = E::Face>,
         I4: ExactSizeIterator<Item = Tag>,
     >(
+        &mut self,
         elems: I1,
         etags: I2,
         faces: I3,
         ftags: I4,
-        topo: &mut Self,
     ) -> (Vec<E::Face>, Vec<Tag>) {
         // Input faces
         let n_faces = faces.len() as Idx;
         let mut tagged_faces = FxHashMap::with_hasher(BuildHasherDefault::default());
-        let mut next_tag: Tag = 1;
+        let mut next_tag = self.first_available_tag(E::Face::DIM as Dim);
         for (mut face, ftag) in faces.zip(ftags) {
             face.sort();
             tagged_faces.insert(face, ftag);
-            next_tag = max(next_tag, ftag + 1);
+            next_tag = next_tag.max(ftag.abs() + 1);
         }
 
         let face2elem = get_face_to_elem(elems);
@@ -200,30 +219,32 @@ impl Topology {
                 let tagged_face = tagged_faces.get(&face);
                 if let Some(tagged_face) = tagged_face {
                     face_tag = *tagged_face;
-                    let e = topo.get((E::Face::DIM as Dim, face_tag));
+                    let e = self.get((E::Face::DIM as Dim, face_tag));
                     if let Some(e) = e {
                         assert_eq!(
                             e.parents.len(),
                             1,
-                            "a boundary face belongs to elements with multiple tags"
+                            "a boundary face {face:?} tagged {face_tag:?} belonging to an element tagged {elem_tag:?} has parent tags {:?}",
+                            e.parents
                         );
                         let p = e.parents.iter().next().unwrap();
                         assert_eq!(
                             elem_tag, *p,
-                            "a boundary face belongs to elements with multiple tags"
+                            "a boundary face {face:?} tagged {face_tag:?} belonging to an element tagged {elem_tag:?} has parent tags {:?}",
+                            e.parents
                         );
                     } else {
-                        topo.insert((E::Face::DIM as Dim, face_tag), &[elem_tag]);
+                        self.insert((E::Face::DIM as Dim, face_tag), &[elem_tag]);
                     }
                 } else {
                     assert!(n_faces == 0, "not implemented");
-                    let e = topo.get_from_parents(E::Face::DIM as Dim, &[elem_tag]);
+                    let e = self.get_from_parents(E::Face::DIM as Dim, &[elem_tag]);
                     if let Some(e) = e {
                         face_tag = e.tag.1;
                     } else {
                         face_tag = next_tag;
                         next_tag += 1;
-                        topo.insert((E::Face::DIM as Dim, face_tag), &[elem_tag]);
+                        self.insert((E::Face::DIM as Dim, face_tag), &[elem_tag]);
                     }
                 }
                 true
@@ -234,13 +255,12 @@ impl Topology {
                     elem_tags.insert(etags[i_elem as usize]);
                 }
                 if elem_tags.len() > 1 {
-                    let e =
-                        topo.get_from_parents_iter(E::Face::DIM as Dim, elem_tags.iter().copied());
-                    if let Some(e) = e {
+                    if let Some(e) =
+                        self.get_from_parents_iter(E::Face::DIM as Dim, elem_tags.iter().copied())
+                    {
                         face_tag = e.tag.1;
                     } else {
-                        let tagged_face = tagged_faces.get(&face);
-                        if let Some(tagged_face) = tagged_face {
+                        if let Some(tagged_face) = tagged_faces.get(&face) {
                             face_tag = *tagged_face;
                         } else {
                             face_tag = next_tag;
@@ -249,7 +269,7 @@ impl Topology {
                             }
                             next_tag += 1;
                         }
-                        topo.insert_iter(
+                        self.insert_iter(
                             (E::Face::DIM as Dim, face_tag),
                             elem_tags.iter().copied(),
                         );
@@ -272,170 +292,128 @@ impl Topology {
         I1: ExactSizeIterator<Item = E>,
         I2: ExactSizeIterator<Item = Tag>,
     >(
+        &mut self,
         elems: I1,
         etags: I2,
-        topo: &mut Self,
         ntags: &mut [TopoTag],
     ) {
         for (elem, etag) in elems.zip(etags) {
-            let e = topo.get((E::DIM as Dim, etag));
+            let e = self.get((E::DIM as Dim, etag));
             if e.is_none() {
-                topo.insert((E::DIM as Dim, etag), &[]);
+                self.insert((E::DIM as Dim, etag), &[]);
             }
             for idx in elem {
-                ntags[idx as usize] = topo.get((E::DIM as Dim, etag)).unwrap().tag;
+                ntags[idx as usize] = self.get((E::DIM as Dim, etag)).unwrap().tag;
             }
         }
     }
 
-    fn from_tetra_mesh<const D: usize, E: Elem>(
+    fn update_from_tetra_mesh<const D: usize, E: Elem>(
+        &mut self,
         mesh: &SimplexMesh<D, E>,
-        topo: &mut Self,
         vtags: &mut [TopoTag],
     ) {
         let (next_elems, next_tags) =
-            Self::get_faces_and_tags(mesh.elems(), mesh.etags(), mesh.faces(), mesh.ftags(), topo);
-        Self::elem_tags_to_vert_tags(
-            next_elems.iter().copied(),
-            next_tags.iter().copied(),
-            topo,
-            vtags,
-        );
+            self.update_from_faces_and_tags(mesh.elems(), mesh.etags(), mesh.faces(), mesh.ftags());
+        self.elem_tags_to_vert_tags(next_elems.iter().copied(), next_tags.iter().copied(), vtags);
 
-        let (next_elems, next_tags) = Self::get_faces_and_tags(
+        let (next_elems, next_tags) = self.update_from_faces_and_tags(
             next_elems.iter().copied(),
             next_tags.iter().copied(),
             std::iter::empty(),
             std::iter::empty(),
-            topo,
         );
-        Self::elem_tags_to_vert_tags(
-            next_elems.iter().copied(),
-            next_tags.iter().copied(),
-            topo,
-            vtags,
-        );
+        self.elem_tags_to_vert_tags(next_elems.iter().copied(), next_tags.iter().copied(), vtags);
 
-        let (next_elems, next_tags) = Self::get_faces_and_tags(
+        let (next_elems, next_tags) = self.update_from_faces_and_tags(
             next_elems.iter().copied(),
             next_tags.iter().copied(),
             std::iter::empty(),
             std::iter::empty(),
-            topo,
         );
-        Self::elem_tags_to_vert_tags(
-            next_elems.iter().copied(),
-            next_tags.iter().copied(),
-            topo,
-            vtags,
-        );
+        self.elem_tags_to_vert_tags(next_elems.iter().copied(), next_tags.iter().copied(), vtags);
 
-        Self::get_faces_and_tags(
+        self.update_from_faces_and_tags(
             next_elems.iter().copied(),
             next_tags.iter().copied(),
             std::iter::empty(),
             std::iter::empty(),
-            topo,
         );
-        Self::elem_tags_to_vert_tags(
+        self.elem_tags_to_vert_tags(next_elems.iter().copied(), next_tags.iter().copied(), vtags);
+    }
+
+    fn update_from_tri_mesh<const D: usize, E: Elem>(
+        &mut self,
+        mesh: &SimplexMesh<D, E>,
+        vtags: &mut [TopoTag],
+    ) {
+        let (next_elems, next_tags) =
+            self.update_from_faces_and_tags(mesh.elems(), mesh.etags(), mesh.faces(), mesh.ftags());
+        self.elem_tags_to_vert_tags(next_elems.iter().copied(), next_tags.iter().copied(), vtags);
+
+        let (next_elems, next_tags) = self.update_from_faces_and_tags(
             next_elems.iter().copied(),
             next_tags.iter().copied(),
-            topo,
-            vtags,
+            std::iter::empty(),
+            std::iter::empty(),
         );
+        self.elem_tags_to_vert_tags(next_elems.iter().copied(), next_tags.iter().copied(), vtags);
+
+        self.update_from_faces_and_tags(
+            next_elems.iter().copied(),
+            next_tags.iter().copied(),
+            std::iter::empty(),
+            std::iter::empty(),
+        );
+        self.elem_tags_to_vert_tags(next_elems.iter().copied(), next_tags.iter().copied(), vtags);
+    }
+
+    fn update_from_edg_mesh<const D: usize, E: Elem>(
+        &mut self,
+        mesh: &SimplexMesh<D, E>,
+        vtags: &mut [TopoTag],
+    ) {
+        let (next_elems, next_tags) =
+            self.update_from_faces_and_tags(mesh.elems(), mesh.etags(), mesh.faces(), mesh.ftags());
+        self.elem_tags_to_vert_tags(next_elems.iter().copied(), next_tags.iter().copied(), vtags);
+
+        self.update_from_faces_and_tags(
+            next_elems.iter().copied(),
+            next_tags.iter().copied(),
+            std::iter::empty(),
+            std::iter::empty(),
+        );
+        self.elem_tags_to_vert_tags(next_elems.iter().copied(), next_tags.iter().copied(), vtags);
     }
 
     #[must_use]
-    pub fn from_mesh<const D: usize, E: Elem>(mesh: &SimplexMesh<D, E>) -> (Self, Vec<TopoTag>) {
+    pub fn update_from_mesh<const D: usize, E: Elem>(
+        &mut self,
+        mesh: &SimplexMesh<D, E>,
+    ) -> Vec<TopoTag> {
         info!("Building topology from mesh");
 
-        let mut topo = Self::new(E::N_VERTS as Dim - 1);
         let n_verts = mesh.n_verts();
         let mut vtags: Vec<TopoTag> = vec![(0, 0); n_verts as usize];
 
-        Self::elem_tags_to_vert_tags(mesh.elems(), mesh.etags(), &mut topo, &mut vtags);
+        self.elem_tags_to_vert_tags(mesh.elems(), mesh.etags(), &mut vtags);
+
         if E::N_VERTS == 4 {
-            Self::from_tetra_mesh(mesh, &mut topo, &mut vtags);
+            self.update_from_tetra_mesh(mesh, &mut vtags);
         } else if E::N_VERTS == 3 {
-            let (next_elems, next_tags) = Self::get_faces_and_tags(
-                mesh.elems(),
-                mesh.etags(),
-                mesh.faces(),
-                mesh.ftags(),
-                &mut topo,
-            );
-            Self::elem_tags_to_vert_tags(
-                next_elems.iter().copied(),
-                next_tags.iter().copied(),
-                &mut topo,
-                &mut vtags,
-            );
-
-            let (next_elems, next_tags) = Self::get_faces_and_tags(
-                next_elems.iter().copied(),
-                next_tags.iter().copied(),
-                std::iter::empty(),
-                std::iter::empty(),
-                &mut topo,
-            );
-            Self::elem_tags_to_vert_tags(
-                next_elems.iter().copied(),
-                next_tags.iter().copied(),
-                &mut topo,
-                &mut vtags,
-            );
-
-            Self::get_faces_and_tags(
-                next_elems.iter().copied(),
-                next_tags.iter().copied(),
-                std::iter::empty(),
-                std::iter::empty(),
-                &mut topo,
-            );
-            Self::elem_tags_to_vert_tags(
-                next_elems.iter().copied(),
-                next_tags.iter().copied(),
-                &mut topo,
-                &mut vtags,
-            );
+            self.update_from_tri_mesh(mesh, &mut vtags);
         } else if E::N_VERTS == 2 {
-            let (next_elems, next_tags) = Self::get_faces_and_tags(
-                mesh.elems(),
-                mesh.etags(),
-                mesh.faces(),
-                mesh.ftags(),
-                &mut topo,
-            );
-            Self::elem_tags_to_vert_tags(
-                next_elems.iter().copied(),
-                next_tags.iter().copied(),
-                &mut topo,
-                &mut vtags,
-            );
-
-            Self::get_faces_and_tags(
-                next_elems.iter().copied(),
-                next_tags.iter().copied(),
-                std::iter::empty(),
-                std::iter::empty(),
-                &mut topo,
-            );
-            Self::elem_tags_to_vert_tags(
-                next_elems.iter().copied(),
-                next_tags.iter().copied(),
-                &mut topo,
-                &mut vtags,
-            );
+            self.update_from_edg_mesh(mesh, &mut vtags);
         } else {
             unreachable!();
         }
 
-        // If a vertex beongs to two faces that are tagged differently but don't share an edge
+        // If a vertex belongs to two faces that are tagged differently but don't share an edge
         for (f, ftag) in mesh.faces().zip(mesh.ftags()) {
             for i in f.iter().copied() {
                 let tag = vtags[i as usize];
                 if tag.0 == E::Face::DIM as Dim && tag.1 != ftag {
-                    let e = topo.get_from_parents_iter(
+                    let e = self.get_from_parents_iter(
                         E::Face::DIM as Dim - 1,
                         [ftag, tag.1].iter().copied(),
                     );
@@ -447,8 +425,17 @@ impl Topology {
                 }
             }
         }
-        topo.compute_parents();
+        self.compute_parents();
 
+        vtags
+    }
+
+    #[must_use]
+    pub fn from_mesh<const D: usize, E: Elem>(mesh: &SimplexMesh<D, E>) -> (Self, Vec<TopoTag>) {
+        info!("Building topology from mesh");
+
+        let mut topo = Self::new(E::N_VERTS as Dim - 1);
+        let vtags = topo.update_from_mesh(mesh);
         (topo, vtags)
     }
 }
@@ -580,12 +567,11 @@ mod tests {
         let mut topo = Topology::new(2);
         topo.insert((2, 1), &[]);
         topo.insert((2, 2), &[]);
-        let (_elems, _etags) = Topology::get_faces_and_tags(
+        let (_elems, _etags) = topo.update_from_faces_and_tags(
             elems.iter().copied(),
             etags.iter().copied(),
             faces.iter().copied(),
             ftags.iter().copied(),
-            &mut topo,
         );
 
         assert_eq!(topo.entities[0].len(), 0);
@@ -608,12 +594,11 @@ mod tests {
         let mut topo = Topology::new(2);
         topo.insert((2, 1), &[]);
         topo.insert((2, 2), &[]);
-        let (_elems, _etags) = Topology::get_faces_and_tags(
+        let (_elems, _etags) = topo.update_from_faces_and_tags(
             elems.iter().copied(),
             etags.iter().copied(),
             faces.iter().copied(),
             ftags.iter().copied(),
-            &mut topo,
         );
 
         assert_eq!(topo.entities[0].len(), 0);

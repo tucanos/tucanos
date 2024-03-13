@@ -858,6 +858,17 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         }
     }
 
+    /// Compute the mesh topology but updating an existing one
+    pub fn compute_topology_from(&mut self, mut topo: Topology) {
+        if self.topo.is_none() {
+            let vtags = topo.update_from_mesh(self);
+            self.topo = Some(topo);
+            self.vtags = Some(vtags);
+        } else {
+            warn!("Topology already computed");
+        }
+    }
+
     /// Clear the mesh topology
     pub fn clear_topology(&mut self) {
         self.topo = None;
