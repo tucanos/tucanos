@@ -11,10 +11,17 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         Err(Error::from("the scotch feature is not enabled"))
     }
 
+    /// Partition the mesh using scotch into `n_parts`. The partition id, defined for all the elements
+    /// is stored in self.etags
     #[cfg(feature = "scotch")]
     pub fn partition_scotch(&mut self, n_parts: Idx) -> Result<()> {
         use crate::Tag;
         use log::{info, warn};
+
+        if n_parts == 1 {
+            self.mut_etags().for_each(|t| *t = 1);
+            return Ok(());
+        }
 
         if self.etags().any(|t| t != 1) {
             warn!("Erase the element tags");
@@ -67,10 +74,17 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         Err(Error::from("the metis feature is not enabled"))
     }
 
+    /// Partition the mesh using metis into `n_parts`. The partition id, defined for all the elements
+    /// is stored in self.etags
     #[cfg(feature = "metis")]
     pub fn partition_metis(&mut self, n_parts: Idx) -> Result<()> {
         use crate::Tag;
         use log::{info, warn};
+
+        if n_parts == 1 {
+            self.mut_etags().for_each(|t| *t = 1);
+            return Ok(());
+        }
 
         if self.etags().any(|t| t != 1) {
             warn!("Erase the element tags");
@@ -105,6 +119,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         Ok(())
     }
 
+    /// Get the partition quality (ration of the number of interface faces to the total number of faces)
     pub fn partition_quality(&self) -> Result<f64> {
         let f2e = self.get_face_to_elems()?;
 
