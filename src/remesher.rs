@@ -11,7 +11,7 @@ use crate::{
     topology::Topology,
     Dim, Error, Idx, Result, Tag, TopoTag,
 };
-use log::{debug, info, trace, warn};
+use log::{debug, info, trace};
 #[cfg(feature = "nlopt")]
 use nlopt::{Algorithm, Nlopt, Target};
 use rustc_hash::FxHashMap;
@@ -242,17 +242,11 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             stats: Vec::new(),
         };
 
-        // Insert the vertices (project on the geometry for boundary vertices)
+        // Insert the vertices
         assert_eq!(mesh.n_verts() as usize, vtag.len());
-        let mut dmax = 0.0;
-        for (i_vert, (mut p, tag)) in mesh.verts().zip(vtag.iter()).enumerate() {
-            if tag.0 < E::DIM as Dim && tag.1 >= 0 {
-                let d = geom.project(&mut p, tag);
-                dmax = f64::max(dmax, d);
-            }
+        for (i_vert, (p, tag)) in mesh.verts().zip(vtag.iter()).enumerate() {
             res.insert_vertex(p, tag, &m[i_vert]);
         }
-        warn!("Max. distance to the geometry: {dmax:.2e}");
 
         assert_eq!(mesh.n_verts(), res.n_verts());
 
