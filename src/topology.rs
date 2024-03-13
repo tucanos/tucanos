@@ -432,7 +432,7 @@ impl Topology {
 
         // If a vertex beongs to two faces that are tagged differently but don't share an edge
         for (f, ftag) in mesh.faces().zip(mesh.ftags()) {
-            for i in f.iter().cloned() {
+            for i in f.iter().copied() {
                 let tag = vtags[i as usize];
                 if tag.0 == E::Face::DIM as Dim && tag.1 != ftag {
                     let e = topo.get_from_parents_iter(
