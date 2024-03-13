@@ -971,6 +971,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         });
 
         let mut added_elems = Vec::new();
+        // keep track of the possible new faces
+        let mut all_added_faces = FxHashSet::with_hasher(BuildHasherDefault::default());
         for (i, (e, t)) in other
             .elems()
             .zip(other.etags())
@@ -978,9 +980,13 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             .filter(|(_, (_, t))| elem_filter(*t))
         {
             added_elems.push(i as Idx);
-            self.elems
-                .push(E::from_iter(e.iter().map(|&i| new_vert_ids[i as usize])));
+            let elem = E::from_iter(e.iter().map(|&i| new_vert_ids[i as usize]));
+            self.elems.push(elem);
             self.etags.push(t);
+            for i_face in 0..E::N_FACES {
+                let f = elem.face(i_face);
+                all_added_faces.insert(f.sorted());
+            }
         }
 
         let mut added_faces = Vec::new();
@@ -989,12 +995,19 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             .zip(other.ftags())
             .enumerate()
             .filter(|(_, (_, t))| face_filter(*t))
-            .filter(|(_, (f, _))| f.iter().all(|&j| new_vert_ids[j as usize] < Idx::MAX - 1))
+            .map(|(i, (f, t))| {
+                (
+                    i,
+                    (
+                        E::Face::from_iter(f.iter().map(|&i| new_vert_ids[i as usize])),
+                        t,
+                    ),
+                )
+            })
+            .filter(|(_, (f, _))| all_added_faces.get(&f.sorted()).is_some())
         {
             added_faces.push(i as Idx);
-            self.faces.push(E::Face::from_iter(
-                f.iter().map(|&i| new_vert_ids[i as usize]),
-            ));
+            self.faces.push(f);
             self.ftags.push(t);
         }
 
