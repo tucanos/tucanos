@@ -35,9 +35,9 @@ impl fmt::Display for Topology {
                 writeln!(f, "    {:?}", *e)?;
             }
         }
-        for ((k0, k1), v) in &self.parents {
-            writeln!(f, "  {k0:?},{k1:?} -> {v:?}")?;
-        }
+        // for ((k0, k1), v) in &self.parents {
+        //     writeln!(f, "  {k0:?},{k1:?} -> {v:?}")?;
+        // }
         Ok(())
     }
 }
@@ -430,6 +430,23 @@ impl Topology {
             unreachable!();
         }
 
+        // If a vertex beongs to two faces that are tagged differently but don't share an edge
+        for (f, ftag) in mesh.faces().zip(mesh.ftags()) {
+            for i in f.iter().cloned() {
+                let tag = vtags[i as usize];
+                if tag.0 == E::Face::DIM as Dim && tag.1 != ftag {
+                    let e = topo.get_from_parents_iter(
+                        E::Face::DIM as Dim - 1,
+                        [ftag, tag.1].iter().copied(),
+                    );
+                    if let Some(e) = e {
+                        vtags[i as usize] = e.tag;
+                    } else {
+                        todo!();
+                    }
+                }
+            }
+        }
         topo.compute_parents();
 
         (topo, vtags)
