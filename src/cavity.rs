@@ -59,6 +59,10 @@ pub struct Cavity<const D: usize, E: Elem, M: Metric<D>> {
     pub seed: Seed,
     /// Minimum element quality in the cavity
     pub q_min: f64,
+    /// Minimum edge length
+    pub l_min: f64,
+    /// Maximum edge length
+    pub l_max: f64,
 }
 
 impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
@@ -77,6 +81,8 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
             tagged_bdys: Vec::new(),
             seed: Seed::No,
             q_min: -1.0,
+            l_min: -1.0,
+            l_max: f64::MAX,
         }
     }
 
@@ -94,6 +100,8 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
         self.tagged_bdys.clear();
         self.seed = Seed::No;
         self.q_min = -1.0;
+        self.l_min = -1.0;
+        self.l_max = f64::MAX;
     }
 
     /// Get the local vertex index from a global vertex index
@@ -194,6 +202,17 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
                     self.metrics.push(pt.2);
                     self.tags.push(pt.1);
                 }
+            }
+            for i_edg in 0..E::N_EDGES {
+                let edg = local.edge(i_edg);
+                let l = M::edge_length(
+                    &self.points[edg[0] as usize],
+                    &self.metrics[edg[0] as usize],
+                    &self.points[edg[1] as usize],
+                    &self.metrics[edg[1] as usize],
+                );
+                self.l_min = self.l_min.min(l);
+                self.l_max = self.l_max.max(l);
             }
             self.elems.push(local);
             self.etags.push(e.tag);
@@ -537,7 +556,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
             if q < 0.0 {
                 trace!("cavity check failed: invalid element");
                 return CavityCheckStatus::Invalid;
-            } else if q < q_min {
+            } else if q <= q_min {
                 trace!("cavity check failed: low quality ({} < {})", q, q_min);
                 return CavityCheckStatus::LowQuality(q);
             }
