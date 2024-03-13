@@ -444,6 +444,22 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
             .map(|(b, t)| (self.cavity.global_elem(&b), t))
     }
 
+    /// Check that the tagged faces are not already present (useful for collapse)
+    pub fn check_tagged_faces(&self, r: &Remesher<D, E, M>) -> bool {
+        if let FilledCavityType::ExistingVertex(i) = self.ftype {
+            let i = self.cavity.local2global[i as usize];
+            for (b, _) in self.tagged_faces_boundary_global() {
+                let f = E::Face::from_vertex_and_face(i, &b);
+                if r.face_tag(&f).is_some() {
+                    return false;
+                }
+            }
+            true
+        } else {
+            unreachable!();
+        }
+    }
+
     /// Convert the filled cavity to a `SimplexMesh` to export it (for debug)
     #[allow(dead_code)]
     pub fn to_mesh(&self) -> SimplexMesh<D, E> {
