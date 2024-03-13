@@ -1,28 +1,40 @@
 use crate::{
-    mesh::SimplexMesh,
+    graph::CSRGraph,
     topo_elems::{get_face_to_elem, Elem},
-    Dim, Idx, Tag, TopoTag,
+    Dim, Idx, Result, Tag, TopoTag,
 };
-use log::info;
-use rustc_hash::FxHashMap;
-use std::collections::HashSet;
+use core::result;
+use rustc_hash::{FxHashMap, FxHashSet};
+use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use std::fmt;
-use std::hash::BuildHasherDefault;
+use std::{collections::HashSet, fs::File, io::Write};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TopoNode {
     pub tag: TopoTag,
     pub children: HashSet<Tag>,
     pub parents: HashSet<Tag>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Topology {
     dim: Dim,
     /// List of topology nodes for each dimension (i.e. entities.len() == 4 in dimension 3)
     entities: Vec<Vec<TopoNode>>,
     /// Map a pair of tag to the closest common parent of those tags
     parents: FxHashMap<(TopoTag, TopoTag), TopoTag>,
+}
+
+impl Serialize for Topology {
+    fn serialize<S>(&self, serializer: S) -> result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("Topology", 2)?;
+        state.serialize_field("dim", &self.dim)?;
+        state.serialize_field("entities", &self.entities)?;
+        state.end()
+    }
 }
 
 impl fmt::Display for Topology {
@@ -49,6 +61,29 @@ impl Topology {
             entities: vec![vec![]; (dim + 1) as usize],
             parents: FxHashMap::default(),
         }
+    }
+
+    pub fn from_json(fname: &str) -> Result<Self> {
+        #[derive(Deserialize)]
+        struct MiniTopology {
+            pub dim: Dim,
+            pub entities: Vec<Vec<TopoNode>>,
+        }
+        let file = File::open(fname)?;
+        let tmp: MiniTopology = serde_json::from_reader(file)?;
+        let mut res = Self {
+            dim: tmp.dim,
+            entities: tmp.entities,
+            parents: FxHashMap::default(),
+        };
+        res.compute_parents();
+        Ok(res)
+    }
+
+    pub fn to_json(&self, fname: &str) -> Result<()> {
+        let mut file = File::create(fname)?;
+        writeln!(file, "{}", serde_json::to_string_pretty(self).unwrap())?;
+        Ok(())
     }
 
     #[must_use]
@@ -113,7 +148,7 @@ impl Topology {
 
         for ptag in parents {
             let e = self.get_mut((tag.0 + 1, ptag));
-            assert!(e.is_some());
+            assert!(e.is_some(), "TopoTag {:?} not present", (tag.0 + 1, ptag));
             e.unwrap().children.insert(tag.1);
         }
     }
@@ -140,20 +175,36 @@ impl Topology {
         }
     }
 
-    /// Return the list containing the tag of `node` and the tags of its descendants
+    /// Return the list containing the tag of `node` and the tags of its descendants (recursively)
     fn children(&self, node: &TopoNode) -> HashSet<TopoTag> {
         let mut res = HashSet::new();
         self.add_children(node, &mut res);
         res
     }
 
+    /// Find out if a node is a child (recursively)
+    fn is_child(&self, parent: TopoTag, tag: TopoTag) -> bool {
+        if tag.0 >= parent.0 {
+            return false;
+        } else if tag.0 == parent.0 - 1 {
+            let node = self.get(parent).unwrap();
+            return node.children.iter().any(|&t| t == tag.1);
+        }
+        let node = self.get(parent).unwrap();
+        let dim = parent.0 - 1;
+        return node
+            .children
+            .iter()
+            .any(|&child| self.is_child((dim, child), tag));
+    }
+
     fn compute_parents(&mut self) {
         self.parents.clear();
         for dim in (0..=self.dim).rev() {
             for e in &self.entities[dim as usize] {
-                let children = self.children(e);
-                for tag0 in children.iter().copied() {
-                    for tag1 in children.iter().copied() {
+                let e_and_children = self.children(e);
+                for tag0 in e_and_children.iter().copied() {
+                    for tag1 in e_and_children.iter().copied() {
                         self.parents.insert((tag0, tag1), e.tag);
                     }
                 }
@@ -166,286 +217,298 @@ impl Topology {
         self.parents.get(&(topo0, topo1)).copied()
     }
 
-    /// Compute the tag of an element from the `tags` of its vertices
-    pub fn elem_tag<I: Iterator<Item = TopoTag>>(&self, mut tags: I) -> Option<TopoTag> {
-        // Look for the closest common parent of all vertices tags
-        let first = tags.next()?;
-        let second = tags.next();
-        if second.is_none() {
-            return Some(first);
-        }
-        let mut tag = self.parents.get(&(first, second.unwrap()))?;
-        for other in tags {
-            tag = self.parents.get(&(*tag, other))?;
-        }
-        Some(*tag)
+    fn update_from_elems<E: Elem>(&mut self, elems: &[E], etags: &[Tag], vtags: &mut [TopoTag]) {
+        elems.iter().zip(etags.iter()).for_each(|(e, &t)| {
+            e.iter().for_each(|&i| {
+                let i = i as usize;
+                if vtags[i].1 != 0 && vtags[i].1 != t {
+                    vtags[i] = (E::DIM as Dim, 0);
+                } else {
+                    let tag = (E::DIM as Dim, t);
+                    if self.get(tag).is_none() {
+                        self.insert(tag, &[]);
+                    }
+                    vtags[i] = tag;
+                }
+            });
+        });
     }
 
-    fn update_from_faces_and_tags<
-        E: Elem,
-        I1: ExactSizeIterator<Item = E>,
-        I2: ExactSizeIterator<Item = Tag>,
-        I3: ExactSizeIterator<Item = E::Face>,
-        I4: ExactSizeIterator<Item = Tag>,
-    >(
+    fn update_from_faces<E: Elem>(
         &mut self,
-        elems: I1,
-        etags: I2,
-        faces: I3,
-        ftags: I4,
-    ) -> (Vec<E::Face>, Vec<Tag>) {
-        // Input faces
-        let n_faces = faces.len() as Idx;
-        let mut tagged_faces = FxHashMap::with_hasher(BuildHasherDefault::default());
-        let mut next_tag = self.first_available_tag(E::Face::DIM as Dim);
-        for (mut face, ftag) in faces.zip(ftags) {
-            face.sort();
-            tagged_faces.insert(face, ftag);
-            next_tag = next_tag.max(ftag.abs() + 1);
-        }
-
-        let face2elem = get_face_to_elem(elems);
-        let mut next_elems = Vec::with_capacity(n_faces as usize);
-        let mut next_tags = Vec::with_capacity(n_faces as usize);
-
-        let etags: Vec<_> = etags.collect();
-
-        for (face, f2e) in face2elem {
-            let mut face_tag: Tag = 0;
-            let add = if f2e.len() == 1 {
-                //boundary face
-                let i_elem = f2e[0];
-                let elem_tag = etags[i_elem as usize];
-                let tagged_face = tagged_faces.get(&face);
-                if let Some(tagged_face) = tagged_face {
-                    face_tag = *tagged_face;
-                    let e = self.get((E::Face::DIM as Dim, face_tag));
-                    if let Some(e) = e {
-                        assert_eq!(
-                            e.parents.len(),
-                            1,
-                            "a boundary face {face:?} tagged {face_tag:?} belonging to an element tagged {elem_tag:?} has parent tags {:?}",
-                            e.parents
-                        );
-                        let p = e.parents.iter().next().unwrap();
-                        assert_eq!(
-                            elem_tag, *p,
-                            "a boundary face {face:?} tagged {face_tag:?} belonging to an element tagged {elem_tag:?} has parent tags {:?}",
-                            e.parents
-                        );
-                    } else {
-                        self.insert((E::Face::DIM as Dim, face_tag), &[elem_tag]);
-                    }
-                } else {
-                    assert!(n_faces == 0, "not implemented");
-                    let e = self.get_from_parents(E::Face::DIM as Dim, &[elem_tag]);
-                    if let Some(e) = e {
-                        face_tag = e.tag.1;
-                    } else {
-                        face_tag = next_tag;
-                        next_tag += 1;
-                        self.insert((E::Face::DIM as Dim, face_tag), &[elem_tag]);
-                    }
-                }
-                true
+        elems: &[E],
+        etags: &[Tag],
+        faces: &[E::Face],
+        ftags: &[Tag],
+        vtags: &mut [TopoTag],
+    ) {
+        let face2elem = get_face_to_elem(elems.iter().copied());
+        faces.iter().zip(ftags.iter()).for_each(|(f, &t)| {
+            let tag = (E::Face::DIM as Dim, t);
+            let parents = face2elem
+                .get(&f.sorted())
+                .unwrap()
+                .iter()
+                .map(|&i| etags[i as usize])
+                .collect::<Vec<_>>();
+            assert!(!parents.is_empty());
+            if let Some(node) = self.get(tag) {
+                assert_eq!(parents.len(), node.parents.len());
+                parents
+                    .iter()
+                    .for_each(|x| assert!(node.parents.contains(x)));
             } else {
-                // internal  or multiple face
-                let mut elem_tags: HashSet<Tag> = HashSet::new();
-                for i_elem in f2e {
-                    elem_tags.insert(etags[i_elem as usize]);
-                }
-                if elem_tags.len() > 1 {
-                    if let Some(e) =
-                        self.get_from_parents_iter(E::Face::DIM as Dim, elem_tags.iter().copied())
-                    {
-                        face_tag = e.tag.1;
-                    } else {
-                        if let Some(tagged_face) = tagged_faces.get(&face) {
-                            face_tag = *tagged_face;
-                        } else {
-                            face_tag = next_tag;
-                            if elem_tags.iter().any(|&t| t < 0) {
-                                face_tag = -face_tag;
-                            }
-                            next_tag += 1;
-                        }
-                        self.insert_iter(
-                            (E::Face::DIM as Dim, face_tag),
-                            elem_tags.iter().copied(),
-                        );
-                    }
-                    true
+                self.insert(tag, &parents);
+            }
+            f.iter().for_each(|&i| {
+                let i = i as usize;
+                if vtags[i].0 == E::Face::DIM as Dim && (vtags[i].1 == 0 || vtags[i].1 != t) {
+                    vtags[i] = (E::Face::DIM as Dim, 0);
                 } else {
-                    false
+                    vtags[i] = (E::Face::DIM as Dim, t);
                 }
-            };
-            if add {
-                next_elems.push(face);
-                next_tags.push(face_tag);
+            });
+        });
+    }
+
+    fn max_tag(&self, dim: Dim) -> Tag {
+        self.entities[dim as usize]
+            .iter()
+            .map(|n| n.tag.1.abs())
+            .max()
+            .unwrap_or(0)
+    }
+
+    fn check_untagged<E: Elem>(&self, elems: &[E], etags: &[Tag]) -> bool {
+        let dim = E::Face::DIM as Dim;
+        let edg2face = get_face_to_elem(elems.iter().copied());
+        for e2f in edg2face.values() {
+            let ftags = e2f
+                .iter()
+                .map(|&i_face| etags[i_face as usize])
+                .collect::<FxHashSet<_>>();
+            let should_be_tagged = e2f.len() != 2 || ftags.len() != 1;
+            if should_be_tagged
+                && self
+                    .get_from_parents_iter(dim, ftags.iter().copied())
+                    .is_none()
+            {
+                return false;
             }
         }
-        (next_elems, next_tags)
+        true
     }
 
-    fn elem_tags_to_vert_tags<
-        E: Elem,
-        I1: ExactSizeIterator<Item = E>,
-        I2: ExactSizeIterator<Item = Tag>,
-    >(
+    fn update_and_get_children<E: Elem>(
         &mut self,
-        elems: I1,
-        etags: I2,
-        ntags: &mut [TopoTag],
-    ) {
-        for (elem, etag) in elems.zip(etags) {
-            let e = self.get((E::DIM as Dim, etag));
-            if e.is_none() {
-                self.insert((E::DIM as Dim, etag), &[]);
-            }
-            for idx in elem {
-                ntags[idx as usize] = self.get((E::DIM as Dim, etag)).unwrap().tag;
-            }
-        }
-    }
-
-    fn update_from_tetra_mesh<const D: usize, E: Elem>(
-        &mut self,
-        mesh: &SimplexMesh<D, E>,
+        faces: &[E],
+        ftags: &[Tag],
         vtags: &mut [TopoTag],
-    ) {
-        let (next_elems, next_tags) =
-            self.update_from_faces_and_tags(mesh.elems(), mesh.etags(), mesh.faces(), mesh.ftags());
-        self.elem_tags_to_vert_tags(next_elems.iter().copied(), next_tags.iter().copied(), vtags);
-
-        let (next_elems, next_tags) = self.update_from_faces_and_tags(
-            next_elems.iter().copied(),
-            next_tags.iter().copied(),
-            std::iter::empty(),
-            std::iter::empty(),
-        );
-        self.elem_tags_to_vert_tags(next_elems.iter().copied(), next_tags.iter().copied(), vtags);
-
-        let (next_elems, next_tags) = self.update_from_faces_and_tags(
-            next_elems.iter().copied(),
-            next_tags.iter().copied(),
-            std::iter::empty(),
-            std::iter::empty(),
-        );
-        self.elem_tags_to_vert_tags(next_elems.iter().copied(), next_tags.iter().copied(), vtags);
-
-        self.update_from_faces_and_tags(
-            next_elems.iter().copied(),
-            next_tags.iter().copied(),
-            std::iter::empty(),
-            std::iter::empty(),
-        );
-        self.elem_tags_to_vert_tags(next_elems.iter().copied(), next_tags.iter().copied(), vtags);
-    }
-
-    fn update_from_tri_mesh<const D: usize, E: Elem>(
-        &mut self,
-        mesh: &SimplexMesh<D, E>,
-        vtags: &mut [TopoTag],
-    ) {
-        let (next_elems, next_tags) =
-            self.update_from_faces_and_tags(mesh.elems(), mesh.etags(), mesh.faces(), mesh.ftags());
-        self.elem_tags_to_vert_tags(next_elems.iter().copied(), next_tags.iter().copied(), vtags);
-
-        let (next_elems, next_tags) = self.update_from_faces_and_tags(
-            next_elems.iter().copied(),
-            next_tags.iter().copied(),
-            std::iter::empty(),
-            std::iter::empty(),
-        );
-        self.elem_tags_to_vert_tags(next_elems.iter().copied(), next_tags.iter().copied(), vtags);
-
-        self.update_from_faces_and_tags(
-            next_elems.iter().copied(),
-            next_tags.iter().copied(),
-            std::iter::empty(),
-            std::iter::empty(),
-        );
-        self.elem_tags_to_vert_tags(next_elems.iter().copied(), next_tags.iter().copied(), vtags);
-    }
-
-    fn update_from_edg_mesh<const D: usize, E: Elem>(
-        &mut self,
-        mesh: &SimplexMesh<D, E>,
-        vtags: &mut [TopoTag],
-    ) {
-        let (next_elems, next_tags) =
-            self.update_from_faces_and_tags(mesh.elems(), mesh.etags(), mesh.faces(), mesh.ftags());
-        self.elem_tags_to_vert_tags(next_elems.iter().copied(), next_tags.iter().copied(), vtags);
-
-        self.update_from_faces_and_tags(
-            next_elems.iter().copied(),
-            next_tags.iter().copied(),
-            std::iter::empty(),
-            std::iter::empty(),
-        );
-        self.elem_tags_to_vert_tags(next_elems.iter().copied(), next_tags.iter().copied(), vtags);
-    }
-
-    #[must_use]
-    pub fn update_from_mesh<const D: usize, E: Elem>(
-        &mut self,
-        mesh: &SimplexMesh<D, E>,
-    ) -> Vec<TopoTag> {
-        info!("Building topology from mesh");
-
-        let n_verts = mesh.n_verts();
-        let mut vtags: Vec<TopoTag> = vec![(0, 0); n_verts as usize];
-
-        self.elem_tags_to_vert_tags(mesh.elems(), mesh.etags(), &mut vtags);
-
-        if E::N_VERTS == 4 {
-            self.update_from_tetra_mesh(mesh, &mut vtags);
-        } else if E::N_VERTS == 3 {
-            self.update_from_tri_mesh(mesh, &mut vtags);
-        } else if E::N_VERTS == 2 {
-            self.update_from_edg_mesh(mesh, &mut vtags);
-        } else {
-            unreachable!();
-        }
-
-        // If a vertex belongs to two faces that are tagged differently but don't share an edge
-        for (f, ftag) in mesh.faces().zip(mesh.ftags()) {
-            for i in f.iter().copied() {
-                let tag = vtags[i as usize];
-                if tag.0 == E::Face::DIM as Dim && tag.1 != ftag {
-                    let e = self.get_from_parents_iter(
-                        E::Face::DIM as Dim - 1,
-                        [ftag, tag.1].iter().copied(),
-                    );
-                    if let Some(e) = e {
-                        vtags[i as usize] = e.tag;
+    ) -> (Vec<E::Face>, Vec<Tag>, Tag) {
+        let dim = E::Face::DIM as Dim;
+        let edg2face = get_face_to_elem(faces.iter().copied());
+        let mut next_tag = self.max_tag(dim);
+        let mut edgs = Vec::new();
+        let mut etags = Vec::new();
+        for (e, e2f) in &edg2face {
+            let ftags = e2f
+                .iter()
+                .map(|&i_face| ftags[i_face as usize])
+                .collect::<FxHashSet<_>>();
+            let should_be_tagged = e2f.len() != 2 || ftags.len() != 1;
+            if should_be_tagged {
+                #[allow(clippy::option_if_let_else)]
+                let t = if let Some(node) = self.get_from_parents_iter(dim, ftags.iter().copied()) {
+                    node.tag.1
+                } else {
+                    next_tag += 1;
+                    let flg = if ftags.iter().copied().any(|t| t < 0) {
+                        -1
                     } else {
-                        todo!();
+                        1
+                    };
+                    self.insert_iter((dim, flg * next_tag), ftags.iter().copied());
+                    flg * next_tag
+                };
+                e.iter().for_each(|&i| {
+                    let i = i as usize;
+                    if vtags[i].0 == dim && (vtags[i].1 == 0 || vtags[i].1 != t) {
+                        vtags[i] = (dim, 0);
+                    } else {
+                        vtags[i] = (dim, t);
+                    }
+                });
+                edgs.push(*e);
+                etags.push(t);
+            }
+        }
+        (edgs, etags, next_tag)
+    }
+
+    fn check_and_fix<E: Elem>(&mut self, elems: &[E], etags: &[Tag], vtags: &mut [TopoTag]) {
+        let vert2elems = CSRGraph::transpose(elems, Some(vtags.len()));
+        for (i_vert, vtag) in vtags.iter_mut().enumerate() {
+            let ids = vert2elems.row(i_vert as Idx);
+            let mut tags = ids
+                .iter()
+                .map(|&i| etags[i as usize])
+                .collect::<FxHashSet<_>>();
+            if vtag.0 > E::DIM as Dim {
+                assert!(vtag.1 != 0);
+            }
+            if tags.len() > 1 {
+                if vtag.0 == E::DIM as Dim {
+                    if vtag.1 != 0 {
+                        tags.insert(vtag.1);
+                    }
+                    let dim = E::Face::DIM as Dim;
+                    if let Some(node) = self.get_from_parents_iter(dim + 1, tags.iter().copied()) {
+                        *vtag = node.tag;
+                    } else {
+                        let tag = self.max_tag(dim) + 1;
+                        let flg = if tags.iter().copied().any(|t| t < 0) {
+                            -1
+                        } else {
+                            1
+                        };
+                        self.insert_iter((dim, flg * tag), tags.iter().copied());
+                        *vtag = (dim, flg * tag);
                     }
                 }
+
+                if tags
+                    .iter()
+                    .copied()
+                    .any(|t| !self.is_child((E::DIM as Dim, t), *vtag))
+                {
+                    // assert_eq!(
+                    //     vtag.1,
+                    //     0,
+                    //     "Cannot fix tag {vtag:?}: parents dim = {}, tags = {tags:?}\n{self}",
+                    //     E::DIM
+                    // );
+                    let dim = E::Face::DIM as Dim;
+                    if let Some(node) = self.get_from_parents_iter(dim + 1, tags.iter().copied()) {
+                        *vtag = node.tag;
+                    } else {
+                        let tag = self.max_tag(dim) + 1;
+                        let flg = if tags.iter().copied().any(|t| t < 0) {
+                            -1
+                        } else {
+                            1
+                        };
+                        self.insert_iter((dim, flg * tag), tags.iter().copied());
+                        *vtag = (dim, flg * tag);
+                    }
+                }
+
+                for &t in &tags {
+                    assert!(
+                        self.is_child((E::DIM as Dim, t), *vtag),
+                        "{vtag:?} is not a children of {:?}\n{self}",
+                        (E::DIM as Dim, t)
+                    );
+                }
             }
         }
+    }
+
+    #[allow(clippy::too_many_lines)]
+    pub fn update_from_elems_and_faces<E: Elem>(
+        &mut self,
+        elems: &[E],
+        etags: &[Tag],
+        faces: &[E::Face],
+        ftags: &[Tag],
+    ) -> Vec<TopoTag> {
+        assert!(
+            E::DIM == 2 || E::DIM == 3,
+            "Invalid element dimension {}",
+            E::DIM
+        );
+        assert!(!etags.iter().any(|&t| t == 0));
+        assert!(!ftags.iter().any(|&t| t == 0));
+
+        let n_verts = elems.iter().copied().flatten().max().unwrap() + 1;
+
+        let mut vtags = vec![(E::DIM as Dim, 0); n_verts as usize];
+
+        // Tag vertices based on element tags
+        // (will not be valid if the vertex belongs to elements with different tags)
+        self.update_from_elems(elems, etags, &mut vtags);
+
+        // Tag vertices based on face tags
+        // (will not be valid if the vertex belongs to faces with different tags)
+        self.update_from_faces(elems, etags, faces, ftags, &mut vtags);
+
+        // Check that all faces are tagged
+        assert!(
+            self.check_untagged(elems, etags),
+            "All the faces were not properly tagged"
+        );
+
+        if E::DIM == 3 {
+            let (edgs, edgtags, _next_edg_tag) =
+                self.update_and_get_children(faces, ftags, &mut vtags);
+            let (verts, verttags, _next_edg_tag) =
+                self.update_and_get_children(&edgs, &edgtags, &mut vtags);
+
+            // Check
+            self.check_and_fix(elems, etags, &mut vtags);
+            self.check_and_fix(faces, ftags, &mut vtags);
+            self.check_and_fix(&edgs, &edgtags, &mut vtags);
+            self.check_and_fix(&verts, &verttags, &mut vtags);
+        } else {
+            let (verts, verttags, _next_edg_tag) =
+                self.update_and_get_children(faces, ftags, &mut vtags);
+
+            // Check
+            self.check_and_fix(elems, etags, &mut vtags);
+            self.check_and_fix(faces, ftags, &mut vtags);
+            self.check_and_fix(&verts, &verttags, &mut vtags);
+        };
+
         self.compute_parents();
 
         vtags
     }
 
-    #[must_use]
-    pub fn from_mesh<const D: usize, E: Elem>(mesh: &SimplexMesh<D, E>) -> (Self, Vec<TopoTag>) {
-        info!("Building topology from mesh");
-
-        let mut topo = Self::new(E::N_VERTS as Dim - 1);
-        let vtags = topo.update_from_mesh(mesh);
-        (topo, vtags)
+    pub fn clear<F: FnMut(TopoTag) -> bool>(&mut self, mut filter: F) {
+        let mut new_entities = vec![Vec::new(); self.dim as usize + 1];
+        for dim in 0..=self.dim {
+            for node in &self.entities[dim as usize] {
+                if !filter(node.tag) {
+                    let dim = node.tag.0;
+                    let new_node = TopoNode {
+                        tag: node.tag,
+                        children: node
+                            .children
+                            .iter()
+                            .copied()
+                            .filter(|&n| !filter((dim - 1, n)))
+                            .collect(),
+                        parents: node
+                            .parents
+                            .iter()
+                            .copied()
+                            .filter(|&n| !filter((dim + 1, n)))
+                            .collect(),
+                    };
+                    new_entities[dim as usize].push(new_node);
+                }
+            }
+        }
+        self.entities = new_entities;
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
+        mesh::{Point, SimplexMesh},
         test_meshes::{test_mesh_2d, test_mesh_2d_nobdy, test_mesh_3d},
-        topo_elems::{Edge, Triangle},
-        topology::{Dim, Tag, Topology},
+        topo_elems::{Tetrahedron, Triangle},
+        topology::{Tag, Topology},
     };
 
     #[test]
@@ -515,124 +578,6 @@ mod tests {
 
         let p = t.parents.get(&((0, 2), (1, 3)));
         assert!(p.is_none());
-
-        let mut tags = std::iter::once(&(2 as Dim, 1 as Tag)).copied();
-        let p = t.elem_tag(&mut tags);
-        assert!(p.is_some());
-        assert_eq!(p.unwrap().0, 2);
-        assert_eq!(p.unwrap().1, 1);
-
-        let mut tags = [(2 as Dim, 1 as Tag), (2 as Dim, 2 as Tag)].iter().copied();
-        let p = t.elem_tag(&mut tags);
-        assert!(p.is_none());
-
-        let mut tags = [(1 as Dim, 1 as Tag), (1 as Dim, 2 as Tag)].iter().copied();
-        let p = t.elem_tag(&mut tags);
-        assert!(p.is_some());
-        assert_eq!(p.unwrap().0, 2);
-        assert_eq!(p.unwrap().1, 1);
-
-        let mut tags = [(1 as Dim, 1 as Tag), (1 as Dim, 5 as Tag)].iter().copied();
-        let p = t.elem_tag(&mut tags);
-        assert!(p.is_some());
-        assert_eq!(p.unwrap().0, 2);
-        assert_eq!(p.unwrap().1, 1);
-
-        let mut tags = [(0 as Dim, 1 as Tag), (0 as Dim, 3 as Tag)].iter().copied();
-        let p = t.elem_tag(&mut tags);
-        assert!(p.is_some());
-        assert_eq!(p.unwrap().0, 1);
-        assert_eq!(p.unwrap().1, 5);
-
-        let mut tags = [
-            (0 as Dim, 1 as Tag),
-            (0 as Dim, 2 as Tag),
-            (0 as Dim, 3 as Tag),
-        ]
-        .iter()
-        .copied();
-        let p = t.elem_tag(&mut tags);
-        assert!(p.is_some());
-        assert_eq!(p.unwrap().0, 2);
-        assert_eq!(p.unwrap().1, 1);
-    }
-
-    #[test]
-    fn test_get_faces_and_tags_2d_nobdy() {
-        let elems = [Triangle::new(0, 1, 2), Triangle::new(0, 2, 3)];
-        let etags = [1, 2];
-        let faces = Vec::new();
-        let ftags = Vec::new();
-
-        let mut topo = Topology::new(2);
-        topo.insert((2, 1), &[]);
-        topo.insert((2, 2), &[]);
-        let (_elems, _etags) = topo.update_from_faces_and_tags(
-            elems.iter().copied(),
-            etags.iter().copied(),
-            faces.iter().copied(),
-            ftags.iter().copied(),
-        );
-
-        assert_eq!(topo.entities[0].len(), 0);
-        assert_eq!(topo.entities[1].len(), 3);
-        assert_eq!(topo.entities[2].len(), 2);
-    }
-
-    #[test]
-    fn test_get_faces_and_tags_2d() {
-        let elems = [Triangle::new(0, 1, 2), Triangle::new(0, 2, 3)];
-        let etags = [1, 2];
-        let faces = [
-            Edge::new(0, 1),
-            Edge::new(1, 2),
-            Edge::new(2, 3),
-            Edge::new(3, 0),
-        ];
-        let ftags = [1, 2, 3, 4];
-
-        let mut topo = Topology::new(2);
-        topo.insert((2, 1), &[]);
-        topo.insert((2, 2), &[]);
-        let (_elems, _etags) = topo.update_from_faces_and_tags(
-            elems.iter().copied(),
-            etags.iter().copied(),
-            faces.iter().copied(),
-            ftags.iter().copied(),
-        );
-
-        assert_eq!(topo.entities[0].len(), 0);
-        assert_eq!(topo.entities[1].len(), 5);
-        assert_eq!(topo.entities[2].len(), 2);
-    }
-
-    #[test]
-    fn test_from_elems_and_faces_2d_nobdy() {
-        let mesh = test_mesh_2d_nobdy();
-        let (topo, vtags) = Topology::from_mesh(&mesh);
-
-        assert_eq!(topo.entities[0].len(), 1);
-        assert_eq!(topo.entities[1].len(), 3);
-        assert_eq!(topo.entities[2].len(), 2);
-        assert_eq!(vtags[0].0, 0);
-        assert_eq!(vtags[1].0, 1);
-        assert_eq!(vtags[2].0, 0);
-        assert_eq!(vtags[3].0, 1);
-    }
-
-    #[test]
-    fn test_from_elems_and_faces_2d() {
-        let mesh = test_mesh_2d();
-
-        let (topo, vtags) = Topology::from_mesh(&mesh);
-
-        assert_eq!(topo.entities[0].len(), 4);
-        assert_eq!(topo.entities[1].len(), 5);
-        assert_eq!(topo.entities[2].len(), 2);
-        assert_eq!(vtags[0], topo.get_from_parents(0, &[1, 4, 5]).unwrap().tag);
-        assert_eq!(vtags[1], topo.get_from_parents(0, &[1, 2]).unwrap().tag);
-        assert_eq!(vtags[2], topo.get_from_parents(0, &[2, 3, 5]).unwrap().tag);
-        assert_eq!(vtags[3], topo.get_from_parents(0, &[3, 4]).unwrap().tag);
     }
 
     #[test]
@@ -651,20 +596,8 @@ mod tests {
     }
 
     #[test]
-    fn test_from_elems_and_faces_3d() {
-        let mesh = test_mesh_3d();
-
-        let (topo, _vtags) = Topology::from_mesh(&mesh);
-
-        assert_eq!(topo.entities[0].len(), 8);
-        assert_eq!(topo.entities[1].len(), 12);
-        assert_eq!(topo.entities[2].len(), 6);
-        assert_eq!(topo.entities[3].len(), 1);
-    }
-
-    #[test]
     #[should_panic]
-    fn test_invalid_tags() {
+    fn test_invalid_2d_1() {
         let mut mesh = test_mesh_2d();
         mesh.mut_ftags().for_each(|tag| *tag = 1);
         mesh.compute_topology();
@@ -672,7 +605,14 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn test_invalid_tags_2() {
+    fn test_invalid_2d_2() {
+        let mut mesh = test_mesh_2d_nobdy();
+        mesh.compute_topology();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_invalid_2d_3() {
         let mut mesh = test_mesh_2d();
         mesh.mut_ftags()
             .zip([2, 1, 1, 3])
@@ -681,11 +621,273 @@ mod tests {
     }
 
     #[test]
-    fn test_valid_tags() {
+    #[should_panic]
+    fn test_invalid_2d_4() {
         let mut mesh = test_mesh_2d();
         mesh.mut_ftags()
             .zip([1, 1, 2, 2])
             .for_each(|(tag, v)| *tag = v);
         mesh.compute_topology();
+    }
+
+    #[test]
+    fn test_valid_2d_1() {
+        let mut mesh = test_mesh_2d();
+        mesh.mut_ftags()
+            .zip([1, 1, 2, 2])
+            .for_each(|(tag, v)| *tag = v);
+        mesh.add_boundary_faces();
+        let topo = mesh.compute_topology();
+
+        assert_eq!(topo.entities[0].len(), 1);
+        assert_eq!(topo.entities[1].len(), 3);
+        assert_eq!(topo.entities[2].len(), 2);
+    }
+
+    #[test]
+    fn test_valid_2d_1_split() {
+        let mut mesh = test_mesh_2d();
+        mesh.mut_ftags()
+            .zip([1, 1, 2, 2])
+            .for_each(|(tag, v)| *tag = v);
+        mesh.add_boundary_faces();
+
+        let mut mesh = mesh.split().split();
+        let topo = mesh.compute_topology();
+
+        assert_eq!(topo.entities[0].len(), 1);
+        assert_eq!(topo.entities[1].len(), 3);
+        assert_eq!(topo.entities[2].len(), 2);
+    }
+
+    #[test]
+    fn test_valid_2d_2() {
+        let mut mesh = test_mesh_2d();
+        mesh.add_boundary_faces();
+
+        mesh.compute_topology();
+        let topo = mesh.get_topology().unwrap();
+
+        assert_eq!(topo.entities[0].len(), 4);
+        assert_eq!(topo.entities[1].len(), 5);
+        assert_eq!(topo.entities[2].len(), 2);
+    }
+
+    #[test]
+    fn test_valid_2d_2_split() {
+        let mut mesh = test_mesh_2d();
+        mesh.add_boundary_faces();
+
+        let mut mesh = mesh.split().split();
+        mesh.compute_topology();
+        let topo = mesh.get_topology().unwrap();
+
+        assert_eq!(topo.entities[0].len(), 4);
+        assert_eq!(topo.entities[1].len(), 5);
+        assert_eq!(topo.entities[2].len(), 2);
+    }
+
+    #[test]
+    fn test_valid_3d() {
+        let mut mesh = test_mesh_3d();
+        mesh.compute_topology();
+        let topo = mesh.get_topology().unwrap();
+
+        assert_eq!(topo.entities[0].len(), 8);
+        assert_eq!(topo.entities[1].len(), 12);
+        assert_eq!(topo.entities[2].len(), 6);
+        assert_eq!(topo.entities[3].len(), 1);
+    }
+
+    #[test]
+    fn test_corner_2d_1() {
+        let verts = vec![
+            Point::<2>::new(0.0, 0.0),
+            Point::<2>::new(1.0, 0.0),
+            Point::<2>::new(2.0, 0.0),
+            Point::<2>::new(0.0, 1.0),
+            Point::<2>::new(2.0, 1.0),
+        ];
+        let elems = vec![Triangle::new(0, 1, 3), Triangle::new(1, 2, 4)];
+        let etags = vec![1, 1];
+        let faces = vec![];
+        let ftags = vec![];
+
+        let mut mesh = SimplexMesh::new(verts, elems, etags, faces, ftags);
+        mesh.add_boundary_faces();
+        mesh.compute_topology();
+        let topo = mesh.get_topology().unwrap();
+
+        assert_eq!(topo.entities[0].len(), 1);
+        assert_eq!(topo.entities[1].len(), 1);
+        assert_eq!(topo.entities[2].len(), 1);
+    }
+
+    #[test]
+    fn test_corner_2d_2() {
+        let verts = vec![
+            Point::<2>::new(0.0, 0.0),
+            Point::<2>::new(1.0, 0.0),
+            Point::<2>::new(2.0, 0.0),
+            Point::<2>::new(0.0, 1.0),
+            Point::<2>::new(2.0, 1.0),
+        ];
+        let elems = vec![Triangle::new(0, 1, 3), Triangle::new(1, 2, 4)];
+        let etags = vec![1, 2];
+        let faces = vec![];
+        let ftags = vec![];
+
+        let mut mesh = SimplexMesh::new(verts, elems, etags, faces, ftags);
+        mesh.add_boundary_faces();
+        mesh.compute_topology();
+        let topo = mesh.get_topology().unwrap();
+
+        assert_eq!(topo.entities[0].len(), 1);
+        assert_eq!(topo.entities[1].len(), 2);
+        assert_eq!(topo.entities[2].len(), 2);
+    }
+
+    #[test]
+    fn test_corner_2d_2_split() {
+        let verts = vec![
+            Point::<2>::new(0.0, 0.0),
+            Point::<2>::new(1.0, 0.0),
+            Point::<2>::new(2.0, 0.0),
+            Point::<2>::new(0.0, 1.0),
+            Point::<2>::new(2.0, 1.0),
+        ];
+        let elems = vec![Triangle::new(0, 1, 3), Triangle::new(1, 2, 4)];
+        let etags = vec![1, 2];
+        let faces = vec![];
+        let ftags = vec![];
+
+        let mut mesh = SimplexMesh::new(verts, elems, etags, faces, ftags)
+            .split()
+            .split();
+        mesh.add_boundary_faces();
+        mesh.compute_topology();
+        let topo = mesh.get_topology().unwrap();
+
+        assert_eq!(topo.entities[0].len(), 1);
+        assert_eq!(topo.entities[1].len(), 2);
+        assert_eq!(topo.entities[2].len(), 2);
+    }
+
+    #[test]
+    fn test_corner_3d_1() {
+        let verts = vec![
+            Point::<3>::new(0.0, 0.0, 0.0),
+            Point::<3>::new(1.0, 0.0, 0.0),
+            Point::<3>::new(0.0, 1.0, 0.0),
+            Point::<3>::new(0.0, 0.0, 1.0),
+            Point::<3>::new(1.0, 0.0, 1.0),
+            Point::<3>::new(0.0, 1.0, 1.0),
+            Point::<3>::new(0.0, 0.0, 0.5),
+        ];
+        let elems = vec![Tetrahedron::new(0, 1, 2, 6), Tetrahedron::new(3, 5, 4, 6)];
+        let etags = vec![1, 2];
+        let faces = vec![];
+        let ftags = vec![];
+
+        let mut mesh = SimplexMesh::new(verts, elems, etags, faces, ftags);
+        mesh.add_boundary_faces();
+        mesh.compute_face_to_elems();
+        mesh.check().unwrap();
+        mesh.compute_topology();
+        let topo = mesh.get_topology().unwrap();
+        assert_eq!(topo.entities[0].len(), 0);
+        assert_eq!(topo.entities[1].len(), 1);
+        assert_eq!(topo.entities[2].len(), 3);
+        assert_eq!(topo.entities[3].len(), 2);
+    }
+
+    #[test]
+    fn test_corner_3d_1_split() {
+        let verts = vec![
+            Point::<3>::new(0.0, 0.0, 0.0),
+            Point::<3>::new(1.0, 0.0, 0.0),
+            Point::<3>::new(0.0, 1.0, 0.0),
+            Point::<3>::new(0.0, 0.0, 1.0),
+            Point::<3>::new(1.0, 0.0, 1.0),
+            Point::<3>::new(0.0, 1.0, 1.0),
+            Point::<3>::new(0.0, 0.0, 0.5),
+        ];
+        let elems = vec![Tetrahedron::new(0, 1, 2, 6), Tetrahedron::new(3, 5, 4, 6)];
+        let etags = vec![1, 2];
+        let faces = vec![];
+        let ftags = vec![];
+
+        let mut mesh = SimplexMesh::new(verts, elems, etags, faces, ftags);
+        mesh.add_boundary_faces();
+
+        let mut mesh = mesh.split().split();
+        mesh.compute_face_to_elems();
+        mesh.check().unwrap();
+        mesh.compute_topology();
+        let topo = mesh.get_topology().unwrap();
+        assert_eq!(topo.entities[0].len(), 0);
+        assert_eq!(topo.entities[1].len(), 1);
+        assert_eq!(topo.entities[2].len(), 3);
+        assert_eq!(topo.entities[3].len(), 2);
+    }
+
+    #[test]
+    fn test_corner_3d_2() {
+        let verts = vec![
+            Point::<3>::new(0.0, 0.0, 0.0),
+            Point::<3>::new(1.0, 0.0, 0.0),
+            Point::<3>::new(0.0, 1.0, 0.0),
+            Point::<3>::new(0.0, 0.0, 1.0),
+            Point::<3>::new(1.0, 0.0, 1.0),
+            Point::<3>::new(0.0, 1.0, 1.0),
+            Point::<3>::new(0.0, 0.0, 0.5),
+        ];
+        let elems = vec![Tetrahedron::new(0, 1, 2, 6), Tetrahedron::new(3, 5, 4, 6)];
+        let etags = vec![1, 2];
+        let faces = vec![];
+        let ftags = vec![];
+
+        let mut mesh = SimplexMesh::new(verts, elems, etags, faces, ftags);
+        mesh.add_boundary_faces();
+        mesh.mut_etags().for_each(|t| *t = 1);
+        mesh.compute_face_to_elems();
+        mesh.check().unwrap();
+        mesh.compute_topology();
+        let topo = mesh.get_topology().unwrap();
+        assert_eq!(topo.entities[0].len(), 0);
+        assert_eq!(topo.entities[1].len(), 1);
+        assert_eq!(topo.entities[2].len(), 2);
+        assert_eq!(topo.entities[3].len(), 1);
+    }
+
+    #[test]
+    fn test_corner_3d_2_split() {
+        let verts = vec![
+            Point::<3>::new(0.0, 0.0, 0.0),
+            Point::<3>::new(1.0, 0.0, 0.0),
+            Point::<3>::new(0.0, 1.0, 0.0),
+            Point::<3>::new(0.0, 0.0, 1.0),
+            Point::<3>::new(1.0, 0.0, 1.0),
+            Point::<3>::new(0.0, 1.0, 1.0),
+            Point::<3>::new(0.0, 0.0, 0.5),
+        ];
+        let elems = vec![Tetrahedron::new(0, 1, 2, 6), Tetrahedron::new(3, 5, 4, 6)];
+        let etags = vec![1, 2];
+        let faces = vec![];
+        let ftags = vec![];
+
+        let mut mesh = SimplexMesh::new(verts, elems, etags, faces, ftags);
+        mesh.add_boundary_faces();
+        mesh.mut_etags().for_each(|t| *t = 1);
+
+        let mut mesh = mesh.split().split();
+        mesh.compute_face_to_elems();
+        mesh.check().unwrap();
+        mesh.compute_topology();
+        let topo = mesh.get_topology().unwrap();
+        assert_eq!(topo.entities[0].len(), 0);
+        assert_eq!(topo.entities[1].len(), 1);
+        assert_eq!(topo.entities[2].len(), 2);
+        assert_eq!(topo.entities[3].len(), 1);
     }
 }

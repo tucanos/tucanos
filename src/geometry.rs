@@ -232,7 +232,7 @@ where
         let mut edges = FxHashMap::with_hasher(BuildHasherDefault::default());
         if E::DIM == 2 {
             bdy.add_boundary_faces();
-            let (bdy_topo, _) = Topology::from_mesh(&bdy);
+            let bdy_topo = bdy.compute_topology().clone();
             let (bdy_edges, _) = bdy.boundary();
 
             let edge_tags: FxHashSet<Tag> = bdy_edges.etags().collect();

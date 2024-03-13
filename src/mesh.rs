@@ -859,20 +859,32 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Compute the mesh topology
-    pub fn compute_topology(&mut self) {
-        let (topo, vtags) = Topology::from_mesh(self);
+    pub fn compute_topology(&mut self) -> &Topology {
         if self.topo.is_none() {
+            let mut topo = Topology::new(E::DIM as Dim);
+            let vtags = topo.update_from_elems_and_faces(
+                &self.elems,
+                &self.etags,
+                &self.faces,
+                &self.ftags,
+            );
             self.topo = Some(topo);
             self.vtags = Some(vtags);
         } else {
             warn!("Topology already computed");
         }
+        self.topo.as_ref().unwrap()
     }
 
     /// Compute the mesh topology but updating an existing one
     pub fn compute_topology_from(&mut self, mut topo: Topology) {
         if self.topo.is_none() {
-            let vtags = topo.update_from_mesh(self);
+            let vtags = topo.update_from_elems_and_faces(
+                &self.elems,
+                &self.etags,
+                &self.faces,
+                &self.ftags,
+            );
             self.topo = Some(topo);
             self.vtags = Some(vtags);
         } else {
