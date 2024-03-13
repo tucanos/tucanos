@@ -162,7 +162,10 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
             .enumerate()
             .for_each(|(i_part, submesh)| {
                 let mut local_mesh = submesh.mesh;
-                local_mesh.compute_topology();
+                // to be consistent with the base topology
+                local_mesh.mut_etags().for_each(|t| *t = 1);
+                let topo = self.mesh.get_topology().unwrap().clone();
+                local_mesh.compute_topology_from(topo);
                 if self.debug {
                     let fname = format!("part_{i_part}.vtu");
                     local_mesh.write_vtk(&fname, None, None).unwrap();
@@ -224,6 +227,8 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
             });
 
         let mut interface_mesh = interface_mesh.into_inner().unwrap();
+        // to be consistent with the base topology
+        interface_mesh.mut_etags().for_each(|t| *t = 1);
         interface_mesh.remove_faces(|t| t < 0 && t > Tag::MIN);
 
         if self.debug {
@@ -237,7 +242,8 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
                 .unwrap();
         }
 
-        interface_mesh.compute_topology();
+        let topo = self.mesh.get_topology().unwrap().clone();
+        interface_mesh.compute_topology_from(topo);
         let interface_m = interface_m.into_inner().unwrap();
         // todo
         let interface_mesh = if true {
