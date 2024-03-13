@@ -1116,6 +1116,11 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     let ftype = FilledCavityType::ExistingVertex(local_i1);
                     let filled_cavity = FilledCavity::new(&cavity, ftype);
 
+                    if !filled_cavity.check_tagged_faces(self) {
+                        trace!("Cannot collapse, tagged face already present");
+                        continue;
+                    }
+
                     if !filled_cavity.check_boundary_normals(&self.topo, geom, params.max_angle) {
                         trace!("Cannot collapse, would create a non smooth surface");
                         continue;
@@ -1142,7 +1147,17 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                         }
                         for (b, t) in filled_cavity.tagged_faces_boundary_global() {
                             assert!(!b.contains_vertex(i1));
-                            self.add_tagged_face(E::Face::from_vertex_and_face(i1, &b), t)?;
+                            // self.add_tagged_face(E::Face::from_vertex_and_face(i1, &b), t)?;
+                            if self
+                                .add_tagged_face(E::Face::from_vertex_and_face(i1, &b), t)
+                                .is_err()
+                            {
+                                filled_cavity.debug();
+                                panic!(
+                                    "error with face {:?}",
+                                    E::Face::from_vertex_and_face(i1, &b)
+                                );
+                            }
                         }
 
                         n_collapses += 1;
