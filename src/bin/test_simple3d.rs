@@ -1,8 +1,11 @@
 use env_logger::Env;
 use nalgebra::SMatrix;
 use rustc_hash::FxHashMap;
-use std::{f64::consts::PI, hash::BuildHasherDefault};
+use std::{f64::consts::PI, hash::BuildHasherDefault, time::Instant};
 use tucanos::{
+    domain_decomposition::{
+        DomainDecomposition, DomainDecompositionRemeshingParams, PartitionType,
+    },
     geom_elems::GElem,
     geometry::Geometry,
     mesh::{Point, SimplexMesh},
@@ -113,15 +116,9 @@ impl Simple3dGeometry {
                 WING_1_TAG => {
                     let ellipse = EllipseProjection::new(0.5, 0.05);
                     let (nx, ny) = ellipse.normal(pt[0], pt[1]);
-                    assert!(ny > -EllipseProjection::TOL);
-                    -Point::<3>::new(nx, ny.abs(), 0.0)
+                    -Point::<3>::new(nx, ny, 0.0)
                 }
-                WING_2_TAG => {
-                    let ellipse = EllipseProjection::new(0.5, 0.05);
-                    let (nx, ny) = ellipse.normal(pt[0], pt[1]);
-                    assert!(ny < EllipseProjection::TOL);
-                    -Point::<3>::new(nx, -ny.abs(), 0.0)
-                }
+                WING_2_TAG => unreachable!("Tag has been removed"),
                 WINGTIP_TAG => {
                     let x = pt[0];
                     let y = pt[1];
@@ -138,10 +135,9 @@ impl Simple3dGeometry {
                         -Point::<3>::new(nx, ny, 0.0)
                     }
                 }
-
-                _ => unreachable!(),
+                _ => panic!("Invalid tag {tag:?}"),
             },
-            _ => unreachable!(),
+            _ => panic!("Invalid tag {tag:?}"),
         };
         n.normalize()
     }
@@ -155,6 +151,10 @@ impl Geometry<3> for Simple3dGeometry {
     fn project(&self, pt: &mut Point<3>, tag: &TopoTag) -> f64 {
         let old = *pt;
 
+        if tag.1 < 0 {
+            return 0.0;
+        }
+
         *pt = match tag.0 {
             2 => match tag.1 {
                 SYMMETRY_TAG => Point::<3>::new(old[0], old[1], 0.0),
@@ -165,15 +165,9 @@ impl Geometry<3> for Simple3dGeometry {
                 WING_1_TAG => {
                     let ellipse = EllipseProjection::new(0.5, 0.05);
                     let (x, y) = ellipse.project(old[0], old[1]);
-                    // actually not correct!
-                    Point::<3>::new(x, y.abs(), old[2].min(2.0))
+                    Point::<3>::new(x, y, old[2].min(2.0))
                 }
-                WING_2_TAG => {
-                    let ellipse = EllipseProjection::new(0.5, 0.05);
-                    let (x, y) = ellipse.project(old[0], old[1]);
-                    // actually not correct!
-                    Point::<3>::new(x, -y.abs(), old[2].min(2.0))
-                }
+                WING_2_TAG => unreachable!(),
                 WINGTIP_TAG => {
                     let x = old[0];
                     let y = old[1];
@@ -194,7 +188,7 @@ impl Geometry<3> for Simple3dGeometry {
                 _ => unreachable!(),
             },
             1 => {
-                let node = self.0.get(*tag).unwrap();
+                let node = self.0.get(*tag).unwrap_or_else(|| panic!("tag = {tag:?}"));
                 assert_eq!(node.parents.len(), 2);
                 let mut parents = node.parents.iter().copied().collect::<Vec<_>>();
                 parents.sort_unstable();
@@ -262,9 +256,11 @@ fn check_geom(mesh: &SimplexMesh<3, Tetrahedron>, geom: &Simple3dGeometry) {
         }
     }
     for (&name, &tag) in FACE_NAMES.iter().zip(FACE_TAGS.iter()) {
-        println!("{name} (tag = {tag})");
-        println!("  max. distance: {:.2e}", max_dist.get(&tag).unwrap());
-        println!("  max. angle: {:.2e}", max_angle.get(&tag).unwrap());
+        if max_dist.contains_key(&tag) {
+            println!("{name} (tag = {tag})");
+            println!("  max. distance: {:.2e}", max_dist.get(&tag).unwrap());
+            println!("  max. angle: {:.2e}", max_angle.get(&tag).unwrap());
+        }
     }
 }
 
@@ -282,13 +278,6 @@ fn get_bl_metric(
             let mut tmp = pt;
             let mut d = geom.project(&mut tmp, &(2, WING_1_TAG));
             let mut tag = WING_1_TAG;
-
-            let mut tmp = pt;
-            let d1 = geom.project(&mut tmp, &(2, WING_2_TAG));
-            if d1 < d {
-                d = d1;
-                tag = WING_2_TAG;
-            }
 
             let mut tmp = pt;
             let d1 = geom.project(&mut tmp, &(2, WINGTIP_TAG));
@@ -311,16 +300,22 @@ fn get_bl_metric(
         .collect::<Vec<_>>()
 }
 fn main() -> Result<()> {
-    init_log("debug");
+    init_log("warn");
 
     // Load the mesh
     let mut mesh = SimplexMesh::<3, Tetrahedron>::read_meshb("data/simple3d.meshb")?;
+
+    // Merge tags WING_1_TAG and WING_2_TAG to make analytical projection easier
+    mesh.mut_ftags().for_each(|t| {
+        if *t == WING_2_TAG {
+            *t = WING_1_TAG;
+        }
+    });
 
     // Fix face orientation
     mesh.add_boundary_faces();
 
     // Check the mesh
-    mesh.compute_face_to_elems();
     mesh.check()?;
 
     // Save the input mesh in .vtu format
@@ -336,7 +331,11 @@ fn main() -> Result<()> {
     geom.check(topo)?;
 
     // Check the geometry
-    check_geom(&mesh, &geom);
+    if false {
+        check_geom(&mesh, &geom);
+    }
+
+    geom.project_vertices(&mut mesh);
 
     // Compute the implied metric
     mesh.compute_vertex_to_elems();
@@ -357,24 +356,46 @@ fn main() -> Result<()> {
         .map(|(m0, m1)| m0.intersect(m1))
         .collect::<Vec<_>>();
 
-    let mut remesher = Remesher::new(&mesh, &metric, &geom)?;
-
+    let debug = false;
     let params = RemesherParams {
         two_steps: false,
         num_iter: 2,
         split_max_iter: 1,
         collapse_max_iter: 1,
-        debug: false,
+        max_angle: 25.0,
+        debug,
         ..RemesherParams::default()
     };
 
-    remesher.remesh(params, &geom)?;
-    remesher.check()?;
-
-    let mesh = remesher.to_mesh(true);
+    let n_part = 8;
+    let now = Instant::now();
+    let mut mesh = if n_part == 1 {
+        let mut remesher = Remesher::new(&mesh, &metric, &geom)?;
+        remesher.remesh(params, &geom)?;
+        remesher.check()?;
+        remesher.to_mesh(true)
+    } else {
+        let mut dd = DomainDecomposition::new(mesh, PartitionType::Scotch(n_part))?;
+        dd.set_debug(debug);
+        let dd_params = DomainDecompositionRemeshingParams::new(2, 2, 10000);
+        let (mesh, stats) = dd.remesh(&metric, &geom, params, dd_params)?;
+        stats.print_summary();
+        mesh
+    };
+    println!(
+        "Remeshing done in {}s with {n_part} partitions",
+        now.elapsed().as_secs_f32()
+    );
     mesh.write_vtk("simple3d_remeshed.vtu", None, None)?;
     let bdy = mesh.boundary().0;
     bdy.write_vtk("simple3d_remeshed_bdy.vtu", None, None)?;
+
+    let max_angle = geom.max_normal_angle(&mesh);
+    println!("max angle : {max_angle}");
+    assert!(max_angle < 25.0);
+
+    mesh.compute_face_to_elems();
+    mesh.check()?;
 
     Ok(())
 }
