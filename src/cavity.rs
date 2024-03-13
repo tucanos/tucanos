@@ -367,6 +367,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> fmt::Display for Cavity<D, E, M> {
 }
 
 /// Filled cavity type
+#[derive(Debug)]
 pub enum FilledCavityType<const D: usize, M: Metric<D>> {
     ExistingVertex(Idx),
     MovedVertex((Idx, Point<D>, M)),
@@ -518,6 +519,13 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
         let (p0, m0) = self.point();
 
         for (b, tag) in self.tagged_faces_boundary() {
+            assert!(
+                tag > 0,
+                "Invalid tag{}\n {:?}\n {}",
+                tag,
+                self.ftype,
+                self.cavity
+            );
             let gb = <<E::Face as Elem>::Geom<D, M> as GElem<D, M>>::Face::from_verts(
                 b.iter().map(|&i| {
                     let (vx, _, m) = self.cavity.vert(i);
