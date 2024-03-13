@@ -53,10 +53,12 @@ pub trait Geometry<const D: usize>: Send + Sync {
     fn max_normal_angle<E2: Elem>(&self, mesh: &SimplexMesh<D, E2>) -> f64 {
         let mut a_max = 0.0;
         for (gf, tag) in mesh.gfaces().zip(mesh.ftags()) {
-            let c = gf.center();
-            let n = gf.normal();
-            let a = self.angle(&c, &n, &(E2::Face::DIM as Dim, tag));
-            a_max = f64::max(a_max, a);
+            if tag > 0 {
+                let c = gf.center();
+                let n = gf.normal();
+                let a = self.angle(&c, &n, &(E2::Face::DIM as Dim, tag));
+                a_max = f64::max(a_max, a);
+            }
         }
         a_max
     }
