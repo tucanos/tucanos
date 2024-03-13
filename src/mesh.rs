@@ -5,7 +5,7 @@ use crate::{
     spatialindex::{self, DefaultObjectIndex, DefaultPointIndex, ObjectIndex, PointIndex},
     topo_elems::{get_face_to_elem, Elem},
     topology::Topology,
-    twovec, Error, Idx, Result, Tag, TopoTag,
+    twovec, Dim, Error, Idx, Result, Tag, TopoTag,
 };
 use log::{debug, info, warn};
 use nalgebra::SVector;
@@ -568,7 +568,15 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// the face-to-element connectivity must be available
     /// internal tagged faces are also returned
     #[allow(clippy::type_complexity)]
-    pub fn boundary_faces(&self) -> Result<(Vec<E::Face>, Vec<Tag>, Tag, HashMap<Tag, Vec<Tag>>)> {
+    #[allow(clippy::too_many_lines)]
+    pub fn boundary_faces(
+        &self,
+    ) -> Result<(
+        Vec<E::Face>,
+        Vec<Tag>,
+        HashMap<Tag, Tag>,
+        HashMap<Tag, Vec<Tag>>,
+    )> {
         debug!("Compute and order the boundary faces");
         if self.faces_to_elems.is_none() {
             return Err(Error::from("face to element connectivity not computed"));
@@ -587,8 +595,11 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let mut bdy = Vec::with_capacity(n_bdy);
         let mut bdy_tags = Vec::with_capacity(n_bdy);
 
-        let new_faces_tag = self.ftags.iter().max().unwrap_or(&0) + 1;
-        let mut next_internal_tag = new_faces_tag + 1;
+        let n_elem_tags = self.etags().collect::<FxHashSet<_>>().len();
+
+        let mut next_boundary_tag = self.ftags.iter().max().unwrap_or(&0) + 1;
+        let mut boundary_faces_tags: HashMap<Tag, Tag> = HashMap::new();
+        let mut next_internal_tag = next_boundary_tag + n_elem_tags as Tag;
         let mut internal_faces_tags: HashMap<Tag, Vec<Tag>> = HashMap::new();
 
         for (k, v) in f2e {
@@ -602,10 +613,22 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     let is_same = !f.iter().zip(k.iter()).any(|(x, y)| x != y);
                     if is_same {
                         // face k is the i_face-th face of elem: use its orientation
-                        let tag = tagged_faces.get(&f).unwrap_or(&new_faces_tag);
-                        bdy_tags.push(*tag);
+                        #[allow(clippy::option_if_let_else)]
+                        let tag = if let Some(tag) = tagged_faces.get(&f) {
+                            *tag
+                        } else {
+                            let etag = self.etags[v[0] as usize];
+                            if let Some(tag) = boundary_faces_tags.get(&etag) {
+                                *tag
+                            } else {
+                                boundary_faces_tags.insert(etag, next_boundary_tag);
+                                next_boundary_tag += 1;
+                                next_boundary_tag - 1
+                            }
+                        };
                         let f = elem.face(i_face);
                         bdy.push(f);
+                        bdy_tags.push(tag);
                         ok = true;
                         break;
                     }
@@ -670,36 +693,24 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             }
         }
 
-        Ok((bdy, bdy_tags, new_faces_tag, internal_faces_tags))
+        Ok((bdy, bdy_tags, boundary_faces_tags, internal_faces_tags))
     }
 
     /// Add the missing boundary faces and make sure that boundary faces are oriented outwards
     /// If internal faces are present, these are keps
     /// TODO: add the missing internal faces (belonging to 2 elems tagged differently) if needed
     /// TODO: whatto do if > 2 elems?
-    pub fn add_boundary_faces(&mut self) -> (Tag, HashMap<Tag, Vec<Tag>>) {
+    pub fn add_boundary_faces(&mut self) -> (HashMap<Tag, Tag>, HashMap<Tag, Vec<Tag>>) {
         debug!("Add the missing boundary faces & orient all faces outwards");
         if self.faces_to_elems.is_none() {
             self.compute_face_to_elems();
         }
 
-        let (faces, ftags, new_tag, internal_faces) = self.boundary_faces().unwrap();
-        let n_untagged = ftags.iter().filter(|x| **x == new_tag).count();
-        if n_untagged > 0 {
-            info!("Added {} untagged faces with tag={}", n_untagged, new_tag);
-        }
-        for (tag, etags) in &internal_faces {
-            if *tag > new_tag {
-                info!(
-                    "Added tag {} to internal faces belonging to elements with tags {:?}",
-                    *tag, etags
-                );
-            }
-        }
+        let (faces, ftags, boundary_faces, internal_faces) = self.boundary_faces().unwrap();
         self.faces = faces;
         self.ftags = ftags;
 
-        (new_tag, internal_faces)
+        (boundary_faces, internal_faces)
     }
 
     /// Return the mesh of the boundary
