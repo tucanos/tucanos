@@ -776,7 +776,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     {
         let mut res = Self::empty();
         let (parent_vert_ids, parent_elem_ids, parent_face_ids) =
-            res.add(self, elem_filter, |_| true, None::<fn(Tag) -> bool>, None);
+            res.add(self, elem_filter, |_| true, None);
 
         SubSimplexMesh {
             mesh: res,
@@ -932,20 +932,17 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Add vertices, elements and faces from another mesh according to their tag
     ///   - only the elements with a tag t such that `element_filter(t)` is true are inserted
     ///   - among the faces belonging to these elements, only those with a tag such that `face_filter` is true are inserted
-    ///   - if `face_merge_filter` is not None, vertices for `other` on faces with a tagged t such that `face_merge_filter(t)`is true are merged
-    ///      with the closest vertices from `self`
-    pub fn add<F1, F2, F3>(
+    ///   - if `merger_tol` is not None, vertices on the boundaries of `self` and `other` are merged if closer than the tolerance.
+    pub fn add<F1, F2>(
         &mut self,
         other: &Self,
         mut elem_filter: F1,
         mut face_filter: F2,
-        face_merge_filter: Option<F3>,
         merge_tol: Option<f64>,
     ) -> (Vec<Idx>, Vec<Idx>, Vec<Idx>)
     where
         F1: FnMut(Tag) -> bool,
         F2: FnMut(Tag) -> bool,
-        F3: FnMut(Tag) -> bool,
     {
         self.clear_all();
 
@@ -960,32 +957,20 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             }
         }
 
-        // If needed, merge some face tags
-        if let Some(mut face_merge_filter) = face_merge_filter {
-            // flag the vertices in other that should be merged
-            let mut flg = vec![false; n_verts_other as usize];
-            other
-                .faces()
-                .zip(other.ftags())
-                .filter(|(_, t)| face_merge_filter(*t))
-                .flat_map(|(f, _)| f)
-                .for_each(|i| flg[i as usize] = true);
-
+        // If needed, merge vertices
+        if let Some(merge_tol) = merge_tol {
             let (bdy, ids) = self.boundary();
-            let smsh = bdy.extract(face_merge_filter);
-            if smsh.mesh.n_verts() > 0 {
-                let tree = <DefaultPointIndex<D> as PointIndex<D>>::new(&smsh.mesh);
-                other
-                    .verts()
-                    .enumerate()
-                    .filter(|(i_other, _)| flg[*i_other])
-                    .for_each(|(i_other, vx)| {
-                        let (i, _) = tree.nearest_vertex(&vx);
-                        let i = ids[smsh.parent_vert_ids[i as usize] as usize];
-                        if (vx - self.vert(i)).norm() < merge_tol.unwrap() {
-                            new_vert_ids[i_other] = i;
-                        }
-                    });
+            let (obdy, oids) = other.boundary();
+            if bdy.n_verts() > 0 && obdy.n_verts() > 0 {
+                let tree = <DefaultPointIndex<D> as PointIndex<D>>::new(&obdy);
+                bdy.verts().enumerate().for_each(|(i_self, vx)| {
+                    let (i_other, _) = tree.nearest_vertex(&vx);
+                    let i_self = ids[i_self];
+                    let i_other = oids[i_other as usize];
+                    if (vx - other.vert(i_other)).norm() < merge_tol {
+                        new_vert_ids[i_other as usize] = i_self as Idx;
+                    }
+                });
             }
         }
 
