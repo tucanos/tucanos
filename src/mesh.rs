@@ -303,7 +303,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         debug!("Compute the vertex to element connectivity");
 
         if self.vertex_to_elems.is_none() {
-            self.vertex_to_elems = Some(CSRGraph::transpose(&self.elems));
+            self.vertex_to_elems = Some(CSRGraph::transpose(&self.elems, None));
         } else {
             warn!("Vertex to element connectivity already computed");
         }

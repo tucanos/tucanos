@@ -133,8 +133,9 @@ pub struct CSRGraph {
 }
 
 impl CSRGraph {
-    fn set_ptr<E: IntoIterator<Item = Idx> + Copy>(elems: &[E]) -> Self {
-        let nv = elems.iter().copied().flatten().max().unwrap_or(0) as usize + 1;
+    fn set_ptr<E: IntoIterator<Item = Idx> + Copy>(elems: &[E], nv: Option<usize>) -> Self {
+        let nv = nv.unwrap_or(elems.iter().copied().flatten().max().unwrap_or(0) as usize + 1);
+
         let n = elems.iter().copied().flatten().count();
 
         let mut res = Self {
@@ -165,7 +166,7 @@ impl CSRGraph {
 
     #[must_use]
     pub fn new(edgs: &[[Idx; 2]]) -> Self {
-        let mut res = Self::set_ptr(edgs);
+        let mut res = Self::set_ptr(edgs, None);
         res.m = res.n();
 
         for e in edgs {
@@ -194,8 +195,8 @@ impl CSRGraph {
         res
     }
 
-    pub fn transpose<E: Elem>(elems: &[E]) -> Self {
-        let mut res = Self::set_ptr(elems);
+    pub fn transpose<E: Elem>(elems: &[E], nv: Option<usize>) -> Self {
+        let mut res = Self::set_ptr(elems, nv);
         res.m = elems.len() as Idx;
 
         for (i, e) in elems.iter().enumerate() {
@@ -330,7 +331,7 @@ mod tests {
             Triangle::from_slice(&[0, 2, 3]),
         ];
 
-        let g = CSRGraph::transpose(&g);
+        let g = CSRGraph::transpose(&g, None);
         assert_eq!(g.n(), 4);
         assert_eq!(g.m(), 2);
 
