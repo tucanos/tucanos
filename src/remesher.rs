@@ -5,7 +5,7 @@ use crate::{
     max_iter,
     mesh::{Point, SimplexMesh},
     metric::Metric,
-    min_iter, min_max_iter,
+    min_iter,
     stats::{CollapseStats, InitStats, SmoothStats, SplitStats, Stats, StepStats, SwapStats},
     topo_elems::{get_face_to_elem, Elem},
     topology::Topology,
@@ -184,19 +184,19 @@ impl Default for RemesherParams {
             two_steps: true,
             split_max_iter: 1,
             split_min_l_rel: 1.0,
-            split_min_l_abs: 0.5 / f64::sqrt(2.0),
-            split_min_q_rel: 0.5,
-            split_min_q_abs: 0.0,
+            split_min_l_abs: 0.75 / f64::sqrt(2.0),
+            split_min_q_rel: 1.0,
+            split_min_q_abs: 0.5,
             collapse_max_iter: 1,
             collapse_max_l_rel: 1.0,
-            collapse_max_l_abs: 2.0 * f64::sqrt(2.0),
-            collapse_min_q_rel: 0.5,
-            collapse_min_q_abs: 0.0,
+            collapse_max_l_abs: 1.5 * f64::sqrt(2.0),
+            collapse_min_q_rel: 1.0,
+            collapse_min_q_abs: 0.5,
             swap_max_iter: 2,
-            swap_max_l_rel: 1.0,
-            swap_max_l_abs: 2.0 * f64::sqrt(2.0),
-            swap_min_l_rel: 1.0,
-            swap_min_l_abs: 0.5 / f64::sqrt(2.0),
+            swap_max_l_rel: 1.5,
+            swap_max_l_abs: 1.5 * f64::sqrt(2.0),
+            swap_min_l_rel: 0.75,
+            swap_min_l_abs: 0.75 / f64::sqrt(2.0),
             smooth_iter: 2,
             smooth_type: SmoothingType::Laplacian,
             smooth_relax: vec![0.5, 0.25, 0.125],
@@ -723,16 +723,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     ) -> Result<u32> {
         info!("Split edges with length > {:.2e}", l_0);
 
-        let mesh_l_min = min_iter(self.lengths_iter());
-        let l_min = params
-            .split_min_l_abs
-            .max(params.split_min_l_rel * mesh_l_min)
-            .min(1. / f64::sqrt(2.0));
+        let l_min = params.split_min_l_abs;
         debug!("min. allowed length: {:.2}", l_min);
-        let mesh_q_min = min_iter(self.qualities_iter());
-        let q_min = params
-            .split_min_q_abs
-            .max(params.split_min_q_rel * mesh_q_min);
+        let q_min = params.split_min_q_abs;
         debug!("min. allowed quality: {:.2}", q_min);
 
         let mut n_iter = 0;
@@ -784,7 +777,8 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     let filled_cavity = FilledCavity::new(&cavity, ftype);
 
                     // lower the min quality threshold if the min quality in the cavity increases
-                    let q_min = q_min.min(cavity.q_min);
+                    let q_min = q_min.min(cavity.q_min * params.split_min_q_rel);
+                    let l_min = l_min.min(cavity.l_min * params.split_min_l_rel);
                     if let CavityCheckStatus::Ok(_) = filled_cavity.check(l_min, f64::MAX, q_min) {
                         trace!("Edge split");
                         for i in &cavity.global_elem_ids {
@@ -837,8 +831,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         &mut self,
         edg: [Idx; 2],
         q_min: f64,
-        l_min: f64,
-        l_max: f64,
+        params: &RemesherParams,
         max_angle: f64,
         cavity: &mut Cavity<D, E, M>,
         geom: &G,
@@ -854,6 +847,19 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             trace!("No need to swap, quality sufficient");
             return Ok(TrySwapResult::QualitySufficient);
         }
+
+        let l_min = params
+            .swap_min_l_abs
+            .min(params.swap_min_l_rel * cavity.l_min);
+        let l_max = params
+            .swap_max_l_abs
+            .min(params.swap_max_l_rel * cavity.l_max);
+
+        trace!(
+            "min. / max. allowed edge length = {:.2}, {:.2}",
+            l_min,
+            l_max
+        );
 
         let cavity::Seed::Edge(local_edg) = cavity.seed else {
             unreachable!()
@@ -969,22 +975,6 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     ) -> Result<u32> {
         info!("Swap edges: target quality = {}", q_target);
 
-        let (mesh_l_min, mesh_l_max) = min_max_iter(self.lengths_iter());
-        let l_min = params
-            .swap_min_l_abs
-            .max(params.swap_min_l_rel * mesh_l_min)
-            .min(1. / f64::sqrt(2.0));
-
-        let l_max = params
-            .swap_max_l_abs
-            .min(params.swap_max_l_rel * mesh_l_max)
-            .max(f64::sqrt(2.0));
-
-        debug!(
-            "min. / max. allowed edge length = {:.2}, {:.2}",
-            l_min, l_max
-        );
-
         let mut n_iter = 0;
         let mut cavity = Cavity::new();
         loop {
@@ -996,15 +986,8 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             let mut n_fails = 0;
             let mut n_ok = 0;
             for edg in edges {
-                let res = self.try_swap(
-                    edg,
-                    q_target,
-                    l_min,
-                    l_max,
-                    params.max_angle,
-                    &mut cavity,
-                    geom,
-                )?;
+                let res =
+                    self.try_swap(edg, q_target, params, params.max_angle, &mut cavity, geom)?;
                 match res {
                     TrySwapResult::CouldNotSwap => n_fails += 1,
                     TrySwapResult::CouldSwap => n_swaps += 1,
@@ -1040,16 +1023,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     pub fn collapse<G: Geometry<D>>(&mut self, params: &RemesherParams, geom: &G) -> Result<u32> {
         info!("Collapse elements");
 
-        let mesh_l_max = max_iter(self.lengths_iter());
-        let l_max = params
-            .collapse_max_l_abs
-            .min(params.collapse_max_l_rel * mesh_l_max)
-            .max(f64::sqrt(2.0));
+        let l_max = params.collapse_max_l_abs;
         debug!("max. allowed length: {:.2}", l_max);
-        let mesh_q_min = min_iter(self.qualities_iter());
-        let q_min = params
-            .collapse_min_q_abs
-            .max(params.collapse_min_q_rel * mesh_q_min);
+        let q_min = params.collapse_min_q_abs;
         debug!("min. allowed quality: {:.2}", q_min);
 
         let mut n_iter = 0;
@@ -1127,7 +1103,8 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
                     // proposition 1?
                     // lower the min quality threshold if the min quality in the cavity increases
-                    let q_min = q_min.min(cavity.q_min);
+                    let q_min = q_min.min(params.collapse_min_q_rel * cavity.q_min);
+                    let l_max = l_max.max(params.collapse_max_l_rel * cavity.l_max);
                     if let CavityCheckStatus::Ok(_) = filled_cavity.check(0.0, l_max, q_min) {
                         trace!("Collapse edge");
                         for i in &cavity.global_elem_ids {
@@ -1166,6 +1143,10 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 }
             }
 
+            debug!(
+                "Iteration {}: {n_collapses} edges collapsed, {n_fails} fails",
+                n_iter + 1,
+            );
             self.stats.push(StepStats::Collapse(CollapseStats::new(
                 n_collapses,
                 n_fails,
@@ -2262,7 +2243,7 @@ mod tests {
         mesh.add_boundary_faces();
         mesh.compute_topology();
 
-        for iter in 0..3 {
+        for iter in 0..10 {
             let h: Vec<_> = (0..mesh.n_verts())
                 .map(|i| IsoMetric::<2>::from(h_2d(&mesh.vert(i))))
                 .collect();
@@ -2275,11 +2256,11 @@ mod tests {
             mesh = remesher.to_mesh(false);
             mesh.compute_topology();
 
-            if iter == 2 {
+            if iter == 9 {
                 let (mini, maxi, _) =
                     remesher.check_edge_lengths_analytical(|x| IsoMetric::<2>::from(h_2d(x)));
-                assert!(mini > 0.5);
-                assert!(maxi < 2.5);
+                assert!(mini > 0.6, "min. edge length: {mini}");
+                assert!(maxi < 1.55, "max. edge length: {maxi}");
             }
         }
 
@@ -2299,19 +2280,24 @@ mod tests {
             AnisoMetric2d::from_sizes(&v0, &v1)
         };
 
-        let h: Vec<_> = mesh.verts().map(mfunc).collect();
         let geom = NoGeometry();
-        let mut remesher = Remesher::new(&mesh, &h, &geom)?;
+        for iter in 0..3 {
+            let h: Vec<_> = mesh.verts().map(mfunc).collect();
+            let mut remesher = Remesher::new(&mesh, &h, &geom)?;
 
-        remesher.remesh(RemesherParams::default(), &geom)?;
-        remesher.check()?;
+            remesher.remesh(RemesherParams::default(), &geom)?;
+            remesher.check()?;
+            mesh = remesher.to_mesh(true);
 
-        let mesh = remesher.to_mesh(true);
-        assert!(f64::abs(mesh.vol() - 1.0) < 1e-12, "{} != 1", mesh.vol());
+            assert!(f64::abs(mesh.vol() - 1.0) < 1e-12, "{} != 1", mesh.vol());
+            mesh.compute_topology();
 
-        let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
-        assert!(mini > 0.3);
-        assert!(maxi < 1.5);
+            let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
+            if iter == 3 {
+                assert!(mini > 0.6, "min. edge length: {mini}");
+                assert!(maxi < 1.4, "max. edge length: {maxi}");
+            }
+        }
 
         Ok(())
     }
@@ -2323,7 +2309,7 @@ mod tests {
 
         let ref_vol = 0.5 * PI - 2.0 * (0.5 * 1.25 * 1.25 * f64::atan2(1., 0.75) - 0.5 * 0.75);
 
-        for iter in 1..4 {
+        for iter in 1..10 {
             let h: Vec<_> = mesh
                 .verts()
                 .map(|p| IsoMetric::<2>::from(h_2d(&p)))
@@ -2331,7 +2317,11 @@ mod tests {
             let geom = GeomHalfCircle2d();
             let mut remesher = Remesher::new(&mesh, &h, &geom)?;
 
-            remesher.remesh(RemesherParams::default(), &geom)?;
+            let params = RemesherParams {
+                split_min_q_abs: 0.4,
+                ..RemesherParams::default()
+            };
+            remesher.remesh(params, &geom)?;
             remesher.check()?;
 
             mesh = remesher.to_mesh(true);
@@ -2342,9 +2332,10 @@ mod tests {
 
             let (mini, maxi, _) =
                 remesher.check_edge_lengths_analytical(|x| IsoMetric::<2>::from(h_2d(x)));
-            if iter == 3 {
-                assert!(mini > 0.7);
-                assert!(maxi < 2.8);
+
+            if iter == 9 {
+                assert!(mini > 0.5, "min. edge length: {mini}");
+                assert!(maxi < 1.4, "max. edge length: {maxi}");
             }
         }
 
@@ -2543,9 +2534,10 @@ mod tests {
 
             let (mini, maxi, _) =
                 remesher.check_edge_lengths_analytical(|x| IsoMetric::<3>::from(h_3d(x)));
+
             if iter == 2 {
-                assert!(mini > 0.5);
-                assert!(maxi < 2.0);
+                assert!(mini > 0.4, "min. edge length: {mini}");
+                assert!(maxi < 1.7, "max. edge length: {maxi}");
             }
         }
 
@@ -2553,7 +2545,7 @@ mod tests {
             let m = get_implied_metric_3d(&mesh, *p).unwrap();
             let (a, b) = m.step(&AnisoMetric3d::from_iso(&IsoMetric::<3>::from(h_3d(p))));
             let c = b.max(1. / a);
-            assert!(c < 2.5);
+            assert!(c < 2.9, "step = {c}");
         }
 
         Ok(())
@@ -2571,19 +2563,30 @@ mod tests {
             AnisoMetric3d::from_sizes(&v0, &v1, &v2)
         };
 
-        let h: Vec<_> = mesh.verts().map(mfunc).collect();
         let geom = NoGeometry();
-        let mut remesher = Remesher::new(&mesh, &h, &geom)?;
 
-        remesher.remesh(RemesherParams::default(), &geom)?;
-        remesher.check()?;
+        for iter in 0..2 {
+            let h: Vec<_> = mesh.verts().map(mfunc).collect();
+            let mut remesher = Remesher::new(&mesh, &h, &geom)?;
 
-        let mesh = remesher.to_mesh(true);
-        assert!(f64::abs(mesh.vol() - 1.0) < 1e-12);
+            let params = RemesherParams {
+                split_min_q_abs: 0.4,
+                ..RemesherParams::default()
+            };
+            remesher.remesh(params, &geom)?;
+            remesher.check()?;
 
-        let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
-        assert!(mini > 0.4);
-        assert!(maxi < 2.0);
+            mesh = remesher.to_mesh(true);
+            mesh.compute_topology();
+            assert!(f64::abs(mesh.vol() - 1.0) < 1e-12);
+
+            let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
+
+            if iter == 1 {
+                assert!(mini > 0.3, "min. edge length: {mini}");
+                assert!(maxi < 1.7, "max. edge length: {maxi}");
+            }
+        }
 
         Ok(())
     }
