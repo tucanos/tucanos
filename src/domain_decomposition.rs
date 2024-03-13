@@ -1,5 +1,7 @@
 use log::{debug, info, warn};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rustc_hash::FxHashSet;
+use std::sync::Mutex;
 
 use crate::{
     geometry::Geometry,
@@ -11,6 +13,7 @@ use crate::{
 };
 
 #[allow(dead_code)]
+#[derive(Clone, Copy)]
 pub enum PartitionType {
     Scotch(Idx),
     Metis(Idx),
@@ -21,6 +24,7 @@ pub enum PartitionType {
 pub struct DomainDecomposition<const D: usize, E: Elem> {
     pub mesh: SimplexMesh<D, E>,
     partition_tags: Vec<Tag>,
+    partition_type: PartitionType,
 }
 
 impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
@@ -29,9 +33,9 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
     /// scotch / metis. If None, the element tag in `mesh` is used as the partition Id
     ///
     /// NB: the mesh element tags will be modified
-    pub fn new(mut mesh: SimplexMesh<D, E>, part: PartitionType) -> Result<Self> {
+    pub fn new(mut mesh: SimplexMesh<D, E>, partition_type: PartitionType) -> Result<Self> {
         // Partition if needed
-        match part {
+        match partition_type {
             PartitionType::Scotch(n) => {
                 mesh.compute_elem_to_elems();
                 mesh.partition_scotch(n)?;
@@ -64,12 +68,20 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
         Ok(Self {
             mesh,
             partition_tags,
+            partition_type,
         })
     }
 
     /// Get the partition quality (ration of the number of interface faces to the total number of faces)
     pub fn partition_quality(&self) -> Result<f64> {
         self.mesh.partition_quality()
+    }
+
+    /// Get a parallel iterator over the partitiona as SubSimplexMeshes
+    pub fn par_partitions(&self) -> impl IndexedParallelIterator<Item = SubSimplexMesh<D, E>> + '_ {
+        self.partition_tags
+            .par_iter()
+            .map(|&t| self.mesh.extract_tag(t))
     }
 
     /// Get an iterator over the partitiona as SubSimplexMeshes
@@ -129,62 +141,99 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
         &mut self,
         m: &[M],
         geom: &G,
+        n_layers: Idx,
         params: RemesherParams,
         repart: PartitionType,
     ) -> Result<Self> {
-        let mut res = SimplexMesh::new(Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
-        let mut interface_mesh =
-            SimplexMesh::new(Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
-        let mut interface_m = Vec::new();
+        let debug = false;
 
-        for submesh in self.partitions() {
-            let mut local_mesh = submesh.mesh;
-            local_mesh.compute_topology();
+        let res = Mutex::new(SimplexMesh::empty());
+        let interface_mesh = Mutex::new(SimplexMesh::empty());
+        let interface_m = Mutex::new(Vec::new());
 
-            let local_m: Vec<_> = submesh
-                .parent_vert_ids
-                .iter()
-                .map(|&i| m[i as usize])
-                .collect();
-            let mut local_remesher = Remesher::new(&local_mesh, &local_m, geom)?;
-            local_remesher.remesh(params.clone(), geom);
+        self.par_partitions()
+            .enumerate()
+            .for_each(|(i_part, submesh)| {
+                let mut local_mesh = submesh.mesh;
+                local_mesh.compute_topology();
+                if debug {
+                    let fname = format!("part_{i_part}.vtu");
+                    local_mesh.write_vtk(&fname, None, None).unwrap();
+                }
 
-            let mut local_mesh = local_remesher.to_mesh(true);
-            let local_m = local_remesher.metrics();
+                let local_m: Vec<_> = submesh
+                    .parent_vert_ids
+                    .iter()
+                    .map(|&i| m[i as usize])
+                    .collect();
+                let mut local_remesher = Remesher::new(&local_mesh, &local_m, geom).unwrap();
+                local_remesher.remesh(params.clone(), geom);
 
-            let new_etags = Self::flag_interface(&local_mesh, 2);
+                let mut local_mesh = local_remesher.to_mesh(true);
+                let local_m = local_remesher.metrics();
 
-            local_mesh
-                .mut_etags()
-                .zip(new_etags.iter())
-                .for_each(|(t0, t1)| *t0 = *t1);
-            let (bdy_tag, interface_tags) = local_mesh.add_boundary_faces();
-            assert_eq!(local_mesh.n_tagged_faces(bdy_tag), 0);
-            if interface_tags.is_empty() {
-                warn!("All the elements are in the interface");
-            } else {
-                assert_eq!(interface_tags.len(), 1);
-                let tag = interface_tags.keys().next().unwrap();
-                local_mesh.update_face_tags(|t| if t == *tag { Tag::MIN } else { t });
-            }
+                let new_etags = Self::flag_interface(&local_mesh, n_layers);
 
-            res.add(&local_mesh, |t| t == 1, |_| true, None::<fn(Tag) -> bool>);
-            let (ids, _, _) = interface_mesh.add(
-                &local_mesh,
-                |t| t == 2,
-                |_t| true,
-                Some(|t| t != Tag::MIN && t < 0),
-            );
-            interface_m.extend(ids.iter().map(|&i| local_m[i as usize]));
-        }
+                local_mesh
+                    .mut_etags()
+                    .zip(new_etags.iter())
+                    .for_each(|(t0, t1)| *t0 = *t1);
+                let (bdy_tag, interface_tags) = local_mesh.add_boundary_faces();
+                assert_eq!(local_mesh.n_tagged_faces(bdy_tag), 0);
+                if interface_tags.is_empty() {
+                    warn!("All the elements are in the interface");
+                } else {
+                    assert_eq!(interface_tags.len(), 1);
+                    let tag = interface_tags.keys().next().unwrap();
+                    local_mesh.update_face_tags(|t| if t == *tag { Tag::MIN } else { t });
+                }
 
+                if debug {
+                    let fname = format!("part_{i_part}_remeshed.vtu");
+                    local_mesh.write_vtk(&fname, None, None).unwrap();
+                }
+                let mut res = res.lock().unwrap();
+                res.add(&local_mesh, |t| t == 1, |_| true, None::<fn(Tag) -> bool>);
+                drop(res);
+                let mut interface_mesh = interface_mesh.lock().unwrap();
+                let (ids, _, _) = interface_mesh.add(
+                    &local_mesh,
+                    |t| t == 2,
+                    |_t| true,
+                    Some(|t| t != Tag::MIN && t < 0),
+                );
+                drop(interface_mesh);
+                let mut interface_m = interface_m.lock().unwrap();
+                interface_m.extend(ids.iter().map(|&i| local_m[i as usize]));
+            });
+
+        let mut interface_mesh = interface_mesh.into_inner().unwrap();
         interface_mesh.remove_faces(|t| t < 0 && t > Tag::MIN);
         interface_mesh.compute_topology();
+        if debug {
+            interface_mesh
+                .write_vtk("interface.vtu", None, None)
+                .unwrap();
+        }
+        let interface_m = interface_m.into_inner().unwrap();
+        // todo
+        let interface_mesh = if true {
         let mut interface_remesher = Remesher::new(&interface_mesh, &interface_m, geom)?;
+            interface_remesher.check().unwrap();
         interface_remesher.remesh(params, geom);
+            interface_remesher.to_mesh(true)
+        } else {
+            let mut dd = Self::new(interface_mesh, self.partition_type)?;
+            let res = dd.remesh(&interface_m, geom, n_layers, params, repart)?;
+            res.mesh
+        };
 
-        let interface_mesh = interface_remesher.to_mesh(true);
-
+        if debug {
+            interface_mesh
+                .write_vtk("interface_remeshed.vtu", None, None)
+                .unwrap();
+        }
+        let mut res = res.into_inner().unwrap();
         res.add(&interface_mesh, |_| true, |_| true, Some(|t| t == Tag::MIN));
         res.remove_faces(|t| t < 0);
 
@@ -257,6 +306,7 @@ mod tests {
         let res = dd.remesh(
             &m,
             &NoGeometry(),
+            2,
             RemesherParams::default(),
             PartitionType::None,
         )?;

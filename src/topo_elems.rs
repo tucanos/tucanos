@@ -22,6 +22,8 @@ pub trait Elem:
     + IndexMut<usize, Output = Idx>
     + Default
     + Debug
+    + Send
+    + Sync
 {
     /// Number of vertices in the element
     const N_VERTS: Idx;

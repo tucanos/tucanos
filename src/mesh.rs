@@ -938,7 +938,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 if smsh.mesh.n_verts() == 0 {
                     continue;
                 }
-                println!("merge tag {tag}");
+                debug!("merge faces with tag {tag}");
                 let tree = <DefaultPointIndex<D> as PointIndex<D>>::new(&smsh.mesh);
                 flg.iter_mut().for_each(|x| *x = false);
                 other
@@ -955,7 +955,6 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                         new_vert_ids[i_vert as usize] = i;
                     }
                 }
-                println!("done merge tag {tag}");
             }
         }
 
