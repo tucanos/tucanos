@@ -24,6 +24,21 @@ pub trait Geometry<const D: usize>: Send + Sync {
     fn angle(&self, pt: &Point<D>, n: &Point<D>, tag: &TopoTag) -> f64;
 
     /// Compute the max distance between the face centers and the geometry normals
+    fn project_vertices<E: Elem>(&self, mesh: &mut SimplexMesh<D, E>) -> f64 {
+        let vtags = mesh.get_vertex_tags().unwrap().to_vec();
+
+        let mut d_max = 0.0;
+        for (p, tag) in mesh.mut_verts().zip(vtags.iter()) {
+            if tag.0 < E::DIM as Dim {
+                let d = self.project(p, tag);
+                d_max = f64::max(d_max, d);
+            }
+        }
+
+        d_max
+    }
+
+    /// Compute the max distance between the face centers and the geometry normals
     fn max_distance<E2: Elem>(&self, mesh: &SimplexMesh<D, E2>) -> f64 {
         let mut d_max = 0.0;
         for (gf, tag) in mesh.gfaces().zip(mesh.ftags()) {
