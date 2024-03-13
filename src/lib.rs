@@ -2,10 +2,13 @@ use log::info;
 use numpy::{PyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::{
     exceptions::{PyRuntimeError, PyValueError},
-    pyclass, pyfunction, pymethods, pymodule,
+    pyclass, pymethods, pymodule,
     types::{PyDict, PyModule, PyType},
-    wrap_pyfunction, PyResult, Python,
+    PyResult, Python,
 };
+#[cfg(feature = "meshb")]
+use pyo3::{pyfunction, wrap_pyfunction};
+
 use std::collections::HashMap;
 use tucanos::{
     geom_elems::GElem,
@@ -145,6 +148,7 @@ macro_rules! create_mesh {
             }
 
             /// Get the volume of all the elements
+            #[must_use]
             pub fn vols<'py>(&self, py: Python<'py>) -> &'py PyArray1<f64> {
 
                 let res : Vec<_> = self.mesh.gelems().map(|ge| ge.vol()).collect();
@@ -514,7 +518,7 @@ macro_rules! create_mesh {
                 } else {
                     let dict = PyDict::new(py);
                     for (k, v) in res.unwrap().iter() {
-                        dict.set_item(k, to_numpy_1d(py, v.to_vec()));
+                        dict.set_item(k, to_numpy_1d(py, v.to_vec()))?;
                     }
                     Ok(dict)
                 }
@@ -528,7 +532,7 @@ macro_rules! create_mesh {
                 } else {
                     let dict = PyDict::new(py);
                     for (k, v) in res.unwrap().iter() {
-                        dict.set_item(k, to_numpy_1d(py, v.to_vec()));
+                        dict.set_item(k, to_numpy_1d(py, v.to_vec()))?;
                     }
                     Ok(dict)
                 }
@@ -555,6 +559,7 @@ macro_rules! create_geometry {
         impl $name {
             /// Create a new geometry
             #[new]
+            #[must_use]
             pub fn new(
                 mesh: &$mesh,
                 geom: Option<&$geom>,
@@ -573,11 +578,13 @@ macro_rules! create_geometry {
             }
 
             /// Compute the max distance between the face centers and the geometry normals
+            #[must_use]
             pub fn max_distance(&self, mesh: &$mesh) -> f64 {
                 self.geom.max_distance(&mesh.mesh)
             }
 
             /// Compute the max angle between the face normals and the geometry normals
+            #[must_use]
             pub fn max_normal_angle(&self, mesh: &$mesh) -> f64 {
                 self.geom.max_normal_angle(&mesh.mesh)
             }
@@ -623,6 +630,7 @@ create_geometry!(LinearGeometry2d, 2, Edge, Mesh22, Mesh21);
 impl Mesh33 {
     /// Extract the boundary faces into a Mesh, and return the indices of the vertices in the
     /// parent mesh
+    #[must_use]
     pub fn boundary<'py>(&self, py: Python<'py>) -> (Mesh32, &'py PyArray1<Idx>) {
         let (bdy, ids) = self.mesh.boundary();
         (Mesh32 { mesh: bdy }, to_numpy_1d(py, ids))
@@ -704,7 +712,7 @@ impl Mesh32 {
     }
 
     /// Reset the element tags of other to match those in self
-    pub fn transfer_tags_elem(&self, other: &mut Mesh32) -> PyResult<()> {
+    pub fn transfer_tags_elem(&self, other: &mut Self) -> PyResult<()> {
         self.mesh
             .transfer_tags(&mut other.mesh)
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))
@@ -715,6 +723,7 @@ impl Mesh32 {
 impl Mesh22 {
     /// Extract the boundary faces into a Mesh, and return the indices of the vertices in the
     /// parent mesh
+    #[must_use]
     pub fn boundary<'py>(&self, py: Python<'py>) -> (Mesh21, &'py PyArray1<Idx>) {
         let (bdy, ids) = self.mesh.boundary();
         (Mesh21 { mesh: bdy }, to_numpy_1d(py, ids))
@@ -787,7 +796,7 @@ impl Mesh21 {
     }
 
     /// Reset the element tags of other to match those in self
-    pub fn transfer_tags_elem(&self, other: &mut Mesh21) -> PyResult<()> {
+    pub fn transfer_tags_elem(&self, other: &mut Self) -> PyResult<()> {
         self.mesh
             .transfer_tags(&mut other.mesh)
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))
@@ -1118,6 +1127,7 @@ macro_rules! create_remesher {
             }
 
             /// Estimate the complexity (ideal number of elements)
+            #[must_use]
             pub fn complexity(&self) -> f64 {
                 self.remesher.complexity()
             }
@@ -1174,7 +1184,7 @@ macro_rules! create_remesher {
                 smooth_type: Option<&str>,
                 smooth_relax: Option<PyReadonlyArray1<f64>>,
                 max_angle:Option< f64>,
-            ) {
+            ) -> PyResult<()>{
                 let smooth_type = smooth_type.unwrap_or("laplacian");
 
                 let smooth_type = if smooth_type == "laplacian" {
@@ -1214,7 +1224,7 @@ macro_rules! create_remesher {
                     max_angle: max_angle.unwrap_or(default_params.max_angle),
                     debug: false,
                 };
-                self.remesher.remesh(params, &geometry.geom);
+                self.remesher.remesh(params, &geometry.geom).map_err(|e| PyRuntimeError::new_err(e.to_string()))
             }
 
             /// Get the element qualities as a numpy array of size (# or elements)
@@ -1230,6 +1240,7 @@ macro_rules! create_remesher {
             }
 
             /// Get the infomation about the remeshing steps performed in remesh() as a json string
+            #[must_use]
             pub fn stats_json(&self) -> String {
                 self.remesher.stats_json()
             }
@@ -1275,7 +1286,7 @@ create_remesher!(
 /// Python bindings for pytucanos
 #[pymodule]
 #[pyo3(name = "_pytucanos")]
-fn pytucanos(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
+pub fn pytucanos(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     pyo3_log::init();
     m.add_class::<Mesh33>()?;
     m.add_class::<Mesh32>()?;

@@ -22,3 +22,32 @@ meshb = ["tucanos/meshb"]
 libol = ["tucanos/marechal-libol-sys"]
 parry = ["tucanos/parry"]
 
+[lints.rust]
+unused_imports = "deny"
+unused_variables = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
+module_name_repetitions = "allow"
+missing_panics_doc = "allow"
+match_same_arms = "allow"
+similar_names = "allow"
+cast_possible_truncation = "allow"
+missing_errors_doc = "allow"
+cast_precision_loss = "allow"
+multiple_crate_versions = "allow"
+cargo_common_metadata = "allow"
+doc_markdown = "allow"
+suboptimal_flops = "allow"
+many_single_char_names = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+should_panic_without_expect = "allow"
+unreadable_literal = "allow"
+manual_clamp = "allow"
+# TODO: to remove
+cognitive_complexity = "allow"
+needless_pass_by_value = "allow"
