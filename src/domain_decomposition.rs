@@ -25,6 +25,7 @@ pub struct DomainDecomposition<const D: usize, E: Elem> {
     pub mesh: SimplexMesh<D, E>,
     partition_tags: Vec<Tag>,
     partition_type: PartitionType,
+    debug: bool,
 }
 
 impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
@@ -69,7 +70,12 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
             mesh,
             partition_tags,
             partition_type,
+            debug: false,
         })
+    }
+
+    pub fn set_debug(&mut self, debug: bool) {
+        self.debug = debug;
     }
 
     /// Get the partition quality (ration of the number of interface faces to the total number of faces)
@@ -139,6 +145,7 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
     }
 
     /// Remesh using domain decomposition
+    #[allow(clippy::too_many_lines)]
     pub fn remesh<M: Metric<D>, G: Geometry<D>>(
         &mut self,
         m: &[M],
@@ -147,8 +154,6 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
         params: RemesherParams,
         repart: PartitionType,
     ) -> Result<Self> {
-        let debug = false;
-
         let res = Mutex::new(SimplexMesh::empty());
         let interface_mesh = Mutex::new(SimplexMesh::empty());
         let interface_m = Mutex::new(Vec::new());
@@ -158,7 +163,7 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
             .for_each(|(i_part, submesh)| {
                 let mut local_mesh = submesh.mesh;
                 local_mesh.compute_topology();
-                if debug {
+                if self.debug {
                     let fname = format!("part_{i_part}.vtu");
                     local_mesh.write_vtk(&fname, None, None).unwrap();
                 }
@@ -169,7 +174,8 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
                     .map(|&i| m[i as usize])
                     .collect();
                 let mut local_remesher = Remesher::new(&local_mesh, &local_m, geom).unwrap();
-                local_remesher.remesh(params.clone(), geom);
+
+                local_remesher.remesh(params.clone(), geom).unwrap();
 
                 let mut local_mesh = local_remesher.to_mesh(true);
                 let local_m = local_remesher.metrics();
@@ -182,6 +188,7 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
                     .for_each(|(t0, t1)| *t0 = *t1);
                 let (bdy_tag, interface_tags) = local_mesh.add_boundary_faces();
                 assert_eq!(local_mesh.n_tagged_faces(bdy_tag), 0);
+                
                 if interface_tags.is_empty() {
                     warn!("All the elements are in the interface");
                 } else {
@@ -190,7 +197,7 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
                     local_mesh.update_face_tags(|t| if t == *tag { Tag::MIN } else { t });
                 }
 
-                if debug {
+                if self.debug {
                     let fname = format!("part_{i_part}_remeshed.vtu");
                     local_mesh.write_vtk(&fname, None, None).unwrap();
                 }
@@ -210,9 +217,16 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
             });
 
         let mut interface_mesh = interface_mesh.into_inner().unwrap();
+        if self.debug {
+            interface_mesh
+                .boundary()
+                .0
+                .write_vtk("interface_bdy.vtu", None, None)
+                .unwrap();
+        }
         interface_mesh.remove_faces(|t| t < 0 && t > Tag::MIN);
         interface_mesh.compute_topology();
-        if debug {
+        if self.debug {
             interface_mesh
                 .write_vtk("interface.vtu", None, None)
                 .unwrap();
@@ -222,7 +236,7 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
         let interface_mesh = if true {
             let mut interface_remesher = Remesher::new(&interface_mesh, &interface_m, geom)?;
             interface_remesher.check().unwrap();
-            interface_remesher.remesh(params, geom);
+            interface_remesher.remesh(params, geom)?;
             interface_remesher.to_mesh(true)
         } else {
             let mut dd = Self::new(interface_mesh, self.partition_type)?;
@@ -230,7 +244,7 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
             res.mesh
         };
 
-        if debug {
+        if self.debug {
             interface_mesh
                 .write_vtk("interface_remeshed.vtu", None, None)
                 .unwrap();
@@ -250,6 +264,7 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
 }
 
 #[cfg(test)]
+#[cfg(any(feature = "metis", feature = "scotch"))]
 mod tests {
 
     use crate::{
@@ -258,38 +273,19 @@ mod tests {
         mesh::Point,
         metric::IsoMetric,
         remesher::RemesherParams,
-        test_meshes::test_mesh_2d,
+        test_meshes::{test_mesh_2d, test_mesh_3d},
         Result,
     };
 
-    #[test]
-    fn test_domain_decomposition_2d_metis() -> Result<()> {
-        use std::collections::HashMap;
-
+    fn test_domain_decomposition_2d(debug: bool, ptype: PartitionType) -> Result<()> {
         use log::info;
-
-        use crate::init_log;
-
-        init_log("warning");
+        // use crate::init_log;
+        // init_log("warning");
         let mesh = test_mesh_2d().split().split().split().split().split();
 
-        let mut dd = DomainDecomposition::new(mesh, PartitionType::Metis(4))?;
+        let mut dd = DomainDecomposition::new(mesh, ptype)?;
 
         info!("Partition quality: {:?}", dd.partition_quality().unwrap());
-
-        let mut f = vec![0.0; dd.mesh.n_verts() as usize];
-
-        for sub_mesh in dd.partitions() {
-            sub_mesh
-                .parent_vert_ids
-                .iter()
-                .for_each(|&i| f[i as usize] += 1.0);
-        }
-
-        let mut data = HashMap::new();
-        data.insert(String::from("u"), f.as_slice());
-
-        dd.mesh.write_vtk("dd.vtu", Some(data), None)?;
 
         let h = |p: Point<2>| {
             let x = p[0];
@@ -314,8 +310,10 @@ mod tests {
         )?;
 
         let mesh = res.mesh;
-        mesh.write_vtk("res.vtu", None, None)?;
-        mesh.boundary().0.write_vtk("res_bdy.vtu", None, None)?;
+        if debug {
+            mesh.write_vtk("res.vtu", None, None)?;
+            mesh.boundary().0.write_vtk("res_bdy.vtu", None, None)?;
+        }
 
         let n = mesh.n_verts();
         for i in 0..n {
@@ -330,5 +328,183 @@ mod tests {
         mesh.check()?;
 
         Ok(())
+    }
+
+    #[cfg(feature = "metis")]
+    #[test]
+    fn test_dd_2d_metis_1() -> Result<()> {
+        test_domain_decomposition_2d(false, PartitionType::Metis(1))
+    }
+
+    #[cfg(feature = "metis")]
+    #[test]
+    fn test_dd_2d_metis_2() -> Result<()> {
+        test_domain_decomposition_2d(false, PartitionType::Metis(2))
+    }
+
+    #[cfg(feature = "metis")]
+    #[test]
+    fn test_dd_2d_metis_3() -> Result<()> {
+        test_domain_decomposition_2d(false, PartitionType::Metis(3))
+    }
+
+    #[cfg(feature = "metis")]
+    #[test]
+    fn test_dd_2d_metis_4() -> Result<()> {
+        test_domain_decomposition_2d(false, PartitionType::Metis(4))
+    }
+
+    #[cfg(feature = "metis")]
+    #[test]
+    fn test_dd_2d_metis_5() -> Result<()> {
+        test_domain_decomposition_2d(false, PartitionType::Metis(5))
+    }
+
+    #[cfg(feature = "scotch")]
+    #[test]
+    fn test_dd_2d_scotch_1() -> Result<()> {
+        test_domain_decomposition_2d(false, PartitionType::Scotch(1))
+    }
+
+    #[cfg(feature = "scotch")]
+    #[test]
+    fn test_dd_2d_scotch_2() -> Result<()> {
+        test_domain_decomposition_2d(false, PartitionType::Scotch(2))
+    }
+
+    #[cfg(feature = "scotch")]
+    #[test]
+    fn test_dd_2d_scotch_3() -> Result<()> {
+        test_domain_decomposition_2d(false, PartitionType::Scotch(3))
+    }
+
+    #[cfg(feature = "scotch")]
+    #[test]
+    fn test_dd_2d_scotch_4() -> Result<()> {
+        test_domain_decomposition_2d(false, PartitionType::Scotch(4))
+    }
+
+    #[cfg(feature = "scotch")]
+    #[test]
+    fn test_dd_2d_scotch_5() -> Result<()> {
+        test_domain_decomposition_2d(false, PartitionType::Scotch(5))
+    }
+
+    fn test_domain_decomposition_3d(debug: bool, ptype: PartitionType) -> Result<()> {
+        use log::info;
+        // use crate::init_log;
+        // init_log("warning");
+        let mesh = test_mesh_3d().split().split().split();
+
+        let mut dd = DomainDecomposition::new(mesh, ptype)?;
+
+        info!("Partition quality: {:?}", dd.partition_quality().unwrap());
+
+        let h = |p: Point<3>| {
+            let x = p[0];
+            let y = p[1];
+            let z = p[2];
+            let hmin = 0.025;
+            let hmax = 0.25;
+            let sigma: f64 = 0.25;
+            hmin + (hmax - hmin)
+                * (1.0
+                    - f64::exp(
+                        -((x - 0.5).powi(2) + (y - 0.35).powi(2) + (z - 0.65).powi(2))
+                            / sigma.powi(2),
+                    ))
+        };
+
+        let m: Vec<_> = (0..dd.mesh.n_verts())
+            .map(|i| IsoMetric::<3>::from(h(dd.mesh.vert(i))))
+            .collect();
+
+        let res = dd.remesh(
+            &m,
+            &NoGeometry(),
+            2,
+            RemesherParams::default(),
+            PartitionType::None,
+        )?;
+
+        let mesh = res.mesh;
+        if debug {
+            mesh.write_vtk("res.vtu", None, None)?;
+            mesh.boundary().0.write_vtk("res_bdy.vtu", None, None)?;
+        }
+
+        let n = mesh.n_verts();
+        for i in 0..n {
+            let vi = mesh.vert(i);
+            for j in i + 1..n {
+                let vj = mesh.vert(j);
+                let d = (vj - vi).norm();
+                assert!(d > 1e-8, "{i}, {j}, {vi:?}, {vj:?}");
+            }
+        }
+
+        mesh.check()?;
+
+        Ok(())
+    }
+
+    #[cfg(feature = "metis")]
+    #[test]
+    fn test_dd_3d_metis_1() -> Result<()> {
+        test_domain_decomposition_3d(false, PartitionType::Metis(1))
+    }
+
+    #[cfg(feature = "metis")]
+    #[test]
+    fn test_dd_3d_metis_2() -> Result<()> {
+        test_domain_decomposition_3d(false, PartitionType::Metis(2))
+    }
+
+    #[cfg(feature = "metis")]
+    #[test]
+    fn test_dd_3d_metis_3() -> Result<()> {
+        test_domain_decomposition_3d(false, PartitionType::Metis(3))
+    }
+
+    #[cfg(feature = "metis")]
+    #[test]
+    fn test_dd_3d_metis_4() -> Result<()> {
+        test_domain_decomposition_3d(false, PartitionType::Metis(4))
+    }
+
+    #[cfg(feature = "metis")]
+    #[test]
+    fn test_dd_3d_metis_5() -> Result<()> {
+        test_domain_decomposition_3d(false, PartitionType::Metis(5))
+    }
+
+    #[cfg(feature = "scotch")]
+    #[test]
+    fn test_dd_3d_scotch_1() -> Result<()> {
+        test_domain_decomposition_3d(false, PartitionType::Scotch(1))
+    }
+
+    #[cfg(feature = "scotch")]
+    #[test]
+    fn test_dd_3d_scotch_2() -> Result<()> {
+        test_domain_decomposition_3d(false, PartitionType::Scotch(2))
+    }
+
+    #[cfg(feature = "scotch")]
+    #[test]
+    fn test_dd_3d_scotch_3() -> Result<()> {
+        test_domain_decomposition_3d(false, PartitionType::Scotch(3))
+    }
+
+    #[cfg(feature = "scotch")]
+    #[test]
+    fn test_dd_3d_scotch_4() -> Result<()> {
+        test_domain_decomposition_3d(false, PartitionType::Scotch(4))
+    }
+
+    #[cfg(feature = "scotch")]
+    #[test]
+    fn test_dd_3d_scotch_5() -> Result<()> {
+        test_domain_decomposition_3d(false, PartitionType::Scotch(5))
     }
 }
