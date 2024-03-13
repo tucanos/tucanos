@@ -238,8 +238,19 @@ macro_rules! create_mesh {
 
             /// Add the missing boundary faces and make sure that boundary faces are oriented outwards
             /// If internal faces are present, these are keps
-            pub fn add_boundary_faces(&mut self) -> Tag {
-                self.mesh.add_boundary_faces().0
+            pub fn add_boundary_faces<'py>(&mut self, py: Python<'py>) -> PyResult<(&'py PyDict, &'py PyDict)> {
+                let (bdy, ifc) = self.mesh.add_boundary_faces();
+                let  dict_bdy = PyDict::new(py);
+                for (k, v) in bdy.iter() {
+                    dict_bdy.set_item(k, v)?;
+                }
+                let  dict_ifc = PyDict::new(py);
+                for (k, v) in ifc.iter() {
+                    dict_ifc.set_item(k, to_numpy_1d(py, v.to_vec()))?;
+                }
+
+                Ok((dict_bdy, dict_ifc))
+
             }
 
             /// Write a vtk file containing the mesh
@@ -1183,7 +1194,9 @@ macro_rules! create_remesher {
                 smooth_iter:Option< u32>,
                 smooth_type: Option<&str>,
                 smooth_relax: Option<PyReadonlyArray1<f64>>,
+                smooth_keep_local_minima: Option<bool>,
                 max_angle:Option< f64>,
+                debug: Option<bool>,
             ) -> PyResult<()>{
                 let smooth_type = smooth_type.unwrap_or("laplacian");
 
@@ -1220,9 +1233,9 @@ macro_rules! create_remesher {
                     smooth_iter: smooth_iter.unwrap_or(default_params.smooth_iter),
                     smooth_type,
                     smooth_relax: smooth_relax.map(|x| x.to_vec().unwrap()).unwrap_or(default_params.smooth_relax),
-                    smooth_keep_local_minima: false,
+                    smooth_keep_local_minima: smooth_keep_local_minima.unwrap_or(default_params.smooth_keep_local_minima),
                     max_angle: max_angle.unwrap_or(default_params.max_angle),
-                    debug: false,
+                    debug: debug.unwrap_or(default_params.debug),
                 };
                 self.remesher.remesh(params, &geometry.geom).map_err(|e| PyRuntimeError::new_err(e.to_string()))
             }

@@ -171,8 +171,9 @@ class TestMeshes(unittest.TestCase):
         faces_before = faces_before[idx, :]
         ftags_before = ftags_before[idx]
 
-        tag = msh.add_boundary_faces()
-        self.assertEqual((msh.get_ftags() == tag).sum(), 0)
+        (bdy, ifc) = msh.add_boundary_faces()
+        self.assertEqual(len(bdy), 0)
+        self.assertEqual(len(ifc), 1)
 
         faces_after, ftags_after = msh.get_faces(), msh.get_ftags()
         mask = ftags_after < 5
@@ -196,8 +197,9 @@ class TestMeshes(unittest.TestCase):
         faces_before = faces_before[idx, :]
         ftags_before = ftags_before[idx]
 
-        tag = msh.add_boundary_faces()
-        self.assertEqual((msh.get_ftags() == tag).sum(), 0)
+        (bdy, ifc) = msh.add_boundary_faces()
+        self.assertEqual(len(bdy), 0)
+        self.assertEqual(len(ifc), 1)
 
         faces_after, ftags_after = msh.get_faces(), msh.get_ftags()
         idx = np.lexsort(faces_after.T)
@@ -214,11 +216,14 @@ class TestMeshes(unittest.TestCase):
         msh = Mesh22(coords, elems, etags, faces, ftags)
         msh = msh.split().split().split().split().split()
 
-        tag = msh.add_boundary_faces()
+        (bdy, ifc) = msh.add_boundary_faces()
+        self.assertEqual(len(bdy), 1)
+        self.assertEqual(len(ifc), 1)
+        tag = bdy[2]
         self.assertEqual((msh.get_ftags() == tag).sum(), 2 * 2**5)
 
         faces_after, ftags_after = msh.get_faces(), msh.get_ftags()
-        self.assertTrue(np.array_equal(np.unique(ftags_after), [1, 2, 3, 4]))
+        self.assertTrue(np.array_equal(np.unique(ftags_after), [1, 2, 3, 5]))
         self.assertEqual(np.nonzero(ftags_after == 3)[0].size, 2 * 2**5)
 
     def test_boundary_faces_3d(self):
@@ -231,8 +236,9 @@ class TestMeshes(unittest.TestCase):
         faces_before = faces_before[idx, :]
         ftags_before = ftags_before[idx]
 
-        tag = msh.add_boundary_faces()
-        self.assertEqual((msh.get_ftags() == tag).sum(), 0)
+        (bdy, ifc) = msh.add_boundary_faces()
+        self.assertEqual(len(bdy), 0)
+        self.assertEqual(len(ifc), 0)
 
     def test_boundary_faces_3d_2(self):
         coords, elems, etags, faces, ftags = get_cube()
@@ -245,8 +251,9 @@ class TestMeshes(unittest.TestCase):
         faces_before = faces_before[idx, :]
         ftags_before = ftags_before[idx]
 
-        tag = msh.add_boundary_faces()
-        self.assertEqual((msh.get_ftags() == tag).sum(), 0)
+        (bdy, ifc) = msh.add_boundary_faces()
+        self.assertEqual(len(bdy), 0)
+        self.assertEqual(len(ifc), 0)
 
     def test_boundary_faces_3d_3(self):
         coords, elems, etags, faces, ftags = get_cube()
@@ -255,7 +262,10 @@ class TestMeshes(unittest.TestCase):
         msh = Mesh33(coords, elems, etags, faces, ftags)
         msh = msh.split().split().split()
 
-        tag = msh.add_boundary_faces()
+        (bdy, ifc) = msh.add_boundary_faces()
+        self.assertEqual(len(bdy), 1)
+        self.assertEqual(len(ifc), 0)
+        tag = bdy[1]
         self.assertEqual((msh.get_ftags() == tag).sum(), 10 * 4**3)
 
     def test_fields_2d(self):
