@@ -5,6 +5,7 @@ use crate::{
     metric::Metric,
     remesher::Remesher,
     topo_elems::Elem,
+    topology::Topology,
     Dim, Idx, Tag, TopoTag,
 };
 use core::fmt;
@@ -338,6 +339,16 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
             ftags,
         )
     }
+
+    #[allow(dead_code)]
+    pub fn debug(&self) {
+        let msh = self.to_mesh();
+        msh.write_vtk("cavity.vtu", None, None).unwrap();
+        msh.boundary()
+            .0
+            .write_vtk("cavity_bdy.vtu", None, None)
+            .unwrap();
+    }
 }
 
 impl<const D: usize, E: Elem, M: Metric<D>> fmt::Display for Cavity<D, E, M> {
@@ -359,7 +370,14 @@ impl<const D: usize, E: Elem, M: Metric<D>> fmt::Display for Cavity<D, E, M> {
         for e in &self.faces {
             writeln!(f, " {e:?}")?;
         }
-
+        writeln!(f, "Tagged faces")?;
+        for e in &self.tagged_faces {
+            writeln!(f, " {e:?}")?;
+        }
+        writeln!(f, "Tagged face boundaries")?;
+        for e in &self.tagged_bdys {
+            writeln!(f, " {e:?}")?;
+        }
         writeln!(f, "Type: {:?}", self.seed)?;
 
         Ok(())
@@ -396,20 +414,10 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
 
     /// Return an iterator through the cavity faces
     pub fn faces(&self) -> impl Iterator<Item = (E::Face, Tag)> + '_ {
-        self.cavity.faces().filter(|(f, _)| {
-            // if let FilledCavityType::ExistingVertex(_) = self.ftype {
-            //     if let Seed::Edge(edg) = self.cavity.seed {
-            //         if f.contains_edge(edg) {
-            //             return false;
-            //         }
-            //     }
-            // }
-
-            match self.ftype {
-                FilledCavityType::ExistingVertex(i) => !f.contains_vertex(i),
-                FilledCavityType::MovedVertex((i, _, _)) => !f.contains_vertex(i),
-                FilledCavityType::EdgeCenter((edg, _, _)) => !f.contains_edge(edg),
-            }
+        self.cavity.faces().filter(|(f, _)| match self.ftype {
+            FilledCavityType::ExistingVertex(i) => !f.contains_vertex(i),
+            FilledCavityType::MovedVertex((i, _, _)) => !f.contains_vertex(i),
+            FilledCavityType::EdgeCenter((edg, _, _)) => !f.contains_edge(edg),
         })
     }
 
@@ -515,16 +523,22 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
 
     /// Check the the angle between the normal of the boundary faces and the normal given by the geometry is smaller than a threshold
     /// This is only required for swaps in 3D
-    pub fn check_boundary_normals<G: Geometry<D>>(&self, geom: &G, threshold_degrees: f64) -> bool {
+    pub fn check_boundary_normals<G: Geometry<D>>(
+        &self,
+        topo: &Topology,
+        geom: &G,
+        threshold_degrees: f64,
+    ) -> bool {
         let (p0, m0) = self.point();
 
         for (b, tag) in self.tagged_faces_boundary() {
             assert!(
                 tag > 0,
-                "Invalid tag{}\n {:?}\n {}",
+                "Invalid tag {}\n{:?}\n{}\n{}",
                 tag,
                 self.ftype,
-                self.cavity
+                self.cavity,
+                topo
             );
             let gb = <<E::Face as Elem>::Geom<D, M> as GElem<D, M>>::Face::from_verts(
                 b.iter().map(|&i| {
@@ -541,5 +555,17 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
             }
         }
         true
+    }
+
+    #[allow(dead_code)]
+    pub fn debug(&self) {
+        self.cavity.debug();
+        let msh = self.to_mesh();
+        msh.write_vtk("filled_cavity.vtu", None, None).unwrap();
+        msh.boundary()
+            .0
+            .write_vtk("filled_cavity_bdy.vtu", None, None)
+            .unwrap();
+        println!("Cavity:\n{}\nFtype: {:?}", self.cavity, self.ftype);
     }
 }
