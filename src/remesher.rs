@@ -1080,6 +1080,11 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
                     let mut topo_0 = self.verts.get(&i0).unwrap().tag;
                     let mut topo_1 = self.verts.get(&i1).unwrap().tag;
+                    // Cannot collapse vertices with entity dim 0
+                    if topo_0.0 == 0 && topo_1.0 == 0 {
+                        continue;
+                    }
+
                     let tag = self.topo.parent(topo_0, topo_1).unwrap();
                     // tag < 0 on fixed boundaries
                     if tag.1 < 0 {
@@ -1331,6 +1336,10 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             let cavity::Seed::Vertex(i0_local) = cavity.seed else {
                 unreachable!()
             };
+            if cavity.tags[i0_local as usize].0 == 0 {
+                continue;
+            }
+
             if cavity.tags[i0_local as usize].1 < 0 {
                 continue;
             }
