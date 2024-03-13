@@ -10,7 +10,7 @@ use crate::{
 use log::{debug, info, warn};
 use nalgebra::SVector;
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
 use std::marker::PhantomData;
 
@@ -1001,7 +1001,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     ),
                 )
             })
-            .filter(|(_, (f, _))| all_added_faces.get(&f.sorted()).is_some())
+            .filter(|(_, (f, _))| all_added_faces.contains(&f.sorted()))
         {
             added_faces.push(i as Idx);
             self.faces.push(f);
