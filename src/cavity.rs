@@ -19,6 +19,15 @@ pub enum Seed {
     Edge([Idx; 2]),
 }
 
+#[derive(Debug)]
+pub enum CavityCheckStatus {
+    LongEdge(f64),
+    ShortEdge(f64),
+    Invalid,
+    LowQuality(f64),
+    Ok(f64),
+}
+
 /// Local cavity built from a mesh entity (vertex or edge)
 /// Vertices and elements are copied from the original mesh and stored using a local numbering
 ///
@@ -503,7 +512,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
         }
     }
 
-    pub fn check(&self, l_min: f64, l_max: f64, q_min: f64) -> f64 {
+    pub fn check(&self, l_min: f64, l_max: f64, q_min: f64) -> CavityCheckStatus {
         let (p0, m0) = self.point();
         let mut min_quality = 1.;
         for (f, _) in self.faces() {
@@ -513,11 +522,11 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
                 let l = M::edge_length(&p0, &m0, pi, mi);
                 if l < l_min {
                     trace!("cavity check failed: short edge");
-                    return -1.0;
+                    return CavityCheckStatus::ShortEdge(l);
                 }
                 if l > l_max {
                     trace!("cavity check failed: long edge");
-                    return -1.0;
+                    return CavityCheckStatus::LongEdge(l);
                 }
             }
 
@@ -527,14 +536,14 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
             let q = ge.quality();
             if q < 0.0 {
                 trace!("cavity check failed: invalid element");
-                return -1.;
+                return CavityCheckStatus::Invalid;
             } else if q < q_min {
                 trace!("cavity check failed: low quality ({} < {})", q, q_min);
-                return -1.;
+                return CavityCheckStatus::LowQuality(q);
             }
             min_quality = f64::min(min_quality, q);
         }
-        min_quality
+        CavityCheckStatus::Ok(min_quality)
     }
 
     /// Check the the angle between the normal of the boundary faces and the normal given by the geometry is smaller than a threshold

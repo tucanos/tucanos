@@ -1,5 +1,5 @@
 use crate::{
-    cavity::{self, Cavity, FilledCavity, FilledCavityType},
+    cavity::{self, Cavity, CavityCheckStatus, FilledCavity, FilledCavityType},
     geom_elems::{AsSliceF64, GElem},
     geometry::Geometry,
     max_iter,
@@ -785,7 +785,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
                     // lower the min quality threshold if the min quality in the cavity increases
                     let q_min = q_min.min(cavity.q_min);
-                    if filled_cavity.check(l_min, f64::MAX, q_min) > 0. {
+                    if let CavityCheckStatus::Ok(_) = filled_cavity.check(l_min, f64::MAX, q_min) {
                         trace!("Edge split");
                         for i in &cavity.global_elem_ids {
                             self.remove_elem(*i)?;
@@ -915,8 +915,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 continue;
             }
 
-            let min_quality = filled_cavity.check(l_min, l_max, q_ref);
-            if min_quality > q_ref {
+            if let CavityCheckStatus::Ok(min_quality) = filled_cavity.check(l_min, l_max, q_ref) {
                 trace!("Can swap  from {} : ({} > {})", n, min_quality, q_ref);
                 succeed = true;
                 q_ref = min_quality;
@@ -1129,7 +1128,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     // proposition 1?
                     // lower the min quality threshold if the min quality in the cavity increases
                     let q_min = q_min.min(cavity.q_min);
-                    if filled_cavity.check(0.0, l_max, q_min) > 0.0 {
+                    if let CavityCheckStatus::Ok(_) = filled_cavity.check(0.0, l_max, q_min) {
                         trace!("Collapse edge");
                         for i in &cavity.global_elem_ids {
                             self.remove_elem(*i)?;
@@ -1408,7 +1407,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     continue;
                 }
 
-                if filled_cavity.check(0.0, f64::MAX, cavity.q_min) > 0. {
+                if let CavityCheckStatus::Ok(_) = filled_cavity.check(0.0, f64::MAX, cavity.q_min) {
                     valid = true;
                     break;
                 }
