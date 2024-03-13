@@ -78,6 +78,7 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
     }
 
     /// Get a parallel iterator over the partitiona as SubSimplexMeshes
+    #[must_use]
     pub fn par_partitions(&self) -> impl IndexedParallelIterator<Item = SubSimplexMesh<D, E>> + '_ {
         self.partition_tags
             .par_iter()
@@ -93,6 +94,7 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
 
     /// Get an element tag that is 2 for the cells that are neighbors of level `n_layers` of the partition interface
     /// (i.e. the faces with a <0 tag)
+    #[must_use]
     pub fn flag_interface(mesh: &SimplexMesh<D, E>, n_layers: Idx) -> Vec<Tag> {
         let mut new_etag = vec![1; mesh.n_elems() as usize];
 
@@ -218,9 +220,9 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
         let interface_m = interface_m.into_inner().unwrap();
         // todo
         let interface_mesh = if true {
-        let mut interface_remesher = Remesher::new(&interface_mesh, &interface_m, geom)?;
+            let mut interface_remesher = Remesher::new(&interface_mesh, &interface_m, geom)?;
             interface_remesher.check().unwrap();
-        interface_remesher.remesh(params, geom);
+            interface_remesher.remesh(params, geom);
             interface_remesher.to_mesh(true)
         } else {
             let mut dd = Self::new(interface_mesh, self.partition_type)?;
@@ -321,7 +323,7 @@ mod tests {
             for j in i + 1..n {
                 let vj = mesh.vert(j);
                 let d = (vj - vi).norm();
-                assert!(d > 1e-8, "{}, {}, {:?}, {:?}", i, j, vi, vj);
+                assert!(d > 1e-8, "{i}, {j}, {vi:?}, {vj:?}");
             }
         }
 
