@@ -4,14 +4,12 @@ Python bindings to [tucanos](https://github.com/tucanos/tucanos.git)
 
 # Install
 
-* Build *libMeshb* as explained in the [tucanos README](https://github.com/tucanos/tucanos#dependencies)
 * [Install Rust](https://www.rust-lang.org/tools/install)
 * Optionally enter your prefered `conda` or `venv` or `virtualenv`
 * Run:
 
 ```bash
-LIBMESHB_DIR=/path/to/libmeshb_prefix \
-pip install git+https://github.com/tucanos/pytucanos.git`
+pip install git+https://github.com/tucanos/pytucanos.git
 ```
 
 # Benchmarks
