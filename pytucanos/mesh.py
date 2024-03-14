@@ -30,7 +30,7 @@ def __plot_boundary(ax, bdy, normals):
 
     tags = np.unique(etags)
     labels = {}
-    for (e, t) in zip(edgs, etags):
+    for e, t in zip(edgs, etags):
         (i,) = np.nonzero(tags == t)
         X, Y = xy[e, 0], xy[e, 1]
         if not t in labels:
@@ -107,7 +107,7 @@ def plot_metric(ax, msh, m, loc="vertex"):
     if loc != "vertex":
         xy = xy[tris, :].mean(axis=1)
 
-    for (i, (x, y)) in enumerate(xy):
+    for i, (x, y) in enumerate(xy):
         eigvals, eigvecs = np.linalg.eigh(m[i, :, :])
         sizes = 0.25 * 1.0 / eigvals**0.5
         for i in range(2):
