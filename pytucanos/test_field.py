@@ -2,8 +2,9 @@ import os
 import numpy as np
 import unittest
 from .mesh import Mesh22, get_square, Mesh33, get_cube
-from .field import read_solb
 from . import HAVE_MESHB
+if HAVE_MESHB:
+    from .field import read_solb
 
 
 @unittest.skipUnless(HAVE_MESHB, "The libMeshb interface is not available")
