@@ -3,13 +3,11 @@ use nalgebra::SMatrix;
 use rustc_hash::FxHashMap;
 use std::{f64::consts::PI, hash::BuildHasherDefault, time::Instant};
 use tucanos::{
-    domain_decomposition::{
-        DomainDecomposition, DomainDecompositionRemeshingParams, PartitionType,
-    },
     geom_elems::GElem,
     geometry::Geometry,
     mesh::{Point, SimplexMesh},
     metric::{AnisoMetric3d, Metric},
+    parallel::{ParallelRemesher, ParallelRemeshingParams, PartitionType},
     remesher::{Remesher, RemesherParams},
     topo_elems::Tetrahedron,
     topology::Topology,
@@ -375,9 +373,9 @@ fn main() -> Result<()> {
         remesher.check()?;
         remesher.to_mesh(true)
     } else {
-        let mut dd = DomainDecomposition::new(mesh, PartitionType::Scotch(n_part))?;
+        let mut dd = ParallelRemesher::new(mesh, PartitionType::Scotch(n_part))?;
         dd.set_debug(debug);
-        let dd_params = DomainDecompositionRemeshingParams::new(2, 2, 10000);
+        let dd_params = ParallelRemeshingParams::new(2, 2, 10000);
         let (mesh, stats) = dd.remesh(&metric, &geom, params, dd_params)?;
         stats.print_summary();
         mesh

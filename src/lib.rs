@@ -1,7 +1,6 @@
 use core::fmt;
 mod cavity;
 pub mod curvature;
-pub mod domain_decomposition;
 pub mod geom_elems;
 pub mod geometry;
 pub mod graph;
@@ -23,6 +22,7 @@ pub mod meshb_io;
 pub mod metric;
 mod metric_reduction;
 pub mod multi_element_mesh;
+pub mod parallel;
 pub mod remesher;
 mod spatialindex;
 mod stats;

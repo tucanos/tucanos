@@ -9,6 +9,7 @@ use crate::{
 use log::{debug, warn};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rustc_hash::FxHashSet;
+use serde::Serialize;
 use std::{sync::Mutex, time::Instant};
 
 #[allow(dead_code)]
@@ -19,14 +20,14 @@ pub enum PartitionType {
     None,
 }
 
-pub struct DomainDecompositionRemeshingParams {
+pub struct ParallelRemeshingParams {
     n_layers: Idx,
     level: Idx,
     max_levels: Idx,
     min_verts: Idx,
 }
 
-impl DomainDecompositionRemeshingParams {
+impl ParallelRemeshingParams {
     #[must_use]
     pub const fn new(n_layers: Idx, max_levels: Idx, min_verts: Idx) -> Self {
         Self {
@@ -48,38 +49,44 @@ impl DomainDecompositionRemeshingParams {
     }
 
     #[must_use]
-    const fn next(&self, n_verts: Idx) -> Option<Self> {
-        if self.level + 1 < self.max_levels && n_verts > self.min_verts {
-            Some(Self {
-                n_layers: self.n_layers,
-                level: self.level + 1,
-                max_levels: self.max_levels,
-                min_verts: self.min_verts,
-            })
-        } else {
-            None
+    const fn next(&self, n_verts: Idx, partition_type: PartitionType) -> Option<Self> {
+        match partition_type {
+            PartitionType::None => None,
+            PartitionType::Metis(_) | PartitionType::Scotch(_) => {
+                if self.level + 1 < self.max_levels && n_verts > self.min_verts {
+                    Some(Self {
+                        n_layers: self.n_layers,
+                        level: self.level + 1,
+                        max_levels: self.max_levels,
+                        min_verts: self.min_verts,
+                    })
+                } else {
+                    None
+                }
+            }
         }
     }
 }
 
-#[derive(Default, Clone)]
-pub struct RemeshingStats {
+#[derive(Default, Clone, Serialize)]
+pub struct RemeshingInfo {
     pub n_verts_init: Idx,
     pub n_verts_final: Idx,
     pub time: f64,
 }
 
-#[derive(Default)]
-pub struct DomainDecompositionRemeshingStats {
-    stats: RemeshingStats,
+#[derive(Default, Serialize)]
+pub struct ParallelRemeshingInfo {
+    info: RemeshingInfo,
+    partition_time: f64,
     partition_quality: f64,
-    partitions: Vec<RemeshingStats>,
-    interface: Option<Box<DomainDecompositionRemeshingStats>>,
+    partitions: Vec<RemeshingInfo>,
+    interface: Option<Box<ParallelRemeshingInfo>>,
 }
 
-impl DomainDecompositionRemeshingStats {
+impl ParallelRemeshingInfo {
     fn print_short(&self, indent: String) {
-        let s = &self.stats;
+        let s = &self.info;
         if self.partition_quality > 0.0 {
             println!(
                 "{} -> {} verts, partition quality = {}, {:.2e} secs",
@@ -106,26 +113,33 @@ impl DomainDecompositionRemeshingStats {
     pub fn print_summary(&self) {
         self.print_short(String::from("  "));
     }
+
+    #[must_use]
+    pub fn to_json(&self) -> String {
+        serde_json::to_string_pretty(&self).unwrap()
+    }
 }
 
 /// Domain decomposition
-pub struct DomainDecomposition<const D: usize, E: Elem> {
-    pub mesh: SimplexMesh<D, E>,
+pub struct ParallelRemesher<const D: usize, E: Elem> {
+    mesh: SimplexMesh<D, E>,
     partition_tags: Vec<Tag>,
     partition_bdy_tags: Vec<Tag>,
     partition_type: PartitionType,
     interface_bdy_tag: Tag,
+    partition_time: f64,
     debug: bool,
 }
 
-impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
-    /// Create a new domain decomposition.
+impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
+    /// Create a new parallel remesher based on domain decomposition.
     /// If part is `PartitionType::Scotch(n)` or `PartitionType::Metis(n)` the mesh is partitionned into n subdomains using
     /// scotch / metis. If None, the element tag in `mesh` is used as the partition Id
     ///
     /// NB: the mesh element tags will be modified
     pub fn new(mut mesh: SimplexMesh<D, E>, partition_type: PartitionType) -> Result<Self> {
         // Partition if needed
+        let now = Instant::now();
         match partition_type {
             PartitionType::Scotch(n) => {
                 assert!(n > 1, "Need at least 2 partitions");
@@ -141,6 +155,7 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
                 debug!("Using the existing partition");
             }
         }
+        let partition_time = now.elapsed().as_secs_f64();
 
         // Get the partition interfaces
         let (bdy_tags, ifc_tags) = mesh.add_boundary_faces();
@@ -164,6 +179,7 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
             partition_type,
             partition_bdy_tags: ifc_tags.keys().copied().collect::<Vec<_>>(),
             interface_bdy_tag: Tag::MIN,
+            partition_time,
             debug: false,
         })
     }
@@ -172,9 +188,14 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
         self.debug = debug;
     }
 
-    /// Get the partition quality (ration of the number of interface faces to the total number of faces)
-    pub fn partition_quality(&self) -> Result<f64> {
-        self.mesh.partition_quality()
+    #[must_use]
+    pub const fn partitionned_mesh(&self) -> &SimplexMesh<D, E> {
+        &self.mesh
+    }
+
+    #[must_use]
+    pub fn n_verts(&self) -> Idx {
+        self.mesh.n_verts()
     }
 
     /// Get a parallel iterator over the partitiona as SubSimplexMeshes
@@ -221,23 +242,6 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
         new_etag
     }
 
-    /// Get a SubSimplexMesh containing the elements that are neighbors of level `n_layers` of the partition interface
-    /// (i.e. the faces with a <0 tag)
-    pub fn interface(&mut self, n_layers: Idx) -> SubSimplexMesh<D, E> {
-        let new_etags = self.flag_interface(&self.mesh, n_layers);
-        let tmp = self.mesh.etags().collect::<Vec<_>>();
-        self.mesh
-            .mut_etags()
-            .enumerate()
-            .for_each(|(i, t)| *t = new_etags[i]);
-        let res = self.mesh.extract(|t| t == 2);
-        self.mesh
-            .mut_etags()
-            .enumerate()
-            .for_each(|(i, t)| *t = tmp[i]);
-        res
-    }
-
     fn is_partition_bdy(&self, tag: Tag) -> bool {
         self.partition_bdy_tags.iter().any(|&x| -x == tag)
     }
@@ -279,24 +283,30 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
         m: &[M],
         geom: &G,
         params: RemesherParams,
-        dd_params: DomainDecompositionRemeshingParams,
-    ) -> Result<(SimplexMesh<D, E>, DomainDecompositionRemeshingStats)> {
+        dd_params: ParallelRemeshingParams,
+    ) -> Result<(SimplexMesh<D, E>, ParallelRemeshingInfo)> {
         let res = Mutex::new(SimplexMesh::empty());
-        let interface_mesh = Mutex::new(SimplexMesh::empty());
-        let interface_m = Mutex::new(Vec::new());
+        let ifc = Mutex::new(SimplexMesh::empty());
+        let ifc_m = Mutex::new(Vec::new());
 
         let level = dd_params.level();
 
-        let stats = DomainDecompositionRemeshingStats {
-            stats: RemeshingStats {
+        let info = ParallelRemeshingInfo {
+            info: RemeshingInfo {
                 n_verts_init: self.mesh.n_verts(),
                 ..Default::default()
             },
-            partition_quality: self.partition_quality()?,
-            partitions: vec![RemeshingStats::default(); self.partition_tags.len()],
+            partition_time: self.partition_time,
+            partition_quality: self.mesh.partition_quality()?,
+            partitions: vec![RemeshingInfo::default(); self.partition_tags.len()],
             ..Default::default()
         };
-        let stats = Mutex::new(stats);
+        let info = Mutex::new(info);
+
+        if self.debug {
+            let fname = format!("level_{level}_init.vtu");
+            self.mesh.write_vtk(&fname, None, None).unwrap();
+        }
 
         let now = Instant::now();
 
@@ -315,14 +325,14 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
                 let (mut local_mesh, local_m) =
                     self.remesh_submesh(m, geom, params.clone(), submesh);
 
-                // Get the stats
-                let mut stats = stats.lock().unwrap();
-                stats.partitions[i_part] = RemeshingStats {
+                // Get the info
+                let mut info = info.lock().unwrap();
+                info.partitions[i_part] = RemeshingInfo {
                     n_verts_init,
                     n_verts_final: local_mesh.n_verts(),
                     time: now.elapsed().as_secs_f64(),
                 };
-                drop(stats);
+                drop(info);
 
                 // Flag elements with n_layers of the interfaces with tag 2, other with tag 1
                 let new_etags = self.flag_interface(&local_mesh, dd_params.n_layers);
@@ -354,89 +364,92 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
                 // Update res
                 let mut res = res.lock().unwrap();
                 res.add(&local_mesh, |t| t == 1, |_| true, Some(1e-12));
+                if self.debug {
+                    let fname = format!("level_{level}_part_{i_part}_res.vtu");
+                    res.write_vtk(&fname, None, None).unwrap();
+                }
                 drop(res);
 
-                // Update interface_mesh
+                // Update ifc
                 let part_tag = 2 + i_part as Tag;
                 local_mesh.mut_etags().for_each(|t| {
                     if *t == 2 {
                         *t = part_tag;
                     }
                 });
-                let mut interface_mesh = interface_mesh.lock().unwrap();
-                let (ids, _, _) =
-                    interface_mesh.add(&local_mesh, |t| t == part_tag, |_t| true, Some(1e-12));
-                drop(interface_mesh);
-                let mut interface_m = interface_m.lock().unwrap();
-                interface_m.extend(ids.iter().map(|&i| local_m[i as usize]));
+                let mut ifc = ifc.lock().unwrap();
+                let (ids, _, _) = ifc.add(&local_mesh, |t| t == part_tag, |_t| true, Some(1e-12));
+                if self.debug {
+                    let fname = format!("level_{level}_part_{i_part}_ifc.vtu");
+                    ifc.write_vtk(&fname, None, None).unwrap();
+                }
+                drop(ifc);
+                let mut ifc_m = ifc_m.lock().unwrap();
+                ifc_m.extend(ids.iter().map(|&i| local_m[i as usize]));
             });
 
-        let mut interface_mesh = interface_mesh.into_inner().unwrap();
+        let mut ifc = ifc.into_inner().unwrap();
         if self.debug {
-            let fname = format!("level_{level}_interface.vtu");
-            interface_mesh.write_vtk(&fname, None, None).unwrap();
-            let fname = format!("level_{level}_interface_bdy.vtu");
-            interface_mesh
-                .boundary()
-                .0
-                .write_vtk(&fname, None, None)
-                .unwrap();
+            let fname = format!("level_{level}_ifc.vtu");
+            ifc.write_vtk(&fname, None, None).unwrap();
+            let fname = format!("level_{level}_ifc_bdy.vtu");
+            ifc.boundary().0.write_vtk(&fname, None, None).unwrap();
         }
 
         // to be consistent with the base topology
-        interface_mesh.mut_etags().for_each(|t| *t = 1);
-        interface_mesh.remove_faces(|t| self.is_partition_bdy(t));
+        ifc.mut_etags().for_each(|t| *t = 1);
+        ifc.remove_faces(|t| self.is_partition_bdy(t));
         if self.debug {
-            interface_mesh.compute_face_to_elems();
-            interface_mesh.check().unwrap();
+            ifc.compute_face_to_elems();
+            ifc.check().unwrap();
         }
 
-        let mut stats = stats.into_inner().unwrap();
+        let mut info = info.into_inner().unwrap();
 
         let topo = self.mesh.get_topology().unwrap().clone();
-        interface_mesh.compute_topology_from(topo);
-        let interface_m = interface_m.into_inner().unwrap();
+        ifc.compute_topology_from(topo);
+        let ifc_m = ifc_m.into_inner().unwrap();
 
-        let mut interface_mesh = if let Some(dd_params) = dd_params.next(interface_mesh.n_verts()) {
-            let mut dd = Self::new(interface_mesh, self.partition_type)?;
+        let mut ifc = if let Some(dd_params) = dd_params.next(ifc.n_verts(), self.partition_type) {
+            let mesh = ifc;
+            let mut dd = Self::new(mesh, self.partition_type)?;
             dd.set_debug(self.debug);
             dd.interface_bdy_tag = self.interface_bdy_tag + 1;
-            let (interface_mesh, interface_stats) =
-                dd.remesh(&interface_m, geom, params, dd_params)?;
-            stats.interface = Some(Box::new(interface_stats));
-            interface_mesh
+            let (ifc, interface_info) = dd.remesh(&ifc_m, geom, params, dd_params)?;
+            info.interface = Some(Box::new(interface_info));
+            ifc
         } else {
             debug!("Remeshing level {level} / interface");
-            let mut interface_remesher = Remesher::new(&interface_mesh, &interface_m, geom)?;
+            let mut ifc_remesher = Remesher::new(&ifc, &ifc_m, geom)?;
             if self.debug {
-                interface_remesher.check().unwrap();
+                ifc_remesher.check().unwrap();
             }
-            let n_verts_init = interface_mesh.n_verts();
+            let n_verts_init = ifc.n_verts();
             let now = Instant::now();
-            interface_remesher.remesh(params, geom)?;
-            stats.interface = Some(Box::new(DomainDecompositionRemeshingStats {
-                stats: RemeshingStats {
+            ifc_remesher.remesh(params, geom)?;
+            info.interface = Some(Box::new(ParallelRemeshingInfo {
+                info: RemeshingInfo {
                     n_verts_init,
-                    n_verts_final: interface_remesher.n_verts(),
+                    n_verts_final: ifc_remesher.n_verts(),
                     time: now.elapsed().as_secs_f64(),
                 },
-                partition_quality: -1.0,
+                partition_time: 0.0,
+                partition_quality: 0.0,
                 partitions: Vec::new(),
                 interface: None,
             }));
-            interface_remesher.to_mesh(true)
+            ifc_remesher.to_mesh(true)
         };
 
         if self.debug {
-            interface_mesh
-                .write_vtk("level_{level}_interface_remeshed.vtu", None, None)
-                .unwrap();
+            let fname = format!("level_{level}_ifc_remeshed.vtu");
+            ifc.write_vtk(&fname, None, None).unwrap();
         }
 
-        // Merge res and interface_mesh
+        // Merge res and ifc
         let mut res = res.into_inner().unwrap();
-        interface_mesh.mut_etags().for_each(|t| *t = 2);
-        res.add(&interface_mesh, |_| true, |_| true, Some(1e-12));
+        ifc.mut_etags().for_each(|t| *t = 2);
+        res.add(&ifc, |_| true, |_| true, Some(1e-12));
         if self.debug {
             res.compute_face_to_elems();
             res.check().unwrap();
@@ -448,10 +461,15 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
             res.check().unwrap();
         }
 
-        stats.stats.n_verts_final = res.n_verts();
-        stats.stats.time = now.elapsed().as_secs_f64();
+        if self.debug {
+            let fname = format!("level_{level}_final.vtu");
+            res.write_vtk(&fname, None, None).unwrap();
+        }
 
-        Ok((res, stats))
+        info.info.n_verts_final = res.n_verts();
+        info.info.time = now.elapsed().as_secs_f64() + self.partition_time;
+
+        Ok((res, info))
     }
 }
 
@@ -460,28 +478,23 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
 mod tests {
 
     use crate::{
-        domain_decomposition::{
-            DomainDecomposition, DomainDecompositionRemeshingParams, PartitionType,
-        },
         geometry::NoGeometry,
         mesh::Point,
         metric::IsoMetric,
+        parallel::{ParallelRemesher, ParallelRemeshingParams, PartitionType},
         remesher::RemesherParams,
         test_meshes::{test_mesh_2d, test_mesh_3d},
         Result,
     };
 
     fn test_domain_decomposition_2d(debug: bool, ptype: PartitionType) -> Result<()> {
-        use log::info;
         // use crate::init_log;
         // init_log("warning");
         let mut mesh = test_mesh_2d().split().split().split().split().split();
         mesh.mut_etags().for_each(|t| *t = 1);
         mesh.compute_topology();
 
-        let mut dd = DomainDecomposition::new(mesh, ptype)?;
-
-        debug!("Partition quality: {:?}", dd.partition_quality().unwrap());
+        let mut dd = ParallelRemesher::new(mesh, ptype)?;
 
         let h = |p: Point<2>| {
             let x = p[0];
@@ -497,7 +510,7 @@ mod tests {
             .map(|i| IsoMetric::<2>::from(h(dd.mesh.vert(i))))
             .collect();
 
-        let dd_params = DomainDecompositionRemeshingParams::new(2, 1, 0);
+        let dd_params = ParallelRemeshingParams::new(2, 1, 0);
         let (mut mesh, _) = dd.remesh(&m, &NoGeometry(), RemesherParams::default(), dd_params)?;
 
         if debug {
@@ -584,14 +597,12 @@ mod tests {
     }
 
     fn test_domain_decomposition_3d(debug: bool, ptype: PartitionType) -> Result<()> {
-        use log::debug;
         // use crate::init_log;
         // init_log("warning");
         let mut mesh = test_mesh_3d().split().split().split();
         mesh.compute_topology();
-        let mut dd = DomainDecomposition::new(mesh, ptype)?;
+        let mut dd = ParallelRemesher::new(mesh, ptype)?;
         // dd.set_debug(true);
-        debug!("Partition quality: {:?}", dd.partition_quality().unwrap());
 
         let h = |p: Point<3>| {
             let x = p[0];
@@ -612,7 +623,7 @@ mod tests {
             .map(|i| IsoMetric::<3>::from(h(dd.mesh.vert(i))))
             .collect();
 
-        let dd_params = DomainDecompositionRemeshingParams::new(2, 2, 0);
+        let dd_params = ParallelRemeshingParams::new(2, 2, 0);
         let (mut mesh, _) = dd.remesh(&m, &NoGeometry(), RemesherParams::default(), dd_params)?;
 
         if debug {
