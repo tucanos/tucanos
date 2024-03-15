@@ -3,9 +3,7 @@ use nalgebra::SMatrix;
 use rustc_hash::FxHashMap;
 use std::{f64::consts::PI, hash::BuildHasherDefault, time::Instant};
 use tucanos::{
-    domain_decomposition::{
-        DomainDecomposition, DomainDecompositionRemeshingParams, PartitionType,
-    },
+    domain_decomposition::{DDRemeshingParams, DomainDecomposition, PartitionType},
     geom_elems::GElem,
     geometry::Geometry,
     mesh::{Point, SimplexMesh},
@@ -377,7 +375,7 @@ fn main() -> Result<()> {
     } else {
         let mut dd = DomainDecomposition::new(mesh, PartitionType::Scotch(n_part))?;
         dd.set_debug(debug);
-        let dd_params = DomainDecompositionRemeshingParams::new(2, 2, 10000);
+        let dd_params = DDRemeshingParams::new(2, 2, 10000);
         let (mesh, stats) = dd.remesh(&metric, &geom, params, dd_params)?;
         stats.print_summary();
         mesh
