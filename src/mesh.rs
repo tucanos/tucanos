@@ -7,7 +7,7 @@ use crate::{
     topology::Topology,
     twovec, Dim, Error, Idx, Result, Tag, TopoTag,
 };
-use log::{debug, info, warn};
+use log::{debug, warn};
 use nalgebra::SVector;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::HashMap;
@@ -93,7 +93,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         faces: Vec<E::Face>,
         ftags: Vec<Tag>,
     ) -> Self {
-        info!(
+        debug!(
             "Create a SimplexMesh with {} {}D vertices / {} {} / {} {}",
             verts.len(),
             D,

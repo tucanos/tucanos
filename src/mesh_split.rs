@@ -3,7 +3,7 @@ use crate::{
     topo_elems::Elem,
     Idx, Tag,
 };
-use log::info;
+use log::debug;
 use rustc_hash::FxHashMap;
 use std::hash::BuildHasherDefault;
 
@@ -142,7 +142,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// TODO: transfer the vertex and cell data
     #[must_use]
     pub fn split(&self) -> Self {
-        info!("Split all the elements uniformly");
+        debug!("Split all the elements uniformly");
 
         let mut edges: FxHashMap<[Idx; 2], Idx> =
             FxHashMap::with_hasher(BuildHasherDefault::default());

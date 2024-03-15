@@ -7,7 +7,7 @@ use crate::{
     topology::Topology,
     Dim, Error, Result, Tag, TopoTag,
 };
-use log::info;
+use log::debug;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::{collections::HashMap, hash::BuildHasherDefault};
 
@@ -222,7 +222,7 @@ where
 
         let mut patches = FxHashMap::with_hasher(BuildHasherDefault::default());
         for tag in face_tags.iter().copied() {
-            info!("Create LinearPatchGeometryWithCurvature for patch {tag}");
+            debug!("Create LinearPatchGeometryWithCurvature for patch {tag}");
             if mesh_topo.get((E::DIM as Dim, tag)).is_none() {
                 return Err(Error::from(&format!("LinearGeometry: face tag {tag:?} not found in topo (mesh: {mesh_face_tags:?}, bdy: {face_tags:?})")));
             }
@@ -240,7 +240,7 @@ where
             let edge_tags: FxHashSet<Tag> = bdy_edges.etags().collect();
 
             for tag in edge_tags {
-                info!("Create LinearPatchGeometry for edge {tag}");
+                debug!("Create LinearPatchGeometry for edge {tag}");
                 // find the edge tag in mesh_topo
                 let bdy_topo_node = bdy_topo.get((E::Face::DIM as Dim, tag)).unwrap();
                 let bdy_parents = &bdy_topo_node.parents;
@@ -257,7 +257,7 @@ where
 
     pub fn compute_curvature(&mut self) {
         for (&i, patch) in &mut self.patches {
-            info!("Compute curvature for patch {i}");
+            debug!("Compute curvature for patch {i}");
             patch.compute_curvature();
         }
     }

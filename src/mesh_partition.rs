@@ -16,7 +16,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     #[cfg(feature = "scotch")]
     pub fn partition_scotch(&mut self, n_parts: Idx) -> Result<()> {
         use crate::Tag;
-        use log::{info, warn};
+        use log::{debug, warn};
 
         if n_parts == 1 {
             self.mut_etags().for_each(|t| *t = 1);
@@ -26,7 +26,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         if self.etags().any(|t| t != 1) {
             warn!("Erase the element tags");
         }
-        info!("Partition the mesh into {} using scotch", n_parts);
+        debug!("Partition the mesh into {} using scotch", n_parts);
 
         let mut partition = vec![0; self.n_elems() as usize];
         let e2e = self.get_elem_to_elems()?;
@@ -79,7 +79,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     #[cfg(feature = "metis")]
     pub fn partition_metis(&mut self, n_parts: Idx) -> Result<()> {
         use crate::Tag;
-        use log::{info, warn};
+        use log::{debug, warn};
 
         if n_parts == 1 {
             self.mut_etags().for_each(|t| *t = 1);
@@ -90,7 +90,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             warn!("Erase the element tags");
         }
 
-        info!("Partition the mesh into {} using metis", n_parts);
+        debug!("Partition the mesh into {} using metis", n_parts);
 
         let mut partition = vec![0; self.n_elems() as usize];
         let e2e = self.get_elem_to_elems()?;

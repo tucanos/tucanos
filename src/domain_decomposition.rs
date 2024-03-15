@@ -6,7 +6,7 @@ use crate::{
     topo_elems::Elem,
     Idx, Result, Tag,
 };
-use log::{debug, info, warn};
+use log::{debug, warn};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rustc_hash::FxHashSet;
 use std::{sync::Mutex, time::Instant};
@@ -138,7 +138,7 @@ impl<const D: usize, E: Elem> DomainDecomposition<D, E> {
                 mesh.partition_metis(n)?;
             }
             PartitionType::None => {
-                info!("Using the existing partition");
+                debug!("Using the existing partition");
             }
         }
 
@@ -481,7 +481,7 @@ mod tests {
 
         let mut dd = DomainDecomposition::new(mesh, ptype)?;
 
-        info!("Partition quality: {:?}", dd.partition_quality().unwrap());
+        debug!("Partition quality: {:?}", dd.partition_quality().unwrap());
 
         let h = |p: Point<2>| {
             let x = p[0];
@@ -584,14 +584,14 @@ mod tests {
     }
 
     fn test_domain_decomposition_3d(debug: bool, ptype: PartitionType) -> Result<()> {
-        use log::info;
+        use log::debug;
         // use crate::init_log;
         // init_log("warning");
         let mut mesh = test_mesh_3d().split().split().split();
         mesh.compute_topology();
         let mut dd = DomainDecomposition::new(mesh, ptype)?;
         // dd.set_debug(true);
-        info!("Partition quality: {:?}", dd.partition_quality().unwrap());
+        debug!("Partition quality: {:?}", dd.partition_quality().unwrap());
 
         let h = |p: Point<3>| {
             let x = p[0];

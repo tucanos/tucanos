@@ -4,7 +4,7 @@ use crate::{
     topo_elems::Elem,
     Idx,
 };
-use log::info;
+use log::debug;
 use marechal_libol_sys::{LolFreeOctree, LolGetNearest, LolNewOctree, LolProjectVertex, TypTag};
 use std::{
     ffi::c_int,
@@ -77,15 +77,15 @@ impl Octree {
         let (nv, ne) = (mesh.n_verts(), mesh.n_elems());
         let (tree, etype) = match E::N_VERTS {
             2 => {
-                info!("create an octree with {nv} vertices and {ne} edges");
+                debug!("create an octree with {nv} vertices and {ne} edges");
                 (lol_new_octree(&coords, &elems, &[], &[]), TypTag::LolTypEdg)
             }
             3 => {
-                info!("create an octree with {nv} vertices and {ne} triangles");
+                debug!("create an octree with {nv} vertices and {ne} triangles");
                 (lol_new_octree(&coords, &[], &elems, &[]), TypTag::LolTypTri)
             }
             4 => {
-                info!("create an octree with {nv} vertices and {ne} tetrahedra");
+                debug!("create an octree with {nv} vertices and {ne} tetrahedra");
                 (lol_new_octree(&coords, &[], &[], &elems), TypTag::LolTypTet)
             }
             _ => unreachable!(),

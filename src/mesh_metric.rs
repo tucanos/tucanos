@@ -6,8 +6,7 @@ use crate::{
     topo_elems::{Edge, Elem, Tetrahedron, Triangle},
     Error, Idx, Result, Tag,
 };
-
-use log::{debug, info, warn};
+use log::{debug, warn};
 use nalgebra::{allocator::Allocator, Const, DefaultAllocator};
 use rustc_hash::FxHashSet;
 
@@ -250,12 +249,12 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         step: Option<f64>,
         max_iter: Idx,
     ) -> Result<f64> {
-        info!("Scaling the metric (h_min = {h_min}, h_max = {h_max}, n_elems = {n_elems}, max_iter = {max_iter})");
+        debug!("Scaling the metric (h_min = {h_min}, h_max = {h_max}, n_elems = {n_elems}, max_iter = {max_iter})");
         if fixed_m.is_some() {
-            info!("Using a fixed metric");
+            debug!("Using a fixed metric");
         }
         if implied_m.is_some() {
-            info!(
+            debug!(
                 "Using the implied metric with step = {}",
                 step.unwrap_or(4.0)
             );
@@ -376,7 +375,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// on its neighbors ignoring the metrics with the minimum and maximum volumes
     /// TODO: doc
     pub fn smooth_metric<M: Metric<D>>(&self, m: &[M]) -> Result<Vec<M>> {
-        info!("Apply metric smoothing");
+        debug!("Apply metric smoothing");
 
         let v2v = self.get_vertex_to_vertices()?;
         let mut weights = Vec::new();
@@ -478,7 +477,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         beta: f64,
         max_iter: Idx,
     ) -> Result<(Idx, Idx)> {
-        info!(
+        debug!(
             "Apply metric gradation (beta = {}, max_iter = {})",
             beta, max_iter
         );
@@ -554,7 +553,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         Const<D>: nalgebra::ToTypenum + nalgebra::DimSub<nalgebra::U1>,
         DefaultAllocator: Allocator<f64, <Const<D> as nalgebra::DimSub<nalgebra::U1>>::Output>,
     {
-        info!("Extend the metric into the domain using gradation = {beta}");
+        debug!("Extend the metric into the domain using gradation = {beta}");
 
         let n_verts = self.n_verts() as usize;
         let n_set = flg.iter().filter(|&&x| x).count();
@@ -636,7 +635,7 @@ impl SimplexMesh<3, Tetrahedron> {
         h_n: Option<&[f64]>,
         h_n_tags: Option<&[Tag]>,
     ) -> Result<Vec<AnisoMetric3d>> {
-        info!(
+        debug!(
             "Compute the curvature metric with r/h = {} and gradation = {}",
             r_h, beta
         );
@@ -708,7 +707,7 @@ impl SimplexMesh<2, Triangle> {
         h_n: Option<&[f64]>,
         h_n_tags: Option<&[Tag]>,
     ) -> Result<Vec<AnisoMetric2d>> {
-        info!(
+        debug!(
             "Compute the curvature metric with r/h = {} and gradation = {}",
             r_h, beta
         );

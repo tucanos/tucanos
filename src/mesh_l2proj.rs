@@ -4,8 +4,7 @@ use crate::{
     topo_elems::Elem,
     Result,
 };
-
-use log::info;
+use log::debug;
 use nalgebra::SMatrix;
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
@@ -18,7 +17,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// where the sum is considered over all elements that contain vertex $`i`$.
     ///
     pub fn gradient_l2proj(&self, f: &[f64]) -> Result<Vec<f64>> {
-        info!("Compute gradient using L2 projection");
+        debug!("Compute gradient using L2 projection");
 
         assert_eq!(f.len(), self.n_verts() as usize);
 
@@ -58,7 +57,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// applying twice the L2 projection gradient.
     /// NB: this actually does not converge the the hessian!
     pub fn hessian_l2proj(&self, gradf: &[f64]) -> Result<Vec<f64>> {
-        info!("Compute hessian using L2 projection");
+        debug!("Compute hessian using L2 projection");
 
         assert_eq!(gradf.len(), D * self.n_verts() as usize);
 
