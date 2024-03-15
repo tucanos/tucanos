@@ -57,13 +57,20 @@ pub struct SimplexMesh<const D: usize, E: Elem> {
 
 impl<const D: usize, E: Elem> Clone for SimplexMesh<D, E> {
     fn clone(&self) -> Self {
-        Self::new(
+        let mut res = Self::new(
             self.verts.clone(),
             self.elems.clone(),
             self.etags.clone(),
             self.faces.clone(),
             self.ftags.clone(),
-        )
+        );
+        if let Some(topo) = self.topo.as_ref() {
+            res.topo = Some(topo.clone());
+        }
+        if let Some(vtags) = self.vtags.as_ref() {
+            res.vtags = Some(vtags.clone());
+        }
+        res
     }
 }
 
