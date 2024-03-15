@@ -55,8 +55,8 @@ pub struct Cavity<const D: usize, E: Elem, M: Metric<D>> {
     pub tagged_faces: Vec<(E::Face, Tag)>,
     /// Tagged faces faces
     pub tagged_bdys: Vec<(<E::Face as Elem>::Face, Tag)>,
-    /// Tagged faces faces sign (for 2d)
-    pub tagged_bdys_sgn: Vec<bool>,
+    /// Tagged faces faces flag (for 2d)
+    pub tagged_bdys_flg: Vec<bool>,
     /// From what the cavity was created (vertex, edge or face)
     pub seed: Seed,
     /// Minimum element quality in the cavity
@@ -81,7 +81,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
             faces: Vec::new(),
             tagged_faces: Vec::new(),
             tagged_bdys: Vec::new(),
-            tagged_bdys_sgn: Vec::new(),
+            tagged_bdys_flg: Vec::new(),
             seed: Seed::No,
             q_min: -1.0,
             l_min: -1.0,
@@ -101,6 +101,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
         self.faces.clear();
         self.tagged_faces.clear();
         self.tagged_bdys.clear();
+        self.tagged_bdys_flg.clear();
         self.seed = Seed::No;
         self.q_min = -1.0;
         self.l_min = -1.0;
@@ -256,7 +257,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
                                         && !self.tagged_bdys.iter().any(|(f, _)| f.sorted() == b)
                                     {
                                         self.tagged_bdys.push((b, face_tag));
-                                        self.tagged_bdys_sgn.push(E::N_VERTS == 3 && i_bdy == 0);
+                                        self.tagged_bdys_flg.push(E::N_VERTS == 3 && i_bdy == 0);
                                     }
                                 }
                             }
@@ -277,7 +278,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
                                         && !self.tagged_bdys.iter().any(|(f, _)| f.sorted() == b)
                                     {
                                         self.tagged_bdys.push((b, face_tag));
-                                        self.tagged_bdys_sgn.push(E::N_VERTS == 3 && i_bdy == 0);
+                                        self.tagged_bdys_flg.push(E::N_VERTS == 3 && i_bdy == 0);
                                     }
                                 }
                             }
@@ -408,8 +409,8 @@ impl<const D: usize, E: Elem, M: Metric<D>> fmt::Display for Cavity<D, E, M> {
             writeln!(f, " {e:?}")?;
         }
         writeln!(f, "Tagged face boundaries")?;
-        for e in &self.tagged_bdys {
-            writeln!(f, " {e:?}")?;
+        for (e, s) in self.tagged_bdys.iter().zip(self.tagged_bdys_flg.iter()) {
+            writeln!(f, " {e:?}, sgn = {s}")?;
         }
         writeln!(f, "Type: {:?}", self.seed)?;
 
@@ -461,7 +462,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
         self.cavity
             .tagged_bdys
             .iter()
-            .zip(self.cavity.tagged_bdys_sgn.iter())
+            .zip(self.cavity.tagged_bdys_flg.iter())
             .filter(|((b, _), _)| match self.ftype {
                 FilledCavityType::ExistingVertex(i) => !b.contains_vertex(i),
                 FilledCavityType::MovedVertex((i, _, _)) => !b.contains_vertex(i),
