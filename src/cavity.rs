@@ -55,6 +55,8 @@ pub struct Cavity<const D: usize, E: Elem, M: Metric<D>> {
     pub tagged_faces: Vec<(E::Face, Tag)>,
     /// Tagged faces faces
     pub tagged_bdys: Vec<(<E::Face as Elem>::Face, Tag)>,
+    /// Tagged faces faces sign (for 2d)
+    pub tagged_bdys_sgn: Vec<bool>,
     /// From what the cavity was created (vertex, edge or face)
     pub seed: Seed,
     /// Minimum element quality in the cavity
@@ -79,6 +81,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
             faces: Vec::new(),
             tagged_faces: Vec::new(),
             tagged_bdys: Vec::new(),
+            tagged_bdys_sgn: Vec::new(),
             seed: Seed::No,
             q_min: -1.0,
             l_min: -1.0,
@@ -253,6 +256,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
                                         && !self.tagged_bdys.iter().any(|(f, _)| f.sorted() == b)
                                     {
                                         self.tagged_bdys.push((b, face_tag));
+                                        self.tagged_bdys_sgn.push(E::N_VERTS == 3 && i_bdy == 0);
                                     }
                                 }
                             }
@@ -273,6 +277,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
                                         && !self.tagged_bdys.iter().any(|(f, _)| f.sorted() == b)
                                     {
                                         self.tagged_bdys.push((b, face_tag));
+                                        self.tagged_bdys_sgn.push(E::N_VERTS == 3 && i_bdy == 0);
                                     }
                                 }
                             }
@@ -452,16 +457,17 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
     /// Return the tagged faces
     pub fn tagged_faces_boundary(
         &self,
-    ) -> impl Iterator<Item = (<E::Face as Elem>::Face, Tag)> + '_ {
+    ) -> impl Iterator<Item = (<E::Face as Elem>::Face, Tag, bool)> + '_ {
         self.cavity
             .tagged_bdys
             .iter()
-            .filter(|(b, _)| match self.ftype {
+            .zip(self.cavity.tagged_bdys_sgn.iter())
+            .filter(|((b, _), _)| match self.ftype {
                 FilledCavityType::ExistingVertex(i) => !b.contains_vertex(i),
                 FilledCavityType::MovedVertex((i, _, _)) => !b.contains_vertex(i),
                 FilledCavityType::EdgeCenter((edg, _, _)) => !b.contains_edge(edg),
             })
-            .map(|(b, t)| (*b, *t))
+            .map(|((b, t), s)| (*b, *t, *s))
     }
 
     /// Return the tagged faces
@@ -469,7 +475,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
         &self,
     ) -> impl Iterator<Item = (<E::Face as Elem>::Face, Tag)> + '_ {
         self.tagged_faces_boundary()
-            .map(|(b, t)| (self.cavity.global_elem(&b), t))
+            .map(|(b, t, _)| (self.cavity.global_elem(&b), t))
     }
 
     /// Check that the tagged faces are not already present (useful for collapse)
@@ -575,7 +581,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
     ) -> bool {
         let (p0, m0) = self.point();
 
-        for (b, tag) in self.tagged_faces_boundary() {
+        for (b, tag, s) in self.tagged_faces_boundary() {
             assert!(
                 tag > 0,
                 "Invalid tag {}\n{:?}\n{}\n{}",
@@ -592,7 +598,10 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
             );
             let gf = <E::Face as Elem>::Geom::from_vert_and_face(&p0, &m0, &gb);
             let center = gf.center();
-            let normal = gf.normal();
+            let mut normal = gf.normal();
+            if s {
+                normal *= -1.0;
+            }
             let a = geom.angle(&center, &normal, &(E::DIM as Dim - 1, tag));
             if a > threshold_degrees {
                 return false;
