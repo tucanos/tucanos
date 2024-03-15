@@ -1,7 +1,4 @@
 extern crate libmeshb_sys;
-use log::{debug, info};
-use std::ptr::addr_of_mut;
-
 use self::libmeshb_sys::{
     GmfCloseMesh, GmfGetLin, GmfGotoKwd, GmfKwdCod, GmfOpenMesh, GmfRead, GmfSca, GmfSetKwd,
     GmfSetLin, GmfStatKwd, GmfSymMat, GmfVec, GmfWrite,
@@ -11,7 +8,9 @@ use crate::{
     topo_elems::Elem,
     Error, Idx, Result, Tag,
 };
+use log::debug;
 use std::ffi::{c_int, CString};
+use std::ptr::addr_of_mut;
 
 /// Reader for .mesh(b) / .sol(b) files (interface to libMeshb)
 pub struct GmfReader {
@@ -57,7 +56,7 @@ impl GmfReader {
     /// Create a new file
     #[must_use]
     pub fn new(fname: &str) -> Self {
-        info!("Open {} (read)", fname);
+        debug!("Open {} (read)", fname);
         let mut dim: c_int = 0;
         let mut version: c_int = 0;
         let cfname = CString::new(fname).unwrap();
@@ -314,7 +313,7 @@ impl GmfWriter {
     /// Create a new file
     #[must_use]
     pub fn new(fname: &str, dim: usize) -> Self {
-        info!("Open {} (write)", fname);
+        debug!("Open {} (write)", fname);
         let dim = dim as c_int;
         let version = 2;
 

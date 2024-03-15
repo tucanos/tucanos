@@ -5,14 +5,13 @@ use crate::{
     topo_elems::{Elem, Triangle},
     Idx,
 };
-
-use log::{info, warn};
+use log::{debug, warn};
 use std::{f64::consts::PI, fs::OpenOptions};
 
 /// Read a .stl file (ascii or binary) and return a new SimplexMesh<3, Triangle>
 #[must_use]
 pub fn read_stl(file_name: &str) -> SimplexMesh<3, Triangle> {
-    info!("Read {file_name}");
+    debug!("Read {file_name}");
 
     let mut file = OpenOptions::new().read(true).open(file_name).unwrap();
     let stl = stl_io::read_stl(&mut file).unwrap();
@@ -46,7 +45,7 @@ pub fn orient_stl<const D: usize, E: Elem>(
     mesh: &SimplexMesh<D, E>,
     stl_mesh: &mut SimplexMesh<D, E::Face>,
 ) -> (Idx, f64) {
-    info!("Orient the boundary mesh");
+    debug!("Orient the boundary mesh");
 
     let (bdy, _) = mesh.boundary();
     let tree = <DefaultObjectIndex<D> as ObjectIndex<D>>::new(&bdy);

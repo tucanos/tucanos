@@ -1,5 +1,5 @@
 use crate::{mesh::SimplexMesh, topo_elems::Elem, Result};
-use log::{debug, info};
+use log::debug;
 use std::collections::HashMap;
 use vtkio::{
     model::{
@@ -16,7 +16,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         vertex_data: Option<HashMap<String, &[f64]>>,
         elem_data: Option<HashMap<String, &[f64]>>,
     ) -> Result<()> {
-        info!("Write {file_name}");
+        debug!("Write {file_name}");
         let connectivity = self.elems().flatten().map(u64::from).collect();
         let offsets = (0..self.n_elems())
             .map(|i| u64::from(E::N_VERTS * (i + 1)))

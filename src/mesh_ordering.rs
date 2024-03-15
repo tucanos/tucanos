@@ -4,7 +4,7 @@ use crate::{
     Idx,
 };
 use lindel::Lineariseable;
-use log::{debug, info};
+use log::debug;
 
 fn get_indices<F: Fn(usize) -> usize>(n: usize, comp: F) -> Vec<Idx> {
     let mut indices = Vec::with_capacity(n);
@@ -102,7 +102,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Elements and faces are renumbered using their minumim vertex Id and not the
     /// coordinate of their centers
     pub fn reorder_hilbert(&mut self) -> (Vec<Idx>, Vec<Idx>, Vec<Idx>) {
-        info!("Reordering the vertices / elements / faces (Hilbert)");
+        debug!("Reordering the vertices / elements / faces (Hilbert)");
         // bounding box
         let mut mini = [0.; D];
         let mut maxi = [0.; D];

@@ -11,7 +11,7 @@ use crate::{
     topology::Topology,
     Dim, Error, Idx, Result, Tag, TopoTag,
 };
-use log::{debug, info, trace};
+use log::{debug, trace};
 #[cfg(feature = "nlopt")]
 use nlopt::{Algorithm, Nlopt, Target};
 use rustc_hash::FxHashMap;
@@ -210,7 +210,7 @@ impl Default for RemesherParams {
 impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     /// Initialize the remesher
     pub fn new<G: Geometry<D>>(mesh: &SimplexMesh<D, E>, m: &[M], geom: &G) -> Result<Self> {
-        info!(
+        debug!(
             "Initialize the remesher with {} {D}D vertices / {} {}",
             mesh.n_verts(),
             mesh.n_elems(),
@@ -349,7 +349,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
     /// Check that the remesher holds a valid mesh
     pub fn check(&self) -> Result<()> {
-        info!("Check the consistency of the remesher data");
+        debug!("Check the consistency of the remesher data");
 
         for (&i_elem, e) in &self.elems {
             // Is element-to-vertex and vertex-to-element info consistent?
@@ -410,7 +410,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     /// Create a `SimplexMesh`
     #[must_use]
     pub fn to_mesh(&self, only_bdy_faces: bool) -> SimplexMesh<D, E> {
-        info!("Build a mesh");
+        debug!("Build a mesh");
 
         let vidx: FxHashMap<Idx, Idx> = self
             .verts
@@ -721,7 +721,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         params: &RemesherParams,
         geom: &G,
     ) -> Result<u32> {
-        info!("Split edges with length > {:.2e}", l_0);
+        debug!("Split edges with length > {:.2e}", l_0);
 
         let l_min = params.split_min_l_abs;
         debug!("min. allowed length: {:.2}", l_min);
@@ -973,7 +973,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         params: &RemesherParams,
         geom: &G,
     ) -> Result<u32> {
-        info!("Swap edges: target quality = {}", q_target);
+        debug!("Swap edges: target quality = {}", q_target);
 
         let mut n_iter = 0;
         let mut cavity = Cavity::new();
@@ -1021,7 +1021,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     ///   where max(l) and min(q) as the max edge length and min quality over the entire mesh
     #[allow(clippy::too_many_lines)]
     pub fn collapse<G: Geometry<D>>(&mut self, params: &RemesherParams, geom: &G) -> Result<u32> {
-        info!("Collapse elements");
+        debug!("Collapse elements");
 
         let l_max = params.collapse_max_l_abs;
         debug!("max. allowed length: {:.2}", l_max);
@@ -1439,7 +1439,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
     /// Perform mesh smoothing
     pub fn smooth<G: Geometry<D>>(&mut self, params: &RemesherParams, geom: &G) {
-        info!("Smooth vertices");
+        debug!("Smooth vertices");
 
         // We modify the vertices while iterating over them so we must copy
         // the keys. Apart from going unsafe the only way to avoid this would be
@@ -1463,14 +1463,14 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
     /// Perform a remeshing iteration
     pub fn remesh<G: Geometry<D>>(&mut self, params: RemesherParams, geom: &G) -> Result<()> {
-        info!("Adapt the mesh");
+        debug!("Adapt the mesh");
         let now = Instant::now();
 
         if params.two_steps {
             let l_max = max_iter(self.lengths_iter());
             if l_max > 2.0 * f64::sqrt(2.0) {
                 let l_0 = f64::max(0.5 * l_max, 2.0 * f64::sqrt(2.0));
-                info!("Perform a first step with l_0 = {l_0:.2}");
+                debug!("Perform a first step with l_0 = {l_0:.2}");
                 let first_step_params = RemesherParams {
                     split_min_q_abs: 0.0,
                     split_min_l_abs: 0.0,
@@ -1488,7 +1488,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     self.smooth(&first_step_params, geom);
                 }
             } else {
-                info!("l_max = {l_max}, no first step required");
+                debug!("l_max = {l_max}, no first step required");
             }
         }
 
@@ -1508,7 +1508,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
         self.swap(0.8, &params, geom)?;
 
-        info!("Done in {}s", now.elapsed().as_secs_f32());
+        debug!("Done in {}s", now.elapsed().as_secs_f32());
         self.print_stats();
         Ok(())
     }
@@ -1516,10 +1516,10 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     /// Print length and quality stats on the mesh / metric
     pub fn print_stats(&self) {
         let stats = Stats::new(self.lengths_iter(), &[f64::sqrt(0.5), f64::sqrt(2.0)]);
-        info!("Length: {}", stats);
+        debug!("Length: {}", stats);
 
         let stats = Stats::new(self.qualities_iter(), &[0.4, 0.6, 0.8]);
-        info!("Qualities: {}", stats);
+        debug!("Qualities: {}", stats);
     }
 
     /// Return the stats at each remeshing step as a json string

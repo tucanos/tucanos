@@ -4,7 +4,7 @@ use crate::{
     Error, Idx, Result,
 };
 
-use log::info;
+use log::debug;
 use rustc_hash::FxHashSet;
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
@@ -114,7 +114,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// P is `weight_exp` and typically $`P \in \left \{ 0,1,2 \right \}`$.
     /// $`W_0`$ is set here to $`\sqrt{2} \max(W_j)`$.
     pub fn smooth(&self, f: &[f64], weight_exp: i32) -> Result<Vec<f64>> {
-        info!(
+        debug!(
             "Compute smoothing using 1st order LS (weight = {})",
             weight_exp
         );
@@ -209,7 +209,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// P is `weight_exp` and typically $`P \in \left \{ 0,1,2 \right \}`$.
     /// $`W_0`$ is set here to $`\sqrt{2} \max(W_j)`$.
     pub fn gradient(&self, f: &[f64], weight_exp: i32) -> Result<Vec<f64>> {
-        info!(
+        debug!(
             "Compute gradient using 1st order LS (weight = {})",
             weight_exp
         );
@@ -285,14 +285,14 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         weight_exp: Option<i32>,
         use_second_order_neighbors: bool,
     ) -> Result<Vec<f64>> {
-        info!("Compute hessian using 2nd order LS");
+        debug!("Compute hessian using 2nd order LS");
         if let Some(weight_exp) = weight_exp {
-            info!("  using weight_exp = {weight_exp}");
+            debug!("  using weight_exp = {weight_exp}");
         } else {
-            info!("  using weights = (10.0, 1.0, 0.1)");
+            debug!("  using weights = (10.0, 1.0, 0.1)");
         }
         if use_second_order_neighbors {
-            info!("  using second order neighbors");
+            debug!("  using second order neighbors");
         }
 
         let mut res = Vec::with_capacity(D * (D + 1) / 2 * self.n_verts() as usize);

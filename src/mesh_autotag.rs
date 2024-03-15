@@ -1,7 +1,3 @@
-use std::collections::HashMap;
-
-use log::info;
-
 use crate::{
     geom_elems::GElem,
     graph::{CSRGraph, ConnectedComponents},
@@ -10,6 +6,8 @@ use crate::{
     topo_elems::Elem,
     Result, Tag,
 };
+use log::debug;
+use std::collections::HashMap;
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Automatically tag the (surface) mesh elements as follows
@@ -86,14 +84,14 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         };
 
         if E2::DIM == E::DIM {
-            info!("Computing the mesh element tags");
+            debug!("Computing the mesh element tags");
             let tags = mesh
                 .gelems()
                 .map(|ge| get_tag(&ge.center()))
                 .collect::<Vec<_>>();
             mesh.mut_etags().zip(tags).for_each(|(t, new_t)| *t = new_t);
         } else if E2::DIM == E::DIM + 1 {
-            info!("Computing the mesh face tags");
+            debug!("Computing the mesh face tags");
             let tags = mesh
                 .gfaces()
                 .map(|gf| get_tag(&gf.center()))
