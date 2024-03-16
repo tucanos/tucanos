@@ -12,6 +12,18 @@ Python bindings to [tucanos](https://github.com/tucanos/tucanos.git)
 pip install git+https://github.com/tucanos/pytucanos.git
 ```
 
+To install tucanos in debug mode:
+
+```bash
+pip install -C debug=true git+https://github.com/tucanos/pytucanos.git
+```
+
+To install Tucanos with [libmeshb](https://github.com/LoicMarechal/libMeshb) support:
+
+```bash
+pip install -C meshb=true git+https://github.com/tucanos/pytucanos.git
+```
+
 # Benchmarks
 
 ## `.meshb/.solb` I/O
