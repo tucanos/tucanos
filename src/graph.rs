@@ -1,4 +1,4 @@
-use crate::{topo_elems::Elem, Idx};
+use crate::{topo_elems::Elem, topology::VecInterface, Idx};
 use rustc_hash::FxHashMap;
 use std::{collections::hash_map::Entry, hash::BuildHasherDefault};
 
@@ -133,10 +133,13 @@ pub struct CSRGraph {
 }
 
 impl CSRGraph {
-    fn set_ptr<E: IntoIterator<Item = Idx> + Copy>(elems: &[E], nv: Option<usize>) -> Self {
-        let nv = nv.unwrap_or(elems.iter().copied().flatten().max().unwrap_or(0) as usize + 1);
+    fn set_ptr<E: IntoIterator<Item = Idx> + Copy, I: VecInterface<E>>(
+        elems: &I,
+        nv: Option<usize>,
+    ) -> Self {
+        let nv = nv.unwrap_or(elems.iter_copied().flatten().max().unwrap_or(0) as usize + 1);
 
-        let n = elems.iter().copied().flatten().count();
+        let n = elems.iter_copied().flatten().count();
 
         let mut res = Self {
             ptr: vec![0; nv + 1],
@@ -144,7 +147,7 @@ impl CSRGraph {
             m: 0,
         };
 
-        for i in elems.iter().copied().flatten() {
+        for i in elems.iter_copied().flatten() {
             res.ptr[i as usize + 1] += 1;
         }
 
@@ -165,11 +168,11 @@ impl CSRGraph {
     }
 
     #[must_use]
-    pub fn new(edgs: &[[Idx; 2]]) -> Self {
+    pub fn new<I: VecInterface<[Idx; 2]>>(edgs: &I) -> Self {
         let mut res = Self::set_ptr(edgs, None);
         res.m = res.n();
 
-        for e in edgs {
+        for e in edgs.iter_copied() {
             let i0 = e[0] as usize;
             let i1 = e[1] as usize;
             let mut ok = false;
@@ -195,11 +198,11 @@ impl CSRGraph {
         res
     }
 
-    pub fn transpose<E: Elem>(elems: &[E], nv: Option<usize>) -> Self {
+    pub fn transpose<E: Elem, I: VecInterface<E>>(elems: &I, nv: Option<usize>) -> Self {
         let mut res = Self::set_ptr(elems, nv);
         res.m = elems.len() as Idx;
 
-        for (i, e) in elems.iter().enumerate() {
+        for (i, e) in elems.iter_copied().enumerate() {
             for i_vert in e.iter().copied() {
                 let start = res.ptr[i_vert as usize];
                 let end = res.ptr[i_vert as usize + 1];

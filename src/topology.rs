@@ -6,8 +6,28 @@ use crate::{
 use core::result;
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
-use std::fmt;
 use std::{collections::HashSet, fs::File, io::Write};
+use std::{fmt, ops::Index};
+
+pub trait VecInterface<E: Copy>: Index<usize, Output = E> {
+    fn len(&self) -> usize;
+    fn is_empty(&self) -> bool;
+    fn iter_copied(&self) -> impl Iterator<Item = E>;
+}
+
+impl<E: Copy> VecInterface<E> for Vec<E> {
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
+
+    fn iter_copied(&self) -> impl Iterator<Item = E> {
+        self.iter().copied()
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TopoNode {
@@ -217,58 +237,74 @@ impl Topology {
         self.parents.get(&(topo0, topo1)).copied()
     }
 
-    fn update_from_elems<E: Elem>(&mut self, elems: &[E], etags: &[Tag], vtags: &mut [TopoTag]) {
-        elems.iter().zip(etags.iter()).for_each(|(e, &t)| {
-            e.iter().for_each(|&i| {
-                let i = i as usize;
-                if vtags[i].1 != 0 && vtags[i].1 != t {
-                    vtags[i] = (E::DIM as Dim, 0);
-                } else {
-                    let tag = (E::DIM as Dim, t);
-                    if self.get(tag).is_none() {
-                        self.insert(tag, &[]);
-                    }
-                    vtags[i] = tag;
-                }
-            });
-        });
-    }
-
-    fn update_from_faces<E: Elem>(
+    fn update_from_elems<E: Elem, I1: VecInterface<E>, I2: VecInterface<Tag>>(
         &mut self,
-        elems: &[E],
-        etags: &[Tag],
-        faces: &[E::Face],
-        ftags: &[Tag],
+        elems: &I1,
+        etags: &I2,
         vtags: &mut [TopoTag],
     ) {
-        let face2elem = get_face_to_elem(elems.iter().copied());
-        faces.iter().zip(ftags.iter()).for_each(|(f, &t)| {
-            let tag = (E::Face::DIM as Dim, t);
-            let parents = face2elem
-                .get(&f.sorted())
-                .unwrap()
-                .iter()
-                .map(|&i| etags[i as usize])
-                .collect::<Vec<_>>();
-            assert!(!parents.is_empty());
-            if let Some(node) = self.get(tag) {
-                assert_eq!(parents.len(), node.parents.len());
-                parents
-                    .iter()
-                    .for_each(|x| assert!(node.parents.contains(x)));
-            } else {
-                self.insert(tag, &parents);
-            }
-            f.iter().for_each(|&i| {
-                let i = i as usize;
-                if vtags[i].0 == E::Face::DIM as Dim && (vtags[i].1 == 0 || vtags[i].1 != t) {
-                    vtags[i] = (E::Face::DIM as Dim, 0);
-                } else {
-                    vtags[i] = (E::Face::DIM as Dim, t);
-                }
+        elems
+            .iter_copied()
+            .zip(etags.iter_copied())
+            .for_each(|(e, t)| {
+                e.iter().for_each(|&i| {
+                    let i = i as usize;
+                    if vtags[i].1 != 0 && vtags[i].1 != t {
+                        vtags[i] = (E::DIM as Dim, 0);
+                    } else {
+                        let tag = (E::DIM as Dim, t);
+                        if self.get(tag).is_none() {
+                            self.insert(tag, &[]);
+                        }
+                        vtags[i] = tag;
+                    }
+                });
             });
-        });
+    }
+
+    fn update_from_faces<
+        E: Elem,
+        I1: VecInterface<E>,
+        I2: VecInterface<Tag>,
+        I3: VecInterface<E::Face>,
+    >(
+        &mut self,
+        elems: &I1,
+        etags: &I2,
+        faces: &I3,
+        ftags: &I2,
+        vtags: &mut [TopoTag],
+    ) {
+        let face2elem = get_face_to_elem(elems.iter_copied());
+        faces
+            .iter_copied()
+            .zip(ftags.iter_copied())
+            .for_each(|(f, t)| {
+                let tag = (E::Face::DIM as Dim, t);
+                let parents = face2elem
+                    .get(&f.sorted())
+                    .unwrap()
+                    .iter()
+                    .map(|&i| etags[i as usize])
+                    .collect::<Vec<_>>();
+                assert!(!parents.is_empty());
+                if let Some(node) = self.get(tag) {
+                    assert_eq!(parents.len(), node.parents.len());
+                    parents
+                        .iter_copied()
+                        .for_each(|x| assert!(node.parents.contains(&x)));
+                } else {
+                    self.insert(tag, &parents);
+                }
+                f.iter().for_each(|&i| {
+                    let i = i as usize;
+                    if vtags[i].0 == E::Face::DIM as Dim && (vtags[i].1 == 0 || vtags[i].1 != t) {
+                        vtags[i] = (E::Face::DIM as Dim, 0);
+                    } else {
+                        vtags[i] = (E::Face::DIM as Dim, t);
+                    }
+                });
+            });
     }
 
     fn max_tag(&self, dim: Dim) -> Tag {
@@ -279,9 +315,13 @@ impl Topology {
             .unwrap_or(0)
     }
 
-    fn check_untagged<E: Elem>(&self, elems: &[E], etags: &[Tag]) -> bool {
+    fn check_untagged<E: Elem, I1: VecInterface<E>, I2: VecInterface<Tag>>(
+        &self,
+        elems: &I1,
+        etags: &I2,
+    ) -> bool {
         let dim = E::Face::DIM as Dim;
-        let edg2face = get_face_to_elem(elems.iter().copied());
+        let edg2face = get_face_to_elem(elems.iter_copied());
         for e2f in edg2face.values() {
             let ftags = e2f
                 .iter()
@@ -299,14 +339,14 @@ impl Topology {
         true
     }
 
-    fn update_and_get_children<E: Elem>(
+    fn update_and_get_children<E: Elem, I1: VecInterface<E>, I2: VecInterface<Tag>>(
         &mut self,
-        faces: &[E],
-        ftags: &[Tag],
+        faces: &I1,
+        ftags: &I2,
         vtags: &mut [TopoTag],
     ) -> (Vec<E::Face>, Vec<Tag>, Tag) {
         let dim = E::Face::DIM as Dim;
-        let edg2face = get_face_to_elem(faces.iter().copied());
+        let edg2face = get_face_to_elem(faces.iter_copied());
         let mut next_tag = self.max_tag(dim);
         let mut edgs = Vec::new();
         let mut etags = Vec::new();
@@ -345,7 +385,12 @@ impl Topology {
         (edgs, etags, next_tag)
     }
 
-    fn check_and_fix<E: Elem>(&mut self, elems: &[E], etags: &[Tag], vtags: &mut [TopoTag]) {
+    fn check_and_fix<E: Elem, I1: VecInterface<E>, I2: VecInterface<Tag>>(
+        &mut self,
+        elems: &I1,
+        etags: &I2,
+        vtags: &mut [TopoTag],
+    ) {
         let vert2elems = CSRGraph::transpose(elems, Some(vtags.len()));
         for (i_vert, vtag) in vtags.iter_mut().enumerate() {
             let ids = vert2elems.row(i_vert as Idx);
@@ -414,22 +459,27 @@ impl Topology {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub fn update_from_elems_and_faces<E: Elem>(
+    pub fn update_from_elems_and_faces<
+        E: Elem,
+        I1: VecInterface<E>,
+        I2: VecInterface<Tag>,
+        I3: VecInterface<E::Face>,
+    >(
         &mut self,
-        elems: &[E],
-        etags: &[Tag],
-        faces: &[E::Face],
-        ftags: &[Tag],
+        elems: &I1,
+        etags: &I2,
+        faces: &I3,
+        ftags: &I2,
     ) -> Vec<TopoTag> {
         assert!(
             E::DIM == 2 || E::DIM == 3,
             "Invalid element dimension {}",
             E::DIM
         );
-        assert!(!etags.iter().any(|&t| t == 0));
-        assert!(!ftags.iter().any(|&t| t == 0));
+        assert!(!etags.iter_copied().any(|t| t == 0));
+        assert!(!ftags.iter_copied().any(|t| t == 0));
 
-        let n_verts = elems.iter().copied().flatten().max().unwrap() + 1;
+        let n_verts = elems.iter_copied().flatten().max().unwrap() + 1;
 
         let mut vtags = vec![(E::DIM as Dim, 0); n_verts as usize];
 
