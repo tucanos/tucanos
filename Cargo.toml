@@ -21,6 +21,8 @@ nlopt = ["tucanos/nlopt"]
 meshb = ["tucanos/meshb"]
 libol = ["tucanos/marechal-libol-sys"]
 parry = ["tucanos/parry"]
+scotch = ["tucanos/scotch"]
+metis = ["tucanos/metis"]
 
 [lints.rust]
 unused_imports = "deny"

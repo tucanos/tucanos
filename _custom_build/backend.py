@@ -3,7 +3,7 @@
 import sys
 from setuptools.build_meta import build_wheel, build_editable
 
-FEATURES = ["meshb", "nlopt"]
+FEATURES = ["meshb", "nlopt", "metis", "scotch"]
 
 
 def update_argv(config_settings):
