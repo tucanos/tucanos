@@ -13,7 +13,7 @@ ndarray = "0.15.6"
 numpy = "0.20"
 pyo3 = { version = "0.20", features = ["extension-module", "multiple-pymethods"] }
 pyo3-log = "0.9"
-tucanos = { git = "https://github.com/tucanos/tucanos.git", rev = "ca44516" }
+tucanos = { git = "https://github.com/tucanos/tucanos.git", rev = "3bed847" }
 
 [features]
 default = ["parry"]
