@@ -11,9 +11,14 @@ def update_argv(config_settings):
         flags = []
         if config_settings.get("debug", "false").lower() == "true":
             flags += ["--debug"]
+        else:
+            flags += ["--release"]
+        features = []
         for feature in FEATURES:
             if config_settings.get(feature, "false").lower() == "true":
-                flags += ["--features=%s" % feature]
+                features.append(feature)
+        if len(features) > 0:
+            flags += ["--features=%s" % ",".join(features)]
         if flags:
             sys.argv = sys.argv[:1] + ["build_rust"] + flags + sys.argv[1:]
 
