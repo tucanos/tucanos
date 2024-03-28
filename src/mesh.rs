@@ -172,7 +172,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
     /// Get an iterator through the vertices
     #[must_use]
-    pub fn verts(&self) -> impl ExactSizeIterator<Item = Point<D>> + '_ {
+    pub fn verts(&self) -> impl ExactSizeIterator<Item = Point<D>> + Clone + '_ {
         self.verts.iter().copied()
     }
 
@@ -189,7 +189,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
     /// Get an iterator through the elements
     #[must_use]
-    pub fn elems(&self) -> impl ExactSizeIterator<Item = E> + '_ {
+    pub fn elems(&self) -> impl ExactSizeIterator<Item = E> + Clone + '_ {
         self.elems.iter().copied()
     }
 
@@ -206,7 +206,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
     /// Get an iterator through the elements tags
     #[must_use]
-    pub fn etags(&self) -> impl ExactSizeIterator<Item = Tag> + '_ {
+    pub fn etags(&self) -> impl ExactSizeIterator<Item = Tag> + Clone + '_ {
         self.etags.iter().copied()
     }
 
@@ -224,7 +224,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
     /// Get an iterator through the geometric elements
     #[must_use]
-    pub fn gelems(&self) -> impl ExactSizeIterator<Item = E::Geom<D, IsoMetric<D>>> + '_ {
+    pub fn gelems(&self) -> impl ExactSizeIterator<Item = E::Geom<D, IsoMetric<D>>> + Clone + '_ {
         self.elems().map(|e| self.gelem(e))
     }
 
@@ -236,7 +236,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
     /// Get an iterator through the faces
     #[must_use]
-    pub fn faces(&self) -> impl ExactSizeIterator<Item = E::Face> + '_ {
+    pub fn faces(&self) -> impl ExactSizeIterator<Item = E::Face> + Clone + '_ {
         self.faces.iter().copied()
     }
 
@@ -253,7 +253,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
     /// Get an iterator through the face tags
     #[must_use]
-    pub fn ftags(&self) -> impl ExactSizeIterator<Item = Tag> + '_ {
+    pub fn ftags(&self) -> impl ExactSizeIterator<Item = Tag> + Clone + '_ {
         self.ftags.iter().copied()
     }
 
@@ -270,7 +270,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Get an iterator through the geometric elements
-    pub fn gfaces(&self) -> impl Iterator<Item = <E::Face as Elem>::Geom<D, IsoMetric<D>>> + '_ {
+    pub fn gfaces(
+        &self,
+    ) -> impl Iterator<Item = <E::Face as Elem>::Geom<D, IsoMetric<D>>> + Clone + '_ {
         self.faces().map(|f| self.gface(f))
     }
 
