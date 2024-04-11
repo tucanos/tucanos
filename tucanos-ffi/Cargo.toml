@@ -1,0 +1,18 @@
+[package]
+name = "tucanos-ffi"
+version = "0.1.0"
+edition = "2021"
+description = "C / FFI wrapper for the Tucanos mesher"
+
+[lib]
+name = "tucanos"
+crate-type = ["cdylib"]
+
+[dependencies]
+tucanos = { path = ".." }
+
+[build-dependencies]
+cbindgen = "0.26"
+
+[lints]
+workspace = true
