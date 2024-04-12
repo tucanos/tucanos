@@ -1,6 +1,7 @@
 use crate::{
     graph::CSRGraph,
     topo_elems::{get_face_to_elem, Elem},
+    vector::Vector,
     Dim, Idx, Result, Tag, TopoTag,
 };
 use core::result;
@@ -217,8 +218,13 @@ impl Topology {
         self.parents.get(&(topo0, topo1)).copied()
     }
 
-    fn update_from_elems<E: Elem>(&mut self, elems: &[E], etags: &[Tag], vtags: &mut [TopoTag]) {
-        elems.iter().zip(etags.iter()).for_each(|(e, &t)| {
+    fn update_from_elems<E: Elem>(
+        &mut self,
+        elems: &Vector<E>,
+        etags: &Vector<Tag>,
+        vtags: &mut [TopoTag],
+    ) {
+        elems.iter().zip(etags.iter()).for_each(|(e, t)| {
             e.iter().for_each(|&i| {
                 let i = i as usize;
                 if vtags[i].1 != 0 && vtags[i].1 != t {
@@ -236,20 +242,20 @@ impl Topology {
 
     fn update_from_faces<E: Elem>(
         &mut self,
-        elems: &[E],
-        etags: &[Tag],
-        faces: &[E::Face],
-        ftags: &[Tag],
+        elems: &Vector<E>,
+        etags: &Vector<Tag>,
+        faces: &Vector<E::Face>,
+        ftags: &Vector<Tag>,
         vtags: &mut [TopoTag],
     ) {
-        let face2elem = get_face_to_elem(elems.iter().copied());
-        faces.iter().zip(ftags.iter()).for_each(|(f, &t)| {
+        let face2elem = get_face_to_elem(elems.iter());
+        faces.iter().zip(ftags.iter()).for_each(|(f, t)| {
             let tag = (E::Face::DIM as Dim, t);
             let parents = face2elem
                 .get(&f.sorted())
                 .unwrap()
                 .iter()
-                .map(|&i| etags[i as usize])
+                .map(|&i| etags.index(i))
                 .collect::<Vec<_>>();
             assert!(!parents.is_empty());
             if let Some(node) = self.get(tag) {
@@ -279,13 +285,13 @@ impl Topology {
             .unwrap_or(0)
     }
 
-    fn check_untagged<E: Elem>(&self, elems: &[E], etags: &[Tag]) -> bool {
+    fn check_untagged<E: Elem>(&self, elems: &Vector<E>, etags: &Vector<Tag>) -> bool {
         let dim = E::Face::DIM as Dim;
-        let edg2face = get_face_to_elem(elems.iter().copied());
+        let edg2face = get_face_to_elem(elems.iter());
         for e2f in edg2face.values() {
             let ftags = e2f
                 .iter()
-                .map(|&i_face| etags[i_face as usize])
+                .map(|&i_face| etags.index(i_face))
                 .collect::<FxHashSet<_>>();
             let should_be_tagged = e2f.len() != 2 || ftags.len() != 1;
             if should_be_tagged
@@ -301,19 +307,19 @@ impl Topology {
 
     fn update_and_get_children<E: Elem>(
         &mut self,
-        faces: &[E],
-        ftags: &[Tag],
+        faces: &Vector<E>,
+        ftags: &Vector<Tag>,
         vtags: &mut [TopoTag],
     ) -> (Vec<E::Face>, Vec<Tag>, Tag) {
         let dim = E::Face::DIM as Dim;
-        let edg2face = get_face_to_elem(faces.iter().copied());
+        let edg2face = get_face_to_elem(faces.iter());
         let mut next_tag = self.max_tag(dim);
         let mut edgs = Vec::new();
         let mut etags = Vec::new();
         for (e, e2f) in &edg2face {
             let ftags = e2f
                 .iter()
-                .map(|&i_face| ftags[i_face as usize])
+                .map(|&i_face| ftags.index(i_face))
                 .collect::<FxHashSet<_>>();
             let should_be_tagged = e2f.len() != 2 || ftags.len() != 1;
             if should_be_tagged {
@@ -345,13 +351,18 @@ impl Topology {
         (edgs, etags, next_tag)
     }
 
-    fn check_and_fix<E: Elem>(&mut self, elems: &[E], etags: &[Tag], vtags: &mut [TopoTag]) {
+    fn check_and_fix<E: Elem>(
+        &mut self,
+        elems: &Vector<E>,
+        etags: &Vector<Tag>,
+        vtags: &mut [TopoTag],
+    ) {
         let vert2elems = CSRGraph::transpose(elems, Some(vtags.len()));
         for (i_vert, vtag) in vtags.iter_mut().enumerate() {
             let ids = vert2elems.row(i_vert as Idx);
             let mut tags = ids
                 .iter()
-                .map(|&i| etags[i as usize])
+                .map(|&i| etags.index(i))
                 .collect::<FxHashSet<_>>();
             if vtag.0 > E::DIM as Dim {
                 assert!(vtag.1 != 0);
@@ -413,23 +424,22 @@ impl Topology {
         }
     }
 
-    #[allow(clippy::too_many_lines)]
     pub fn update_from_elems_and_faces<E: Elem>(
         &mut self,
-        elems: &[E],
-        etags: &[Tag],
-        faces: &[E::Face],
-        ftags: &[Tag],
+        elems: &Vector<E>,
+        etags: &Vector<Tag>,
+        faces: &Vector<E::Face>,
+        ftags: &Vector<Tag>,
     ) -> Vec<TopoTag> {
         assert!(
             E::DIM == 2 || E::DIM == 3,
             "Invalid element dimension {}",
             E::DIM
         );
-        assert!(!etags.iter().any(|&t| t == 0));
-        assert!(!ftags.iter().any(|&t| t == 0));
+        assert!(!etags.iter().any(|t| t == 0));
+        assert!(!ftags.iter().any(|t| t == 0));
 
-        let n_verts = elems.iter().copied().flatten().max().unwrap() + 1;
+        let n_verts = elems.iter().flatten().max().unwrap() + 1;
 
         let mut vtags = vec![(E::DIM as Dim, 0); n_verts as usize];
 
@@ -450,6 +460,8 @@ impl Topology {
         if E::DIM == 3 {
             let (edgs, edgtags, _next_edg_tag) =
                 self.update_and_get_children(faces, ftags, &mut vtags);
+            let edgs = edgs.into();
+            let edgtags = edgtags.into();
             let (verts, verttags, _next_edg_tag) =
                 self.update_and_get_children(&edgs, &edgtags, &mut vtags);
 
@@ -457,7 +469,7 @@ impl Topology {
             self.check_and_fix(elems, etags, &mut vtags);
             self.check_and_fix(faces, ftags, &mut vtags);
             self.check_and_fix(&edgs, &edgtags, &mut vtags);
-            self.check_and_fix(&verts, &verttags, &mut vtags);
+            self.check_and_fix(&verts.into(), &verttags.into(), &mut vtags);
         } else {
             let (verts, verttags, _next_edg_tag) =
                 self.update_and_get_children(faces, ftags, &mut vtags);
@@ -465,7 +477,7 @@ impl Topology {
             // Check
             self.check_and_fix(elems, etags, &mut vtags);
             self.check_and_fix(faces, ftags, &mut vtags);
-            self.check_and_fix(&verts, &verttags, &mut vtags);
+            self.check_and_fix(&verts.into(), &verttags.into(), &mut vtags);
         };
 
         self.compute_parents();
