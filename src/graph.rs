@@ -1,4 +1,4 @@
-use crate::{topo_elems::Elem, Idx};
+use crate::{topo_elems::Elem, vector, Idx};
 use rustc_hash::FxHashMap;
 use std::{collections::hash_map::Entry, hash::BuildHasherDefault};
 
@@ -107,10 +107,11 @@ use std::{collections::hash_map::Entry, hash::BuildHasherDefault};
 // }
 
 /// Renumber the vertices in order to have contininuous indices, and return he map from old to nex indices
-pub fn reindex<E: Elem>(elems: &[E]) -> (Vec<E>, FxHashMap<Idx, Idx>) {
+#[must_use]
+pub fn reindex<E: Elem>(elems: &vector::Vector<E>) -> (Vec<E>, FxHashMap<Idx, Idx>) {
     let mut map = FxHashMap::with_hasher(BuildHasherDefault::default());
     let mut next = 0 as Idx;
-    for i in elems.iter().copied().flatten() {
+    for i in elems.iter().flatten() {
         if let Entry::Vacant(e) = map.entry(i) {
             e.insert(next);
             next += 1;
@@ -133,10 +134,10 @@ pub struct CSRGraph {
 }
 
 impl CSRGraph {
-    fn set_ptr<E: IntoIterator<Item = Idx> + Copy>(elems: &[E], nv: Option<usize>) -> Self {
-        let nv = nv.unwrap_or(elems.iter().copied().flatten().max().unwrap_or(0) as usize + 1);
+    fn from_edges(elems: &[[Idx; 2]]) -> Self {
+        let nv = elems.iter().flatten().copied().max().unwrap_or(0) as usize + 1;
 
-        let n = elems.iter().copied().flatten().count();
+        let n = elems.iter().flatten().count();
 
         let mut res = Self {
             ptr: vec![0; nv + 1],
@@ -144,7 +145,29 @@ impl CSRGraph {
             m: 0,
         };
 
-        for i in elems.iter().copied().flatten() {
+        for i in elems.iter().flatten().copied() {
+            res.ptr[i as usize + 1] += 1;
+        }
+
+        for i in 0..nv {
+            res.ptr[i + 1] += res.ptr[i];
+        }
+
+        res
+    }
+
+    fn from_elems<E: Elem>(elems: &vector::Vector<E>, nv: Option<usize>) -> Self {
+        let nv = nv.unwrap_or(elems.iter().flatten().max().unwrap_or(0) as usize + 1);
+
+        let n = elems.iter().flatten().count();
+
+        let mut res = Self {
+            ptr: vec![0; nv + 1],
+            indices: vec![Idx::MAX; n],
+            m: 0,
+        };
+
+        for i in elems.iter().flatten() {
             res.ptr[i as usize + 1] += 1;
         }
 
@@ -166,7 +189,7 @@ impl CSRGraph {
 
     #[must_use]
     pub fn new(edgs: &[[Idx; 2]]) -> Self {
-        let mut res = Self::set_ptr(edgs, None);
+        let mut res = Self::from_edges(edgs);
         res.m = res.n();
 
         for e in edgs {
@@ -195,8 +218,9 @@ impl CSRGraph {
         res
     }
 
-    pub fn transpose<E: Elem>(elems: &[E], nv: Option<usize>) -> Self {
-        let mut res = Self::set_ptr(elems, nv);
+    #[must_use]
+    pub fn transpose<E: Elem>(elems: &vector::Vector<E>, nv: Option<usize>) -> Self {
+        let mut res = Self::from_elems(elems, nv);
         res.m = elems.len() as Idx;
 
         for (i, e) in elems.iter().enumerate() {
@@ -300,7 +324,7 @@ mod tests {
             Edge::from_slice(&[2, 0]),
             Edge::from_slice(&[5, 6]),
         ];
-        let (new_elems, _) = reindex(&g);
+        let (new_elems, _) = reindex(&g.into());
         assert_eq!(new_elems.iter().copied().flatten().max().unwrap(), 4);
         assert_eq!(new_elems.len(), 4);
     }
@@ -331,7 +355,7 @@ mod tests {
             Triangle::from_slice(&[0, 2, 3]),
         ];
 
-        let g = CSRGraph::transpose(&g, None);
+        let g = CSRGraph::transpose(&g.into(), None);
         assert_eq!(g.n(), 4);
         assert_eq!(g.m(), 2);
 

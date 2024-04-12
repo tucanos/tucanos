@@ -30,6 +30,7 @@ pub mod test_meshes; // to suppress warnings!
 pub mod topo_elems;
 pub mod topology;
 mod twovec;
+mod vector;
 
 const H_MAX: f64 = 1e8;
 const H_MIN: f64 = 1e-8;
