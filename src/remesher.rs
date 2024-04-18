@@ -210,13 +210,24 @@ impl Default for RemesherParams {
 impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     /// Initialize the remesher
     pub fn new<G: Geometry<D>>(mesh: &SimplexMesh<D, E>, m: &[M], geom: &G) -> Result<Self> {
+        Self::new_with_iter(mesh, m.iter().copied(), geom)
+    }
+
+    pub fn new_with_iter<G: Geometry<D>, IT>(
+        mesh: &SimplexMesh<D, E>,
+        metric: IT,
+        geom: &G,
+    ) -> Result<Self>
+    where
+        IT: Iterator<Item = M> + ExactSizeIterator,
+    {
         debug!(
             "Initialize the remesher with {} {D}D vertices / {} {}",
             mesh.n_verts(),
             mesh.n_elems(),
             E::NAME
         );
-        assert_eq!(m.len(), mesh.n_verts() as usize);
+        assert_eq!(metric.len(), mesh.n_verts() as usize);
 
         // Get the topology
         let topo = mesh.get_topology()?;
@@ -244,8 +255,8 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
         // Insert the vertices
         assert_eq!(mesh.n_verts() as usize, vtag.len());
-        for (i_vert, (p, tag)) in mesh.verts().zip(vtag.iter()).enumerate() {
-            res.insert_vertex(p, tag, &m[i_vert]);
+        for ((p, tag), m) in mesh.verts().zip(vtag.iter()).zip(metric) {
+            res.insert_vertex(p, tag, m);
         }
 
         assert_eq!(mesh.n_verts(), res.n_verts());
@@ -463,13 +474,13 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     /// Insert a new vertex, and get its index
-    pub fn insert_vertex(&mut self, pt: Point<D>, tag: &TopoTag, m: &M) -> Idx {
+    pub fn insert_vertex(&mut self, pt: Point<D>, tag: &TopoTag, m: M) -> Idx {
         self.verts.insert(
             self.next_vert,
             VtxInfo {
                 vx: pt,
                 tag: *tag,
-                m: *m,
+                m,
                 els: SortedVec::default(),
             },
         );
@@ -784,7 +795,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                         for i in &cavity.global_elem_ids {
                             self.remove_elem(*i)?;
                         }
-                        let ip = self.insert_vertex(edge_center, &tag, &new_metric);
+                        let ip = self.insert_vertex(edge_center, &tag, new_metric);
                         for (face, tag) in filled_cavity.faces() {
                             let f = cavity.global_elem(&face);
                             assert!(!f.contains_edge(edg));
