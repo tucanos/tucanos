@@ -97,9 +97,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             "Create a SimplexMesh with {} {}D vertices / {} {} / {} {}",
             verts.len(),
             D,
-            elems.len() / E::N_VERTS as usize,
+            elems.len(),
             E::NAME,
-            faces.len() / E::Face::N_VERTS as usize,
+            faces.len(),
             E::Face::NAME
         );
         Self {
