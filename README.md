@@ -71,7 +71,8 @@ target/release/libtucanos.so
 Here is an example of a C program using Tucanos:
 
 ```c
-// build with gcc -Wl,-rpath=target/debug -Ltarget/debug -Itarget/debug test.c -ltucanos
+// build with gcc -Wl,-rpath=target/release -Ltarget/release -Itarget/release test.c -ltucanos
+// or you prefered build system
 #include <assert.h>
 #include <stdio.h>
 #include <tucanos.h>
@@ -92,7 +93,9 @@ int main(void) {
   tucanos_params_init(&params);
   tucanos_remesher3diso_remesh(remesher, &params, geom);
   tucanos_mesh33_delete(mesh);
+  tucanos_geom3d_delete(geom);
   tucanos_mesh33_t *new_mesh = tucanos_remesher3diso_tomesh(remesher, false);
+  tucanos_remesher3diso_delete(remesher);
   int num_verts = tucanos_mesh33_num_verts(new_mesh);
   printf("Number of vertices after remeshing: %d\n", num_verts);
   tucanos_mesh33_delete(new_mesh);
