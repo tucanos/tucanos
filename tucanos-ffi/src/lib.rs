@@ -150,6 +150,11 @@ pub unsafe extern "C" fn tucanos_geom3d_new(
     })
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn tucanos_geom3d_delete(geom: *mut tucanos_geom3d_t) {
+    let _ = Box::from_raw(geom);
+}
+
 unsafe fn new_metric<const D: usize, MT: Metric<D>>(
     metric: *const f64,
     num_points: u32,
@@ -171,6 +176,11 @@ pub unsafe extern "C" fn tucanos_remesher3diso_new(
     Remesher::new_with_iter(mesh, metric, geom).map_or(std::ptr::null_mut(), |implem| {
         Box::into_raw(Box::new(tucanos_remesher3diso_t { implem }))
     })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tucanos_remesher3diso_delete(remesher: *mut tucanos_remesher3diso_t) {
+    let _ = Box::from_raw(remesher);
 }
 
 #[no_mangle]
@@ -196,6 +206,11 @@ pub unsafe extern "C" fn tucanos_remesher3daniso_new(
     Remesher::new_with_iter(mesh, metric, geom).map_or(std::ptr::null_mut(), |implem| {
         Box::into_raw(Box::new(tucanos_remesher3daniso_t { implem }))
     })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tucanos_remesher3daniso_delete(remesher: *mut tucanos_remesher3daniso_t) {
+    let _ = Box::from_raw(remesher);
 }
 
 #[no_mangle]
