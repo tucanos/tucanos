@@ -9,13 +9,12 @@ mod parry2d {
     use parry2d_f64::{
         bounding_volume::Aabb,
         math::{Isometry, Point, Real},
-        partitioning::{GenericQbvh, Qbvh},
+        partitioning::Qbvh,
         query::{
-            point::PointCompositeShapeProjWithLocationBestFirstVisitor, PointProjection,
-            PointQueryWithLocation,
+            details::NormalConstraints, point::PointCompositeShapeProjWithLocationBestFirstVisitor,
+            PointProjection, PointQueryWithLocation,
         },
         shape::{Segment, SegmentPointLocation, Shape, TypedSimdCompositeShape},
-        utils::DefaultStorage,
     };
     use std::marker::PhantomData;
 
@@ -113,25 +112,29 @@ mod parry2d {
     impl<const D: usize, MS: MeshToShape> TypedSimdCompositeShape for MeshShape<D, MS> {
         type PartShape = MS::Shape;
         type PartId = u32;
-        type QbvhStorage = DefaultStorage;
+        type PartNormalConstraints = dyn NormalConstraints;
 
         fn map_typed_part_at(
             &self,
             shape_id: Self::PartId,
-            mut f: impl FnMut(Option<&Isometry<Real>>, &Self::PartShape),
+            mut f: impl FnMut(
+                Option<&Isometry<Real>>,
+                &Self::PartShape,
+                Option<&Self::PartNormalConstraints>,
+            ),
         ) {
-            f(None, &MS::shape(shape_id, &self.verts, &self.elems));
+            f(None, &MS::shape(shape_id, &self.verts, &self.elems), None);
         }
 
         fn map_untyped_part_at(
             &self,
             shape_id: Self::PartId,
-            mut f: impl FnMut(Option<&Isometry<Real>>, &dyn parry2d_f64::shape::Shape),
+            mut f: impl FnMut(Option<&Isometry<Real>>, &dyn Shape, Option<&dyn NormalConstraints>),
         ) {
-            f(None, &MS::shape(shape_id, &self.verts, &self.elems));
+            f(None, &MS::shape(shape_id, &self.verts, &self.elems), None);
         }
 
-        fn typed_qbvh(&self) -> &GenericQbvh<Self::PartId, Self::QbvhStorage> {
+        fn typed_qbvh(&self) -> &Qbvh<Self::PartId> {
             &self.tree
         }
     }
@@ -144,16 +147,15 @@ mod parry3d {
         bounding_volume::{Aabb, BoundingSphere},
         mass_properties::MassProperties,
         math::{Isometry, Point, Real},
-        partitioning::{GenericQbvh, Qbvh},
+        partitioning::Qbvh,
         query::{
-            point::PointCompositeShapeProjWithLocationBestFirstVisitor, PointProjection,
-            PointQuery, PointQueryWithLocation, Ray, RayCast, RayIntersection,
+            details::NormalConstraints, point::PointCompositeShapeProjWithLocationBestFirstVisitor,
+            PointProjection, PointQuery, PointQueryWithLocation, Ray, RayCast, RayIntersection,
         },
         shape::{
             FeatureId, Segment, SegmentPointLocation, Shape, ShapeType, Tetrahedron,
             TetrahedronPointLocation, TypedShape, TypedSimdCompositeShape,
         },
-        utils::DefaultStorage,
     };
     use std::marker::PhantomData;
     /// Create a parry Shape from a tucanos Elem
@@ -341,25 +343,29 @@ mod parry3d {
     impl<const D: usize, MS: MeshToShape> TypedSimdCompositeShape for MeshShape<D, MS> {
         type PartShape = MS::Shape;
         type PartId = u32;
-        type QbvhStorage = DefaultStorage;
+        type PartNormalConstraints = dyn NormalConstraints;
 
         fn map_typed_part_at(
             &self,
             shape_id: Self::PartId,
-            mut f: impl FnMut(Option<&Isometry<Real>>, &Self::PartShape),
+            mut f: impl FnMut(
+                Option<&Isometry<Real>>,
+                &Self::PartShape,
+                Option<&Self::PartNormalConstraints>,
+            ),
         ) {
-            f(None, &MS::shape(shape_id, &self.verts, &self.elems));
+            f(None, &MS::shape(shape_id, &self.verts, &self.elems), None);
         }
 
         fn map_untyped_part_at(
             &self,
             shape_id: Self::PartId,
-            mut f: impl FnMut(Option<&Isometry<Real>>, &dyn Shape),
+            mut f: impl FnMut(Option<&Isometry<Real>>, &dyn Shape, Option<&dyn NormalConstraints>),
         ) {
-            f(None, &MS::shape(shape_id, &self.verts, &self.elems));
+            f(None, &MS::shape(shape_id, &self.verts, &self.elems), None);
         }
 
-        fn typed_qbvh(&self) -> &GenericQbvh<Self::PartId, Self::QbvhStorage> {
+        fn typed_qbvh(&self) -> &Qbvh<Self::PartId> {
             &self.tree
         }
     }
