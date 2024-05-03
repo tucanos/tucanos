@@ -49,6 +49,8 @@ workspace = true
 [workspace.lints.rust]
 unused_imports = "deny"
 unused_variables = "deny"
+unused_mut = "deny"
+dead_code = "deny"
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }

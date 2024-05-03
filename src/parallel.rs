@@ -279,7 +279,7 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
     /// Remesh using domain decomposition
     #[allow(clippy::too_many_lines)]
     pub fn remesh<M: Metric<D>, G: Geometry<D>>(
-        &mut self,
+        &self,
         m: &[M],
         geom: &G,
         params: RemesherParams,
@@ -494,7 +494,7 @@ mod tests {
         mesh.mut_etags().for_each(|t| *t = 1);
         mesh.compute_topology();
 
-        let mut dd = ParallelRemesher::new(mesh, ptype)?;
+        let dd = ParallelRemesher::new(mesh, ptype)?;
 
         let h = |p: Point<2>| {
             let x = p[0];
@@ -601,7 +601,7 @@ mod tests {
         // init_log("warning");
         let mut mesh = test_mesh_3d().split().split().split();
         mesh.compute_topology();
-        let mut dd = ParallelRemesher::new(mesh, ptype)?;
+        let dd = ParallelRemesher::new(mesh, ptype)?;
         // dd.set_debug(true);
 
         let h = |p: Point<3>| {
