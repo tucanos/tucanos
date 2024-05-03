@@ -5,6 +5,7 @@
 use crate::{mesh::SimplexMesh, topo_elems::Elem, Idx, Result};
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
+    #[allow(clippy::needless_pass_by_ref_mut)]
     #[cfg(not(feature = "scotch"))]
     pub fn partition_scotch(&mut self, _n_parts: Idx) -> Result<()> {
         use crate::Error;
@@ -68,6 +69,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         Ok(())
     }
 
+    #[allow(clippy::needless_pass_by_ref_mut)]
     #[cfg(not(feature = "metis"))]
     pub fn partition_metis(&mut self, _n_parts: Idx) -> Result<()> {
         use crate::Error;

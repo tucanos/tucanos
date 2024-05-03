@@ -21,10 +21,10 @@ pub enum Seed {
 
 #[derive(Debug)]
 pub enum CavityCheckStatus {
-    LongEdge(f64),
-    ShortEdge(f64),
+    LongEdge,
+    ShortEdge,
     Invalid,
-    LowQuality(f64),
+    LowQuality,
     Ok(f64),
 }
 
@@ -548,11 +548,11 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
                 let l = M::edge_length(&p0, &m0, pi, mi);
                 if l < l_min {
                     trace!("cavity check failed: short edge");
-                    return CavityCheckStatus::ShortEdge(l);
+                    return CavityCheckStatus::ShortEdge;
                 }
                 if l > l_max {
                     trace!("cavity check failed: long edge");
-                    return CavityCheckStatus::LongEdge(l);
+                    return CavityCheckStatus::LongEdge;
                 }
             }
 
@@ -565,7 +565,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
                 return CavityCheckStatus::Invalid;
             } else if q <= q_min {
                 trace!("cavity check failed: low quality ({} < {})", q, q_min);
-                return CavityCheckStatus::LowQuality(q);
+                return CavityCheckStatus::LowQuality;
             }
             min_quality = f64::min(min_quality, q);
         }
