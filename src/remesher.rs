@@ -77,7 +77,7 @@ macro_rules! create_remesher {
                 let mut m: Vec<_> = m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect();
 
                 let exponent = if let Some(p) = p {
-                    2.0 / (2.0 * p as f64 + $dim as f64)
+                    2.0 / (2.0 * f64::from(p) + f64::from($dim))
                 } else {
                     0.0
                 };
