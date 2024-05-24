@@ -9,7 +9,7 @@ members = ["tucanos-ffi", "tucanos-ffi-test"]
 
 [dependencies]
 nalgebra = { version = "0.32", features = ["rand"] }
-env_logger = "0.11"
+env_logger = "0.11.3"
 log = "0.4.20"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
@@ -30,16 +30,18 @@ parry2d-f64 = { version = "0.14", optional = true }
 rayon = "1.8.0"
 typenum = { version ="1.17", features = ["const-generics"] }
 num = "0.4.1"
+minimeshb = { git = "https://github.com/tucanos/minimeshb.git"}
+tempfile = "3.10.1"
 
 [features]
 default = ["parry"]
-meshb = ["libmeshb-sys"]
+libmeshb = ["libmeshb-sys"]
 libol = ["marechal-libol-sys"]
 parry = ["kdtree", "parry3d-f64", "parry2d-f64"]
 
 [[bin]]
 name = "test_simple3d"
-required-features = ["meshb"]
+required-features = ["scotch"]
 
 [profile.release]
 debug = 1

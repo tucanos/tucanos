@@ -4,6 +4,8 @@ pub mod curvature;
 pub mod geom_elems;
 pub mod geometry;
 pub mod graph;
+#[cfg(feature = "libmeshb-sys")]
+pub mod libmeshb_io;
 #[allow(dead_code)]
 #[allow(clippy::enum_variant_names)]
 pub mod mesh;
@@ -17,7 +19,7 @@ pub mod mesh_partition;
 mod mesh_split;
 pub mod mesh_stl;
 pub mod mesh_vtk;
-#[cfg(feature = "libmeshb-sys")]
+#[cfg(not(feature = "libmeshb-sys"))]
 pub mod meshb_io;
 pub mod metric;
 mod metric_reduction;
