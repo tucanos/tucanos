@@ -1,6 +1,7 @@
 use crate::{
     geometry::Geometry,
     mesh::{SimplexMesh, SubSimplexMesh},
+    mesh_partition::PartitionType,
     metric::Metric,
     remesher::{Remesher, RemesherParams},
     topo_elems::Elem,
@@ -11,15 +12,6 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIter
 use rustc_hash::FxHashSet;
 use serde::Serialize;
 use std::{sync::Mutex, time::Instant};
-
-#[allow(dead_code)]
-#[derive(Clone, Copy)]
-pub enum PartitionType {
-    Hilbert(Idx),
-    Scotch(Idx),
-    Metis(Idx),
-    None,
-}
 
 pub struct ParallelRemeshingParams {
     n_layers: Idx,
@@ -53,7 +45,7 @@ impl ParallelRemeshingParams {
     const fn next(&self, n_verts: Idx, partition_type: PartitionType) -> Option<Self> {
         match partition_type {
             PartitionType::None => None,
-            PartitionType::Hilbert(_) | PartitionType::Metis(_) | PartitionType::Scotch(_) => {
+            _ => {
                 if self.level + 1 < self.max_levels && n_verts > self.min_verts {
                     Some(Self {
                         n_layers: self.n_layers,
@@ -142,19 +134,12 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
         // Partition if needed
         let now = Instant::now();
         match partition_type {
-            PartitionType::Hilbert(n) => {
+            PartitionType::Hilbert(n)
+            | PartitionType::Scotch(n)
+            | PartitionType::MetisRecursive(n)
+            | PartitionType::MetisKWay(n) => {
                 assert!(n > 1, "Need at least 2 partitions");
-                mesh.partition_hilbert(n);
-            }
-            PartitionType::Scotch(n) => {
-                assert!(n > 1, "Need at least 2 partitions");
-                mesh.compute_elem_to_elems();
-                mesh.partition_scotch(n)?;
-            }
-            PartitionType::Metis(n) => {
-                assert!(n > 1, "Need at least 2 partitions");
-                mesh.compute_elem_to_elems();
-                mesh.partition_metis(n)?;
+                mesh.partition(partition_type)?;
             }
             PartitionType::None => {
                 debug!("Using the existing partition");
@@ -568,31 +553,31 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_dd_2d_metis_1() {
-        test_domain_decomposition_2d(false, PartitionType::Metis(1)).unwrap();
+        test_domain_decomposition_2d(false, PartitionType::MetisRecursive(1)).unwrap();
     }
 
     #[cfg(feature = "metis")]
     #[test]
     fn test_dd_2d_metis_2() -> Result<()> {
-        test_domain_decomposition_2d(false, PartitionType::Metis(2))
+        test_domain_decomposition_2d(false, PartitionType::MetisRecursive(2))
     }
 
     #[cfg(feature = "metis")]
     #[test]
     fn test_dd_2d_metis_3() -> Result<()> {
-        test_domain_decomposition_2d(false, PartitionType::Metis(3))
+        test_domain_decomposition_2d(false, PartitionType::MetisRecursive(3))
     }
 
     #[cfg(feature = "metis")]
     #[test]
     fn test_dd_2d_metis_4() -> Result<()> {
-        test_domain_decomposition_2d(false, PartitionType::Metis(4))
+        test_domain_decomposition_2d(false, PartitionType::MetisRecursive(4))
     }
 
     #[cfg(feature = "metis")]
     #[test]
     fn test_dd_2d_metis_5() -> Result<()> {
-        test_domain_decomposition_2d(false, PartitionType::Metis(5))
+        test_domain_decomposition_2d(false, PartitionType::MetisRecursive(5))
     }
 
     #[cfg(feature = "scotch")]
@@ -706,31 +691,31 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_dd_3d_metis_1() {
-        test_domain_decomposition_3d(false, PartitionType::Metis(1)).unwrap();
+        test_domain_decomposition_3d(false, PartitionType::MetisRecursive(1)).unwrap();
     }
 
     #[cfg(feature = "metis")]
     #[test]
     fn test_dd_3d_metis_2() -> Result<()> {
-        test_domain_decomposition_3d(false, PartitionType::Metis(2))
+        test_domain_decomposition_3d(false, PartitionType::MetisRecursive(2))
     }
 
     #[cfg(feature = "metis")]
     #[test]
     fn test_dd_3d_metis_3() -> Result<()> {
-        test_domain_decomposition_3d(false, PartitionType::Metis(3))
+        test_domain_decomposition_3d(false, PartitionType::MetisRecursive(3))
     }
 
     #[cfg(feature = "metis")]
     #[test]
     fn test_dd_3d_metis_4() -> Result<()> {
-        test_domain_decomposition_3d(false, PartitionType::Metis(4))
+        test_domain_decomposition_3d(false, PartitionType::MetisRecursive(4))
     }
 
     #[cfg(feature = "metis")]
     #[test]
     fn test_dd_3d_metis_5() -> Result<()> {
-        test_domain_decomposition_3d(false, PartitionType::Metis(5))
+        test_domain_decomposition_3d(false, PartitionType::MetisRecursive(5))
     }
 
     #[cfg(feature = "scotch")]

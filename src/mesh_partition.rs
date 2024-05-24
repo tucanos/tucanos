@@ -4,7 +4,30 @@ use crate::{
 };
 use log::{debug, warn};
 
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug)]
+pub enum PartitionType {
+    Hilbert(Idx),
+    Scotch(Idx),
+    MetisRecursive(Idx),
+    MetisKWay(Idx),
+    None,
+}
+
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
+    pub fn partition(&mut self, ptype: PartitionType) -> Result<()> {
+        match ptype {
+            PartitionType::Hilbert(n) => {
+                self.partition_hilbert(n);
+                Ok(())
+            }
+            PartitionType::Scotch(n) => self.partition_scotch(n),
+            PartitionType::MetisRecursive(n) => self.partition_metis(n, "recursive"),
+            PartitionType::MetisKWay(n) => self.partition_metis(n, "kway"),
+            PartitionType::None => unreachable!(),
+        }
+    }
+
     pub fn partition_hilbert(&mut self, n_parts: Idx) {
         debug!("Partition the mesh into {} using a Hilbert curve", n_parts);
 
@@ -17,7 +40,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         } else {
             let indices = hilbert_indices(self.bounding_box(), self.gelems().map(|ge| ge.center()));
 
-            let m = self.n_elems() / n_parts;
+            let m = self.n_elems() / n_parts + 1;
             let partition = indices.iter().map(|&i| (i / m) as Tag).collect::<Vec<_>>();
 
             self.mut_etags()
@@ -49,7 +72,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         }
 
         let mut partition = vec![0; self.n_elems() as usize];
-        let e2e = self.get_elem_to_elems()?;
+        let e2e = self.compute_elem_to_elems();
 
         let architecture = scotch::Architecture::complete(n_parts as i32);
 
@@ -90,7 +113,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
     #[allow(clippy::needless_pass_by_ref_mut)]
     #[cfg(not(feature = "metis"))]
-    pub fn partition_metis(&mut self, _n_parts: Idx) -> Result<()> {
+    pub fn partition_metis(&mut self, _n_parts: Idx, _method: &str) -> Result<()> {
         use crate::Error;
         Err(Error::from("the metis feature is not enabled"))
     }
@@ -98,7 +121,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Partition the mesh using metis into `n_parts`. The partition id, defined for all the elements
     /// is stored in self.etags
     #[cfg(feature = "metis")]
-    pub fn partition_metis(&mut self, n_parts: Idx) -> Result<()> {
+    pub fn partition_metis(&mut self, n_parts: Idx, method: &str) -> Result<()> {
         debug!("Partition the mesh into {} using metis", n_parts);
 
         if self.etags().any(|t| t != 1) {
@@ -111,7 +134,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         }
 
         let mut partition = vec![0; self.n_elems() as usize];
-        let e2e = self.get_elem_to_elems()?;
+        let e2e = self.compute_elem_to_elems();
 
         let mut xadj: Vec<metis::Idx> = e2e
             .ptr
@@ -126,9 +149,12 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             .map(|x| x.try_into().unwrap())
             .collect();
 
-        metis::Graph::new(1, n_parts as metis::Idx, &mut xadj, &mut adjncy)
-            .part_recursive(&mut partition)
-            .unwrap();
+        let graph = metis::Graph::new(1, n_parts as metis::Idx, &mut xadj, &mut adjncy);
+        match method {
+            "recursive" => graph.part_recursive(&mut partition).unwrap(),
+            "kway" => graph.part_kway(&mut partition).unwrap(),
+            _ => unreachable!("Unknown method"),
+        };
 
         self.mut_etags()
             .enumerate()
@@ -211,7 +237,7 @@ mod tests {
     fn test_partition_metis_2d() -> Result<()> {
         let mut mesh = test_mesh_2d().split().split().split().split().split();
         mesh.compute_elem_to_elems();
-        mesh.partition_metis(4)?;
+        mesh.partition_metis(4, "recursive")?;
 
         let q = mesh.partition_quality()?;
         assert!(q < 0.03, "failed, q = {q}");
@@ -224,7 +250,33 @@ mod tests {
     fn test_partition_metis_3d() -> Result<()> {
         let mut mesh = test_mesh_3d().split().split().split().split();
         mesh.compute_elem_to_elems();
-        mesh.partition_metis(4)?;
+        mesh.partition_metis(4, "recursive")?;
+
+        let q = mesh.partition_quality()?;
+        assert!(q < 0.021, "failed, q = {q}");
+
+        Ok(())
+    }
+
+    #[cfg(feature = "metis")]
+    #[test]
+    fn test_partition_metis_2d_kway() -> Result<()> {
+        let mut mesh = test_mesh_2d().split().split().split().split().split();
+        mesh.compute_elem_to_elems();
+        mesh.partition_metis(4, "kway")?;
+
+        let q = mesh.partition_quality()?;
+        assert!(q < 0.03, "failed, q = {q}");
+
+        Ok(())
+    }
+
+    #[cfg(feature = "metis")]
+    #[test]
+    fn test_partition_metis_3d_kway() -> Result<()> {
+        let mut mesh = test_mesh_3d().split().split().split().split();
+        mesh.compute_elem_to_elems();
+        mesh.partition_metis(4, "kway")?;
 
         let q = mesh.partition_quality()?;
         assert!(q < 0.021, "failed, q = {q}");
