@@ -61,8 +61,8 @@ pub trait GElem<const D: usize, M: Metric<D>>: Clone + Copy + Debug {
     /// ```
     /// where
     ///  - $`|K|_{\mathcal M}`$ is the volume element in metric space. It is computed
-    /// on a discrete mesh as the ratio of the volume in physical space to the minimum
-    /// of the volumes of the metrics at each vertex
+    ///    on a discrete mesh as the ratio of the volume in physical space to the minimum
+    ///    of the volumes of the metrics at each vertex
     ///  - the sum on the denominator is performed over all the edges of the element
     ///  - $`\beta_d`$ is a normalization factor such that $`q = 1`$ of equilateral elements
     ///     - $`\beta_2 = 1 / (6\sqrt{2}) `$
@@ -156,9 +156,10 @@ impl<const D: usize, M: Metric<D>> GTetrahedron<D, M> {
     /// reference unit-length element to the physical element as $`(J J^T)^{-1}`$ .
     /// $`J`$ can be decomposed as the product of
     ///  - the Jacobian $`J_0`$ of the transformation from the reference unit-length
-    /// element to the orthogonal element, stored as `Self::J_EQ`
+    ///    element to the orthogonal element, stored as `Self::J_EQ`
     ///  - the Jacobian $`J_1`$ of the transformation from the orthogonal element to
-    /// the physical element
+    ///    the physical element
+    ///
     /// (reference: Ph.D. P. Caplan, p. 35)
     pub fn implied_metric(&self) -> AnisoMetric3d {
         let j = self.jacobian() * Self::J_EQ;
@@ -327,9 +328,10 @@ impl<const D: usize, M: Metric<D>> GTriangle<D, M> {
     /// reference unit-length element to the physical element as $`(J J^T)^{-1}`$ .
     /// $`J`$ can be decomposed as the product of
     ///  - the Jacobian $`J_0`$ of the transformation from the reference unit-length
-    /// element to the orthogonal element, stored as `Self::J_EQ`
+    ///    element to the orthogonal element, stored as `Self::J_EQ`
     ///  - the Jacobian $`J_1`$ of the transformation from the orthogonal element to
-    /// the physical element
+    ///    the physical element
+    ///
     /// (reference: Ph.D. P. Caplan, p. 35)
     pub fn implied_metric(&self) -> AnisoMetric2d {
         let j = self.jacobian() * Self::J_EQ;
