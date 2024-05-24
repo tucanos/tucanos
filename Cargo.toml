@@ -29,6 +29,7 @@ parry3d-f64 = { version = "0.14", optional = true }
 parry2d-f64 = { version = "0.14", optional = true }
 rayon = "1.8.0"
 typenum = { version ="1.17", features = ["const-generics"] }
+num = "0.4.1"
 
 [features]
 default = ["parry"]

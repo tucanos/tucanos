@@ -35,7 +35,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         let e2e = CSRGraph::new(&e2e);
 
-        let cc = ConnectedComponents::new(&e2e);
+        let cc = ConnectedComponents::<Tag>::new(&e2e)?;
         let components = cc.tags();
 
         let mut new_tags: HashMap<Tag, Vec<Tag>> = HashMap::new();
