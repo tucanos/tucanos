@@ -725,7 +725,8 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     ///       min(1/sqrt(2), max(params.split_min_l_abs, params.collapse_min_l_rel * min(l)))
     ///   - no element with a quality lower than
     ///       max(params.collapse_min_q_abs, params.collapse_min_q_rel * min(q)))
-    ///   where min(l) and min(q) as the max edge length and min quality over the entire mesh
+    ///
+    /// where min(l) and min(q) as the max edge length and min quality over the entire mesh
     pub fn split<G: Geometry<D>>(
         &mut self,
         l_0: f64,
@@ -835,7 +836,6 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     /// Try to swap an edge if
     ///   - one of the elements in its cavity has a quality < qmin
     ///   - no edge smaller that `l_min` or longer that `l_max` is created
-    /// TODO: move to Cavity?
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::too_many_lines)]
     fn try_swap<G: Geometry<D>>(
@@ -977,7 +977,8 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     ///   - no new boundary face is created if its normal forms an angle > than
     ///       params.max_angle with the normal of the geometry at the face center
     ///   - the edge swap increases the minimum quality of the adjacent elements
-    ///   where min(l) and max(l) as the min/max edge length over the entire mesh
+    ///
+    /// where min(l) and max(l) as the min/max edge length over the entire mesh
     pub fn swap<G: Geometry<D>>(
         &mut self,
         q_target: f64,
@@ -1028,8 +1029,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     ///   - no new boundary face is created if its normal forms an angle > than
     ///       params.max_angle with the normal of the geometry at the face center
     ///   - no element with a quality lower than
-    ///       max(params.collapse_min_q_abs, params.collapse_min_q_rel * min(q)))
-    ///   where max(l) and min(q) as the max edge length and min quality over the entire mesh
+    ///       max(params.collapse_min_q_abs, params.collapse_min_q_rel * min(q))
+    ///
+    /// where max(l) and min(q) as the max edge length and min quality over the entire mesh
     #[allow(clippy::too_many_lines)]
     pub fn collapse<G: Geometry<D>>(&mut self, params: &RemesherParams, geom: &G) -> Result<u32> {
         debug!("Collapse elements");

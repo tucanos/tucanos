@@ -7,6 +7,7 @@ use nalgebra::{Const, DefaultAllocator, SMatrix};
 ///   - Compute $M = \mathcal M_2^{-1/2} P = (e_0 | ... | e_d)$
 ///   - Compute $s_i = mav(e_i^T\mathcal M_1 e, e_i^T\mathcal M_2 e)$
 ///   - $\mathcal M_{1 \cap 2} = \mathcal M_2^{1/2} M diag(s) M^T \mathcal M_2^{1/2}$
+///
 /// $\mathcal M_{1 \cap 2}$ and $\det(\mathcal M_{1 \cap 2})$ are returned
 pub fn simultaneous_reduction<const D: usize>(
     a: SMatrix<f64, D, D>,
