@@ -17,6 +17,30 @@ fn get_indices<F: Fn(usize) -> usize>(n: usize, comp: F) -> Vec<Idx> {
     new_indices
 }
 
+pub fn hilbert_indices<const D: usize, I: ExactSizeIterator<Item = Point<D>>>(
+    bb: (Point<D>, Point<D>),
+    verts: I,
+) -> Vec<Idx> {
+    // bounding box
+    let (mini, maxi) = bb;
+
+    let n = verts.len();
+    // Hilbert index
+    let order = 16;
+    let scale = usize::pow(2, order) as f64 - 1.0;
+    let hilbert = |x: Point<D>| {
+        let mut tmp = [0; 3];
+        for j in 0..D {
+            tmp[j] = (scale * (x[j] - mini[j]) / (maxi[j] - mini[j])).round() as u16;
+        }
+        tmp.hilbert_index() as usize
+    };
+
+    let hilbert_ids = verts.map(hilbert).collect::<Vec<_>>();
+
+    get_indices(n, |i| hilbert_ids[i])
+}
+
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Reorder the mesh vertices
     /// Vertex data is updated accordingly, but edges, vertex-to-vertex connections
@@ -103,32 +127,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// coordinate of their centers
     pub fn reorder_hilbert(&mut self) -> (Vec<Idx>, Vec<Idx>, Vec<Idx>) {
         debug!("Reordering the vertices / elements / faces (Hilbert)");
-        // bounding box
-        let mut mini = [0.; D];
-        let mut maxi = [0.; D];
 
-        for p in self.verts() {
-            for j in 0..D {
-                mini[j] = f64::min(mini[j], p[j]);
-                maxi[j] = f64::max(maxi[j], p[j]);
-            }
-        }
-
-        // Hilbert index
-        let order = 16;
-        let scale = usize::pow(2, order) as f64 - 1.0;
-        let hilbert = |x: Point<D>| {
-            let mut tmp = [0; 3];
-            for j in 0..D {
-                tmp[j] = (scale * (x[j] - mini[j]) / (maxi[j] - mini[j])).round() as u16;
-            }
-            tmp.hilbert_index()
-        };
-
-        // Sort the vertices
-        let hilbert_v = |i: usize| hilbert(self.vert(i as Idx)) as usize;
-
-        let new_vert_indices = get_indices(self.n_verts() as usize, hilbert_v);
+        let new_vert_indices = hilbert_indices(self.bounding_box(), self.verts());
         self.reorder_vertices(&new_vert_indices);
 
         // // Sort the elems
