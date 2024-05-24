@@ -55,6 +55,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+      with:
+        lfs: 'true'
+    - run: git lfs pull
     - run: sudo apt-get install -y libmetis-dev libscotch-dev libnlopt-dev
     - name: libOL cache
       uses: actions/cache@v4
@@ -86,21 +89,34 @@ jobs:
     - name: Run clippy
       uses: clechasseur/rs-clippy-check@v3
     - run: cargo fmt --check --all
+    - name: Run cargo test (libol / libmeshb)
+      uses: clechasseur/rs-cargo@v2
+      with:
+        command: test 
+        args: --no-default-features --features=libol,libmeshb,scotch,metis,nlopt
+    - name: Run cargo test --release (libol / libmeshb)
+      uses: clechasseur/rs-cargo@v2
+      with:
+        command: test
+        args: --release --no-default-features --features=libol,libmeshb,scotch,metis,nlopt
     - name: Run cargo test
       uses: clechasseur/rs-cargo@v2
       with:
         command: test 
-        args: --features=meshb,scotch,metis,nlopt
+        args: --features=scotch,metis,nlopt
     - name: Run cargo test --release
       uses: clechasseur/rs-cargo@v2
       with:
         command: test
-        args: --release --features=meshb,scotch,metis,nlopt
+        args: --release --features=scotch,metis,nlopt
   stable:
     needs: [libmeshb, libol]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+      with:
+        lfs: 'true'
+    - run: git lfs pull
     - run: sudo apt-get install -y libmetis-dev libscotch-dev libnlopt-dev
     - name: libOL cache
       uses: actions/cache@v4
@@ -131,13 +147,23 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-stable-
     - name: Run clippy
       uses: clechasseur/rs-clippy-check@v3
+    - name: Run cargo test (libol / libmeshb)
+      uses: clechasseur/rs-cargo@v2
+      with:
+        command: test 
+        args: --no-default-features --features=libol,libmeshb,scotch,metis,nlopt
+    - name: Run cargo test --release (libol / libmeshb)
+      uses: clechasseur/rs-cargo@v2
+      with:
+        command: test
+        args: --release --no-default-features --features=libol,libmeshb,scotch,metis,nlopt
     - name: Run cargo test
       uses: clechasseur/rs-cargo@v2
       with:
         command: test 
-        args: --features=meshb,scotch,metis,nlopt
+        args: --features=scotch,metis,nlopt
     - name: Run cargo test --release
       uses: clechasseur/rs-cargo@v2
       with:
         command: test
-        args: --release --features=meshb,scotch,metis,nlopt
+        args: --release --features=scotch,metis,nlopt
