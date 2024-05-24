@@ -195,6 +195,20 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         self.verts.iter()
     }
 
+    /// Get the bounding box
+    #[must_use]
+    pub fn bounding_box(&self) -> (Point<D>, Point<D>) {
+        let mut mini = self.verts().next().unwrap();
+        let mut maxi = mini;
+        for p in self.verts() {
+            for j in 0..D {
+                mini[j] = f64::min(mini[j], p[j]);
+                maxi[j] = f64::max(maxi[j], p[j]);
+            }
+        }
+        (mini, maxi)
+    }
+
     /// Get an iterator through the vertices
     pub fn mut_verts(&mut self) -> impl ExactSizeIterator<Item = &mut Point<D>> + '_ {
         self.verts.as_std_mut().iter_mut()

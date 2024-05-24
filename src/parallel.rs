@@ -15,6 +15,7 @@ use std::{sync::Mutex, time::Instant};
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
 pub enum PartitionType {
+    Hilbert(Idx),
     Scotch(Idx),
     Metis(Idx),
     None,
@@ -52,7 +53,7 @@ impl ParallelRemeshingParams {
     const fn next(&self, n_verts: Idx, partition_type: PartitionType) -> Option<Self> {
         match partition_type {
             PartitionType::None => None,
-            PartitionType::Metis(_) | PartitionType::Scotch(_) => {
+            PartitionType::Hilbert(_) | PartitionType::Metis(_) | PartitionType::Scotch(_) => {
                 if self.level + 1 < self.max_levels && n_verts > self.min_verts {
                     Some(Self {
                         n_layers: self.n_layers,
@@ -141,6 +142,10 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
         // Partition if needed
         let now = Instant::now();
         match partition_type {
+            PartitionType::Hilbert(n) => {
+                assert!(n > 1, "Need at least 2 partitions");
+                mesh.partition_hilbert(n);
+            }
             PartitionType::Scotch(n) => {
                 assert!(n > 1, "Need at least 2 partitions");
                 mesh.compute_elem_to_elems();
@@ -474,7 +479,6 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
 }
 
 #[cfg(test)]
-#[cfg(any(feature = "metis", feature = "scotch"))]
 mod tests {
 
     use crate::{
@@ -532,6 +536,32 @@ mod tests {
         mesh.check()?;
 
         Ok(())
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_dd_2d_hilbert_1() {
+        test_domain_decomposition_2d(false, PartitionType::Hilbert(1)).unwrap();
+    }
+
+    #[test]
+    fn test_dd_2d_hilbert_2() -> Result<()> {
+        test_domain_decomposition_2d(false, PartitionType::Hilbert(2))
+    }
+
+    #[test]
+    fn test_dd_2d_hilbert_3() -> Result<()> {
+        test_domain_decomposition_2d(false, PartitionType::Hilbert(3))
+    }
+
+    #[test]
+    fn test_dd_2d_hilbert_4() -> Result<()> {
+        test_domain_decomposition_2d(false, PartitionType::Hilbert(4))
+    }
+
+    #[test]
+    fn test_dd_2d_hilbert_5() -> Result<()> {
+        test_domain_decomposition_2d(false, PartitionType::Hilbert(5))
     }
 
     #[cfg(feature = "metis")]
@@ -644,6 +674,32 @@ mod tests {
         mesh.check()?;
 
         Ok(())
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_dd_3d_hilbert_1() {
+        test_domain_decomposition_3d(false, PartitionType::Hilbert(1)).unwrap();
+    }
+
+    #[test]
+    fn test_dd_3d_hilbert_2() -> Result<()> {
+        test_domain_decomposition_3d(false, PartitionType::Hilbert(2))
+    }
+
+    #[test]
+    fn test_dd_3d_hilbert_3() -> Result<()> {
+        test_domain_decomposition_3d(false, PartitionType::Hilbert(3))
+    }
+
+    #[test]
+    fn test_dd_3d_hilbert_4() -> Result<()> {
+        test_domain_decomposition_3d(false, PartitionType::Hilbert(4))
+    }
+
+    #[test]
+    fn test_dd_3d_hilbert_5() -> Result<()> {
+        test_domain_decomposition_3d(false, PartitionType::Hilbert(5))
     }
 
     #[cfg(feature = "metis")]

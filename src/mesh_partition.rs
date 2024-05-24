@@ -1,10 +1,31 @@
-// use log::{info, warn};
-// use crate::{mesh::SimplexMesh, topo_elems::Elem, Idx, Result, Tag};
-// #[cfg(any(not(feature = "metis"),not(feature = "scotch")))]
-// use crate::Error;
-use crate::{mesh::SimplexMesh, topo_elems::Elem, Idx, Result};
+use crate::{
+    geom_elems::GElem, mesh::SimplexMesh, mesh_ordering::hilbert_indices, topo_elems::Elem, Idx,
+    Result, Tag,
+};
+use log::{debug, warn};
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
+    pub fn partition_hilbert(&mut self, n_parts: Idx) {
+        debug!("Partition the mesh into {} using a Hilbert curve", n_parts);
+
+        if self.etags().any(|t| t != 1) {
+            warn!("Erase the element tags");
+        }
+
+        if n_parts == 1 {
+            self.mut_etags().for_each(|t| *t = 1);
+        } else {
+            let indices = hilbert_indices(self.bounding_box(), self.gelems().map(|ge| ge.center()));
+
+            let m = self.n_elems() / n_parts;
+            let partition = indices.iter().map(|&i| (i / m) as Tag).collect::<Vec<_>>();
+
+            self.mut_etags()
+                .enumerate()
+                .for_each(|(i, t)| *t = partition[i] as Tag + 1);
+        }
+    }
+
     #[allow(clippy::needless_pass_by_ref_mut)]
     #[cfg(not(feature = "scotch"))]
     pub fn partition_scotch(&mut self, _n_parts: Idx) -> Result<()> {
@@ -16,18 +37,16 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// is stored in self.etags
     #[cfg(feature = "scotch")]
     pub fn partition_scotch(&mut self, n_parts: Idx) -> Result<()> {
-        use crate::Tag;
-        use log::{debug, warn};
+        debug!("Partition the mesh into {} using scotch", n_parts);
+
+        if self.etags().any(|t| t != 1) {
+            warn!("Erase the element tags");
+        }
 
         if n_parts == 1 {
             self.mut_etags().for_each(|t| *t = 1);
             return Ok(());
         }
-
-        if self.etags().any(|t| t != 1) {
-            warn!("Erase the element tags");
-        }
-        debug!("Partition the mesh into {} using scotch", n_parts);
 
         let mut partition = vec![0; self.n_elems() as usize];
         let e2e = self.get_elem_to_elems()?;
@@ -80,19 +99,16 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// is stored in self.etags
     #[cfg(feature = "metis")]
     pub fn partition_metis(&mut self, n_parts: Idx) -> Result<()> {
-        use crate::Tag;
-        use log::{debug, warn};
-
-        if n_parts == 1 {
-            self.mut_etags().for_each(|t| *t = 1);
-            return Ok(());
-        }
+        debug!("Partition the mesh into {} using metis", n_parts);
 
         if self.etags().any(|t| t != 1) {
             warn!("Erase the element tags");
         }
 
-        debug!("Partition the mesh into {} using metis", n_parts);
+        if n_parts == 1 {
+            self.mut_etags().for_each(|t| *t = 1);
+            return Ok(());
+        }
 
         let mut partition = vec![0; self.n_elems() as usize];
         let e2e = self.get_elem_to_elems()?;
@@ -135,14 +151,38 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(any(feature = "scotch", feature = "metis"))]
-    use crate::Result;
+    use crate::{
+        test_meshes::{test_mesh_2d, test_mesh_3d},
+        Result,
+    };
+
+    #[test]
+    fn test_partition_hilbert_2d() -> Result<()> {
+        let mut mesh = test_mesh_2d().split().split().split().split().split();
+        mesh.compute_elem_to_elems();
+        mesh.partition_hilbert(4);
+
+        let q = mesh.partition_quality()?;
+        assert!(q < 0.025, "failed, q = {q}");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_partition_hilbert_3d() -> Result<()> {
+        let mut mesh = test_mesh_3d().split().split().split().split();
+        mesh.compute_elem_to_elems();
+        mesh.partition_hilbert(4);
+
+        let q = mesh.partition_quality()?;
+        assert!(q < 0.025, "failed, q = {q}");
+
+        Ok(())
+    }
 
     #[cfg(feature = "scotch")]
     #[test]
     fn test_partition_scotch_2d() -> Result<()> {
-        use crate::test_meshes::test_mesh_2d;
-
         let mut mesh = test_mesh_2d().split().split().split().split().split();
         mesh.compute_elem_to_elems();
         mesh.partition_scotch(4)?;
@@ -156,8 +196,6 @@ mod tests {
     #[cfg(feature = "scotch")]
     #[test]
     fn test_partition_scotch_3d() -> Result<()> {
-        use crate::test_meshes::test_mesh_3d;
-
         let mut mesh = test_mesh_3d().split().split().split().split();
         mesh.compute_elem_to_elems();
         mesh.partition_scotch(4)?;
@@ -171,8 +209,6 @@ mod tests {
     #[cfg(feature = "metis")]
     #[test]
     fn test_partition_metis_2d() -> Result<()> {
-        use crate::test_meshes::test_mesh_2d;
-
         let mut mesh = test_mesh_2d().split().split().split().split().split();
         mesh.compute_elem_to_elems();
         mesh.partition_metis(4)?;
@@ -186,8 +222,6 @@ mod tests {
     #[cfg(feature = "metis")]
     #[test]
     fn test_partition_metis_3d() -> Result<()> {
-        use crate::test_meshes::test_mesh_3d;
-
         let mut mesh = test_mesh_3d().split().split().split().split();
         mesh.compute_elem_to_elems();
         mesh.partition_metis(4)?;
