@@ -1,110 +1,7 @@
-use crate::{topo_elems::Elem, vector, Idx};
+use crate::{topo_elems::Elem, vector, Error, Idx, Result};
+use num::PrimInt;
 use rustc_hash::FxHashMap;
-use std::{collections::hash_map::Entry, hash::BuildHasherDefault};
-
-// pub trait Connectivity {
-//     fn elem(&self, i: Idx) -> &[Idx];
-//     fn n_elems(&self) -> Idx;
-//     fn max_node(&self) -> Idx;
-//     fn n(&self) -> Idx;
-// }
-
-// #[derive(Debug, Default, Clone)]
-// pub struct ElemGraph<E: Elem> {
-//     pub n: Idx,
-//     pub elems: Vec<E>,
-// }
-
-// impl ElemGraph<E: Elem> {
-//     #[must_use]
-//     pub fn new(n: Idx, n_elems: Idx) -> Self {
-//         Self {
-//             n,
-//             elems: Vec::with_capacity((n * n_elems) as usize),
-//         }
-//     }
-
-//     pub fn from<I: Iterator<Item = Idx>>(n: Idx, els: I) -> Self {
-//         let elems = els.collect::<Vec<_>>();
-//         debug_assert_eq!(elems.len() % n as usize, 0);
-//         Self { n, elems }
-//     }
-
-//     pub fn add_elem(&mut self, e: &[Idx]) {
-//         debug_assert_eq!(e.len(), self.n as usize);
-//         self.elems.extend(e.iter());
-//     }
-
-//     pub fn reindex(&mut self) -> FxHashMap<Idx, Idx> {
-//         let mut map = FxHashMap::with_hasher(BuildHasherDefault::default());
-//         let mut next = 0;
-//         for e in &mut self.elems {
-//             if let Some(i0) = map.get(e) {
-//                 *e = *i0;
-//             } else {
-//                 map.insert(*e, next);
-//                 *e = next;
-//                 next += 1;
-//             }
-//         }
-//         map
-//     }
-// }
-
-// impl Connectivity for ElemGraph {
-//     fn elem(&self, i: Idx) -> &[Idx] {
-//         let start = (self.n * i) as usize;
-//         let end = start + self.n as usize;
-//         &self.elems[start..end]
-//     }
-
-//     fn n_elems(&self) -> Idx {
-//         debug_assert_eq!(self.elems.len() % self.n as usize, 0);
-//         (self.elems.len() / self.n as usize) as Idx
-//     }
-
-//     fn max_node(&self) -> Idx {
-//         self.elems.iter().copied().max().unwrap_or(0)
-//     }
-
-//     fn n(&self) -> Idx {
-//         self.n
-//     }
-// }
-
-// #[derive(Debug)]
-// pub struct ElemGraphInterface<'a> {
-//     n: Idx,
-//     elems: &'a [Idx],
-// }
-
-// impl<'a> ElemGraphInterface<'a> {
-//     #[must_use]
-//     pub fn new(n: Idx, elems: &'a [Idx]) -> Self {
-//         Self { n, elems }
-//     }
-// }
-
-// impl<'a> Connectivity for ElemGraphInterface<'a> {
-//     fn elem(&self, i: Idx) -> &[Idx] {
-//         let start = (self.n * i) as usize;
-//         let end = start + self.n as usize;
-//         &self.elems[start..end]
-//     }
-
-//     fn n_elems(&self) -> Idx {
-//         debug_assert_eq!(self.elems.len() % self.n as usize, 0);
-//         (self.elems.len() / self.n as usize) as Idx
-//     }
-
-//     fn max_node(&self) -> Idx {
-//         self.elems.iter().copied().max().unwrap()
-//     }
-
-//     fn n(&self) -> Idx {
-//         self.n
-//     }
-// }
+use std::{collections::hash_map::Entry, fmt::Display, hash::BuildHasherDefault, ops::AddAssign};
 
 /// Renumber the vertices in order to have contininuous indices, and return he map from old to nex indices
 #[must_use]
@@ -266,53 +163,66 @@ impl CSRGraph {
 }
 
 #[derive(Debug)]
-pub struct ConnectedComponents {
-    vtag: Vec<u16>,
+pub struct ConnectedComponents<T: PrimInt + AddAssign + Display> {
+    vtag: Vec<T>,
 }
 
-impl ConnectedComponents {
-    #[must_use]
-    pub fn new(g: &CSRGraph) -> Self {
+impl<T: PrimInt + AddAssign + Display> ConnectedComponents<T> {
+    pub fn new(g: &CSRGraph) -> Result<Self> {
         assert_eq!(g.n(), g.m());
 
         let mut res = Self {
-            vtag: vec![u16::MAX; g.n() as usize],
+            vtag: vec![T::max_value(); g.n() as usize],
         };
-        res.compute(g);
-        res
+        res.compute(g)?;
+        Ok(res)
     }
 
     #[must_use]
-    pub fn tags(&self) -> &[u16] {
+    pub fn tags(&self) -> &[T] {
         &self.vtag
     }
 
-    fn compute_from(&mut self, g: &CSRGraph, start: Idx, component: u16) {
-        for i in g.row(start).iter().copied() {
-            if self.vtag[i as usize] == u16::MAX {
-                self.vtag[i as usize] = component;
-                self.compute_from(g, i, component);
+    fn compute_from(&mut self, g: &CSRGraph, starts: &[Idx], component: T) {
+        let mut next_starts = Vec::new();
+        for &start in starts {
+            self.vtag[start as usize] = component;
+            for i in g.row(start).iter().copied() {
+                if self.vtag[i as usize] == T::max_value() {
+                    self.vtag[i as usize] = component;
+                    next_starts.push(i);
+                }
             }
+        }
+        if !starts.is_empty() {
+            self.compute_from(g, &next_starts, component);
         }
     }
 
-    fn compute(&mut self, g: &CSRGraph) {
+    fn compute(&mut self, g: &CSRGraph) -> Result<()> {
         let mut start = 0;
-        let mut component = 0;
+        let mut component = T::zero();
         while start < g.n() {
-            self.compute_from(g, start, component);
-            while start < g.n() && self.vtag[start as usize] != u16::MAX {
+            self.compute_from(g, &[start], component);
+            while start < g.n() && self.vtag[start as usize] < T::max_value() {
                 start += 1;
             }
-            component += 1;
-            assert!(component < u16::MAX);
+            component += T::one();
+            if component == T::max_value() {
+                return Err(Error::from("too many connected components"));
+            }
+            assert!(component < T::max_value());
         }
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::topo_elems::{Edge, Triangle};
+    use crate::{
+        topo_elems::{Edge, Triangle},
+        Tag,
+    };
 
     use super::*;
 
@@ -373,7 +283,7 @@ mod tests {
     fn test_cc() {
         let g = vec![[0, 1], [1, 2], [2, 0], [3, 4]];
         let g = CSRGraph::new(&g);
-        let cc = ConnectedComponents::new(&g);
+        let cc = ConnectedComponents::<Tag>::new(&g).unwrap();
         assert_eq!(cc.tags(), [0, 0, 0, 1, 1]);
     }
 }
