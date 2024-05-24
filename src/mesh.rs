@@ -314,13 +314,14 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Compute the face-to-element connectivity
-    pub fn compute_face_to_elems(&mut self) {
+    pub fn compute_face_to_elems(&mut self) -> &FxHashMap<E::Face, twovec::Vec<u32>> {
         debug!("Compute the face to element connectivity");
         if self.faces_to_elems.is_none() {
             self.faces_to_elems = Some(get_face_to_elem(self.elems()));
         } else {
             warn!("Face to element connectivity already computed");
         }
+        self.faces_to_elems.as_ref().unwrap()
     }
 
     /// Clear the face-to-element connectivity
@@ -339,7 +340,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Compute the vertex-to-element connectivity
-    pub fn compute_vertex_to_elems(&mut self) {
+    pub fn compute_vertex_to_elems(&mut self) -> &CSRGraph {
         debug!("Compute the vertex to element connectivity");
 
         if self.vertex_to_elems.is_none() {
@@ -347,6 +348,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         } else {
             warn!("Vertex to element connectivity already computed");
         }
+        self.vertex_to_elems.as_ref().unwrap()
     }
 
     /// Clear the vertex-to-element connectivity
@@ -366,7 +368,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
     /// Compute the element-to-element connectivity
     /// face-to-element connectivity is computed if not available
-    pub fn compute_elem_to_elems(&mut self) {
+    pub fn compute_elem_to_elems(&mut self) -> &CSRGraph {
         debug!("Compute the element to element connectivity");
         if self.elem_to_elems.is_none() {
             if self.faces_to_elems.is_none() {
@@ -386,6 +388,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         } else {
             warn!("Element to element connectivity already computed");
         }
+        self.elem_to_elems.as_ref().unwrap()
     }
 
     /// Clear the element-to-element connectivity
@@ -404,7 +407,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Compute the edges
-    pub fn compute_edges(&mut self) {
+    pub fn compute_edges(&mut self) -> &Vec<[Idx; 2]> {
         debug!("Compute the edges");
         if self.edges.is_none() {
             let mut edgs = FxHashSet::with_hasher(BuildHasherDefault::default());
@@ -420,6 +423,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         } else {
             warn!("Edges already computed");
         }
+        self.edges.as_ref().unwrap()
     }
 
     /// Clear the edges
@@ -439,7 +443,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
     /// Compute the vertex-to-vertex connectivity
     /// Edges are computed if not available
-    pub fn compute_vertex_to_vertices(&mut self) {
+    pub fn compute_vertex_to_vertices(&mut self) -> &CSRGraph {
         debug!("Compute the vertex to vertex connectivity");
         if self.vertex_to_vertices.is_none() {
             if self.edges.is_none() {
@@ -449,6 +453,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         } else {
             warn!("Vertex to vertex connectivity already computed");
         }
+        self.vertex_to_vertices.as_ref().unwrap()
     }
 
     /// Clear the vertex-to-vertex connectivity
@@ -467,7 +472,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Compute the volume and vertex volumes
-    pub fn compute_volumes(&mut self) {
+    pub fn compute_volumes(&mut self) -> (&Vec<f64>, &Vec<f64>) {
         debug!("Compute the vertex & element volumes");
         if self.elem_vol.is_none() {
             let mut elem_vol = vec![0.0; self.n_elems() as usize];
@@ -485,6 +490,10 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         } else {
             warn!("Volumes already computed");
         }
+        (
+            self.elem_vol.as_ref().unwrap(),
+            self.vert_vol.as_ref().unwrap(),
+        )
     }
 
     /// Clear the volume and vertex volumes
@@ -513,13 +522,14 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Compute an octree
-    pub fn compute_octree(&mut self) {
+    pub fn compute_octree(&mut self) -> &impl ObjectIndex<D> {
         debug!("Compute an octree");
         if self.tree.is_none() {
             self.tree = Some(<DefaultObjectIndex<D> as ObjectIndex<D>>::new(self));
         } else {
             warn!("Octree already computed");
         }
+        self.tree.as_ref().unwrap()
     }
 
     /// Clear the octree
