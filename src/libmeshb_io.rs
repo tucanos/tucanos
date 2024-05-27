@@ -116,23 +116,38 @@ impl GmfReader {
 
         match self.dim {
             2 => {
-                let tag: c_int = 0;
-                let x: T1 = Default::default();
-                let y: T1 = Default::default();
+                let mut tag: c_int = 0;
+                let mut x: T1 = Default::default();
+                let mut y: T1 = Default::default();
                 for _ in 0..n_nodes {
-                    unsafe { GmfGetLin(self.file, GmfKwdCod::GmfVertices as c_int, &x, &y, &tag) };
+                    unsafe {
+                        GmfGetLin(
+                            self.file,
+                            GmfKwdCod::GmfVertices as c_int,
+                            addr_of_mut!(x),
+                            addr_of_mut!(y),
+                            addr_of_mut!(tag),
+                        )
+                    };
                     res.push(x.clone().try_into().unwrap());
                     res.push(y.clone().try_into().unwrap());
                 }
             }
             3 => {
-                let tag: c_int = 0;
-                let x: T1 = Default::default();
-                let y: T1 = Default::default();
-                let z: T1 = Default::default();
+                let mut tag: c_int = 0;
+                let mut x: T1 = Default::default();
+                let mut y: T1 = Default::default();
+                let mut z: T1 = Default::default();
                 for _ in 0..n_nodes {
                     unsafe {
-                        GmfGetLin(self.file, GmfKwdCod::GmfVertices as c_int, &x, &y, &z, &tag)
+                        GmfGetLin(
+                            self.file,
+                            GmfKwdCod::GmfVertices as c_int,
+                            addr_of_mut!(x),
+                            addr_of_mut!(y),
+                            addr_of_mut!(z),
+                            addr_of_mut!(tag),
+                        )
                     };
                     res.push(x.clone().try_into().unwrap());
                     res.push(y.clone().try_into().unwrap());
@@ -184,32 +199,56 @@ impl GmfReader {
 
         match etype {
             GmfElementTypes::Vertex => {
-                let tag: c_int = 0;
-                let i0: T2 = Default::default();
+                let mut tag: c_int = 0;
+                let mut i0: T2 = Default::default();
                 for _ in 0..n_elems {
-                    unsafe { GmfGetLin(self.file, etype as c_int, &i0, &tag) };
+                    unsafe {
+                        GmfGetLin(
+                            self.file,
+                            etype as c_int,
+                            addr_of_mut!(i0),
+                            addr_of_mut!(tag),
+                        )
+                    };
                     elems.push(i0.clone().try_into().unwrap() - 1);
                     etags.push(tag as Tag);
                 }
             }
             GmfElementTypes::Edge => {
-                let tag: c_int = 0;
-                let i0: T2 = Default::default();
-                let i1: T2 = Default::default();
+                let mut tag: c_int = 0;
+                let mut i0: T2 = Default::default();
+                let mut i1: T2 = Default::default();
                 for _ in 0..n_elems {
-                    unsafe { GmfGetLin(self.file, etype as c_int, &i0, &i1, &tag) };
+                    unsafe {
+                        GmfGetLin(
+                            self.file,
+                            etype as c_int,
+                            addr_of_mut!(i0),
+                            addr_of_mut!(i1),
+                            addr_of_mut!(tag),
+                        )
+                    };
                     elems.push(i0.clone().try_into().unwrap() - 1);
                     elems.push(i1.clone().try_into().unwrap() - 1);
                     etags.push(tag as Tag);
                 }
             }
             GmfElementTypes::Triangle => {
-                let tag: c_int = 0;
-                let i0: T2 = Default::default();
-                let i1: T2 = Default::default();
-                let i2: T2 = Default::default();
+                let mut tag: c_int = 0;
+                let mut i0: T2 = Default::default();
+                let mut i1: T2 = Default::default();
+                let mut i2: T2 = Default::default();
                 for _ in 0..n_elems {
-                    unsafe { GmfGetLin(self.file, etype as c_int, &i0, &i1, &i2, &tag) };
+                    unsafe {
+                        GmfGetLin(
+                            self.file,
+                            etype as c_int,
+                            addr_of_mut!(i0),
+                            addr_of_mut!(i1),
+                            addr_of_mut!(i2),
+                            addr_of_mut!(tag),
+                        )
+                    };
                     elems.push(i0.clone().try_into().unwrap() - 1);
                     elems.push(i1.clone().try_into().unwrap() - 1);
                     elems.push(i2.clone().try_into().unwrap() - 1);
@@ -217,13 +256,23 @@ impl GmfReader {
                 }
             }
             GmfElementTypes::Tetrahedron => {
-                let tag: c_int = 0;
-                let i0: T2 = Default::default();
-                let i1: T2 = Default::default();
-                let i2: T2 = Default::default();
-                let i3: T2 = Default::default();
+                let mut tag: c_int = 0;
+                let mut i0: T2 = Default::default();
+                let mut i1: T2 = Default::default();
+                let mut i2: T2 = Default::default();
+                let mut i3: T2 = Default::default();
                 for _ in 0..n_elems {
-                    unsafe { GmfGetLin(self.file, etype as c_int, &i0, &i1, &i2, &i3, &tag) };
+                    unsafe {
+                        GmfGetLin(
+                            self.file,
+                            etype as c_int,
+                            addr_of_mut!(i0),
+                            addr_of_mut!(i1),
+                            addr_of_mut!(i2),
+                            addr_of_mut!(i3),
+                            addr_of_mut!(tag),
+                        )
+                    };
                     elems.push(i0.clone().try_into().unwrap() - 1);
                     elems.push(i1.clone().try_into().unwrap() - 1);
                     elems.push(i2.clone().try_into().unwrap() - 1);
@@ -253,28 +302,32 @@ impl GmfReader {
     where
         <T1 as std::convert::TryInto<f64>>::Error: std::fmt::Debug,
     {
-        let field_type: c_int = 0;
-        let n_types: c_int = 0;
-        let sol_size: c_int = 0;
+        let mut field_type: c_int = 0;
+        let mut n_types: c_int = 0;
+        let mut sol_size: c_int = 0;
         let n_verts = unsafe {
             GmfStatKwd(
                 self.file,
                 GmfKwdCod::GmfSolAtVertices as c_int,
-                &n_types,
-                &sol_size,
-                &field_type,
+                addr_of_mut!(n_types),
+                addr_of_mut!(sol_size),
+                addr_of_mut!(field_type),
             )
         };
+        assert_eq!(n_types, 1);
+
         let (field_type, n_comp) = match field_type as u32 {
             x if x == GmfSca => (GmfFieldTypes::Scalar, 1),
             x if x == GmfVec => (GmfFieldTypes::Vector, self.dim),
             x if x == GmfSymMat => (GmfFieldTypes::Metric, (self.dim * (self.dim + 1)) / 2),
-            _ => unreachable!(),
+            _ => unreachable!("Field type {field_type} unknown: {GmfSca} {GmfVec} {GmfSymMat}"),
         };
+        assert_eq!(sol_size, n_comp as c_int);
+
         debug!("Read {}x{} values", n_verts, n_comp);
 
         let mut res = Vec::with_capacity(n_comp as usize * n_verts as usize);
-        let s: [T1; 6] = [Default::default(); 6];
+        let mut s: [T1; 6] = [Default::default(); 6];
 
         unsafe { GmfGotoKwd(self.file, GmfKwdCod::GmfSolAtVertices as c_int) };
 
@@ -282,7 +335,11 @@ impl GmfReader {
 
         for _ in 0..n_verts {
             unsafe {
-                GmfGetLin(self.file, GmfKwdCod::GmfSolAtVertices as c_int, &s);
+                GmfGetLin(
+                    self.file,
+                    GmfKwdCod::GmfSolAtVertices as c_int,
+                    addr_of_mut!(s),
+                );
             }
             for j in order.iter().copied() {
                 res.push(s[j].try_into().unwrap());
@@ -439,7 +496,12 @@ impl GmfWriter {
         };
 
         unsafe {
-            let val = field_type as c_int;
+            let val = match field_type {
+                GmfFieldTypes::Scalar => GmfSca,
+                GmfFieldTypes::Vector => GmfVec,
+                GmfFieldTypes::Metric => GmfSymMat,
+            } as c_int;
+
             GmfSetKwd(
                 self.file,
                 GmfKwdCod::GmfSolAtVertices as c_int,
