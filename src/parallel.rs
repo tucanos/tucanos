@@ -61,8 +61,8 @@ macro_rules! create_parallel_remesher {
             }
 
             #[allow(clippy::too_many_arguments)]
-            pub fn remesh<'py>(&mut self,
-                py: Python<'py>,
+            pub fn remesh(&mut self,
+                py: Python<'_>,
                 geometry: &$geom,
                 m: PyReadonlyArray2<f64>,
                 num_iter:Option< u32>,
