@@ -56,6 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+    - run: sudo apt-get install -y libmetis-dev libscotch-dev
     - name: libOL cache
       uses: actions/cache@v3
       with:
@@ -91,16 +92,48 @@ jobs:
       with:
         python-version: '3.11'
         cache: 'pip'
-    - name: Run pip install
+    - name: Run pip install & unittests
       run: |
         pip install .
         cd
+        python -c "import pytucanos; assert not pytucanos.HAVE_LIBMESHB"
+        python -c "import pytucanos; assert not pytucanos.HAVE_PARALLEL"
+        python -c "import pytucanos; assert not pytucanos.HAVE_METIS"
+        python -c "import pytucanos; assert not pytucanos.HAVE_SCOTCH"
+        python -m unittest discover pytucanos -v
+    - name: Run pip install & unittests (libmeshb / libol)
+      run: |
+        pip install -C libmeshb=true -C libol=true .
+        cd
+        python -c "import pytucanos; assert pytucanos.HAVE_LIBMESHB"
+        python -c "import pytucanos; assert not pytucanos.HAVE_PARALLEL"
+        python -c "import pytucanos; assert not pytucanos.HAVE_METIS"
+        python -c "import pytucanos; assert not pytucanos.HAVE_SCOTCH"
+        python -m unittest discover pytucanos -v
+    - name: Run pip install & unittests (metis)
+      run: |
+        pip install -C metis=true .
+        cd
+        python -c "import pytucanos; assert not pytucanos.HAVE_LIBMESHB"
+        python -c "import pytucanos; assert pytucanos.HAVE_PARALLEL"
+        python -c "import pytucanos; assert pytucanos.HAVE_METIS"
+        python -c "import pytucanos; assert not pytucanos.HAVE_SCOTCH"
+        python -m unittest discover pytucanos -v
+    - name: Run pip install & unittests (scotch)
+      run: |
+        pip install -C scotch=true .
+        cd
+        python -c "import pytucanos; assert not pytucanos.HAVE_LIBMESHB"
+        python -c "import pytucanos; assert pytucanos.HAVE_PARALLEL"
+        python -c "import pytucanos; assert not pytucanos.HAVE_METIS"
+        python -c "import pytucanos; assert pytucanos.HAVE_SCOTCH"
         python -m unittest discover pytucanos -v
   stable:
     needs: [libmeshb, libol]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+    - run: sudo apt-get install -y libmetis-dev libscotch-dev
     - name: libOL cache
       uses: actions/cache@v3
       with:
@@ -137,8 +170,39 @@ jobs:
       with:
         python-version: '3.11'
         cache: 'pip'
-    - name: Run pip install
+    - name: Run pip install & unittests
       run: |
         pip install .
         cd
+        python -c "import pytucanos; assert not pytucanos.HAVE_LIBMESHB"
+        python -c "import pytucanos; assert not pytucanos.HAVE_PARALLEL"
+        python -c "import pytucanos; assert not pytucanos.HAVE_METIS"
+        python -c "import pytucanos; assert not pytucanos.HAVE_SCOTCH"
+        python -m unittest discover pytucanos -v
+    - name: Run pip install & unittests (libmeshb / libol)
+      run: |
+        pip install -C libmeshb=true -C libol=true .
+        cd
+        python -c "import pytucanos; assert pytucanos.HAVE_LIBMESHB"
+        python -c "import pytucanos; assert not pytucanos.HAVE_PARALLEL"
+        python -c "import pytucanos; assert not pytucanos.HAVE_METIS"
+        python -c "import pytucanos; assert not pytucanos.HAVE_SCOTCH"
+        python -m unittest discover pytucanos -v
+    - name: Run pip install & unittests (metis)
+      run: |
+        pip install -C metis=true .
+        cd
+        python -c "import pytucanos; assert not pytucanos.HAVE_LIBMESHB"
+        python -c "import pytucanos; assert pytucanos.HAVE_PARALLEL"
+        python -c "import pytucanos; assert pytucanos.HAVE_METIS"
+        python -c "import pytucanos; assert not pytucanos.HAVE_SCOTCH"
+        python -m unittest discover pytucanos -v
+    - name: Run pip install & unittests (scotch)
+      run: |
+        pip install -C scotch=true .
+        cd
+        python -c "import pytucanos; assert not pytucanos.HAVE_LIBMESHB"
+        python -c "import pytucanos; assert pytucanos.HAVE_PARALLEL"
+        python -c "import pytucanos; assert not pytucanos.HAVE_METIS"
+        python -c "import pytucanos; assert pytucanos.HAVE_SCOTCH"
         python -m unittest discover pytucanos -v
