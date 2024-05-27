@@ -2,14 +2,15 @@ use crate::{
     geometry::{LinearGeometry2d, LinearGeometry3d},
     mesh::{Mesh22, Mesh33},
 };
-use numpy::{PyReadonlyArray1, PyReadonlyArray2};
+use numpy::{PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
 use pyo3::{
     exceptions::{PyRuntimeError, PyValueError},
     pyclass, pymethods, PyResult, Python,
 };
 use tucanos::{
+    mesh_partition::PartitionType,
     metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
-    parallel::{ParallelRemesher, ParallelRemeshingParams, PartitionType},
+    parallel::{ParallelRemesher, ParallelRemeshingParams},
     remesher::{RemesherParams, SmoothingType},
     topo_elems::{Tetrahedron, Triangle},
     Idx,
@@ -37,10 +38,12 @@ macro_rules! create_parallel_remesher {
 
                 let partition_type = if partition_type == "scotch" {
                     PartitionType::Scotch(n_partitions)
-                } else if partition_type == "metis" {
-                    PartitionType::Metis(n_partitions)
+                } else if partition_type == "metis_kway" {
+                    PartitionType::MetisKWay(n_partitions)
+                } else if partition_type == "metis_recursive" {
+                    PartitionType::MetisRecursive(n_partitions)
                 } else {
-                    return Err(PyValueError::new_err("Invalid partition type"));
+                    return Err(PyValueError::new_err("Invalid partition type: allowed values are scotch, metis_kway, metis_recursive"));
                 };
 
                 let dd = ParallelRemesher::new(mesh.mesh.clone(), partition_type);

@@ -87,7 +87,6 @@ macro_rules! create_mesh {
 
             #[doc = concat!("Read a ", stringify!($name), " from a .mesh(b) file")]
             #[classmethod]
-            #[cfg(feature = "meshb")]
             pub fn from_meshb(_cls: &PyType, fname: &str) -> PyResult<Self> {
                 let res = SimplexMesh::<$dim, $etype>::read_meshb(fname);
                 match res {
@@ -97,15 +96,30 @@ macro_rules! create_mesh {
             }
 
             /// Write the mesh to a .mesh(b) file
-            #[cfg(feature = "meshb")]
             pub fn write_meshb(&self, fname: &str) -> PyResult<()> {
                 self.mesh.write_meshb(fname).map_err(|e| PyRuntimeError::new_err(e.to_string()))
             }
 
             /// Write a solution to a .sol(b) file
-            #[cfg(feature = "meshb")]
             pub fn write_solb(&self, fname: &str, arr: PyReadonlyArray2<f64>) -> PyResult<()> {
                 self.mesh.write_solb(&arr.to_vec().unwrap(), fname).map_err(|e| PyRuntimeError::new_err(e.to_string()))
+            }
+
+
+            /// Read a solution stored in a .sol(b) file
+            #[classmethod]
+            pub fn read_solb<'py>(
+                _cls: &PyType,
+                py: Python<'py>,
+                fname: &str
+            ) -> PyResult<&'py PyArray2<f64>> {
+                use pyo3::exceptions::PyRuntimeError;
+
+                let res = SimplexMesh::<$dim, $etype>::read_solb(fname);
+                match res {
+                    Ok((sol, m)) => Ok(to_numpy_2d(py, sol, m)),
+                    Err(err) => Err(PyRuntimeError::new_err(err.to_string())),
+                }
             }
 
             /// Get the number of vertices in the mesh
@@ -173,7 +187,7 @@ macro_rules! create_mesh {
 
             /// Compute the edges
             pub fn compute_edges(&mut self) {
-                self.mesh.compute_edges()
+                self.mesh.compute_edges();
             }
 
             /// Clear the edges

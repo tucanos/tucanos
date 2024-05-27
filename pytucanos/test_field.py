@@ -2,12 +2,8 @@ import os
 import numpy as np
 import unittest
 from .mesh import Mesh22, get_square, Mesh33, get_cube
-from . import HAVE_MESHB
-if HAVE_MESHB:
-    from .field import read_solb
 
 
-@unittest.skipUnless(HAVE_MESHB, "The libMeshb interface is not available")
 class TestField(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -21,7 +17,7 @@ class TestField(unittest.TestCase):
         msh = Mesh22(coords, elems, etags, faces, ftags)
         f = np.random.rand(msh.n_verts(), 1)
         msh.write_solb("tmp.solb", f)
-        g = read_solb("tmp.solb")
+        g = Mesh22.read_solb("tmp.solb")
         self.assertTrue(np.allclose(f, g))
 
         os.remove("tmp.solb")
@@ -32,7 +28,7 @@ class TestField(unittest.TestCase):
         msh = Mesh22(coords, elems, etags, faces, ftags)
         f = np.random.rand(msh.n_verts(), 2)
         msh.write_solb("tmp.solb", f)
-        g = read_solb("tmp.solb")
+        g = Mesh22.read_solb("tmp.solb")
         self.assertTrue(np.allclose(f, g))
 
         os.remove("tmp.solb")
@@ -43,7 +39,7 @@ class TestField(unittest.TestCase):
         msh = Mesh22(coords, elems, etags, faces, ftags)
         f = np.random.rand(msh.n_verts(), 3)
         msh.write_solb("tmp.solb", f)
-        g = read_solb("tmp.solb")
+        g = Mesh22.read_solb("tmp.solb")
         self.assertTrue(np.allclose(f, g))
 
         os.remove("tmp.solb")
@@ -54,7 +50,7 @@ class TestField(unittest.TestCase):
         msh = Mesh33(coords, elems, etags, faces, ftags)
         f = np.random.rand(msh.n_verts(), 1)
         msh.write_solb("tmp.solb", f)
-        g = read_solb("tmp.solb")
+        g = Mesh33.read_solb("tmp.solb")
         self.assertTrue(np.allclose(f, g))
 
         os.remove("tmp.solb")
@@ -65,7 +61,7 @@ class TestField(unittest.TestCase):
         msh = Mesh33(coords, elems, etags, faces, ftags)
         f = np.random.rand(msh.n_verts(), 3)
         msh.write_solb("tmp.solb", f)
-        g = read_solb("tmp.solb")
+        g = Mesh33.read_solb("tmp.solb")
         self.assertTrue(np.allclose(f, g))
 
         os.remove("tmp.solb")
@@ -76,7 +72,7 @@ class TestField(unittest.TestCase):
         msh = Mesh33(coords, elems, etags, faces, ftags)
         f = np.random.rand(msh.n_verts(), 6)
         msh.write_solb("tmp.solb", f)
-        g = read_solb("tmp.solb")
+        g = Mesh33.read_solb("tmp.solb")
         self.assertTrue(np.allclose(f, g))
 
         os.remove("tmp.solb")

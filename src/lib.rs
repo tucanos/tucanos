@@ -3,10 +3,7 @@ mod mesh;
 #[cfg(any(feature = "metis", feature = "scotch"))]
 mod parallel;
 mod remesher;
-
 use numpy::{PyArray, PyArray1, PyArray2};
-#[cfg(feature = "meshb")]
-use pyo3::{pyfunction, wrap_pyfunction};
 use pyo3::{pymodule, types::PyModule, PyResult, Python};
 
 fn to_numpy_1d<T: numpy::Element>(py: Python<'_>, vec: Vec<T>) -> &'_ PyArray1<T> {
@@ -16,19 +13,6 @@ fn to_numpy_1d<T: numpy::Element>(py: Python<'_>, vec: Vec<T>) -> &'_ PyArray1<T
 fn to_numpy_2d<T: numpy::Element>(py: Python<'_>, vec: Vec<T>, m: usize) -> &'_ PyArray2<T> {
     let n = vec.len();
     PyArray::from_vec(py, vec).reshape([n / m, m]).unwrap()
-}
-
-/// Read a solution stored in a .sol(b) file
-#[pyfunction]
-#[cfg(feature = "meshb")]
-pub fn read_solb<'py>(py: Python<'py>, fname: &str) -> PyResult<&'py PyArray2<f64>> {
-    use pyo3::exceptions::PyRuntimeError;
-
-    let res = tucanos::meshb_io::read_solb(fname);
-    match res {
-        Ok((sol, m)) => Ok(to_numpy_2d(py, sol, m)),
-        Err(err) => Err(PyRuntimeError::new_err(err.to_string())),
-    }
 }
 
 /// Python bindings for pytucanos
@@ -55,15 +39,21 @@ pub fn pytucanos(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<crate::parallel::ParallelRemesher3dIso>()?;
     #[cfg(any(feature = "metis", feature = "scotch"))]
     m.add_class::<crate::parallel::ParallelRemesher3dAniso>()?;
-    #[cfg(any(feature = "metis", feature = "scotch"))]
-    m.add("HAVE_PARALLEL", true)?;
     #[cfg(not(any(feature = "metis", feature = "scotch")))]
     m.add("HAVE_PARALLEL", false)?;
-    #[cfg(feature = "meshb")]
-    m.add_function(wrap_pyfunction!(read_solb, m)?)?;
-    #[cfg(not(feature = "meshb"))]
-    m.add("HAVE_MESHB", false)?;
-    #[cfg(feature = "meshb")]
-    m.add("HAVE_MESHB", true)?;
+    #[cfg(any(feature = "metis", feature = "scotch"))]
+    m.add("HAVE_PARALLEL", true)?;
+    #[cfg(not(feature = "metis"))]
+    m.add("HAVE_METIS", false)?;
+    #[cfg(feature = "metis")]
+    m.add("HAVE_METIS", true)?;
+    #[cfg(not(feature = "scotch"))]
+    m.add("HAVE_SCOTCH", false)?;
+    #[cfg(feature = "scotch")]
+    m.add("HAVE_SCOTCH", true)?;
+    #[cfg(not(feature = "libmeshb"))]
+    m.add("HAVE_LIBMESHB", false)?;
+    #[cfg(feature = "libmeshb")]
+    m.add("HAVE_LIBMESHB", true)?;
     Ok(())
 }

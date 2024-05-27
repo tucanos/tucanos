@@ -8,7 +8,6 @@ from .mesh import (
     get_square,
     get_cube,
 )
-from . import HAVE_MESHB
 
 
 class TestMeshes(unittest.TestCase):
@@ -44,7 +43,6 @@ class TestMeshes(unittest.TestCase):
         self.assertTrue(np.allclose(msh.get_faces(), faces))
         self.assertTrue(np.allclose(msh.get_ftags(), ftags))
 
-    @unittest.skipUnless(HAVE_MESHB, "The libMeshb interface is not available")
     def test_meshb_2d(self):
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh22(coords, elems, etags, faces, ftags)
@@ -297,7 +295,6 @@ class TestMeshes(unittest.TestCase):
 
         msh.elem_data_to_vertex_data(f_e)
 
-    @unittest.skipUnless(HAVE_MESHB, "The libMeshb interface is not available")
     def test_meshb_3d(self):
         coords, elems, etags, faces, ftags = get_cube()
         msh = Mesh33(coords, elems, etags, faces, ftags)

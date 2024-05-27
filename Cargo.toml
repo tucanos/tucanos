@@ -8,9 +8,9 @@ name = "_pytucanos"
 crate-type = ["cdylib"]
 
 [dependencies]
-log = "0.4.20"
+log = "0.4.21"
 ndarray = "0.15.6"
-tucanos = { git = "https://github.com/tucanos/tucanos.git", rev = "7878589" }
+tucanos = { git = "https://github.com/tucanos/tucanos.git", rev = "3426c8f" }
 numpy = "0.21"
 pyo3 = { version = "0.21", features = ["extension-module", "multiple-pymethods"] }
 pyo3-log = "0.10"
@@ -18,7 +18,7 @@ pyo3-log = "0.10"
 [features]
 default = ["parry"]
 nlopt = ["tucanos/nlopt"]
-meshb = ["tucanos/meshb"]
+libmeshb = ["tucanos/libmeshb"]
 libol = ["tucanos/marechal-libol-sys"]
 parry = ["tucanos/parry"]
 scotch = ["tucanos/scotch"]

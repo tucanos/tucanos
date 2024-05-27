@@ -1,1 +1,1 @@
-from ._pytucanos import HAVE_MESHB, HAVE_PARALLEL
+from ._pytucanos import HAVE_LIBMESHB, HAVE_PARALLEL, HAVE_METIS, HAVE_SCOTCH
