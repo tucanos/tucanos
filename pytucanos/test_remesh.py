@@ -6,7 +6,12 @@ from .mesh import (
     get_square,
 )
 from .geometry import LinearGeometry2d
-from .remesh import Remesher2dIso, Remesher2dAniso
+from .remesh import (
+    Remesher2dIso,
+    Remesher2dAniso,
+    ParallelRemesher2dIso,
+    ParallelRemesher2dAniso,
+)
 
 
 class TestRemesh(unittest.TestCase):
@@ -39,6 +44,28 @@ class TestRemesh(unittest.TestCase):
         ftags = np.unique(msh.get_ftags())
         ftags.sort()
         self.assertTrue(np.array_equal(ftags, [1, 2, 3, 4, 5]))
+
+        self.assertGreater(msh.n_verts(), 100)
+        self.assertLess(msh.n_verts(), 200)
+
+    def test_2d_iso_parallel(self):
+        coords, elems, etags, faces, ftags = get_square(two_tags=False)
+        msh = Mesh22(coords, elems, etags, faces, ftags).split().split()
+        msh.compute_topology()
+        geom = LinearGeometry2d(msh)
+
+        h = 0.1 * np.ones(msh.n_verts()).reshape((-1, 1))
+
+        remesher = ParallelRemesher2dIso(msh, "hilbert", 2)
+        (msh, _) = remesher.remesh(geom, h, num_iter=4, n_levels=2)
+
+        self.assertTrue(np.allclose(msh.vol(), 1.0))
+        etags = np.unique(msh.get_etags())
+        etags.sort()
+        self.assertTrue(np.array_equal(etags, [1]))
+        ftags = np.unique(msh.get_ftags())
+        ftags.sort()
+        self.assertTrue(np.array_equal(ftags, [1, 2, 3, 4]))
 
         self.assertGreater(msh.n_verts(), 100)
         self.assertLess(msh.n_verts(), 200)
@@ -148,3 +175,35 @@ class TestRemesh(unittest.TestCase):
         self.assertLess(msh.n_verts(), 2.5 * c)
 
         self.assertTrue(np.allclose(c, 4.0 / 3.0**0.5 / (0.3 * 0.03)))
+
+        self.assertGreater(msh.n_verts(), 150)
+        self.assertLess(msh.n_verts(), 300)
+
+    def test_2d_aniso_parallel(self):
+        coords, elems, etags, faces, ftags = get_square(two_tags=False)
+        msh = Mesh22(coords, elems, etags, faces, ftags).split().split()
+        msh.compute_topology()
+
+        for _ in range(4):
+            geom = LinearGeometry2d(msh)
+            hx = 0.3
+            hy = 0.03
+            m = np.zeros((msh.n_verts(), 3))
+            m[:, 0] = 1.0 / hx**2
+            m[:, 1] = 1.0 / hy**2
+
+            remesher = ParallelRemesher2dAniso(msh, "hilbert", 2)
+            (msh, _) = remesher.remesh(geom, m, split_min_l_abs=0.1, n_levels=2)
+
+            msh.compute_topology()
+
+        self.assertTrue(np.allclose(msh.vol(), 1.0))
+        etags = np.unique(msh.get_etags())
+        etags.sort()
+        self.assertTrue(np.array_equal(etags, [1]))
+        ftags = np.unique(msh.get_ftags())
+        ftags.sort()
+        self.assertTrue(np.array_equal(ftags, [1, 2, 3, 4]))
+
+        self.assertGreater(msh.n_verts(), 150)
+        self.assertLess(msh.n_verts(), 300)
