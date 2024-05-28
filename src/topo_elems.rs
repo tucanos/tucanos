@@ -4,10 +4,10 @@ use crate::twovec;
 use crate::Idx;
 use core::hash::Hash;
 use core::slice::Iter;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxBuildHasher, FxHashMap};
 use std::fmt::Debug;
 use std::ops::Index;
-use std::{array::IntoIter, hash::BuildHasherDefault, ops::IndexMut};
+use std::{array::IntoIter, ops::IndexMut};
 
 /// Topological elements (i.e. element-to-vertex connectivity)
 /// Only usable for simplices
@@ -426,8 +426,7 @@ impl IndexMut<usize> for Vertex {
 pub fn get_face_to_elem<E: Elem, I: Iterator<Item = E>>(
     elems: I,
 ) -> FxHashMap<E::Face, twovec::Vec<Idx>> {
-    let mut map: FxHashMap<E::Face, twovec::Vec<Idx>> =
-        FxHashMap::with_hasher(BuildHasherDefault::default());
+    let mut map: FxHashMap<E::Face, twovec::Vec<Idx>> = FxHashMap::with_hasher(FxBuildHasher);
     for (i_elem, elem) in elems.enumerate() {
         for i_face in 0..E::N_FACES {
             let mut f = elem.face(i_face);

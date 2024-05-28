@@ -8,8 +8,8 @@ use crate::{
     Dim, Error, Result, Tag, TopoTag,
 };
 use log::debug;
-use rustc_hash::{FxHashMap, FxHashSet};
-use std::{collections::HashMap, hash::BuildHasherDefault};
+use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
+use std::collections::HashMap;
 
 /// Representation of a D-dimensional geometry
 pub trait Geometry<const D: usize>: Send + Sync {
@@ -220,7 +220,7 @@ where
             )));
         }
 
-        let mut patches = FxHashMap::with_hasher(BuildHasherDefault::default());
+        let mut patches = FxHashMap::with_hasher(FxBuildHasher);
         for tag in face_tags.iter().copied() {
             debug!("Create LinearPatchGeometryWithCurvature for patch {tag}");
             if mesh_topo.get((E::DIM as Dim, tag)).is_none() {
@@ -231,7 +231,7 @@ where
         }
 
         // Edges
-        let mut edges = FxHashMap::with_hasher(BuildHasherDefault::default());
+        let mut edges = FxHashMap::with_hasher(FxBuildHasher);
         if E::DIM == 2 {
             bdy.add_boundary_faces();
             let bdy_topo = bdy.compute_topology().clone();
