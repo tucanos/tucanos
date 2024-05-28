@@ -4,7 +4,8 @@ use crate::{
     Idx, Tag,
 };
 use log::debug;
-use rustc_hash::{FxBuildHasher, FxHashMap};
+use rustc_hash::FxHashMap;
+use std::hash::BuildHasherDefault;
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     fn split_edgs<E2: Elem, I: Iterator<Item = (E2, Tag)>>(
@@ -143,7 +144,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn split(&self) -> Self {
         debug!("Split all the elements uniformly");
 
-        let mut edges: FxHashMap<[Idx; 2], Idx> = FxHashMap::with_hasher(FxBuildHasher);
+        let mut edges: FxHashMap<[Idx; 2], Idx> =
+            FxHashMap::with_hasher(BuildHasherDefault::default());
         let mut i_edg = self.n_verts() as Idx;
         for e in self.elems() {
             for i in 0..E::N_EDGES {
