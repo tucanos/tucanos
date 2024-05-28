@@ -42,6 +42,8 @@ macro_rules! create_parallel_remesher {
                     PartitionType::MetisKWay(n_partitions)
                 } else if partition_type == "metis_recursive" {
                     PartitionType::MetisRecursive(n_partitions)
+                } else if partition_type == "hilbert" {
+                    PartitionType::Hilbert(n_partitions)
                 } else {
                     return Err(PyValueError::new_err("Invalid partition type: allowed values are scotch, metis_kway, metis_recursive"));
                 };

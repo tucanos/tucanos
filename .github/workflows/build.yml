@@ -97,7 +97,6 @@ jobs:
         pip install .
         cd
         python -c "import pytucanos; assert not pytucanos.HAVE_LIBMESHB"
-        python -c "import pytucanos; assert not pytucanos.HAVE_PARALLEL"
         python -c "import pytucanos; assert not pytucanos.HAVE_METIS"
         python -c "import pytucanos; assert not pytucanos.HAVE_SCOTCH"
         python -m unittest discover pytucanos -v
@@ -106,7 +105,6 @@ jobs:
         pip install -C libmeshb=true -C libol=true .
         cd
         python -c "import pytucanos; assert pytucanos.HAVE_LIBMESHB"
-        python -c "import pytucanos; assert not pytucanos.HAVE_PARALLEL"
         python -c "import pytucanos; assert not pytucanos.HAVE_METIS"
         python -c "import pytucanos; assert not pytucanos.HAVE_SCOTCH"
         python -m unittest discover pytucanos -v
@@ -115,7 +113,6 @@ jobs:
         pip install -C metis=true .
         cd
         python -c "import pytucanos; assert not pytucanos.HAVE_LIBMESHB"
-        python -c "import pytucanos; assert pytucanos.HAVE_PARALLEL"
         python -c "import pytucanos; assert pytucanos.HAVE_METIS"
         python -c "import pytucanos; assert not pytucanos.HAVE_SCOTCH"
         python -m unittest discover pytucanos -v
@@ -124,7 +121,6 @@ jobs:
         pip install -C scotch=true .
         cd
         python -c "import pytucanos; assert not pytucanos.HAVE_LIBMESHB"
-        python -c "import pytucanos; assert pytucanos.HAVE_PARALLEL"
         python -c "import pytucanos; assert not pytucanos.HAVE_METIS"
         python -c "import pytucanos; assert pytucanos.HAVE_SCOTCH"
         python -m unittest discover pytucanos -v
@@ -175,7 +171,6 @@ jobs:
         pip install .
         cd
         python -c "import pytucanos; assert not pytucanos.HAVE_LIBMESHB"
-        python -c "import pytucanos; assert not pytucanos.HAVE_PARALLEL"
         python -c "import pytucanos; assert not pytucanos.HAVE_METIS"
         python -c "import pytucanos; assert not pytucanos.HAVE_SCOTCH"
         python -m unittest discover pytucanos -v
@@ -184,7 +179,6 @@ jobs:
         pip install -C libmeshb=true -C libol=true .
         cd
         python -c "import pytucanos; assert pytucanos.HAVE_LIBMESHB"
-        python -c "import pytucanos; assert not pytucanos.HAVE_PARALLEL"
         python -c "import pytucanos; assert not pytucanos.HAVE_METIS"
         python -c "import pytucanos; assert not pytucanos.HAVE_SCOTCH"
         python -m unittest discover pytucanos -v
@@ -193,7 +187,6 @@ jobs:
         pip install -C metis=true .
         cd
         python -c "import pytucanos; assert not pytucanos.HAVE_LIBMESHB"
-        python -c "import pytucanos; assert pytucanos.HAVE_PARALLEL"
         python -c "import pytucanos; assert pytucanos.HAVE_METIS"
         python -c "import pytucanos; assert not pytucanos.HAVE_SCOTCH"
         python -m unittest discover pytucanos -v
@@ -202,7 +195,6 @@ jobs:
         pip install -C scotch=true .
         cd
         python -c "import pytucanos; assert not pytucanos.HAVE_LIBMESHB"
-        python -c "import pytucanos; assert pytucanos.HAVE_PARALLEL"
         python -c "import pytucanos; assert not pytucanos.HAVE_METIS"
         python -c "import pytucanos; assert pytucanos.HAVE_SCOTCH"
         python -m unittest discover pytucanos -v

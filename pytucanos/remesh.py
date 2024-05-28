@@ -4,15 +4,12 @@ import subprocess
 import numpy as np
 import matplotlib.pyplot as plt
 from ._pytucanos import Remesher2dIso, Remesher2dAniso, Remesher3dIso, Remesher3dAniso
-from . import HAVE_PARALLEL
-
-if HAVE_PARALLEL:
-    from ._pytucanos import (
-        ParallelRemesher2dIso,
-        ParallelRemesher2dAniso,
-        ParallelRemesher3dIso,
-        ParallelRemesher3dAniso,
-    )
+from ._pytucanos import (
+    ParallelRemesher2dIso,
+    ParallelRemesher2dAniso,
+    ParallelRemesher3dIso,
+    ParallelRemesher3dAniso,
+)
 
 from .mesh import Mesh22, Mesh33
 from .geometry import LinearGeometry2d, LinearGeometry3d

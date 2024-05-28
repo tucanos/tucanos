@@ -1,6 +1,5 @@
 mod geometry;
 mod mesh;
-#[cfg(any(feature = "metis", feature = "scotch"))]
 mod parallel;
 mod remesher;
 use numpy::{PyArray, PyArray1, PyArray2};
@@ -31,18 +30,10 @@ pub fn pytucanos(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<crate::remesher::Remesher2dAniso>()?;
     m.add_class::<crate::remesher::Remesher3dIso>()?;
     m.add_class::<crate::remesher::Remesher3dAniso>()?;
-    #[cfg(any(feature = "metis", feature = "scotch"))]
     m.add_class::<crate::parallel::ParallelRemesher2dIso>()?;
-    #[cfg(any(feature = "metis", feature = "scotch"))]
     m.add_class::<crate::parallel::ParallelRemesher2dAniso>()?;
-    #[cfg(any(feature = "metis", feature = "scotch"))]
     m.add_class::<crate::parallel::ParallelRemesher3dIso>()?;
-    #[cfg(any(feature = "metis", feature = "scotch"))]
     m.add_class::<crate::parallel::ParallelRemesher3dAniso>()?;
-    #[cfg(not(any(feature = "metis", feature = "scotch")))]
-    m.add("HAVE_PARALLEL", false)?;
-    #[cfg(any(feature = "metis", feature = "scotch"))]
-    m.add("HAVE_PARALLEL", true)?;
     #[cfg(not(feature = "metis"))]
     m.add("HAVE_METIS", false)?;
     #[cfg(feature = "metis")]
