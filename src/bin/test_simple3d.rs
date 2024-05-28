@@ -1,7 +1,7 @@
 use env_logger::Env;
 use nalgebra::SMatrix;
-use rustc_hash::FxHashMap;
-use std::{f64::consts::PI, hash::BuildHasherDefault, time::Instant};
+use rustc_hash::{FxBuildHasher, FxHashMap};
+use std::{f64::consts::PI, time::Instant};
 use tucanos::{
     geom_elems::GElem,
     geometry::Geometry,
@@ -234,8 +234,8 @@ impl Geometry<3> for Simple3dGeometry {
 }
 
 fn check_geom(mesh: &SimplexMesh<3, Tetrahedron>, geom: &Simple3dGeometry) {
-    let mut max_dist = FxHashMap::<Tag, f64>::with_hasher(BuildHasherDefault::default());
-    let mut max_angle = FxHashMap::<Tag, f64>::with_hasher(BuildHasherDefault::default());
+    let mut max_dist = FxHashMap::<Tag, f64>::with_hasher(FxBuildHasher);
+    let mut max_angle = FxHashMap::<Tag, f64>::with_hasher(FxBuildHasher);
 
     for ((face, tag), gface) in mesh.faces().zip(mesh.ftags()).zip(mesh.gfaces()) {
         for i in 0..3 {
