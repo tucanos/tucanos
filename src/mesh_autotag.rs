@@ -2,7 +2,7 @@ use crate::{
     geom_elems::GElem,
     graph::{CSRGraph, ConnectedComponents},
     mesh::{Point, SimplexMesh},
-    spatialindex::ObjectIndex as _,
+    spatialindex::ObjectIndex,
     topo_elems::Elem,
     Result, Tag,
 };
@@ -76,10 +76,13 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Transfer the tag information to another mesh.
     /// For each element or face in `mesh` (depending on the dimension), its tag is updated
     /// to the tag of the element of `self` onto which the element center is projected.
-    pub fn transfer_tags<E2: Elem>(&self, mesh: &mut SimplexMesh<D, E2>) -> Result<()> {
-        let tree = self.get_octree()?;
+    pub fn transfer_tags<E2: Elem>(
+        &self,
+        tree: &impl ObjectIndex<D>,
+        mesh: &mut SimplexMesh<D, E2>,
+    ) -> Result<()> {
         let get_tag = |pt: &Point<D>| {
-            let idx = tree.nearest(pt);
+            let idx = tree.nearest_elem(pt);
             self.etag(idx)
         };
 
@@ -170,8 +173,8 @@ mod tests {
         assert_eq!(new_tags.len(), 1);
         assert_eq!(*new_tags.get(&1).unwrap(), vec![1, 2, 3, 4, 5, 6]);
 
-        bdy.compute_octree();
-        bdy.transfer_tags(&mut mesh).unwrap();
+        let tree = bdy.compute_elem_tree();
+        bdy.transfer_tags(&tree, &mut mesh).unwrap();
 
         let mut res = HashMap::new();
         for t in mesh.ftags() {

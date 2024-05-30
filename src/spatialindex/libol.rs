@@ -108,7 +108,7 @@ impl Drop for Octree {
 }
 
 impl<const D: usize> PointIndex<D> for Octree {
-    fn nearest_vertex(&self, pt: &Point<D>) -> (Idx, f64) {
+    fn nearest_vert(&self, pt: &Point<D>) -> (Idx, f64) {
         let mut pt = match D {
             2 => Point::<3>::new(pt[0], pt[1], 0.0),
             3 => Point::<3>::new(pt[0], pt[1], pt[2]),
@@ -142,7 +142,7 @@ impl<const D: usize> ObjectIndex<D> for Octree {
         Self::new_impl(mesh)
     }
     /// Find the nearest element for a given vertex
-    fn nearest(&self, pt: &Point<D>) -> Idx {
+    fn nearest_elem(&self, pt: &Point<D>) -> Idx {
         let mut pt = match D {
             2 => Point::<3>::new(pt[0], pt[1], 0.0),
             3 => Point::<3>::new(pt[0], pt[1], pt[2]),
