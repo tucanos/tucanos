@@ -14,9 +14,9 @@ use crate::{
 use log::{debug, trace};
 #[cfg(feature = "nlopt")]
 use nlopt::{Algorithm, Nlopt, Target};
-use rustc_hash::{FxBuildHasher, FxHashMap};
+use rustc_hash::FxHashMap;
 use sorted_vec::SortedVec;
-use std::{cmp::Ordering, fs::File, io::Write, time::Instant};
+use std::{cmp::Ordering, fs::File, hash::BuildHasherDefault, io::Write, time::Instant};
 
 // /// Get edged indices such that they are sorted by increasing tag dimension and then by
 // /// increasing edge length
@@ -238,8 +238,14 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
         let mut res = Self {
             topo: topo.clone(),
-            verts: FxHashMap::with_capacity_and_hasher(mesh.n_verts() as usize, FxBuildHasher),
-            elems: FxHashMap::with_capacity_and_hasher(mesh.n_elems() as usize, FxBuildHasher),
+            verts: FxHashMap::with_capacity_and_hasher(
+                mesh.n_verts() as usize,
+                BuildHasherDefault::default(),
+            ),
+            elems: FxHashMap::with_capacity_and_hasher(
+                mesh.n_elems() as usize,
+                BuildHasherDefault::default(),
+            ),
             tagged_faces: FxHashMap::default(),
             edges: FxHashMap::default(),
             next_vert: 0,
@@ -1575,7 +1581,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
 #[cfg(test)]
 mod tests_topo {
-    use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
+    use std::hash::BuildHasherDefault;
+
+    use rustc_hash::{FxHashMap, FxHashSet};
 
     /// Test the topology representation
     use crate::{
@@ -1600,7 +1608,7 @@ mod tests_topo {
 
         let bdy = mesh.boundary().0;
         let ftags = mesh.ftags().collect::<FxHashSet<_>>();
-        let mut stats = FxHashMap::with_hasher(FxBuildHasher);
+        let mut stats = FxHashMap::with_hasher(BuildHasherDefault::default());
         for tag in ftags {
             if stats.get(&tag).is_none() {
                 let smsh = bdy.extract_tag(tag).mesh;
@@ -1702,7 +1710,7 @@ mod tests_topo {
         mesh.check().unwrap();
 
         let bdy = mesh.boundary().0;
-        let mut stats = FxHashMap::with_hasher(FxBuildHasher);
+        let mut stats = FxHashMap::with_hasher(BuildHasherDefault::default());
         for tag in ftags {
             if stats.get(&tag).is_none() {
                 let smsh = bdy.extract_tag(tag).mesh;

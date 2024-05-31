@@ -1,12 +1,12 @@
 use crate::{topo_elems::Elem, vector, Error, Idx, Result};
 use num::PrimInt;
-use rustc_hash::{FxBuildHasher, FxHashMap};
-use std::{collections::hash_map::Entry, fmt::Display, ops::AddAssign};
+use rustc_hash::FxHashMap;
+use std::{collections::hash_map::Entry, fmt::Display, hash::BuildHasherDefault, ops::AddAssign};
 
 /// Renumber the vertices in order to have contininuous indices, and return he map from old to nex indices
 #[must_use]
 pub fn reindex<E: Elem>(elems: &vector::Vector<E>) -> (Vec<E>, FxHashMap<Idx, Idx>) {
-    let mut map = FxHashMap::with_hasher(FxBuildHasher);
+    let mut map = FxHashMap::with_hasher(BuildHasherDefault::default());
     let mut next = 0 as Idx;
     for i in elems.iter().flatten() {
         if let Entry::Vacant(e) = map.entry(i) {
