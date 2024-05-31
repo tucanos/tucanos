@@ -12,14 +12,14 @@ A Python wrapper can be found [here](https://github.com/tucanos/pytucanos).
 
 They are all optional.
 
-* [libOL](https://github.com/LoicMarechal/libOL) can be used to replace
+* [libOL](https://github.com/LoicMarechal/libOL) may be used to replace
   [parry](https://github.com/dimforge/parry)) for spatial indexing and
-  projection. It may be installed with:
+  projection. It can be installed with:
 ```
 cmake .. -DCMAKE_INSTALL_PREFIX=$PREFIX -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON
 make -j install
 ```
-* [libMeshb](https://github.com/LoicMarechal/libMeshb) is optional and used to enable benchmarks with reference codes. It may be installed with:
+* [libMeshb](https://github.com/LoicMarechal/libMeshb) may be used to replace [minimeshb](https://github.com/tucanos/minimeshb). It can be installed with:
 ```
 cmake .. -DCMAKE_INSTALL_PREFIX=$PREFIX -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON
 make -j install
@@ -29,7 +29,7 @@ make -j install
 
 # Building
 
-* `libOL` and `libMeshb` location may need to be declared using environment variables. This can be done in `.cargo/config.toml`, for example:
+* `libOL`, `libMeshb`, `metis` and `scotch` locations may need to be declared using environment variables. This can be done in `.cargo/config.toml`, for example:
 ```toml
 [env]
 LIBOL_DIR="/path/to/libOL_prefix"
@@ -40,8 +40,10 @@ See <https://github.com/xgarnaud/libmeshb-sys> and <https://github.com/jeromerob
 * Optional [cargo features](https://doc.rust-lang.org/cargo/reference/features.html) are:
     - `parry` (enabled by default)
     - `nlopt` to enable smoothing with NLOpt
-    - `meshb`
-    - `libol` (enabled by default, disabled with `--no-default-features`)
+    - `libmeshb`
+    - `libol`
+    - `metis`
+    - `scotch`
 
 Exactly one of `libol` or `parry` must be enabled.
 
