@@ -33,7 +33,6 @@ macro_rules! create_geometry {
                     mesh.mesh.boundary().0
                 };
                 orient_stl(&mesh.mesh, &mut gmesh);
-                gmesh.compute_octree();
                 let geom = LinearGeometry::new(&mesh.mesh, gmesh).unwrap();
 
                 Self { geom }

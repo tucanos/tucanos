@@ -216,16 +216,6 @@ macro_rules! create_mesh {
                 self.mesh.clear_volumes();
             }
 
-            /// Compute an octree
-            pub fn compute_octree(&mut self) {
-                self.mesh.compute_octree();
-            }
-
-            /// Clear the octree
-            pub fn clear_octree(&mut self) {
-                self.mesh.clear_octree();
-            }
-
             /// Split all the elements and faces uniformly
             /// NB: vertex and element data is lost
             #[must_use]
@@ -375,8 +365,24 @@ macro_rules! create_mesh {
                 Ok(to_numpy_2d(py, res.unwrap(), arr.shape()[1]))
             }
 
-            /// Interpolate a field (scalar or vector) defined at the vertices (P1) to a different mesh
-            pub fn interpolate<'py>(
+            /// Interpolate a field (scalar or vector) defined at the vertices (P1) to a different mesh using linear interpolation
+            pub fn interpolate_linear<'py>(
+                &mut self,
+                py: Python<'py>,
+                other: &Self,
+                arr: PyReadonlyArray2<f64>,
+                tol: Option<f64>,
+            ) -> PyResult<&'py PyArray2<f64>> {
+                if arr.shape()[0] != self.mesh.n_verts() as usize {
+                    return Err(PyValueError::new_err("Invalid dimension 0"));
+                }
+                let tree = self.mesh.compute_elem_tree();
+                let res = self.mesh.interpolate_linear(&tree, &other.mesh, arr.as_slice().unwrap(), tol);
+                Ok(to_numpy_2d(py, res.unwrap(), arr.shape()[1]))
+            }
+
+            /// Interpolate a field (scalar or vector) defined at the vertices (P1) to a different mesh using nearest neighbor interpolation
+            pub fn interpolate_nearest<'py>(
                 &mut self,
                 py: Python<'py>,
                 other: &Self,
@@ -385,7 +391,8 @@ macro_rules! create_mesh {
                 if arr.shape()[0] != self.mesh.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
-                let res = self.mesh.interpolate(&other.mesh, arr.as_slice().unwrap());
+                let tree = self.mesh.compute_vert_tree();
+                let res = self.mesh.interpolate_nearest(&tree, &other.mesh, arr.as_slice().unwrap());
                 Ok(to_numpy_2d(py, res.unwrap(), arr.shape()[1]))
             }
 
@@ -637,15 +644,17 @@ impl Mesh32 {
 
     /// Reset the face tags of other to match those in self
     pub fn transfer_tags_face(&self, other: &mut Mesh33) -> PyResult<()> {
+        let tree = self.mesh.compute_elem_tree();
         self.mesh
-            .transfer_tags(&mut other.mesh)
+            .transfer_tags(&tree, &mut other.mesh)
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))
     }
 
     /// Reset the element tags of other to match those in self
     pub fn transfer_tags_elem(&self, other: &mut Self) -> PyResult<()> {
+        let tree = self.mesh.compute_elem_tree();
         self.mesh
-            .transfer_tags(&mut other.mesh)
+            .transfer_tags(&tree, &mut other.mesh)
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))
     }
 }
@@ -721,15 +730,17 @@ impl Mesh22 {
 impl Mesh21 {
     /// Reset the face tags of other to match those in self
     pub fn transfer_tags_face(&self, other: &mut Mesh22) -> PyResult<()> {
+        let tree = self.mesh.compute_elem_tree();
         self.mesh
-            .transfer_tags(&mut other.mesh)
+            .transfer_tags(&tree, &mut other.mesh)
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))
     }
 
     /// Reset the element tags of other to match those in self
     pub fn transfer_tags_elem(&self, other: &mut Self) -> PyResult<()> {
+        let tree = self.mesh.compute_elem_tree();
         self.mesh
-            .transfer_tags(&mut other.mesh)
+            .transfer_tags(&tree, &mut other.mesh)
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))
     }
 }

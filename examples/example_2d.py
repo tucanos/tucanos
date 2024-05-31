@@ -67,10 +67,9 @@ if __name__ == "__main__":
 
     # interpolation
     other = Mesh22(coords, elems, etags, faces, ftags).split().split().split().split()
-    other.compute_octree()
     f_other = get_h(other).reshape((-1, 1))
 
-    f = other.interpolate(msh, f_other)
+    f = other.interpolate_linear(msh, f_other)
     fig, ax = plt.subplots()
     cax = plot_field(ax, msh, f[:, 0], "vertex")
     fig.colorbar(cax, ax=ax)

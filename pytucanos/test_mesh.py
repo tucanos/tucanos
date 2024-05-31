@@ -336,7 +336,6 @@ class TestMeshes(unittest.TestCase):
         msh = msh.split().split().split()
 
         bdy, _ = msh.boundary()
-        bdy.compute_octree()
         bdy.compute_face_to_elems()
 
         bdy.autotag(30.0)
@@ -365,7 +364,6 @@ class TestMeshes(unittest.TestCase):
 
         bdy, _ = msh.boundary()
         bdy = bdy.split().split()
-        bdy.compute_octree()
         bdy.compute_face_to_elems()
 
         bdy.autotag(30.0)
