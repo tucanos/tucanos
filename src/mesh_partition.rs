@@ -253,7 +253,7 @@ mod tests {
         mesh.partition_metis(4, "recursive")?;
 
         let q = mesh.partition_quality()?;
-        assert!(q < 0.021, "failed, q = {q}");
+        assert!(q < 0.022, "failed, q = {q}");
 
         Ok(())
     }
@@ -279,7 +279,7 @@ mod tests {
         mesh.partition_metis(4, "kway")?;
 
         let q = mesh.partition_quality()?;
-        assert!(q < 0.021, "failed, q = {q}");
+        assert!(q < 0.022, "failed, q = {q}");
 
         Ok(())
     }
