@@ -453,7 +453,7 @@ impl<const D: usize> super::ObjectIndex<D> for ObjectIndex<D> {
         }
     }
 
-    fn nearest(&self, pt: &Point<D>) -> Idx {
+    fn nearest_elem(&self, pt: &Point<D>) -> Idx {
         match &self.inner {
             ParryImpl::Tria3D(shape) => {
                 let (_, (id, _)) = shape.project_local_point_and_get_location(

@@ -2,7 +2,7 @@ use crate::{
     curvature::HasCurvature,
     geom_elems::GElem,
     mesh::{Point, SimplexMesh},
-    spatialindex::ObjectIndex,
+    spatialindex::{DefaultObjectIndex, ObjectIndex},
     topo_elems::Elem,
     topology::Topology,
     Dim, Error, Result, Tag, TopoTag,
@@ -84,22 +84,22 @@ impl<const D: usize> Geometry<D> for NoGeometry<D> {
 }
 
 /// Geometry for a patch of faces with a constant tag
-struct LinearPatchGeometry<const D: usize, E: Elem> {
-    /// The face mesh
-    mesh: SimplexMesh<D, E>,
+struct LinearPatchGeometry<const D: usize> {
+    /// The ObjectIndex
+    tree: DefaultObjectIndex<D>,
 }
 
-impl<const D: usize, E: Elem> LinearPatchGeometry<D, E> {
+impl<const D: usize> LinearPatchGeometry<D> {
     /// Create a `LinearPatchGeometry` from a `SimplexMesh`
-    pub fn new(mut mesh: SimplexMesh<D, E>) -> Self {
-        mesh.compute_octree();
+    pub fn new<E: Elem>(mesh: &SimplexMesh<D, E>) -> Self {
+        let tree = mesh.compute_elem_tree();
 
-        Self { mesh }
+        Self { tree }
     }
 
     // Perform projection
     fn project(&self, pt: &Point<D>) -> (f64, Point<D>) {
-        self.mesh.get_octree().unwrap().project(pt)
+        self.tree.project(pt)
     }
 }
 
@@ -107,6 +107,8 @@ impl<const D: usize, E: Elem> LinearPatchGeometry<D, E> {
 struct LinearPatchGeometryWithCurvature<const D: usize, E: Elem> {
     /// The face mesh
     mesh: SimplexMesh<D, E>,
+    /// The ObjectIndex
+    tree: DefaultObjectIndex<D>,
     /// Optionally, the first principal curvature direction
     u: Option<Vec<Point<D>>>,
     /// Optionally, the second principal curvature direction (3D only)
@@ -119,13 +121,14 @@ where
 {
     /// Create a `LinearPatchGeometry` from a `SimplexMesh`
     pub fn new(mut mesh: SimplexMesh<D, E>) -> Self {
-        mesh.compute_octree();
+        let tree = mesh.compute_elem_tree();
         mesh.compute_face_to_elems();
         mesh.add_boundary_faces();
         mesh.clear_face_to_elems();
 
         Self {
             mesh,
+            tree,
             u: None,
             v: None,
         }
@@ -133,7 +136,7 @@ where
 
     // Perform projection
     fn project(&self, pt: &Point<D>) -> (f64, Point<D>) {
-        self.mesh.get_octree().unwrap().project(pt)
+        self.tree.project(pt)
     }
 
     fn compute_curvature(&mut self) {
@@ -152,8 +155,7 @@ where
             return Err(Error::from("LinearGeometry: compute_curvature not called"));
         }
 
-        let tree = self.mesh.get_octree().unwrap();
-        let i_elem = tree.nearest(pt) as usize;
+        let i_elem = self.tree.nearest_elem(pt) as usize;
         let u = self.u.as_ref().unwrap();
         self.v.as_ref().map_or_else(
             || Ok((u[i_elem], None)),
@@ -198,7 +200,7 @@ where
     /// The surface patches
     patches: FxHashMap<Tag, LinearPatchGeometryWithCurvature<D, E>>,
     /// The edges
-    edges: FxHashMap<Tag, LinearPatchGeometry<D, E::Face>>,
+    edges: FxHashMap<Tag, LinearPatchGeometry<D>>,
 }
 
 impl<const D: usize, E: Elem> LinearGeometry<D, E>
@@ -249,7 +251,7 @@ where
                     .unwrap();
 
                 let submesh = bdy_edges.extract_tag(tag).mesh;
-                edges.insert(mesh_topo_node.tag.1, LinearPatchGeometry::new(submesh));
+                edges.insert(mesh_topo_node.tag.1, LinearPatchGeometry::new(&submesh));
             }
         }
         Ok(Self { patches, edges })
@@ -308,8 +310,7 @@ where
         assert_eq!(tag.0, D as Dim - 1);
 
         let patch = self.patches.get(&tag.1).unwrap();
-        let tree = patch.mesh.get_octree().unwrap();
-        let idx = tree.nearest(pt);
+        let idx = patch.tree.nearest_elem(pt);
         let n_ref = patch.mesh.gelem(patch.mesh.elem(idx)).normal();
         let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
         f64::acos(cos_a).to_degrees()

@@ -2,7 +2,7 @@ use crate::{
     geom_elems::GElem,
     graph::{reindex, CSRGraph},
     metric::IsoMetric,
-    spatialindex::{self, DefaultObjectIndex, DefaultPointIndex, ObjectIndex, PointIndex},
+    spatialindex::{DefaultObjectIndex, DefaultPointIndex, ObjectIndex, PointIndex},
     topo_elems::{get_face_to_elem, Elem},
     topology::Topology,
     twovec,
@@ -49,8 +49,6 @@ pub struct SimplexMesh<const D: usize, E: Elem> {
     /// It can be seen as the volume of a dual cell
     /// sum(elem_vol) = sum(vert_vol)
     vert_vol: Option<Vec<f64>>,
-    /// Octree
-    tree: Option<spatialindex::DefaultObjectIndex<D>>,
     /// Topology
     topo: Option<Topology>,
     /// Vertex tags
@@ -119,7 +117,6 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             vertex_to_vertices: None,
             elem_vol: None,
             vert_vol: None,
-            tree: None,
             topo: None,
             vtags: None,
         }
@@ -159,7 +156,6 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             vertex_to_vertices: None,
             elem_vol: None,
             vert_vol: None,
-            tree: None,
             topo: None,
             vtags: None,
         }
@@ -521,30 +517,18 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         }
     }
 
-    /// Compute an octree
-    pub fn compute_octree(&mut self) -> &impl ObjectIndex<D> {
-        debug!("Compute an octree");
-        if self.tree.is_none() {
-            self.tree = Some(<DefaultObjectIndex<D> as ObjectIndex<D>>::new(self));
-        } else {
-            warn!("Octree already computed");
-        }
-        self.tree.as_ref().unwrap()
+    /// Compute an octree to locate elements
+    #[must_use]
+    pub fn compute_vert_tree(&self) -> DefaultPointIndex<D> {
+        debug!("Compute the vertex octree");
+        <DefaultPointIndex<D> as PointIndex<D>>::new(self)
     }
 
-    /// Clear the octree
-    pub fn clear_octree(&mut self) {
-        debug!("Delete the octree");
-        self.tree = None;
-    }
-
-    /// Get the octree
-    pub fn get_octree(&self) -> Result<&DefaultObjectIndex<D>> {
-        if self.tree.is_none() {
-            Err(Error::from("Octree not computed"))
-        } else {
-            Ok(self.tree.as_ref().unwrap())
-        }
+    /// Compute an octree to locate elements
+    #[must_use]
+    pub fn compute_elem_tree(&self) -> DefaultObjectIndex<D> {
+        debug!("Compute the element octree");
+        <DefaultObjectIndex<D> as ObjectIndex<D>>::new(self)
     }
 
     /// Convert a field defined at the element centers (P0) to a field defined at the vertices (P1)
@@ -974,7 +958,6 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         self.vertex_to_vertices = None;
         self.elem_vol = None;
         self.vert_vol = None;
-        self.tree = None;
         self.topo = None;
         self.vtags = None;
     }
@@ -1012,9 +995,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             let (bdy, ids) = self.boundary();
             let (obdy, oids) = other.boundary();
             if bdy.n_verts() > 0 && obdy.n_verts() > 0 {
-                let tree = <DefaultPointIndex<D> as PointIndex<D>>::new(&obdy);
+                let tree = obdy.compute_vert_tree();
                 bdy.verts().enumerate().for_each(|(i_self, vx)| {
-                    let (i_other, _) = tree.nearest_vertex(&vx);
+                    let (i_other, _) = tree.nearest_vert(&vx);
                     let i_self = ids[i_self];
                     let i_other = oids[i_other as usize];
                     if (vx - other.vert(i_other)).norm() < merge_tol {

@@ -56,7 +56,7 @@ pub fn orient_stl<const D: usize, E: Elem>(
         let ge = stl_mesh.gelem(e);
         let c = ge.center();
         let n = ge.normal();
-        let i_face_mesh = tree.nearest(&c);
+        let i_face_mesh = tree.nearest_elem(&c);
         let f_mesh = mesh.face(i_face_mesh);
         let gf_mesh = mesh.gface(f_mesh);
         let n_mesh = gf_mesh.normal();
