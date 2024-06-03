@@ -137,7 +137,10 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
             PartitionType::Hilbert(n)
             | PartitionType::Scotch(n)
             | PartitionType::MetisRecursive(n)
-            | PartitionType::MetisKWay(n) => {
+            | PartitionType::MetisKWay(n)
+            | PartitionType::KaHIPFast(n, _)
+            | PartitionType::KaHIPEco(n, _)
+            | PartitionType::KaHIPStrong(n, _) => {
                 assert!(n > 1, "Need at least 2 partitions");
                 mesh.partition(partition_type)?;
             }

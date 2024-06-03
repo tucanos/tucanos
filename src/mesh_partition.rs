@@ -11,6 +11,9 @@ pub enum PartitionType {
     Scotch(Idx),
     MetisRecursive(Idx),
     MetisKWay(Idx),
+    KaHIPFast(Idx, f64),
+    KaHIPEco(Idx, f64),
+    KaHIPStrong(Idx, f64),
     None,
 }
 
@@ -24,6 +27,11 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             PartitionType::Scotch(n) => self.partition_scotch(n),
             PartitionType::MetisRecursive(n) => self.partition_metis(n, "recursive"),
             PartitionType::MetisKWay(n) => self.partition_metis(n, "kway"),
+            PartitionType::KaHIPFast(n, imbalance) => self.partition_kahip(n, "fast", imbalance),
+            PartitionType::KaHIPEco(n, imbalance) => self.partition_kahip(n, "eco", imbalance),
+            PartitionType::KaHIPStrong(n, imbalance) => {
+                self.partition_kahip(n, "strong", imbalance)
+            }
             PartitionType::None => unreachable!(),
         }
     }
@@ -163,6 +171,60 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         Ok(())
     }
 
+    /// Partition the mesh using KaHIP into `n_parts`. The partition id, defined for all the elements
+    /// is stored in self.etags
+    #[cfg(feature = "kahip")]
+    pub fn partition_kahip(&mut self, n_parts: Idx, method: &str, imbalance: f64) -> Result<()> {
+        debug!("Partition the mesh into {} using KaHIP", n_parts);
+
+        if self.etags().any(|t| t != 1) {
+            warn!("Erase the element tags");
+        }
+
+        if n_parts == 1 {
+            self.mut_etags().for_each(|t| *t = 1);
+            return Ok(());
+        }
+
+        let e2e = self.compute_elem_to_elems();
+
+        let mut xadj: Vec<kahip::Idx> = e2e
+            .ptr
+            .iter()
+            .copied()
+            .map(|x| x.try_into().unwrap())
+            .collect();
+        let mut adjncy: Vec<kahip::Idx> = e2e
+            .indices
+            .iter()
+            .copied()
+            .map(|x| x.try_into().unwrap())
+            .collect();
+
+        let mut graph = kahip::Graph::new(&mut xadj, &mut adjncy);
+        let seed = 1234;
+        let mode = match method {
+            "eco" => kahip::Mode::Eco,
+            "fast" => kahip::Mode::Fast,
+            "strong" => kahip::Mode::Strong,
+            _ => unreachable!("Unknown method"),
+        };
+        let (partition, _) = graph.partition(n_parts as kahip::Idx, imbalance, true, seed, mode);
+
+        self.mut_etags()
+            .enumerate()
+            .for_each(|(i, t)| *t = partition[i] as Tag + 1);
+
+        Ok(())
+    }
+
+    #[allow(clippy::needless_pass_by_ref_mut)]
+    #[cfg(not(feature = "kahip"))]
+    pub fn partition_kahip(&mut self, _n_parts: Idx, _method: &str, _imbalance: f64) -> Result<()> {
+        use crate::Error;
+        Err(Error::from("the kahip feature is not enabled"))
+    }
+
     /// Get the partition quality (ration of the number of interface faces to the total number of faces)
     pub fn partition_quality(&self) -> Result<f64> {
         let f2e = self.get_face_to_elems()?;
@@ -280,6 +342,34 @@ mod tests {
 
         let q = mesh.partition_quality()?;
         assert!(q < 0.022, "failed, q = {q}");
+
+        Ok(())
+    }
+
+    #[cfg(feature = "kahip")]
+    #[test]
+    fn test_partition_kahip_2d() -> Result<()> {
+        let mut mesh = test_mesh_2d().split().split().split().split().split();
+        mesh.compute_elem_to_elems();
+        mesh.partition_kahip(4, "fast", 0.01)?;
+
+        let q = mesh.partition_quality()?;
+        println!("{q}");
+        assert!(q < 0.025, "failed, q = {q}");
+
+        Ok(())
+    }
+
+    #[cfg(feature = "kahip")]
+    #[test]
+    fn test_partition_kahip_3d() -> Result<()> {
+        let mut mesh = test_mesh_3d().split().split().split().split();
+        mesh.compute_elem_to_elems();
+        mesh.partition_kahip(4, "fast", 0.01)?;
+
+        let q = mesh.partition_quality()?;
+        println!("{q}");
+        assert!(q < 0.021, "failed, q = {q}");
 
         Ok(())
     }
