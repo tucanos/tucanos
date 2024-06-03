@@ -44,6 +44,10 @@ parry = ["kdtree", "parry3d-f64", "parry2d-f64"]
 name = "test_simple3d"
 required-features = ["scotch"]
 
+[[bin]]
+name = "test_partition"
+required-features = ["scotch", "metis", "kahip", "meshb"]
+
 [profile.release]
 debug = 1
 
