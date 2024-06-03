@@ -43,6 +43,9 @@ parry = ["kdtree", "parry3d-f64", "parry2d-f64"]
 name = "test_simple3d"
 required-features = ["scotch"]
 
+[[bin]]
+name = "test_interpolation"
+
 [profile.release]
 debug = 1
 
