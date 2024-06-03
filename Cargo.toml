@@ -40,6 +40,9 @@ minimeshb = { git = "https://github.com/tucanos/minimeshb.git", tag = "0.1.0" }
 name = "test_simple3d"
 required-features = ["scotch"]
 
+[[bin]]
+name = "test_partition"
+
 [profile.release]
 debug = 1
 

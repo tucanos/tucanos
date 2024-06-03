@@ -20,6 +20,7 @@ pub mod io;
 pub mod test_meshes;
 
 pub use geom_elems::{AsSliceF64, GEdge, GElem, GTetrahedron, GTriangle};
+pub use graph::ConnectedComponents;
 pub use partition::PartitionType;
 pub use simplex_mesh::{Point, SimplexMesh, SubSimplexMesh};
 pub use topo_elems::{Edge, Elem, Tetrahedron, Triangle, get_face_to_elem};
