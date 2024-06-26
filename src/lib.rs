@@ -23,10 +23,10 @@ pub mod mesh_vtk;
 pub mod meshb_io;
 pub mod metric;
 mod metric_reduction;
-pub mod multi_element_mesh;
 pub mod parallel;
 pub mod remesher;
 mod spatialindex;
+pub mod split_elements;
 mod stats;
 pub mod test_meshes; // to suppress warnings!
 pub mod topo_elems;
@@ -34,6 +34,7 @@ pub mod topology;
 mod twovec;
 mod vector;
 
+/// Isotropic or anisotropic remesher in 2 and 3 dimensions
 const H_MAX: f64 = 1e8;
 const H_MIN: f64 = 1e-8;
 const ANISO_MAX: f64 = 1e5;
@@ -65,9 +66,11 @@ impl Error {
 /// Vertex and element indices
 pub type Idx = u32;
 
-/// Topological tags
+/// Topological tags: dimension
 pub type Dim = i8;
+/// Topological tags: tag
 pub type Tag = i16;
+/// Topological tags: dimension and tag
 pub type TopoTag = (Dim, Tag);
 
 /// Return the minimum of an iterator of f64

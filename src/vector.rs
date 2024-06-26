@@ -165,6 +165,13 @@ impl<T: Copy + FromNativePointer> Vector<T> {
             }
         }
     }
+
+    pub fn push(&mut self, v: T) {
+        match &mut self.data {
+            VectorImpl::Std(x) => x.push(v),
+            VectorImpl::Native(_) => panic!("Cannot push to native vectors"),
+        }
+    }
 }
 
 impl<T: Clone + FromNativePointer + Copy> Clone for Vector<T> {
