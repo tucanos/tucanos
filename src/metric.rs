@@ -223,7 +223,7 @@ impl<const D: usize> Display for IsoMetric<D> {
 pub trait AnisoMetric<const D: usize>: Metric<D> + Index<usize, Output = f64> + Default
 where
     Const<D>: nalgebra::ToTypenum + nalgebra::DimSub<nalgebra::U1>,
-    DefaultAllocator: Allocator<f64, <Const<D> as nalgebra::DimSub<nalgebra::U1>>::Output>,
+    DefaultAllocator: Allocator<<Const<D> as nalgebra::DimSub<nalgebra::U1>>::Output>,
 {
     const N: usize;
 
@@ -312,7 +312,7 @@ impl fmt::Display for AnisoMetric3d {
 impl<const D: usize, T: AnisoMetric<D>> Metric<D> for T
 where
     Const<D>: nalgebra::ToTypenum + nalgebra::DimSub<nalgebra::U1>,
-    DefaultAllocator: Allocator<f64, <Const<D> as nalgebra::DimSub<nalgebra::U1>>::Output>,
+    DefaultAllocator: Allocator<<Const<D> as nalgebra::DimSub<nalgebra::U1>>::Output>,
 {
     const N: usize = <Self as AnisoMetric<D>>::N;
 
