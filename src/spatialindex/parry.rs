@@ -20,7 +20,6 @@ mod parry2d {
 
     /// Create a parry Shape from a tucanos Elem
     pub trait MeshToShape {
-        const N_VERTS: usize;
         type Shape: Shape + PointQueryWithLocation<Location = Self::Location> + Copy + Clone;
         type Location: Clone + Copy;
         fn shape(id: u32, verts: &[f64], elems: &[Idx]) -> Self::Shape;
@@ -34,7 +33,6 @@ mod parry2d {
     }
     pub struct EdgeToSegment {}
     impl MeshToShape for EdgeToSegment {
-        const N_VERTS: usize = 2;
         type Shape = Segment;
         type Location = SegmentPointLocation;
         fn shape(id: u32, verts: &[f64], elems: &[Idx]) -> Self::Shape {
@@ -160,7 +158,6 @@ mod parry3d {
     use std::marker::PhantomData;
     /// Create a parry Shape from a tucanos Elem
     pub trait MeshToShape {
-        const N_VERTS: usize;
         type Shape: Shape + PointQueryWithLocation<Location = Self::Location> + Copy + Clone;
         type Location: Clone + Copy;
         fn shape(id: u32, verts: &[f64], elems: &[Idx]) -> Self::Shape;
@@ -252,7 +249,6 @@ mod parry3d {
 
     pub struct TetraToTetra {}
     impl MeshToShape for TetraToTetra {
-        const N_VERTS: usize = 4;
         type Shape = TetraShape;
         type Location = TetrahedronPointLocation;
         fn shape(id: u32, verts: &[f64], elems: &[Idx]) -> Self::Shape {
@@ -267,7 +263,6 @@ mod parry3d {
     }
     pub struct EdgeToSegment {}
     impl MeshToShape for EdgeToSegment {
-        const N_VERTS: usize = 2;
         type Shape = Segment;
         type Location = SegmentPointLocation;
         fn shape(id: u32, verts: &[f64], elems: &[Idx]) -> Self::Shape {
