@@ -69,7 +69,7 @@ pub struct Cavity<const D: usize, E: Elem, M: Metric<D>> {
 
 impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
     /// Create a new (empty) cavity
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             local2global: Vec::new(),
             points: Vec::new(),
