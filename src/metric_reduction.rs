@@ -15,8 +15,8 @@ pub fn simultaneous_reduction<const D: usize>(
 ) -> (SMatrix<f64, D, D>, f64)
 where
     Const<D>: nalgebra::DimName + nalgebra::ToTypenum + nalgebra::DimSub<nalgebra::U1>,
-    DefaultAllocator: Allocator<f64, Const<D>>
-        + Allocator<f64, <Const<D> as nalgebra::DimSub<nalgebra::U1>>::Output>,
+    DefaultAllocator:
+        Allocator<Const<D>> + Allocator<<Const<D> as nalgebra::DimSub<nalgebra::U1>>::Output>,
 {
     let mut eig = b.symmetric_eigen();
     let mut det = eig.eigenvalues.iter().product::<f64>();
@@ -51,7 +51,7 @@ where
 pub fn step<const D: usize>(mat_a: SMatrix<f64, D, D>, mat_b: SMatrix<f64, D, D>) -> (f64, f64)
 where
     Const<D>: nalgebra::ToTypenum + nalgebra::DimSub<nalgebra::U1>,
-    DefaultAllocator: Allocator<f64, <Const<D> as nalgebra::DimSub<nalgebra::U1>>::Output>,
+    DefaultAllocator: Allocator<<Const<D> as nalgebra::DimSub<nalgebra::U1>>::Output>,
 {
     let mut eig = mat_a.symmetric_eigen();
     eig.eigenvalues.iter_mut().for_each(|x| *x = 1.0 / x.sqrt());
@@ -84,7 +84,7 @@ pub fn control_step<const D: usize>(
 ) -> Option<SMatrix<f64, D, D>>
 where
     Const<D>: nalgebra::ToTypenum + nalgebra::DimSub<nalgebra::U1>,
-    DefaultAllocator: Allocator<f64, <Const<D> as nalgebra::DimSub<nalgebra::U1>>::Output>,
+    DefaultAllocator: Allocator<<Const<D> as nalgebra::DimSub<nalgebra::U1>>::Output>,
 {
     let f = f * f;
 

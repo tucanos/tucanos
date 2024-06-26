@@ -551,7 +551,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     ) -> Result<()>
     where
         Const<D>: nalgebra::ToTypenum + nalgebra::DimSub<nalgebra::U1>,
-        DefaultAllocator: Allocator<f64, <Const<D> as nalgebra::DimSub<nalgebra::U1>>::Output>,
+        DefaultAllocator: Allocator<<Const<D> as nalgebra::DimSub<nalgebra::U1>>::Output>,
     {
         debug!("Extend the metric into the domain using gradation = {beta}");
 
