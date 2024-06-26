@@ -3,7 +3,8 @@ use crate::{
     graph::{reindex, CSRGraph},
     metric::IsoMetric,
     spatialindex::{DefaultObjectIndex, DefaultPointIndex, ObjectIndex, PointIndex},
-    topo_elems::{get_face_to_elem, Elem},
+    split_elements::{hex2tets, pri2tets, pyr2tets, qua2tris},
+    topo_elems::{get_face_to_elem, Edge, Elem, Tetrahedron, Triangle},
     topology::Topology,
     twovec,
     vector::Vector,
@@ -1093,6 +1094,193 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn n_tagged_faces(&self, tag: Tag) -> Idx {
         self.ftags.iter().filter(|&t| t == tag).count() as Idx
     }
+
+    pub fn add_verts<'a, I: ExactSizeIterator<Item = &'a [f64]>>(&mut self, verts: I) {
+        for v in verts {
+            self.verts.push(Point::<D>::from_column_slice(v));
+        }
+    }
+}
+
+impl SimplexMesh<2, Triangle> {
+    pub fn add_quas<
+        'a,
+        I1: ExactSizeIterator<Item = &'a [Idx]>,
+        I2: ExactSizeIterator<Item = Tag>,
+    >(
+        &mut self,
+        quas: I1,
+        qua_tags: I2,
+    ) {
+        assert_eq!(quas.len(), qua_tags.len());
+
+        for (q, tag) in quas.zip(qua_tags) {
+            debug_assert_eq!(q.len(), 4);
+            for t in qua2tris(q) {
+                self.elems.push(t);
+                self.etags.push(tag);
+            }
+        }
+    }
+
+    pub fn add_tris<
+        'a,
+        I1: ExactSizeIterator<Item = &'a [Idx]>,
+        I2: ExactSizeIterator<Item = Tag>,
+    >(
+        &mut self,
+        tris: I1,
+        tri_tags: I2,
+    ) {
+        assert_eq!(tris.len(), tri_tags.len());
+
+        for (t, tag) in tris.zip(tri_tags) {
+            debug_assert_eq!(t.len(), 3);
+            self.elems.push(Triangle::new(t[0], t[1], t[2]));
+            self.etags.push(tag);
+        }
+    }
+
+    pub fn add_edgs<
+        'a,
+        I1: ExactSizeIterator<Item = &'a [Idx]>,
+        I2: ExactSizeIterator<Item = Tag>,
+    >(
+        &mut self,
+        edgs: I1,
+        edg_tags: I2,
+    ) {
+        assert_eq!(edgs.len(), edg_tags.len());
+
+        for (e, tag) in edgs.zip(edg_tags) {
+            debug_assert_eq!(e.len(), 2);
+            self.faces.push(Edge::new(e[0], e[1]));
+            self.ftags.push(tag);
+        }
+    }
+}
+
+impl SimplexMesh<3, Tetrahedron> {
+    pub fn add_hexs<
+        'a,
+        I1: ExactSizeIterator<Item = &'a [Idx]>,
+        I2: ExactSizeIterator<Item = Tag>,
+    >(
+        &mut self,
+        hexs: I1,
+        hex_tags: I2,
+    ) {
+        assert_eq!(hexs.len(), hex_tags.len());
+
+        for (h, tag) in hexs.zip(hex_tags) {
+            debug_assert_eq!(h.len(), 8);
+            let (first, last) = hex2tets(h);
+            for t in first {
+                self.elems.push(t);
+                self.etags.push(tag);
+            }
+            if let Some(t) = last {
+                self.elems.push(t);
+                self.etags.push(tag);
+            }
+        }
+    }
+
+    pub fn add_pris<
+        'a,
+        I1: ExactSizeIterator<Item = &'a [Idx]>,
+        I2: ExactSizeIterator<Item = Tag>,
+    >(
+        &mut self,
+        pris: I1,
+        pri_tags: I2,
+    ) {
+        assert_eq!(pris.len(), pri_tags.len());
+
+        for (p, tag) in pris.zip(pri_tags) {
+            debug_assert_eq!(p.len(), 6);
+            for t in pri2tets(p) {
+                self.elems.push(t);
+                self.etags.push(tag);
+            }
+        }
+    }
+
+    pub fn add_pyrs<
+        'a,
+        I1: ExactSizeIterator<Item = &'a [Idx]>,
+        I2: ExactSizeIterator<Item = Tag>,
+    >(
+        &mut self,
+        pyrs: I1,
+        pyr_tags: I2,
+    ) {
+        assert_eq!(pyrs.len(), pyr_tags.len());
+
+        for (p, tag) in pyrs.zip(pyr_tags) {
+            debug_assert_eq!(p.len(), 5);
+            for t in pyr2tets(p) {
+                self.elems.push(t);
+                self.etags.push(tag);
+            }
+        }
+    }
+
+    pub fn add_tets<
+        'a,
+        I1: ExactSizeIterator<Item = &'a [Idx]>,
+        I2: ExactSizeIterator<Item = Tag>,
+    >(
+        &mut self,
+        tets: I1,
+        tet_tags: I2,
+    ) {
+        assert_eq!(tets.len(), tet_tags.len());
+
+        for (t, tag) in tets.zip(tet_tags) {
+            debug_assert_eq!(t.len(), 4);
+            self.elems.push(Tetrahedron::new(t[0], t[1], t[2], t[3]));
+            self.etags.push(tag);
+        }
+    }
+
+    pub fn add_quas<
+        'a,
+        I1: ExactSizeIterator<Item = &'a [Idx]>,
+        I2: ExactSizeIterator<Item = Tag>,
+    >(
+        &mut self,
+        quas: I1,
+        qua_tags: I2,
+    ) {
+        assert_eq!(quas.len(), qua_tags.len());
+
+        for (q, tag) in quas.zip(qua_tags) {
+            debug_assert_eq!(q.len(), 4);
+            for t in qua2tris(q) {
+                self.faces.push(t);
+                self.ftags.push(tag);
+            }
+        }
+    }
+
+    pub fn add_tris<
+        'a,
+        I1: ExactSizeIterator<Item = &'a [Idx]>,
+        I2: ExactSizeIterator<Item = Tag>,
+    >(
+        &mut self,
+        tris: I1,
+        tri_tags: I2,
+    ) {
+        assert_eq!(tris.len(), tri_tags.len());
+
+        for (t, tag) in tris.zip(tri_tags) {
+            debug_assert_eq!(t.len(), 3);
+            self.faces.push(Triangle::new(t[0], t[1], t[2]));
+            self.ftags.push(tag);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1100,8 +1288,9 @@ mod tests {
 
     use crate::{
         geom_elems::GElem,
+        mesh::SimplexMesh,
         test_meshes::{test_mesh_2d, test_mesh_3d},
-        topo_elems::{Edge, Elem, Triangle},
+        topo_elems::{Edge, Elem, Tetrahedron, Triangle},
         Result,
     };
 
@@ -1207,5 +1396,62 @@ mod tests {
             let p = mesh.verts.index(i);
             assert!(p[0] - p[1] > -1e-10);
         }
+    }
+
+    #[test]
+    fn test_quas_2d() {
+        let verts = [0., 0., 1., 0., 1., 1., 0., 1., 1.5, 0.5];
+        let quas = [0, 1, 2, 3];
+        let qua_tags = [1];
+        let tris = [1, 4, 2];
+        let tri_tags = [1];
+        let edgs = [0, 1, 1, 5, 5, 2, 2, 3, 3, 0];
+        let edg_tags = [1; 5];
+
+        let mut msh = SimplexMesh::<2, Triangle>::empty();
+        msh.add_verts(verts.chunks(2));
+        msh.add_quas(quas.chunks(4), qua_tags.iter().copied());
+        msh.add_tris(tris.chunks(3), tri_tags.iter().copied());
+        msh.add_edgs(edgs.chunks(2), edg_tags.iter().copied());
+        assert_eq!(msh.n_verts(), 5);
+        assert_eq!(msh.n_elems(), 3);
+        assert_eq!(msh.n_faces(), 5);
+
+        assert!(f64::abs(msh.vol() - 1.25) < 1e-10);
+    }
+
+    #[test]
+    fn test_hexs_pyrs() {
+        let verts = [
+            0., 0., 0., 1., 0., 0., 1., 1., 0., 0., 1., 0., 0., 0., 1., 1., 0., 1., 1., 1., 1., 0.,
+            1., 1., 0.5, 0.5, 1.5,
+        ];
+        let hexs = [0, 1, 2, 3, 4, 5, 6, 7];
+        let hex_tags = [1];
+        let pyrs = [4, 5, 6, 7, 8];
+        let pyr_tags = [1];
+        let quas = [0, 1, 2, 3, 0, 1, 5, 4, 1, 2, 6, 5, 2, 3, 7, 6, 3, 0, 4, 7];
+        let qua_tags = [2; 5];
+        let tris = [4, 5, 8, 5, 6, 8, 6, 7, 8, 7, 4, 8];
+        let tri_tags = [1; 4];
+
+        let mut msh = SimplexMesh::<3, Tetrahedron>::empty();
+        msh.add_verts(verts.chunks(3));
+        msh.add_hexs(hexs.chunks(8), hex_tags.iter().copied());
+        msh.add_pyrs(pyrs.chunks(5), pyr_tags.iter().copied());
+        msh.add_quas(quas.chunks(4), qua_tags.iter().copied());
+        msh.add_tris(tris.chunks(3), tri_tags.iter().copied());
+
+        assert_eq!(msh.n_verts(), 9);
+        assert_eq!(msh.n_elems(), 8);
+        assert_eq!(msh.n_faces(), 14);
+
+        // Build external faces
+        msh.add_boundary_faces();
+        assert_eq!(msh.n_verts(), 9);
+        assert_eq!(msh.n_elems(), 8);
+        assert_eq!(msh.n_faces(), 14);
+
+        assert!(f64::abs(msh.vol() - 7. / 6.) < 1e-10);
     }
 }
