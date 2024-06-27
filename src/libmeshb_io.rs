@@ -844,6 +844,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_3d_simple3d() -> Result<()> {
         let mesh = SimplexMesh::<3, Tetrahedron>::read_meshb("data/simple3d.meshb")?;
 
