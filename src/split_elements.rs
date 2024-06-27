@@ -39,7 +39,7 @@ fn argmin(arr: &[Idx]) -> usize {
     let mut imin = 0;
     let mut idx = arr[0];
 
-    for (i, j) in arr.iter().skip(1).copied().enumerate() {
+    for (i, j) in arr.iter().copied().enumerate().skip(1) {
         if j < idx {
             idx = j;
             imin = i;
