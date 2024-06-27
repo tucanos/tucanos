@@ -5,6 +5,13 @@ use crate::{
 };
 
 use log::debug;
+use rayon::{
+    iter::{
+        IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator,
+        ParallelIterator,
+    },
+    slice::ParallelSliceMut,
+};
 use rustc_hash::FxHashSet;
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
@@ -118,15 +125,16 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             "Compute smoothing using 1st order LS (weight = {})",
             weight_exp
         );
-
-        let mut res = Vec::with_capacity(self.n_verts() as usize);
+        let n = self.n_verts() as usize;
+        assert_eq!(f.len(), n);
+        let mut res = vec![0.0; n];
 
         let v2v = self.get_vertex_to_vertices()?;
-        for i_vert in 0..self.n_verts() {
-            let neighbors = v2v.row(i_vert);
+        res.par_iter_mut().enumerate().for_each(|(i_vert, s)| {
+            let neighbors = v2v.row(i_vert as Idx);
             let dx_df_w = neighbors.iter().map(|&i| {
-                let dx = self.vert(i) - self.vert(i_vert);
-                let df = f[i as usize] - f[i_vert as usize];
+                let dx = self.vert(i) - self.vert(i_vert as Idx);
+                let df = f[i as usize] - f[i_vert];
                 let w = if weight_exp > 0 {
                     1. / dx.norm().powi(weight_exp)
                 } else {
@@ -138,23 +146,23 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             if D == 2 {
                 let sol = Self::least_squares::<3, _>(dx_df_w, None);
                 if let Some(sol) = sol {
-                    res.push(f[i_vert as usize] + sol[0]);
+                    *s = f[i_vert] + sol[0];
                 } else {
                     // If the least squared approximation could not be computed, use the original value
-                    res.push(f[i_vert as usize]);
+                    *s = f[i_vert];
                 }
             } else if D == 3 {
                 let sol = Self::least_squares::<4, _>(dx_df_w, None);
                 if let Some(sol) = sol {
-                    res.push(f[i_vert as usize] + sol[0]);
+                    *s = f[i_vert] + sol[0];
                 } else {
                     // If the least squared approximation could not be computed, use the original value
-                    res.push(f[i_vert as usize]);
+                    *s = f[i_vert];
                 }
             }
-        }
+        });
 
-        if res.iter().copied().any(f64::is_nan) {
+        if res.par_iter().copied().any(f64::is_nan) {
             return Err(Error::from("NaN in smoothing computation"));
         }
         Ok(res)
@@ -213,51 +221,59 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             "Compute gradient using 1st order LS (weight = {})",
             weight_exp
         );
+        let n = self.n_verts() as usize;
+        assert_eq!(f.len(), n);
 
-        let mut res = Vec::with_capacity(D * self.n_verts() as usize);
-
+        let mut res = vec![0.0; D * n];
         let mut failed = vec![false; self.n_verts() as usize];
 
         let flg = self.boundary_flag();
 
         let v2v = self.get_vertex_to_vertices()?;
-        for i_vert in 0..self.n_verts() {
-            // Don't use a LS scheme for boundary vertices
-            if flg[i_vert as usize] {
-                failed[i_vert as usize] = true;
-                res.resize(res.len() + D, 0.0);
-            } else {
-                let neighbors = v2v.row(i_vert);
-                let dx_df_w = neighbors.iter().map(|&i| {
-                    let dx = self.vert(i) - self.vert(i_vert);
-                    let df = f[i as usize] - f[i_vert as usize];
-                    let w = if weight_exp > 0 {
-                        1. / dx.norm().powi(weight_exp)
-                    } else {
-                        1.0
-                    };
-                    (dx, df, w)
-                });
+        res.par_chunks_mut(D)
+            .zip(failed.par_iter_mut())
+            .enumerate()
+            .for_each(|(i_vert, (grad, fail))| {
+                // Don't use a LS scheme for boundary vertices
+                if flg[i_vert] {
+                    *fail = true;
+                    grad.iter_mut().for_each(|x| *x = 0.0);
+                } else {
+                    let neighbors = v2v.row(i_vert as Idx);
+                    let dx_df_w = neighbors.iter().map(|&i| {
+                        let dx = self.vert(i) - self.vert(i_vert as Idx);
+                        let df = f[i as usize] - f[i_vert];
+                        let w = if weight_exp > 0 {
+                            1. / dx.norm().powi(weight_exp)
+                        } else {
+                            1.0
+                        };
+                        (dx, df, w)
+                    });
 
-                if D == 2 {
-                    let sol = Self::least_squares::<3, _>(dx_df_w, None);
-                    if let Some(sol) = sol {
-                        res.extend(sol.iter().skip(1).take(D));
-                    } else {
-                        failed[i_vert as usize] = true;
-                        res.resize(res.len() + D, 0.0);
-                    }
-                } else if D == 3 {
-                    let sol = Self::least_squares::<4, _>(dx_df_w, None);
-                    if let Some(sol) = sol {
-                        res.extend(sol.iter().skip(1).take(D));
-                    } else {
-                        failed[i_vert as usize] = true;
-                        res.resize(res.len() + D, 0.0);
+                    if D == 2 {
+                        let sol = Self::least_squares::<3, _>(dx_df_w, None);
+                        if let Some(sol) = sol {
+                            grad.iter_mut()
+                                .zip(sol.iter().skip(1).take(D))
+                                .for_each(|(x, y)| *x = *y);
+                        } else {
+                            *fail = true;
+                            grad.iter_mut().for_each(|x| *x = 0.0);
+                        }
+                    } else if D == 3 {
+                        let sol = Self::least_squares::<4, _>(dx_df_w, None);
+                        if let Some(sol) = sol {
+                            grad.iter_mut()
+                                .zip(sol.iter().skip(1).take(D))
+                                .for_each(|(x, y)| *x = *y);
+                        } else {
+                            *fail = true;
+                            grad.iter_mut().for_each(|x| *x = 0.0);
+                        }
                     }
                 }
-            }
-        }
+            });
 
         // For vertices where no valid approximation could be computed, average over the valid neighbors
         if self.fix_not_computed(&mut res, &mut failed, D, 3) {
@@ -294,61 +310,69 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         if use_second_order_neighbors {
             debug!("  using second order neighbors");
         }
+        let n = self.n_verts() as usize;
+        assert_eq!(f.len(), n);
 
-        let mut res = Vec::with_capacity(D * (D + 1) / 2 * self.n_verts() as usize);
-
+        let mut res = vec![0.0; D * (D + 1) / 2 * n];
         let mut failed = vec![false; self.n_verts() as usize];
 
         let v2v = self.get_vertex_to_vertices()?;
-        for i_vert in 0..self.n_verts() {
-            let first_order_neighbors = v2v.row(i_vert);
-            let mut neighbors = first_order_neighbors
-                .iter()
-                .map(|&i| (i, 1))
-                .collect::<FxHashSet<_>>();
-            if use_second_order_neighbors {
-                first_order_neighbors
+        res.par_chunks_mut(D * (D + 1) / 2)
+            .zip(failed.par_iter_mut())
+            .enumerate()
+            .for_each(|(i_vert, (hess, fail))| {
+                let first_order_neighbors = v2v.row(i_vert as Idx);
+                let mut neighbors = first_order_neighbors
                     .iter()
-                    .for_each(|&i| neighbors.extend(v2v.row(i).iter().map(|&i| (i, 2))));
-                neighbors.remove(&(i_vert, 2));
-            }
+                    .map(|&i| (i, 1))
+                    .collect::<FxHashSet<_>>();
+                if use_second_order_neighbors {
+                    first_order_neighbors
+                        .iter()
+                        .for_each(|&i| neighbors.extend(v2v.row(i).iter().map(|&i| (i, 2))));
+                    neighbors.remove(&(i_vert as Idx, 2));
+                }
 
-            let dx_df_w = neighbors.iter().map(|&(i, order)| {
-                let dx = self.vert(i) - self.vert(i_vert);
-                let df = f[i as usize] - f[i_vert as usize];
-                let w = weight_exp.map_or(if order == 1 { 1.0 } else { 0.1 }, |weight_exp| {
-                    if weight_exp > 0 {
-                        1. / dx.norm().powi(weight_exp)
-                    } else {
-                        1.0
-                    }
+                let dx_df_w = neighbors.iter().map(|&(i, order)| {
+                    let dx = self.vert(i) - self.vert(i_vert as Idx);
+                    let df = f[i as usize] - f[i_vert];
+                    let w = weight_exp.map_or(if order == 1 { 1.0 } else { 0.1 }, |weight_exp| {
+                        if weight_exp > 0 {
+                            1. / dx.norm().powi(weight_exp)
+                        } else {
+                            1.0
+                        }
+                    });
+                    (dx, df, w)
                 });
-                (dx, df, w)
-            });
-            let w0 = if weight_exp.is_some() {
-                None
-            } else {
-                Some(10.0)
-            };
+                let w0 = if weight_exp.is_some() {
+                    None
+                } else {
+                    Some(10.0)
+                };
 
-            if D == 2 {
-                let sol = Self::least_squares::<6, _>(dx_df_w, w0);
-                if let Some(sol) = sol {
-                    res.extend(sol.iter().skip(D + 1).take(D * (D + 1) / 2));
-                } else {
-                    failed[i_vert as usize] = true;
-                    res.resize(res.len() + 3, 0.0);
+                if D == 2 {
+                    let sol = Self::least_squares::<6, _>(dx_df_w, w0);
+                    if let Some(sol) = sol {
+                        hess.iter_mut()
+                            .zip(sol.iter().skip(D + 1).take(D * (D + 1) / 2))
+                            .for_each(|(x, y)| *x = *y);
+                    } else {
+                        *fail = true;
+                        hess.iter_mut().for_each(|x| *x = 0.0);
+                    }
+                } else if D == 3 {
+                    let sol = Self::least_squares::<10, _>(dx_df_w, w0);
+                    if let Some(sol) = sol {
+                        hess.iter_mut()
+                            .zip(sol.iter().skip(D + 1).take(D * (D + 1) / 2))
+                            .for_each(|(x, y)| *x = *y);
+                    } else {
+                        *fail = true;
+                        hess.iter_mut().for_each(|x| *x = 0.0);
+                    }
                 }
-            } else if D == 3 {
-                let sol = Self::least_squares::<10, _>(dx_df_w, w0);
-                if let Some(sol) = sol {
-                    res.extend(sol.iter().skip(D + 1).take(D * (D + 1) / 2));
-                } else {
-                    failed[i_vert as usize] = true;
-                    res.resize(res.len() + 6, 0.0);
-                }
-            }
-        }
+            });
 
         // For vertices where no valid approximation could be computed, average over the valid neighbors
         if self.fix_not_computed(&mut res, &mut failed, D * (D + 1) / 2, 3) {
