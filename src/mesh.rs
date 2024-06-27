@@ -567,6 +567,151 @@ create_mesh!(Mesh21, 2, Edge);
 
 #[pymethods]
 impl Mesh33 {
+    /// Create a Mesh33 from basic elements
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_lines)]
+    #[classmethod]
+    pub fn from_basic_elems(
+        _cls: &Bound<'_, PyType>,
+        coords: PyReadonlyArray2<f64>,
+        hexs: Option<PyReadonlyArray2<Idx>>,
+        hex_tags: Option<PyReadonlyArray1<Tag>>,
+        pris: Option<PyReadonlyArray2<Idx>>,
+        pri_tags: Option<PyReadonlyArray1<Tag>>,
+        pyrs: Option<PyReadonlyArray2<Idx>>,
+        pyr_tags: Option<PyReadonlyArray1<Tag>>,
+        tets: Option<PyReadonlyArray2<Idx>>,
+        tet_tags: Option<PyReadonlyArray1<Tag>>,
+        quas: Option<PyReadonlyArray2<Idx>>,
+        qua_tags: Option<PyReadonlyArray1<Tag>>,
+        tris: Option<PyReadonlyArray2<Idx>>,
+        tri_tags: Option<PyReadonlyArray1<Tag>>,
+    ) -> PyResult<Self> {
+        let mut res = SimplexMesh::<3, Tetrahedron>::empty();
+
+        if coords.shape()[1] != 3 {
+            return Err(PyValueError::new_err("Invalid dimension 1 for coords"));
+        }
+        let coords = coords.as_slice()?.chunks(3);
+        res.add_verts(coords);
+
+        if let Some(hexs) = hexs {
+            if hexs.shape()[1] != 8 {
+                return Err(PyValueError::new_err("Invalid dimension 1 for hexs"));
+            }
+            if let Some(hex_tags) = hex_tags {
+                if hexs.shape()[0] != hex_tags.shape()[0] {
+                    return Err(PyValueError::new_err(
+                        "Invalid dimension 0 for hexs / hex_tags",
+                    ));
+                }
+                res.add_hexs(
+                    hexs.as_slice()?.chunks(8),
+                    hex_tags.as_slice()?.iter().copied(),
+                );
+            } else {
+                res.add_hexs(hexs.as_slice()?.chunks(8), (0..hexs.shape()[0]).map(|_| 1));
+            };
+        }
+
+        if let Some(pris) = pris {
+            if pris.shape()[1] != 6 {
+                return Err(PyValueError::new_err("Invalid dimension 1 for pris"));
+            }
+            if let Some(pri_tags) = pri_tags {
+                if pris.shape()[0] != pri_tags.shape()[0] {
+                    return Err(PyValueError::new_err(
+                        "Invalid dimension 0 for pris / pri_tags",
+                    ));
+                }
+                res.add_pris(
+                    pris.as_slice()?.chunks(6),
+                    pri_tags.as_slice()?.iter().copied(),
+                );
+            } else {
+                res.add_pris(pris.as_slice()?.chunks(6), (0..pris.shape()[0]).map(|_| 1));
+            };
+        }
+
+        if let Some(pyrs) = pyrs {
+            if pyrs.shape()[1] != 5 {
+                return Err(PyValueError::new_err("Invalid dimension 1 for pyrs"));
+            }
+            if let Some(pyr_tags) = pyr_tags {
+                if pyrs.shape()[0] != pyr_tags.shape()[0] {
+                    return Err(PyValueError::new_err(
+                        "Invalid dimension 0 for pyrs / pyr_tags",
+                    ));
+                }
+                res.add_pyrs(
+                    pyrs.as_slice()?.chunks(5),
+                    pyr_tags.as_slice()?.iter().copied(),
+                );
+            } else {
+                res.add_pyrs(pyrs.as_slice()?.chunks(5), (0..pyrs.shape()[0]).map(|_| 1));
+            };
+        }
+
+        if let Some(tets) = tets {
+            if tets.shape()[1] != 4 {
+                return Err(PyValueError::new_err("Invalid dimension 1 for tets"));
+            }
+            if let Some(tet_tags) = tet_tags {
+                if tets.shape()[0] != tet_tags.shape()[0] {
+                    return Err(PyValueError::new_err(
+                        "Invalid dimension 0 for tets / tet_tags",
+                    ));
+                }
+                res.add_tets(
+                    tets.as_slice()?.chunks(4),
+                    tet_tags.as_slice()?.iter().copied(),
+                );
+            } else {
+                res.add_tets(tets.as_slice()?.chunks(4), (0..tets.shape()[0]).map(|_| 1));
+            };
+        }
+
+        if let Some(quas) = quas {
+            if quas.shape()[1] != 4 {
+                return Err(PyValueError::new_err("Invalid dimension 1 for quas"));
+            }
+            if let Some(qua_tags) = qua_tags {
+                if quas.shape()[0] != qua_tags.shape()[0] {
+                    return Err(PyValueError::new_err(
+                        "Invalid dimension 0 for quas / qua_tags",
+                    ));
+                }
+                res.add_quas(
+                    quas.as_slice()?.chunks(4),
+                    qua_tags.as_slice()?.iter().copied(),
+                );
+            } else {
+                res.add_quas(quas.as_slice()?.chunks(4), (0..quas.shape()[0]).map(|_| 1));
+            };
+        }
+
+        if let Some(tris) = tris {
+            if tris.shape()[1] != 3 {
+                return Err(PyValueError::new_err("Invalid dimension 1 for tris"));
+            }
+            if let Some(tri_tags) = tri_tags {
+                if tris.shape()[0] != tri_tags.shape()[0] {
+                    return Err(PyValueError::new_err(
+                        "Invalid dimension 0 for tris / tri_tags",
+                    ));
+                }
+                res.add_tris(
+                    tris.as_slice()?.chunks(3),
+                    tri_tags.as_slice()?.iter().copied(),
+                );
+            } else {
+                res.add_tris(tris.as_slice()?.chunks(3), (0..tris.shape()[0]).map(|_| 1));
+            };
+        }
+
+        Ok(Self { mesh: res })
+    }
+
     /// Extract the boundary faces into a Mesh, and return the indices of the vertices in the
     /// parent mesh
     #[must_use]
@@ -635,6 +780,87 @@ impl Mesh33 {
 
 #[pymethods]
 impl Mesh32 {
+    /// Create a Mesh32 from basic elements
+    #[classmethod]
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_basic_elems(
+        _cls: &Bound<'_, PyType>,
+        coords: PyReadonlyArray2<f64>,
+        quas: Option<PyReadonlyArray2<Idx>>,
+        qua_tags: Option<PyReadonlyArray1<Tag>>,
+        tris: Option<PyReadonlyArray2<Idx>>,
+        tri_tags: Option<PyReadonlyArray1<Tag>>,
+        edgs: Option<PyReadonlyArray2<Idx>>,
+        edg_tags: Option<PyReadonlyArray1<Tag>>,
+    ) -> PyResult<Self> {
+        let mut res = SimplexMesh::<3, Triangle>::empty();
+
+        if coords.shape()[1] != 3 {
+            return Err(PyValueError::new_err("Invalid dimension 1 for coords"));
+        }
+        let coords = coords.as_slice()?.chunks(3);
+        res.add_verts(coords);
+
+        if let Some(quas) = quas {
+            if quas.shape()[1] != 4 {
+                return Err(PyValueError::new_err("Invalid dimension 1 for quas"));
+            }
+            if let Some(qua_tags) = qua_tags {
+                if quas.shape()[0] != qua_tags.shape()[0] {
+                    return Err(PyValueError::new_err(
+                        "Invalid dimension 0 for quas / qua_tags",
+                    ));
+                }
+                res.add_quas(
+                    quas.as_slice()?.chunks(4),
+                    qua_tags.as_slice()?.iter().copied(),
+                );
+            } else {
+                res.add_quas(quas.as_slice()?.chunks(4), (0..quas.shape()[0]).map(|_| 1));
+            };
+        }
+
+        if let Some(tris) = tris {
+            if tris.shape()[1] != 3 {
+                return Err(PyValueError::new_err("Invalid dimension 1 for tris"));
+            }
+            if let Some(tri_tags) = tri_tags {
+                if tris.shape()[0] != tri_tags.shape()[0] {
+                    return Err(PyValueError::new_err(
+                        "Invalid dimension 0 for tris / tri_tags",
+                    ));
+                }
+                res.add_tris(
+                    tris.as_slice()?.chunks(3),
+                    tri_tags.as_slice()?.iter().copied(),
+                );
+            } else {
+                res.add_tris(tris.as_slice()?.chunks(3), (0..tris.shape()[0]).map(|_| 1));
+            };
+        }
+
+        if let Some(edgs) = edgs {
+            if edgs.shape()[1] != 2 {
+                return Err(PyValueError::new_err("Invalid dimension 1 for edgs"));
+            }
+            if let Some(edg_tags) = edg_tags {
+                if edgs.shape()[0] != edg_tags.shape()[0] {
+                    return Err(PyValueError::new_err(
+                        "Invalid dimension 0 for edgs / edg_tags",
+                    ));
+                }
+                res.add_edgs(
+                    edgs.as_slice()?.chunks(2),
+                    edg_tags.as_slice()?.iter().copied(),
+                );
+            } else {
+                res.add_edgs(edgs.as_slice()?.chunks(2), (0..edgs.shape()[0]).map(|_| 1));
+            };
+        }
+
+        Ok(Self { mesh: res })
+    }
+
     #[doc = concat!("Read a ", stringify!($name), " from a .stl file")]
     #[classmethod]
     pub fn from_stl(_cls: &Bound<'_, PyType>, fname: &str) -> Self {
@@ -662,6 +888,86 @@ impl Mesh32 {
 
 #[pymethods]
 impl Mesh22 {
+    /// Create a Mesh22 from basic elements
+    #[allow(clippy::too_many_arguments)]
+    #[classmethod]
+    pub fn from_basic_elems(
+        _cls: &Bound<'_, PyType>,
+        coords: PyReadonlyArray2<f64>,
+        quas: Option<PyReadonlyArray2<Idx>>,
+        qua_tags: Option<PyReadonlyArray1<Tag>>,
+        tris: Option<PyReadonlyArray2<Idx>>,
+        tri_tags: Option<PyReadonlyArray1<Tag>>,
+        edgs: Option<PyReadonlyArray2<Idx>>,
+        edg_tags: Option<PyReadonlyArray1<Tag>>,
+    ) -> PyResult<Self> {
+        let mut res = SimplexMesh::<2, Triangle>::empty();
+
+        if coords.shape()[1] != 2 {
+            return Err(PyValueError::new_err("Invalid dimension 1 for coords"));
+        }
+        let coords = coords.as_slice()?.chunks(2);
+        res.add_verts(coords);
+
+        if let Some(quas) = quas {
+            if quas.shape()[1] != 4 {
+                return Err(PyValueError::new_err("Invalid dimension 1 for quas"));
+            }
+            if let Some(qua_tags) = qua_tags {
+                if quas.shape()[0] != qua_tags.shape()[0] {
+                    return Err(PyValueError::new_err(
+                        "Invalid dimension 0 for quas / qua_tags",
+                    ));
+                }
+                res.add_quas(
+                    quas.as_slice()?.chunks(4),
+                    qua_tags.as_slice()?.iter().copied(),
+                );
+            } else {
+                res.add_quas(quas.as_slice()?.chunks(4), (0..quas.shape()[0]).map(|_| 1));
+            };
+        }
+
+        if let Some(tris) = tris {
+            if tris.shape()[1] != 3 {
+                return Err(PyValueError::new_err("Invalid dimension 1 for tris"));
+            }
+            if let Some(tri_tags) = tri_tags {
+                if tris.shape()[0] != tri_tags.shape()[0] {
+                    return Err(PyValueError::new_err(
+                        "Invalid dimension 0 for tris / tri_tags",
+                    ));
+                }
+                res.add_tris(
+                    tris.as_slice()?.chunks(3),
+                    tri_tags.as_slice()?.iter().copied(),
+                );
+            } else {
+                res.add_tris(tris.as_slice()?.chunks(3), (0..tris.shape()[0]).map(|_| 1));
+            };
+        }
+
+        if let Some(edgs) = edgs {
+            if edgs.shape()[1] != 2 {
+                return Err(PyValueError::new_err("Invalid dimension 1 for edgs"));
+            }
+            if let Some(edg_tags) = edg_tags {
+                if edgs.shape()[0] != edg_tags.shape()[0] {
+                    return Err(PyValueError::new_err(
+                        "Invalid dimension 0 for edgs / edg_tags",
+                    ));
+                }
+                res.add_edgs(
+                    edgs.as_slice()?.chunks(2),
+                    edg_tags.as_slice()?.iter().copied(),
+                );
+            } else {
+                res.add_edgs(edgs.as_slice()?.chunks(2), (0..edgs.shape()[0]).map(|_| 1));
+            };
+        }
+
+        Ok(Self { mesh: res })
+    }
     /// Extract the boundary faces into a Mesh, and return the indices of the vertices in the
     /// parent mesh
     #[must_use]
