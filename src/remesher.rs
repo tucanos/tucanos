@@ -8,9 +8,10 @@ use numpy::{
 };
 use pyo3::{
     exceptions::{PyRuntimeError, PyValueError},
+    prelude::PyDictMethods,
     pyclass, pymethods,
     types::{PyDict, PyType},
-    PyResult, Python,
+    Bound, PyResult, Python,
 };
 use tucanos::{
     metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
@@ -59,12 +60,12 @@ macro_rules! create_remesher {
             ///  $$ m = det(|H|)^{-1/(2p+dim)}|H| $$
             #[classmethod]
             pub fn hessian_to_metric<'py>(
-                _cls: &PyType,
+                _cls: &Bound<'_, PyType>,
                 py: Python<'py>,
                 mesh: &$mesh,
                 m: PyReadonlyArray2<f64>,
                 p: Option<Idx>,
-            ) -> PyResult<&'py PyArray2<f64>> {
+            ) -> PyResult<Bound<'py,PyArray2<f64>>> {
                 if m.shape()[0] != mesh.mesh.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
@@ -97,7 +98,7 @@ macro_rules! create_remesher {
             #[classmethod]
             #[allow(clippy::too_many_arguments)]
             pub fn scale_metric<'py>(
-                _cls: &PyType,
+                _cls: &Bound<'_, PyType>,
                 py: Python<'py>,
                 mesh: &$mesh,
                 m: PyReadonlyArray2<f64>,
@@ -108,7 +109,7 @@ macro_rules! create_remesher {
                 implied_m: Option<PyReadonlyArray2<f64>>,
                 step: Option<f64>,
                 max_iter: Option<Idx>,
-            ) -> PyResult<&'py PyArray2<f64>> {
+            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
                 if m.shape()[0] != mesh.mesh.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
@@ -152,11 +153,11 @@ macro_rules! create_remesher {
             /// Smooth a metric field
             #[classmethod]
             pub fn smooth_metric<'py>(
-                _cls: &PyType,
+                _cls: &Bound<'_, PyType>,
                 py: Python<'py>,
                 mesh: &$mesh,
                 m: PyReadonlyArray2<f64>,
-            ) -> PyResult<&'py PyArray2<f64>> {
+            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
                 if m.shape()[0] != mesh.mesh.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
@@ -179,13 +180,13 @@ macro_rules! create_remesher {
             /// Apply a maximum gradation to a metric field
             #[classmethod]
             pub fn apply_metric_gradation<'py>(
-                _cls: &PyType,
+                _cls: &Bound<'_, PyType>,
                 py: Python<'py>,
                 mesh: &$mesh,
                 m: PyReadonlyArray2<f64>,
                 beta: f64,
                 n_iter: Idx,
-            ) -> PyResult<&'py PyArray2<f64>> {
+            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
                 if m.shape()[0] != mesh.mesh.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
@@ -212,11 +213,11 @@ macro_rules! create_remesher {
             /// using a weighted average.
             #[classmethod]
             pub fn elem_data_to_vertex_data_metric<'py>(
-                _cls: &PyType,
+                _cls: &Bound<'_, PyType>,
                 py: Python<'py>,
                 mesh: &$mesh,
                 m: PyReadonlyArray2<f64>,
-            ) -> PyResult<&'py PyArray2<f64>> {
+            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
                 if m.shape()[0] != mesh.mesh.n_elems() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
@@ -242,11 +243,11 @@ macro_rules! create_remesher {
             /// element centers (P0)
             #[classmethod]
             pub fn vertex_data_to_elem_data_metric<'py>(
-                _cls: &PyType,
+                _cls: &Bound<'_, PyType>,
                 py: Python<'py>,
                 mesh: &$mesh,
                 m: PyReadonlyArray2<f64>,
-            ) -> PyResult<&'py PyArray2<f64>> {
+            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
                 if m.shape()[0] != mesh.mesh.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
@@ -272,13 +273,13 @@ macro_rules! create_remesher {
             #[classmethod]
             #[allow(clippy::too_many_arguments)]
             pub fn control_step_metric<'py>(
-                _cls: &PyType,
+                _cls: &Bound<'_, PyType>,
                 py: Python<'py>,
                 mesh: &$mesh,
                 m: PyReadonlyArray2<f64>,
                 m_other: PyReadonlyArray2<f64>,
                 step: f64,
-            ) -> PyResult<&'py PyArray2<f64>> {
+            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
                 if m.shape()[0] != mesh.mesh.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
@@ -312,7 +313,7 @@ macro_rules! create_remesher {
             /// Compute the min/max sizes, max anisotropy and complexity of a metric
             #[classmethod]
             pub fn metric_info(
-                _cls: &PyType,
+                _cls: &Bound<'_, PyType>,
                 mesh: &$mesh,
                 m: PyReadonlyArray2<f64>,
             ) -> (f64, f64, f64, f64) {
@@ -364,9 +365,9 @@ macro_rules! create_remesher {
             }
 
             /// Get the default remesher parameters
-            pub fn default_params<'py>(&mut self, py: Python<'py>) -> &'py PyDict {
+            pub fn default_params<'py>(&mut self, py: Python<'py>) -> Bound<'py, PyDict> {
                 let default_params = RemesherParams::default();
-                let dict = PyDict::new(py);
+                let dict = PyDict::new_bound(py);
                 dict.set_item("num_iter", default_params.num_iter).unwrap();
                 dict.set_item("two_steps", default_params.two_steps).unwrap();
                 dict.set_item("split_max_iter", default_params.split_max_iter).unwrap();
@@ -472,13 +473,13 @@ macro_rules! create_remesher {
 
             /// Get the element qualities as a numpy array of size (# or elements)
             #[must_use]
-            pub fn qualities<'py>(&self, py: Python<'py>) -> &'py PyArray1<f64> {
+            pub fn qualities<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
                 to_numpy_1d(py, self.remesher.qualities())
             }
 
             /// Get the element lengths (in metric space) as a numpy array of size (# or edges)
             #[must_use]
-            pub fn lengths<'py>(&self, py: Python<'py>) -> &'py PyArray1<f64> {
+            pub fn lengths<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
                 to_numpy_1d(py, self.remesher.lengths())
             }
 

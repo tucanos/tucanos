@@ -7,9 +7,10 @@ use numpy::{
 };
 use pyo3::{
     exceptions::{PyRuntimeError, PyValueError},
+    prelude::PyDictMethods,
     pyclass, pymethods,
     types::{PyDict, PyType},
-    PyResult, Python,
+    Bound, PyResult, Python,
 };
 use std::collections::HashMap;
 use tucanos::{
@@ -87,7 +88,7 @@ macro_rules! create_mesh {
 
             #[doc = concat!("Read a ", stringify!($name), " from a .mesh(b) file")]
             #[classmethod]
-            pub fn from_meshb(_cls: &PyType, fname: &str) -> PyResult<Self> {
+            pub fn from_meshb(_cls: &Bound<'_, PyType>, fname: &str) -> PyResult<Self> {
                 let res = SimplexMesh::<$dim, $etype>::read_meshb(fname);
                 match res {
                     Ok(mesh) => Ok(Self{mesh}),
@@ -109,10 +110,10 @@ macro_rules! create_mesh {
             /// Read a solution stored in a .sol(b) file
             #[classmethod]
             pub fn read_solb<'py>(
-                _cls: &PyType,
+                _cls: &Bound<'_, PyType>,
                 py: Python<'py>,
                 fname: &str
-            ) -> PyResult<&'py PyArray2<f64>> {
+            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
                 use pyo3::exceptions::PyRuntimeError;
 
                 let res = SimplexMesh::<$dim, $etype>::read_solb(fname);
@@ -148,7 +149,7 @@ macro_rules! create_mesh {
 
             /// Get the volume of all the elements
             #[must_use]
-            pub fn vols<'py>(&self, py: Python<'py>) -> &'py PyArray1<f64> {
+            pub fn vols<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
 
                 let res : Vec<_> = self.mesh.gelems().map(|ge| ge.vol()).collect();
                 to_numpy_1d(py, res)
@@ -227,13 +228,13 @@ macro_rules! create_mesh {
 
             /// Add the missing boundary faces and make sure that boundary faces are oriented outwards
             /// If internal faces are present, these are keps
-            pub fn add_boundary_faces<'py>(&mut self, py: Python<'py>) -> PyResult<(&'py PyDict, &'py PyDict)> {
+            pub fn add_boundary_faces<'py>(&mut self, py: Python<'py>) -> PyResult<(Bound<'py, PyDict>, Bound<'py, PyDict>)> {
                 let (bdy, ifc) = self.mesh.add_boundary_faces();
-                let  dict_bdy = PyDict::new(py);
+                let  dict_bdy = PyDict::new_bound(py);
                 for (k, v) in bdy.iter() {
                     dict_bdy.set_item(k, v)?;
                 }
-                let  dict_ifc = PyDict::new(py);
+                let  dict_ifc = PyDict::new_bound(py);
                 for (k, v) in ifc.iter() {
                     dict_ifc.set_item(k, to_numpy_1d(py, v.to_vec()))?;
                 }
@@ -280,7 +281,7 @@ macro_rules! create_mesh {
             }
 
             #[doc = concat!("Get a copy of the mesh coordinates as a numpy array of shape (# of vertices, ", stringify!($dim), ")")]
-            pub fn get_coords<'py>(&mut self, py: Python<'py>) -> &'py PyArray2<f64> {
+            pub fn get_coords<'py>(&mut self, py: Python<'py>) -> Bound<'py, PyArray2<f64>> {
                 let mut coords = Vec::with_capacity(self.mesh.n_verts() as usize * $dim);
                 for v in self.mesh.verts() {
                     coords.extend(v.iter().copied());
@@ -289,21 +290,21 @@ macro_rules! create_mesh {
             }
 
             /// Get a copy of the element connectivity as a numpy array of shape (# of elements, m)
-            pub fn get_elems<'py>(&mut self, py: Python<'py>) -> &'py PyArray2<Idx> {
+            pub fn get_elems<'py>(&mut self, py: Python<'py>) -> Bound<'py, PyArray2<Idx>> {
                 let elems = self.mesh.elems().flatten().collect();
                 to_numpy_2d(py, elems, <$etype as Elem>::N_VERTS as usize)
             }
 
             /// Get a copy of the element tags as a numpy array of shape (# of elements)
             #[must_use]
-            pub fn get_etags<'py>(&self, py: Python<'py>) -> &'py PyArray1<Tag> {
+            pub fn get_etags<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<Tag>> {
                 let etags = self.mesh.etags().collect();
                 to_numpy_1d(py, etags)
             }
 
             /// Get a copy of the face connectivity as a numpy array of shape (# of faces, m)
             #[must_use]
-            pub fn get_faces<'py>(&self, py: Python<'py>) -> &'py PyArray2<Idx> {
+            pub fn get_faces<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray2<Idx>> {
                 let faces = self.mesh.faces().flatten().collect();
                 to_numpy_2d(
                     py,
@@ -314,13 +315,13 @@ macro_rules! create_mesh {
 
             /// Get a copy of the face tags as a numpy array of shape (# of faces)
             #[must_use]
-            pub fn get_ftags<'py>(&self, py: Python<'py>) -> &'py PyArray1<Tag> {
+            pub fn get_ftags<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<Tag>> {
                 let ftags = self.mesh.ftags().collect();
                 to_numpy_1d(py, ftags)
             }
 
             /// Reorder the vertices, element and faces using a Hilbert SFC
-            pub fn reorder_hilbert<'py>(&mut self, py: Python<'py>) -> PyResult<(&'py PyArray1<Idx>, &'py PyArray1<Idx>, &'py PyArray1<Idx>)>{
+            pub fn reorder_hilbert<'py>(&mut self, py: Python<'py>) -> PyResult<(Bound<'py, PyArray1<Idx>>, Bound<'py, PyArray1<Idx>>, Bound<'py, PyArray1<Idx>>)>{
                 let (new_vertex_indices, new_elem_indices, new_face_indices) = self.mesh.reorder_hilbert();
                 Ok(
                     (
@@ -338,7 +339,7 @@ macro_rules! create_mesh {
                 &mut self,
                 py: Python<'py>,
                 arr: PyReadonlyArray2<f64>,
-            ) -> PyResult<&'py PyArray2<f64>> {
+            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
                 if arr.shape()[0] != self.mesh.n_elems() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
@@ -357,7 +358,7 @@ macro_rules! create_mesh {
                 &mut self,
                 py: Python<'py>,
                 arr: PyReadonlyArray2<f64>,
-            ) -> PyResult<&'py PyArray2<f64>> {
+            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
                 if arr.shape()[0] != self.mesh.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
@@ -372,7 +373,7 @@ macro_rules! create_mesh {
                 other: &Self,
                 arr: PyReadonlyArray2<f64>,
                 tol: Option<f64>,
-            ) -> PyResult<&'py PyArray2<f64>> {
+            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
                 if arr.shape()[0] != self.mesh.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
@@ -387,7 +388,7 @@ macro_rules! create_mesh {
                 py: Python<'py>,
                 other: &Self,
                 arr: PyReadonlyArray2<f64>,
-            ) -> PyResult<&'py PyArray2<f64>> {
+            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
                 if arr.shape()[0] != self.mesh.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
@@ -402,7 +403,7 @@ macro_rules! create_mesh {
                 py: Python<'py>,
                 arr: PyReadonlyArray2<f64>,
                 weight_exp: Option<i32>,
-            ) -> PyResult<&'py PyArray2<f64>> {
+            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
                 if arr.shape()[0] != self.mesh.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
@@ -425,7 +426,7 @@ macro_rules! create_mesh {
                 py: Python<'py>,
                 arr: PyReadonlyArray2<f64>,
                 weight_exp: Option<i32>,
-            ) -> PyResult<&'py PyArray2<f64>> {
+            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
                 if arr.shape()[0] != self.mesh.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
@@ -455,7 +456,7 @@ macro_rules! create_mesh {
                 arr: PyReadonlyArray2<f64>,
                 weight_exp: Option<i32>,
                 use_second_order_neighbors: Option<bool>,
-            ) -> PyResult<&'py PyArray2<f64>> {
+            ) -> PyResult<Bound<'py,  PyArray2<f64>>> {
                 if arr.shape()[0] != self.mesh.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
@@ -481,7 +482,7 @@ macro_rules! create_mesh {
                 &self,
                 py: Python<'py>,
                 arr: PyReadonlyArray2<f64>,
-            ) -> PyResult<&'py PyArray2<f64>> {
+            ) -> PyResult<Bound<'py,  PyArray2<f64>>> {
                 if arr.shape()[0] != self.mesh.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
@@ -528,12 +529,12 @@ macro_rules! create_mesh {
             }
 
             /// Automatically tag the elements based on a feature angle
-            pub fn autotag<'py>(&mut self, py: Python<'py>, angle_deg: f64) -> PyResult<&'py PyDict> {
+            pub fn autotag<'py>(&mut self, py: Python<'py>, angle_deg: f64) -> PyResult<Bound<'py, PyDict>> {
                 let res = self.mesh.autotag(angle_deg);
                 if let Err(res) = res {
                      Err(PyRuntimeError::new_err(res.to_string()))
                 } else {
-                    let dict = PyDict::new(py);
+                    let dict = PyDict::new_bound(py);
                     for (k, v) in res.unwrap().iter() {
                         dict.set_item(k, to_numpy_1d(py, v.to_vec()))?;
                     }
@@ -542,12 +543,12 @@ macro_rules! create_mesh {
             }
 
             /// Automatically tag the faces based on a feature angle
-            pub fn autotag_bdy<'py>(&mut self, py: Python<'py>, angle_deg: f64) -> PyResult<&'py PyDict> {
+            pub fn autotag_bdy<'py>(&mut self, py: Python<'py>, angle_deg: f64) -> PyResult<Bound<'py, PyDict>> {
                 let res = self.mesh.autotag_bdy(angle_deg);
                 if let Err(res) = res {
                      Err(PyRuntimeError::new_err(res.to_string()))
                 } else {
-                    let dict = PyDict::new(py);
+                    let dict = PyDict::new_bound(py);
                     for (k, v) in res.unwrap().iter() {
                         dict.set_item(k, to_numpy_1d(py, v.to_vec()))?;
                     }
@@ -569,12 +570,12 @@ impl Mesh33 {
     /// Extract the boundary faces into a Mesh, and return the indices of the vertices in the
     /// parent mesh
     #[must_use]
-    pub fn boundary<'py>(&self, py: Python<'py>) -> (Mesh32, &'py PyArray1<Idx>) {
+    pub fn boundary<'py>(&self, py: Python<'py>) -> (Mesh32, Bound<'py, PyArray1<Idx>>) {
         let (bdy, ids) = self.mesh.boundary();
         (Mesh32 { mesh: bdy }, to_numpy_1d(py, ids))
     }
 
-    pub fn implied_metric<'py>(&self, py: Python<'py>) -> PyResult<&'py PyArray2<f64>> {
+    pub fn implied_metric<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<f64>>> {
         let res = self.mesh.implied_metric();
 
         if let Err(res) = res {
@@ -601,7 +602,7 @@ impl Mesh33 {
         h_min: Option<f64>,
         h_n: Option<PyReadonlyArray1<f64>>,
         h_n_tags: Option<PyReadonlyArray1<Tag>>,
-    ) -> PyResult<&'py PyArray2<f64>> {
+    ) -> PyResult<Bound<'py, PyArray2<f64>>> {
         let res = if let Some(h_n) = h_n {
             let h_n = h_n.as_slice()?;
             if h_n_tags.is_none() {
@@ -636,7 +637,7 @@ impl Mesh33 {
 impl Mesh32 {
     #[doc = concat!("Read a ", stringify!($name), " from a .stl file")]
     #[classmethod]
-    pub fn from_stl(_cls: &PyType, fname: &str) -> Self {
+    pub fn from_stl(_cls: &Bound<'_, PyType>, fname: &str) -> Self {
         Self {
             mesh: read_stl(fname),
         }
@@ -664,12 +665,12 @@ impl Mesh22 {
     /// Extract the boundary faces into a Mesh, and return the indices of the vertices in the
     /// parent mesh
     #[must_use]
-    pub fn boundary<'py>(&self, py: Python<'py>) -> (Mesh21, &'py PyArray1<Idx>) {
+    pub fn boundary<'py>(&self, py: Python<'py>) -> (Mesh21, Bound<'py, PyArray1<Idx>>) {
         let (bdy, ids) = self.mesh.boundary();
         (Mesh21 { mesh: bdy }, to_numpy_1d(py, ids))
     }
 
-    pub fn implied_metric<'py>(&self, py: Python<'py>) -> PyResult<&'py PyArray2<f64>> {
+    pub fn implied_metric<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<f64>>> {
         let res = self.mesh.implied_metric();
 
         if let Err(res) = res {
@@ -695,7 +696,7 @@ impl Mesh22 {
         h_min: Option<f64>,
         h_n: Option<PyReadonlyArray1<f64>>,
         h_n_tags: Option<PyReadonlyArray1<Tag>>,
-    ) -> PyResult<&'py PyArray2<f64>> {
+    ) -> PyResult<Bound<'py, PyArray2<f64>>> {
         let res = if let Some(h_n) = h_n {
             let h_n = h_n.as_slice()?;
             if h_n_tags.is_none() {

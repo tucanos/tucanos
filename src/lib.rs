@@ -2,22 +2,24 @@ mod geometry;
 mod mesh;
 mod parallel;
 mod remesher;
-use numpy::{PyArray, PyArray1, PyArray2};
-use pyo3::{pymodule, types::PyModule, PyResult, Python};
+use numpy::{PyArray, PyArray1, PyArray2, PyArrayMethods};
+use pyo3::{pymodule, types::PyModule, Bound, PyResult, Python};
 
-fn to_numpy_1d<T: numpy::Element>(py: Python<'_>, vec: Vec<T>) -> &'_ PyArray1<T> {
-    PyArray::from_vec(py, vec)
+fn to_numpy_1d<T: numpy::Element>(py: Python<'_>, vec: Vec<T>) -> Bound<'_, PyArray1<T>> {
+    PyArray::from_vec_bound(py, vec)
 }
 
-fn to_numpy_2d<T: numpy::Element>(py: Python<'_>, vec: Vec<T>, m: usize) -> &'_ PyArray2<T> {
+fn to_numpy_2d<T: numpy::Element>(py: Python<'_>, vec: Vec<T>, m: usize) -> Bound<'_, PyArray2<T>> {
     let n = vec.len();
-    PyArray::from_vec(py, vec).reshape([n / m, m]).unwrap()
+    PyArray::from_vec_bound(py, vec)
+        .reshape([n / m, m])
+        .unwrap()
 }
 
 /// Python bindings for pytucanos
 #[pymodule]
 #[pyo3(name = "_pytucanos")]
-pub fn pytucanos(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
+pub fn pytucanos(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     pyo3_log::init();
     m.add_class::<crate::mesh::Mesh33>()?;
     m.add_class::<crate::mesh::Mesh32>()?;

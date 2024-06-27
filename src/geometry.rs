@@ -3,7 +3,7 @@ use crate::{
     to_numpy_2d,
 };
 use numpy::PyArray2;
-use pyo3::{exceptions::PyRuntimeError, pyclass, pymethods, PyResult, Python};
+use pyo3::{exceptions::PyRuntimeError, pyclass, pymethods, Bound, PyResult, Python};
 use tucanos::{
     geometry::{Geometry, LinearGeometry},
     mesh_stl::orient_stl,
@@ -63,7 +63,7 @@ macro_rules! create_geometry {
             }
 
             /// Project vertices
-            pub fn project<'py>(&self, py: Python<'py>, mesh: &$mesh) -> PyResult<&'py PyArray2<f64>> {
+            pub fn project<'py>(&self, py: Python<'py>, mesh: &$mesh) -> PyResult<Bound<'py, PyArray2<f64>>> {
                 let vtags = mesh.mesh.get_vertex_tags().unwrap();
                 let mut coords = Vec::with_capacity(mesh.mesh.n_verts() as usize * $dim);
 
