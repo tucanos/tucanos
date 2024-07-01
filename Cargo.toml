@@ -15,7 +15,7 @@ serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 nlopt = { version="0.7.0", optional = true}
 stl_io = {version="0.7.0"}
-rustc-hash = "1.1.0"
+rustc-hash = "2.0.0"
 sorted-vec = "0.8.2"
 rand = "0.8.5"
 lindel = "0.1.1"
