@@ -1581,9 +1581,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
 #[cfg(test)]
 mod tests_topo {
-    use std::hash::BuildHasherDefault;
-
     use rustc_hash::{FxHashMap, FxHashSet};
+    use std::collections::hash_map::Entry;
+    use std::hash::BuildHasherDefault;
 
     /// Test the topology representation
     use crate::{
@@ -1610,10 +1610,10 @@ mod tests_topo {
         let ftags = mesh.ftags().collect::<FxHashSet<_>>();
         let mut stats = FxHashMap::with_hasher(BuildHasherDefault::default());
         for tag in ftags {
-            if stats.get(&tag).is_none() {
+            if let Entry::Vacant(v) = stats.entry(tag) {
                 let smsh = bdy.extract_tag(tag).mesh;
                 let center = smsh.verts().sum::<Point<2>>() / f64::from(smsh.n_verts());
-                stats.insert(tag, (smsh.vol(), center));
+                v.insert((smsh.vol(), center));
             }
         }
 
@@ -1712,10 +1712,10 @@ mod tests_topo {
         let bdy = mesh.boundary().0;
         let mut stats = FxHashMap::with_hasher(BuildHasherDefault::default());
         for tag in ftags {
-            if stats.get(&tag).is_none() {
+            if let Entry::Vacant(v) = stats.entry(tag) {
                 let smsh = bdy.extract_tag(tag).mesh;
                 let center = smsh.verts().sum::<Point<3>>() / f64::from(smsh.n_verts());
-                stats.insert(tag, (smsh.vol(), center));
+                v.insert((smsh.vol(), center));
             }
         }
 
