@@ -14,7 +14,6 @@ use log::{debug, warn};
 use nalgebra::SVector;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::HashMap;
-use std::hash::BuildHasherDefault;
 use std::marker::PhantomData;
 
 /// A mesh containing a single type of elements in D-dimensions
@@ -407,7 +406,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn compute_edges(&mut self) -> &Vec<[Idx; 2]> {
         debug!("Compute the edges");
         if self.edges.is_none() {
-            let mut edgs = FxHashSet::with_hasher(BuildHasherDefault::default());
+            let mut edgs = FxHashSet::default();
             for e in self.elems() {
                 for i_edg in 0..E::N_EDGES {
                     let mut edg = e.edge(i_edg);
@@ -620,8 +619,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let f2e = self.faces_to_elems.as_ref().unwrap();
         let n_bdy = f2e.iter().filter(|(_, v)| v.len() == 1).count();
 
-        let mut tagged_faces: FxHashMap<E::Face, Tag> =
-            FxHashMap::with_hasher(BuildHasherDefault::default());
+        let mut tagged_faces: FxHashMap<E::Face, Tag> = FxHashMap::default();
         for (mut face, ftag) in self.faces().zip(self.ftags()) {
             face.sort();
             tagged_faces.insert(face, ftag);
@@ -845,8 +843,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             return Err(Error::from("face to element connectivity not computed"));
         }
 
-        let mut tagged_faces: FxHashMap<E::Face, Tag> =
-            FxHashMap::with_hasher(BuildHasherDefault::default());
+        let mut tagged_faces: FxHashMap<E::Face, Tag> = FxHashMap::default();
         for (mut face, ftag) in self.faces().zip(self.ftags()) {
             face.sort();
             tagged_faces.insert(face, ftag);
@@ -1022,7 +1019,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         let mut added_elems = Vec::new();
         // keep track of the possible new faces
-        let mut all_added_faces = FxHashSet::with_hasher(BuildHasherDefault::default());
+        let mut all_added_faces = FxHashSet::default();
         for (i, (e, t)) in other
             .elems()
             .zip(other.etags())
