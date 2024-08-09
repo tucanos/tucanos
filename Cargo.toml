@@ -31,7 +31,7 @@ rayon = "1.8.0"
 typenum = { version ="1.17", features = ["const-generics"] }
 num = "0.4.1"
 minimeshb = { git = "https://github.com/tucanos/minimeshb.git"}
-tempfile = "3.10.1"
+tempfile = "3.12"
 
 [features]
 default = ["parry"]
