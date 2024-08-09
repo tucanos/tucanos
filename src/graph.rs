@@ -54,7 +54,7 @@ impl CSRGraph {
     }
 
     fn from_elems<E: Elem>(elems: &vector::Vector<E>, nv: Option<usize>) -> Self {
-        let nv = nv.unwrap_or(elems.iter().flatten().max().unwrap_or(0) as usize + 1);
+        let nv = nv.unwrap_or_else(|| elems.iter().flatten().max().unwrap_or(0) as usize + 1);
 
         let n = elems.iter().flatten().count();
 
