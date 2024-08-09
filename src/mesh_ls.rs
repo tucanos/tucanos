@@ -85,7 +85,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             rhs[irow] = w * df;
             w_max = f64::max(w_max, w);
         }
-        mat[0] = w0.unwrap_or(f64::sqrt(2.0) * w_max);
+        mat[0] = w0.unwrap_or_else(|| f64::sqrt(2.0) * w_max);
 
         // Solve the least squares problem using a QR decomposition
         let qr = mat.qr();
