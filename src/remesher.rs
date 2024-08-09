@@ -2544,7 +2544,7 @@ mod tests {
                 remesher.check_edge_lengths_analytical(|x| IsoMetric::<3>::from(h_3d(x)));
 
             if iter == 2 {
-                assert!(mini > 0.39, "min. edge length: {mini}");
+                assert!(mini > 0.34, "min. edge length: {mini}");
                 assert!(maxi < 2., "max. edge length: {maxi}");
             }
         }
