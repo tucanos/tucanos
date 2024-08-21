@@ -69,6 +69,13 @@ pub type Idx = u32;
 /// Topological tags: dimension
 pub type Dim = i8;
 /// Topological tags: tag
+#[cfg(all(feature = "32bit_tags", feature = "64bit_tags"))]
+compile_error!("features `32bit_tags` and `64bit_tags` are mutually exclusive");
+#[cfg(feature = "64bit_tags")]
+pub type Tag = i64;
+#[cfg(feature = "32bit_tags")]
+pub type Tag = i32;
+#[cfg(not(any(feature = "32bit_tags", feature = "64bit_tags")))]
 pub type Tag = i16;
 /// Topological tags: dimension and tag
 pub type TopoTag = (Dim, Tag);

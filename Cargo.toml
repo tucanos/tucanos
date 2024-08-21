@@ -38,6 +38,8 @@ default = ["parry"]
 libmeshb = ["libmeshb-sys"]
 libol = ["marechal-libol-sys"]
 parry = ["kdtree", "parry3d-f64", "parry2d-f64"]
+32bit_tags = []
+64bit_tags = []
 
 [[bin]]
 name = "test_simple3d"
