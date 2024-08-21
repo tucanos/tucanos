@@ -34,23 +34,27 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 writer.write_triangles(
                     self.elems()
                         .map(|v| [v[0].into(), v[1].into(), v[2].into()]),
-                    self.etags().map(Into::into),
+                    #[allow(clippy::unnecessary_fallible_conversions)]
+                    self.etags().map(|t| t.try_into().unwrap()),
                 )?;
                 writer.write_edges(
                     self.faces().map(|v| [v[0].into(), v[1].into()]),
-                    self.ftags().map(Into::into),
+                    #[allow(clippy::unnecessary_fallible_conversions)]
+                    self.ftags().map(|t| t.try_into().unwrap()),
                 )?;
             }
             4 => {
                 writer.write_tetrahedra(
                     self.elems()
                         .map(|v| [v[0].into(), v[1].into(), v[2].into(), v[3].into()]),
-                    self.etags().map(Into::into),
+                    #[allow(clippy::unnecessary_fallible_conversions)]
+                    self.etags().map(|t| t.try_into().unwrap()),
                 )?;
                 writer.write_triangles(
                     self.faces()
                         .map(|v| [v[0].into(), v[1].into(), v[2].into()]),
-                    self.ftags().map(Into::into),
+                    #[allow(clippy::unnecessary_fallible_conversions)]
+                    self.ftags().map(|t| t.try_into().unwrap()),
                 )?;
             }
             _ => unreachable!(),

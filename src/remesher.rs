@@ -1587,9 +1587,10 @@ mod tests_topo {
         metric::IsoMetric,
         remesher::Remesher,
         test_meshes::{test_mesh_2d, test_mesh_3d},
+        Tag,
     };
 
-    fn test_topo_2d(etags: [i16; 2], ftags: [i16; 4], add_boundary_faces: bool, n_split: i32) {
+    fn test_topo_2d(etags: [Tag; 2], ftags: [Tag; 4], add_boundary_faces: bool, n_split: i32) {
         let mut mesh = test_mesh_2d();
         mesh.mut_etags().zip(etags).for_each(|(e, t)| *e = t);
         mesh.mut_ftags().zip(ftags).for_each(|(e, t)| *e = t);
@@ -1692,7 +1693,7 @@ mod tests_topo {
         test_topo_2d([1, 1], [1, 2, 1, 2], false, 2);
     }
 
-    fn test_topo_3d(ftags: [i16; 12], n_split: i32) {
+    fn test_topo_3d(ftags: [Tag; 12], n_split: i32) {
         let mut mesh = test_mesh_3d();
         mesh.mut_ftags().zip(ftags).for_each(|(e, t)| *e = t);
 

@@ -44,13 +44,19 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         }
 
         let mut cell_data = Vec::new();
+        #[cfg(feature = "64bit_tags")]
+        let tag_data = IOBuffer::I64(self.etags().collect());
+        #[cfg(feature = "32bit_tags")]
+        let tag_data = IOBuffer::I32(self.etags().collect());
+        #[cfg(not(any(feature = "32bit_tags", feature = "64bit_tags")))]
+        let tag_data = IOBuffer::I16(self.etags().collect());
         cell_data.push(Attribute::DataArray(DataArrayBase {
             name: String::from("tag"),
             elem: ElementType::Scalars {
                 num_comp: 1,
                 lookup_table: None,
             },
-            data: IOBuffer::I16(self.etags().collect()),
+            data: tag_data,
         }));
 
         if let Some(elem_data) = elem_data {
