@@ -32,6 +32,13 @@ pub struct tucanos_geom3d_t {
     implem: LinearGeometry<3, Triangle>,
 }
 
+#[cfg(feature = "64bit-tags")]
+pub type tucanos_tag_t = i64;
+#[cfg(feature = "32bit-tags")]
+pub type tucanos_tag_t = i32;
+#[cfg(not(any(feature = "32bit-tags", feature = "64bit-tags")))]
+pub type tucanos_tag_t = i16;
+
 #[repr(C)]
 pub struct tucanos_params_t {
     /// Number of collapse - split - swap - smooth loops
@@ -253,10 +260,10 @@ pub extern "C" fn tucanos_mesh33_new(
     verts: *const f64,
     num_elements: usize,
     elems: *const u32,
-    tags: *const i16,
+    tags: *const tucanos_tag_t,
     num_faces: usize,
     faces: *const u32,
-    ftags: *const i16,
+    ftags: *const tucanos_tag_t,
 ) -> *mut tucanos_mesh33_t {
     let mut m = SimplexMesh::new_with_vector(
         (verts, num_verts).into(),

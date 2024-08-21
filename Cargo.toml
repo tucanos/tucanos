@@ -3,6 +3,7 @@ name = "tucanos"
 version = "0.1.0"
 edition = "2021"
 links = "tucanos"
+resolver = "2"
 
 [workspace]
 members = ["tucanos-ffi", "tucanos-ffi-test"]

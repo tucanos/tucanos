@@ -16,3 +16,7 @@ cbindgen = "0.26"
 
 [lints]
 workspace = true
+
+[features]
+32bit-tags = ["tucanos/32bit-tags"]
+64bit-tags = ["tucanos/64bit-tags"]
