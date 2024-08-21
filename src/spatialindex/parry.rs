@@ -209,6 +209,18 @@ mod parry3d {
         fn ccd_angular_thickness(&self) -> Real {
             todo!()
         }
+
+        fn clone_dyn(&self) -> Box<dyn Shape> {
+            todo!()
+        }
+
+        fn scale_dyn(
+            &self,
+            _scale: &parry3d_f64::math::Vector<f64>,
+            _num_subdivisions: u32,
+        ) -> Option<Box<dyn Shape>> {
+            todo!()
+        }
     }
 
     impl PointQueryWithLocation for TetraShape {

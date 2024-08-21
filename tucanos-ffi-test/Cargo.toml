@@ -12,7 +12,7 @@ description = "Test for tucanos-ffi"
 # See https://github.com/rust-lang/cargo/issues/6412
 
 [build-dependencies]
-bindgen = "0.69"
+bindgen = "0.70.1"
 
 [lints]
 workspace = true

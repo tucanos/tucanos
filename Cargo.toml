@@ -10,12 +10,12 @@ members = ["tucanos-ffi", "tucanos-ffi-test"]
 
 [dependencies]
 nalgebra = { version = "0.33", features = ["rand"] }
-env_logger = "0.11.3"
-log = "0.4.20"
+env_logger = "0.11.5"
+log = "0.4.22"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 nlopt = { version="0.7.0", optional = true}
-stl_io = {version="0.7.0"}
+stl_io = {version="0.8.2"}
 rustc-hash = "2.0.0"
 sorted-vec = "0.8.2"
 rand = "0.8.5"
@@ -26,8 +26,8 @@ vtkio = {version = "0.6.3"}
 scotch = { git = "https://github.com/tucanos/scotch-rs.git", version = "0.2.1", optional = true }
 metis = { git = "https://github.com/tucanos/metis-rs.git", version = "0.1.2", optional = true }
 kdtree = { version = "0.7", optional = true }
-parry3d-f64 = { version = "0.16", optional = true }
-parry2d-f64 = { version = "0.16", optional = true }
+parry3d-f64 = { version = "0.17", optional = true }
+parry2d-f64 = { version = "0.17", optional = true }
 rayon = "1.8.0"
 typenum = { version ="1.17", features = ["const-generics"] }
 num = "0.4.1"
