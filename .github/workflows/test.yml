@@ -165,3 +165,9 @@ jobs:
       with:
         command: test
         args: --release --features=scotch,metis,nlopt
+    - name: Test FFI 16bit tags
+      run: cargo build -p tucanos-ffi && cargo test -p tucanos-ffi-test
+    - name: Test FFI 32bit tags
+      run: cargo build -p tucanos-ffi --features 32bit-tags && cargo test -p tucanos-ffi-test
+    - name: Test FFI 64bit tags
+      run: cargo build -p tucanos-ffi --features 64bit-tags && cargo test -p tucanos-ffi-test
