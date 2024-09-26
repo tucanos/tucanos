@@ -274,8 +274,9 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
         geom: &G,
         params: RemesherParams,
         dd_params: ParallelRemeshingParams,
-    ) -> Result<(SimplexMesh<D, E>, ParallelRemeshingInfo)> {
+    ) -> Result<(SimplexMesh<D, E>, ParallelRemeshingInfo, Vec<M>)> {
         let res = Mutex::new(SimplexMesh::empty());
+        let res_m = Mutex::new(Vec::new());
         let ifc = Mutex::new(SimplexMesh::empty());
         let ifc_m = Mutex::new(Vec::new());
 
@@ -353,12 +354,15 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
 
                 // Update res
                 let mut res = res.lock().unwrap();
-                res.add(&local_mesh, |t| t == 1, |_| true, Some(1e-12));
+                let (ids, _, _) = res.add(&local_mesh, |t| t == 1, |_| true, Some(1e-12));
                 if self.debug {
                     let fname = format!("level_{level}_part_{i_part}_res.vtu");
                     res.write_vtk(&fname, None, None).unwrap();
                 }
                 drop(res);
+                let mut res_m = res_m.lock().unwrap();
+                res_m.extend(ids.iter().map(|&i| local_m[i as usize]));
+                drop(res_m);
 
                 // Update ifc
                 let part_tag = 2 + i_part as Tag;
@@ -400,36 +404,37 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
         ifc.compute_topology_from(topo);
         let ifc_m = ifc_m.into_inner().unwrap();
 
-        let mut ifc = if let Some(dd_params) = dd_params.next(ifc.n_verts(), self.partition_type) {
-            let mesh = ifc;
-            let mut dd = Self::new(mesh, self.partition_type)?;
-            dd.set_debug(self.debug);
-            dd.interface_bdy_tag = self.interface_bdy_tag + 1;
-            let (ifc, interface_info) = dd.remesh(&ifc_m, geom, params, dd_params)?;
-            info.interface = Some(Box::new(interface_info));
-            ifc
-        } else {
-            debug!("Remeshing level {level} / interface");
-            let mut ifc_remesher = Remesher::new(&ifc, &ifc_m, geom)?;
-            if self.debug {
-                ifc_remesher.check().unwrap();
-            }
-            let n_verts_init = ifc.n_verts();
-            let now = Instant::now();
-            ifc_remesher.remesh(params, geom)?;
-            info.interface = Some(Box::new(ParallelRemeshingInfo {
-                info: RemeshingInfo {
-                    n_verts_init,
-                    n_verts_final: ifc_remesher.n_verts(),
-                    time: now.elapsed().as_secs_f64(),
-                },
-                partition_time: 0.0,
-                partition_quality: 0.0,
-                partitions: Vec::new(),
-                interface: None,
-            }));
-            ifc_remesher.to_mesh(true)
-        };
+        let (mut ifc, ifc_m) =
+            if let Some(dd_params) = dd_params.next(ifc.n_verts(), self.partition_type) {
+                let mesh = ifc;
+                let mut dd = Self::new(mesh, self.partition_type)?;
+                dd.set_debug(self.debug);
+                dd.interface_bdy_tag = self.interface_bdy_tag + 1;
+                let (ifc, interface_info, ifc_m) = dd.remesh(&ifc_m, geom, params, dd_params)?;
+                info.interface = Some(Box::new(interface_info));
+                (ifc, ifc_m)
+            } else {
+                debug!("Remeshing level {level} / interface");
+                let mut ifc_remesher = Remesher::new(&ifc, &ifc_m, geom)?;
+                if self.debug {
+                    ifc_remesher.check().unwrap();
+                }
+                let n_verts_init = ifc.n_verts();
+                let now = Instant::now();
+                ifc_remesher.remesh(params, geom)?;
+                info.interface = Some(Box::new(ParallelRemeshingInfo {
+                    info: RemeshingInfo {
+                        n_verts_init,
+                        n_verts_final: ifc_remesher.n_verts(),
+                        time: now.elapsed().as_secs_f64(),
+                    },
+                    partition_time: 0.0,
+                    partition_quality: 0.0,
+                    partitions: Vec::new(),
+                    interface: None,
+                }));
+                (ifc_remesher.to_mesh(true), ifc_remesher.metrics())
+            };
 
         if self.debug {
             let fname = format!("level_{level}_ifc_remeshed.vtu");
@@ -439,11 +444,14 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
         // Merge res and ifc
         let mut res = res.into_inner().unwrap();
         ifc.mut_etags().for_each(|t| *t = 2);
-        res.add(&ifc, |_| true, |_| true, Some(1e-12));
+        let (ids, _, _) = res.add(&ifc, |_| true, |_| true, Some(1e-12));
         if self.debug {
             res.compute_face_to_elems();
             res.check().unwrap();
         }
+        let mut res_m = res_m.into_inner().unwrap();
+        res_m.extend(ids.iter().map(|&i| ifc_m[i as usize]));
+
         res.remove_faces(|t| self.is_interface_bdy(t));
         res.mut_etags().for_each(|t| *t = 1);
         if self.debug {
@@ -459,7 +467,7 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
         info.info.n_verts_final = res.n_verts();
         info.info.time = now.elapsed().as_secs_f64() + self.partition_time;
 
-        Ok((res, info))
+        Ok((res, info, res_m))
     }
 }
 
@@ -500,7 +508,8 @@ mod tests {
             .collect();
 
         let dd_params = ParallelRemeshingParams::new(2, 1, 0);
-        let (mut mesh, _) = dd.remesh(&m, &NoGeometry(), RemesherParams::default(), dd_params)?;
+        let (mut mesh, _, _) =
+            dd.remesh(&m, &NoGeometry(), RemesherParams::default(), dd_params)?;
 
         if debug {
             mesh.write_vtk("res.vtu", None, None)?;
@@ -639,7 +648,8 @@ mod tests {
             .collect();
 
         let dd_params = ParallelRemeshingParams::new(2, 2, 0);
-        let (mut mesh, _) = dd.remesh(&m, &NoGeometry(), RemesherParams::default(), dd_params)?;
+        let (mut mesh, _, _) =
+            dd.remesh(&m, &NoGeometry(), RemesherParams::default(), dd_params)?;
 
         if debug {
             mesh.write_vtk("res.vtu", None, None)?;
