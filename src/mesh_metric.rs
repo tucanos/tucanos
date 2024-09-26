@@ -652,6 +652,33 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         }
         Ok(())
     }
+
+    /// Get the quality of all the mesh elements using a metric field
+    pub fn qualities<M: Metric<D>>(&self, m: &[M]) -> Vec<f64> {
+        self.par_elems()
+            .map(|e| {
+                let ge = E::Geom::from_verts(e.iter().map(|&i| (self.vert(i), m[i as usize])));
+                ge.quality()
+            })
+            .collect()
+    }
+
+    /// Get the lengths of all the edges using a metric field
+    pub fn edge_lengths<M: Metric<D>>(&self, m: &[M]) -> Result<Vec<f64>> {
+        let edgs = self.get_edges()?;
+
+        Ok(edgs
+            .par_iter()
+            .map(|&[i0, i1]| {
+                M::edge_length(
+                    &self.vert(i0),
+                    &m[i0 as usize],
+                    &self.vert(i1),
+                    &m[i1 as usize],
+                )
+            })
+            .collect())
+    }
 }
 
 impl SimplexMesh<3, Tetrahedron> {
