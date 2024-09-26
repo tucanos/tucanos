@@ -377,7 +377,7 @@ fn main() -> Result<()> {
         let mut dd = ParallelRemesher::new(mesh, PartitionType::Scotch(n_part))?;
         dd.set_debug(debug);
         let dd_params = ParallelRemeshingParams::new(2, 2, 10000);
-        let (mesh, stats) = dd.remesh(&metric, &geom, params, dd_params)?;
+        let (mesh, stats, _) = dd.remesh(&metric, &geom, params, dd_params)?;
         stats.print_summary();
         mesh
     };
