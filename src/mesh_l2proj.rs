@@ -2,10 +2,14 @@ use crate::{
     geom_elems::GElem,
     mesh::{Point, SimplexMesh},
     topo_elems::Elem,
-    Result,
+    Idx, Result,
 };
 use log::debug;
 use nalgebra::SMatrix;
+use rayon::{
+    iter::{IndexedParallelIterator, ParallelIterator},
+    slice::ParallelSliceMut,
+};
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Compute the gradient of a scalar field defined at the mesh vertices
@@ -21,35 +25,40 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         assert_eq!(f.len(), self.n_verts() as usize);
 
-        let mut res = vec![0.0; D * self.n_verts() as usize];
+        let mut tmp = vec![0.0; D * self.n_elems() as usize];
 
-        for i_elem in 0..self.n_elems() {
-            let e = self.elem(i_elem);
-            let ge = self.gelem(e);
-            let mut grad = Point::<D>::zeros();
-            for i_face in 0..E::N_FACES {
-                let i_vert = e[i_face as usize] as usize;
-                let gf = ge.gface(i_face);
-                grad += f[i_vert] * gf.scaled_normal();
-            }
-            for i_vert in e {
-                for i in 0..D {
-                    res[D * i_vert as usize + i] += grad[i];
+        tmp.par_chunks_mut(D)
+            .zip(self.par_elems())
+            .for_each(|(g, e)| {
+                let ge = self.gelem(e);
+                let mut grad = Point::<D>::zeros();
+                for i_face in 0..E::N_FACES {
+                    let i_vert = e[i_face as usize] as usize;
+                    let gf = ge.gface(i_face);
+                    grad += f[i_vert] * gf.scaled_normal();
                 }
-            }
-        }
+                g.iter_mut().zip(grad.iter()).for_each(|(x, y)| *x = *y);
+            });
 
         let vol = self.get_vertex_volumes()?;
+        let v2e = self.get_vertex_to_elems()?;
+
         let fac = match D {
             2 => -6.0,
             3 => -12.0,
             _ => unreachable!(),
         };
-        for i_vert in 0..self.n_verts() {
-            for i in 0..D {
-                res[D * i_vert as usize + i] /= fac * vol[i_vert as usize];
+
+        let mut res = vec![0.0; D * self.n_verts() as usize];
+        res.par_chunks_mut(D).enumerate().for_each(|(i_vert, g)| {
+            for &i_elem in v2e.row(i_vert as Idx) {
+                for i in 0..D {
+                    g[i] += tmp[D * i_elem as usize + i];
+                }
             }
-        }
+            g.iter_mut().for_each(|x| *x /= fac * vol[i_vert]);
+        });
+
         Ok(res)
     }
 
@@ -70,44 +79,51 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         };
         let n = indices.len();
 
-        let mut res = vec![0.0; n * self.n_verts() as usize];
-        for i_elem in 0..self.n_elems() {
-            let e = self.elem(i_elem);
-            let ge = self.gelem(e);
-            let mut hess = SMatrix::<f64, D, D>::zeros();
-            for i_face in 0..E::N_FACES {
-                let i_vert = e[i_face as usize] as usize;
-                let start = D * i_vert;
-                let end = start + D;
-                let grad = &gradf[start..end];
-                let gf = ge.gface(i_face);
-                let n = gf.scaled_normal();
-                for i in 0..D {
-                    for j in 0..D {
-                        hess[D * i + j] += grad[i] * n[j];
+        let mut tmp = vec![0.0; n * self.n_elems() as usize];
+
+        tmp.par_chunks_mut(n)
+            .zip(self.par_elems())
+            .for_each(|(h, e)| {
+                let ge = self.gelem(e);
+                let mut hess = SMatrix::<f64, D, D>::zeros();
+                for i_face in 0..E::N_FACES {
+                    let i_vert = e[i_face as usize] as usize;
+                    let start = D * i_vert;
+                    let end = start + D;
+                    let grad = &gradf[start..end];
+                    let gf = ge.gface(i_face);
+                    let n = gf.scaled_normal();
+                    for i in 0..D {
+                        for j in 0..D {
+                            hess[D * i + j] += grad[i] * n[j];
+                        }
                     }
                 }
-            }
-            hess = 0.5 * (hess + hess.transpose());
+                hess = 0.5 * (hess + hess.transpose());
 
-            for i_vert in e {
                 for (i, &j) in indices.iter().enumerate() {
-                    res[n * i_vert as usize + i] += hess[j];
+                    h[i] = hess[j];
                 }
-            }
-        }
+            });
+
+        let mut res = vec![0.0; n * self.n_verts() as usize];
 
         let vol = self.get_vertex_volumes()?;
+        let v2e = self.get_vertex_to_elems()?;
+
         let fac = match D {
             2 => -6.0,
             3 => -12.0,
             _ => unreachable!(),
         };
-        for i_vert in 0..self.n_verts() {
-            for i in 0..n {
-                res[n * i_vert as usize + i] /= fac * vol[i_vert as usize];
+        res.par_chunks_mut(n).enumerate().for_each(|(i_vert, g)| {
+            for &i_elem in v2e.row(i_vert as Idx) {
+                for i in 0..n {
+                    g[i] += tmp[n * i_elem as usize + i];
+                }
             }
-        }
+            g.iter_mut().for_each(|x| *x /= fac * vol[i_vert]);
+        });
         Ok(res)
     }
 }
@@ -128,6 +144,7 @@ mod tests {
         let mut mesh = mesh.split().split().split().split();
 
         mesh.compute_volumes();
+        mesh.compute_vertex_to_elems();
 
         let f: Vec<_> = mesh.verts().map(|p| p[0] + 2.0 * p[1]).collect();
         let res = mesh.gradient_l2proj(&f)?;
@@ -158,6 +175,7 @@ mod tests {
         }
 
         mesh.compute_volumes();
+        mesh.compute_vertex_to_elems();
 
         let v = mesh.get_vertex_volumes()?;
 
@@ -191,6 +209,7 @@ mod tests {
         let mut mesh = mesh.split().split().split().split();
 
         mesh.compute_volumes();
+        mesh.compute_vertex_to_elems();
 
         let f: Vec<_> = mesh.verts().map(f_2d).collect();
         let grad = mesh.gradient_l2proj(&f)?;
@@ -249,6 +268,7 @@ mod tests {
         let mut mesh = mesh.split().split().split().split();
 
         mesh.compute_volumes();
+        mesh.compute_vertex_to_elems();
 
         let f: Vec<_> = mesh
             .verts()
@@ -272,6 +292,7 @@ mod tests {
 
         mesh.compute_vertex_to_vertices();
         mesh.compute_volumes();
+        mesh.compute_vertex_to_elems();
 
         let v = mesh.get_vertex_volumes()?;
 
@@ -304,6 +325,7 @@ mod tests {
         let mut mesh = mesh.split().split().split().split();
 
         mesh.compute_volumes();
+        mesh.compute_vertex_to_elems();
 
         let f: Vec<_> = mesh.verts().map(f_3d).collect();
 
