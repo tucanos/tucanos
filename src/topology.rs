@@ -193,10 +193,9 @@ impl Topology {
         }
         let node = self.get(parent).unwrap();
         let dim = parent.0 - 1;
-        return node
-            .children
+        node.children
             .iter()
-            .any(|&child| self.is_child((dim, child), tag));
+            .any(|&child| self.is_child((dim, child), tag))
     }
 
     fn compute_parents(&mut self) {

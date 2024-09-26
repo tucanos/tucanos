@@ -243,7 +243,7 @@ where
     fn bound_eigenvalues(eigs: &mut SVector<f64, D>) {
         let mut s_max: f64 = 0.0;
         eigs.iter_mut().for_each(|s| {
-            *s = s.min(S_MAX).max(S_MIN);
+            *s = s.clamp(S_MIN, S_MAX);
             s_max = s_max.max(*s);
         });
 
