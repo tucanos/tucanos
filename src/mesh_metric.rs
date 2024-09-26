@@ -2,12 +2,19 @@ use crate::{
     geom_elems::GElem,
     geometry::LinearGeometry,
     mesh::{Point, SimplexMesh},
-    metric::{AnisoMetric, AnisoMetric2d, AnisoMetric3d, Metric},
+    metric::{AnisoMetric2d, AnisoMetric3d, Metric},
     topo_elems::{Edge, Elem, Tetrahedron, Triangle},
     Error, Idx, Result, Tag,
 };
 use log::{debug, warn};
 use nalgebra::{allocator::Allocator, Const, DefaultAllocator};
+use rayon::{
+    prelude::{
+        IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
+        IntoParallelRefMutIterator, ParallelIterator,
+    },
+    slice::ParallelSlice,
+};
 use rustc_hash::FxHashSet;
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
@@ -24,12 +31,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     )
                 });
 
-        (
-            h_min,
-            h_max,
-            aniso_max,
-            self.complexity(m.iter().copied(), 0.0, f64::MAX),
-        )
+        (h_min, h_max, aniso_max, self.complexity(m, 0.0, f64::MAX))
     }
 
     /// Convert a metric field defined at the element centers (P0) to a field defined at the vertices (P1)
@@ -40,33 +42,31 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         let n_elems = self.n_elems() as usize;
         let n_verts = self.n_verts() as usize;
-        assert_eq!(v.len() % n_elems, 0);
+        assert_eq!(v.len(), n_elems);
 
-        let mut res = Vec::with_capacity(n_verts);
+        let mut res = vec![M::default(); n_verts];
 
         let v2e = self.get_vertex_to_elems()?;
         let elem_vol = self.get_elem_volumes()?;
         let node_vol = self.get_vertex_volumes()?;
 
-        let mut weights = Vec::new();
-        let mut metrics = Vec::new();
-        for (i_vert, vert_vol) in node_vol.iter().copied().enumerate() {
-            let elems = v2e.row(i_vert as Idx);
-            let n_elems = elems.len();
-            weights.reserve(n_elems);
-            weights.clear();
-            weights.extend(
-                elems
-                    .iter()
-                    .map(|i| elem_vol[*i as usize] / f64::from(E::N_VERTS) / vert_vol),
-            );
-            metrics.reserve(n_elems);
-            metrics.clear();
-            metrics.extend(elems.iter().map(|&i| v[i as usize]));
-            let wm = weights.iter().copied().zip(metrics.iter());
-            let m = M::interpolate(wm);
-            res.push(m);
-        }
+        res.par_iter_mut()
+            .zip(node_vol.par_iter())
+            .enumerate()
+            .for_each(|(i_vert, (m_vert, vert_vol))| {
+                let elems = v2e.row(i_vert as Idx);
+                let n_elems = elems.len();
+                let mut weights = Vec::with_capacity(n_elems);
+                let mut metrics = Vec::with_capacity(n_elems);
+                weights.extend(
+                    elems
+                        .iter()
+                        .map(|i| elem_vol[*i as usize] / f64::from(E::N_VERTS) / vert_vol),
+                );
+                metrics.extend(elems.iter().map(|&i| v[i as usize]));
+                let wm = weights.iter().copied().zip(metrics.iter());
+                *m_vert = M::interpolate(wm);
+            });
 
         Ok(res)
     }
@@ -79,37 +79,59 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         let n_elems = self.n_elems() as usize;
         let n_verts = self.n_verts() as usize;
-        assert_eq!(v.len() % n_verts, 0);
+        assert_eq!(v.len(), n_verts);
 
-        let mut res = Vec::with_capacity(n_elems);
+        let mut res = vec![M::default(); n_elems];
 
-        let mut weights = Vec::new();
-        let mut metrics = Vec::new();
         let f = 1. / f64::from(E::N_VERTS);
 
-        for e in self.elems() {
-            weights.reserve(n_elems);
-            weights.clear();
-            weights.resize(E::N_VERTS as usize, f);
-            metrics.reserve(n_elems);
-            metrics.clear();
-            metrics.extend(e.iter().map(|&i| v[i as usize]));
-            let wm = weights.iter().copied().zip(metrics.iter());
-            let m = M::interpolate(wm);
-            res.push(m);
-        }
+        res.par_iter_mut()
+            .zip(self.par_elems())
+            .for_each(|(m_elem, e)| {
+                let mut weights = Vec::with_capacity(E::N_VERTS as usize);
+                let mut metrics = Vec::with_capacity(E::N_VERTS as usize);
+                weights.resize(E::N_VERTS as usize, f);
+                metrics.extend(e.iter().map(|&i| v[i as usize]));
+                let wm = weights.iter().copied().zip(metrics.iter());
+                *m_elem = M::interpolate(wm);
+            });
         Ok(res)
     }
 
     /// Compute the number of elements corresponding to a metric field based on its D characteristic sizes and min/max constraints
     #[must_use]
     fn complexity_from_sizes<M: Metric<D>>(&self, sizes: &[f64], h_min: f64, h_max: f64) -> f64 {
+        let n_verts = self.n_verts() as usize;
+        assert_eq!(sizes.len(), n_verts * D);
+
         let vols = self.get_vertex_volumes().unwrap();
 
-        vols.iter()
-            .enumerate()
-            .map(|(i, v)| {
-                let s = &sizes[D * i..D * (i + 1)];
+        sizes
+            .par_chunks(D)
+            .zip(vols.par_iter())
+            .map(|(s, v)| {
+                let vol = s
+                    .iter()
+                    .fold(1.0, |a, b| a * f64::min(h_max, f64::max(h_min, *b)));
+                v / (E::Geom::<D, M>::IDEAL_VOL * vol)
+            })
+            .sum::<f64>()
+    }
+
+    pub fn complexity_iter<M: Metric<D>, I: IndexedParallelIterator<Item = M>>(
+        &self,
+        m: I,
+        h_min: f64,
+        h_max: f64,
+    ) -> f64 {
+        let n_verts = self.n_verts() as usize;
+        assert_eq!(m.len(), n_verts);
+
+        let vols = self.get_vertex_volumes().unwrap();
+
+        m.zip(vols.par_iter())
+            .map(|(m, v)| {
+                let s = m.sizes();
                 let vol = s
                     .iter()
                     .fold(1.0, |a, b| a * f64::min(h_max, f64::max(h_min, *b)));
@@ -134,14 +156,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// \mathcal C = \int \frac{1}{v(\mathcal M)} dx = \frac{1}{v_\Delta} \int \sqrt{\det(\mathcal M)} dx
     /// ```
     /// TODO: the complexity is actually $`\int \sqrt{\det(\mathcal M)} dx`$
-    pub fn complexity<I: Iterator<Item = M>, M: Metric<D>>(
-        &self,
-        m: I,
-        h_min: f64,
-        h_max: f64,
-    ) -> f64 {
-        let sizes: Vec<_> = m.flat_map(|x| x.sizes()).collect();
-        self.complexity_from_sizes::<M>(&sizes, h_min, h_max)
+    pub fn complexity<M: Metric<D>>(&self, m: &[M], h_min: f64, h_max: f64) -> f64 {
+        self.complexity_iter(m.par_iter().cloned(), h_min, h_max)
     }
 
     /// Compute the scaling factor $`\alpha`$ such that complexity of the bounded metric field
@@ -174,7 +190,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let mut sizes: Vec<_> = m.iter().flat_map(Metric::sizes).collect();
 
         for iter in 0..max_iter {
-            sizes.iter_mut().for_each(|x| *x *= fac);
+            sizes.par_iter_mut().for_each(|x| *x *= fac);
 
             let c = if iter == 0 {
                 self.complexity_from_sizes::<M>(&sizes, 0.0, f64::MAX)
@@ -238,6 +254,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// An error is returned if $`\mathcal L(\mathcal C(\mathcal M_f), \mathcal M_i, f)`$ is larger than the target
     /// number of elements
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_lines)]
     pub fn scale_metric<M: Metric<D>>(
         &self,
         m: &mut [M],
@@ -270,14 +287,18 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         }
 
         if fixed_m.is_some() || implied_m.is_some() {
-            let fixed_m = (0..self.n_verts()).map(|i| fixed_m.map(|x| &x[i as usize]));
-            let implied_m = (0..self.n_verts()).map(|i| implied_m.map(|x| &x[i as usize]));
+            let fixed_m = (0..self.n_verts())
+                .into_par_iter()
+                .map(|i| fixed_m.map(|x| &x[i as usize]));
+            let implied_m = (0..self.n_verts())
+                .into_par_iter()
+                .map(|i| implied_m.map(|x| &x[i as usize]));
 
             if max_iter > 0 {
                 let constrain_m = fixed_m.clone().zip(implied_m.clone()).map(|(m_f, m_i)| {
                     Self::get_bounded_metric(0.0, h_min, h_max, None, m_f, step, m_i)
                 });
-                let constrain_c = self.complexity(constrain_m, h_min, h_max);
+                let constrain_c = self.complexity_iter(constrain_m, h_min, h_max);
 
                 debug!("Complexity of the constrain metric: {}", constrain_c);
 
@@ -288,18 +309,19 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 }
 
                 let m_iter = |s: f64| {
-                    m.iter().zip(fixed_m.clone()).zip(implied_m.clone()).map(
-                        move |((m, m_f), m_i)| {
+                    m.par_iter()
+                        .zip(fixed_m.clone())
+                        .zip(implied_m.clone())
+                        .map(move |((m, m_f), m_i)| {
                             Self::get_bounded_metric(s, h_min, h_max, Some(m), m_f, step, m_i)
-                        },
-                    )
+                        })
                 };
 
                 // Get an upper bound for the bisection
                 let mut scale_high = 1.5 * scale;
                 for iter in 0..max_iter {
                     let tmp_m = m_iter(scale_high);
-                    let c = self.complexity(tmp_m, h_min, h_max);
+                    let c = self.complexity_iter(tmp_m, h_min, h_max);
                     debug!(
                         "Iteration {}: scale_high = {:.2e}, complexity = {:.2e}",
                         iter, scale_high, c
@@ -319,7 +341,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 let mut scale_low = scale / 1.5;
                 for iter in 0..max_iter {
                     let tmp_m = m_iter(scale_low);
-                    let c = self.complexity(tmp_m, h_min, h_max);
+                    let c = self.complexity_iter(tmp_m, h_min, h_max);
                     debug!("Iteration {iter}: scale_low = {scale_low:.2e}, complexity = {c:.2e}");
 
                     if iter == max_iter - 1 {
@@ -336,7 +358,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 for iter in 0..max_iter {
                     scale = 0.5 * (scale_low + scale_high);
                     let tmp_m = m_iter(scale);
-                    let c = self.complexity(tmp_m, h_min, h_max);
+                    let c = self.complexity_iter(tmp_m, h_min, h_max);
                     debug!("Iteration {iter}: scale = {scale:.2e}, complexity = {c:.2e}");
                     if f64::abs(c - f64::from(n_elems)) < 0.05 * f64::from(n_elems) {
                         break;
@@ -351,7 +373,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     }
                 }
             }
-            m.iter_mut()
+            m.par_iter_mut()
                 .zip(fixed_m.clone())
                 .zip(implied_m.clone())
                 .for_each(|((m, m_f), m_i)| {
@@ -376,55 +398,58 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// TODO: doc
     pub fn smooth_metric<M: Metric<D>>(&self, m: &[M]) -> Result<Vec<M>> {
         debug!("Apply metric smoothing");
+        let n = self.n_verts() as usize;
+        assert_eq!(m.len(), n);
 
         let v2v = self.get_vertex_to_vertices()?;
-        let mut weights = Vec::new();
-        let mut metrics = Vec::new();
-        let mut res = Vec::with_capacity(m.len());
 
-        for i_vert in 0..self.n_verts() {
-            let m_v = &m[i_vert as usize];
-            let vol = m_v.vol();
-            let mut min_vol = vol;
-            let mut max_vol = vol;
-            let mut min_idx = 0;
-            let mut max_idx = 0;
-            let neighbors = v2v.row(i_vert);
-            for i_neigh in neighbors {
-                let m_n = &m[*i_neigh as usize];
-                let vol = m_n.vol();
-                if vol < min_vol {
-                    min_vol = vol;
-                    min_idx = i_neigh + 1;
-                } else if vol > max_vol {
-                    max_vol = vol;
-                    max_idx = i_neigh + 1;
+        let mut res = vec![M::default(); n];
+
+        res.par_iter_mut()
+            .enumerate()
+            .for_each(|(i_vert, m_smooth)| {
+                let m_v = &m[i_vert];
+                let vol = m_v.vol();
+                let mut min_vol = vol;
+                let mut max_vol = vol;
+                let mut min_idx = 0;
+                let mut max_idx = 0;
+                let neighbors = v2v.row(i_vert as Idx);
+                for i_neigh in neighbors {
+                    let m_n = &m[*i_neigh as usize];
+                    let vol = m_n.vol();
+                    if vol < min_vol {
+                        min_vol = vol;
+                        min_idx = i_neigh + 1;
+                    } else if vol > max_vol {
+                        max_vol = vol;
+                        max_idx = i_neigh + 1;
+                    }
                 }
-            }
 
-            weights.clear();
-            metrics.clear();
-            let n = if min_idx == max_idx {
-                neighbors.len()
-            } else {
-                neighbors.len() - 1
-            };
-            let w = 1. / n as f64;
+                let mut weights = Vec::new();
+                let mut metrics = Vec::new();
 
-            if min_idx != 0 && max_idx != 0 {
-                weights.push(w);
-                metrics.push(&m[i_vert as usize]);
-            }
-            for i_neigh in neighbors {
-                if min_idx != i_neigh + 1 && max_idx != i_neigh + 1 {
+                let n = if min_idx == max_idx {
+                    neighbors.len()
+                } else {
+                    neighbors.len() - 1
+                };
+                let w = 1. / n as f64;
+
+                if min_idx != 0 && max_idx != 0 {
                     weights.push(w);
-                    metrics.push(&m[*i_neigh as usize]);
+                    metrics.push(&m[i_vert]);
                 }
-            }
+                for i_neigh in neighbors {
+                    if min_idx != i_neigh + 1 && max_idx != i_neigh + 1 {
+                        weights.push(w);
+                        metrics.push(&m[*i_neigh as usize]);
+                    }
+                }
 
-            let m_smooth = M::interpolate(weights.iter().copied().zip(metrics.iter().copied()));
-            res.push(m_smooth);
-        }
+                *m_smooth = M::interpolate(weights.iter().copied().zip(metrics.iter().copied()));
+            });
 
         Ok(res)
     }
@@ -450,75 +475,78 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn gradation<M: Metric<D>>(&self, m: &[M], target: f64) -> Result<(f64, f64)> {
         let edges = self.get_edges()?;
 
-        let n_edgs = edges.len() / 2;
+        let (count, max_gradation) = edges
+            .par_iter()
+            .map(|&e| self.edge_gradation(m, e[0], e[1]))
+            .fold(
+                || (0_usize, 0.0_f64),
+                |mut a, b| {
+                    if b > target {
+                        a.0 += 1;
+                    }
+                    a.1 = a.1.max(b);
+                    a
+                },
+            )
+            .reduce(|| (0_usize, 0.0), |a, b| (a.0 + b.0, a.1.max(b.1)));
 
-        let mut c_max = 0.0;
-        let mut n_larger_than_target = 0;
-        for edg in edges {
-            let i0 = edg[0];
-            let i1 = edg[1];
-            let c = self.edge_gradation(m, i0, i1);
-            if c > target {
-                n_larger_than_target += 1;
-            }
-            c_max = f64::max(c_max, c);
-        }
-
-        Ok((c_max, f64::from(n_larger_than_target) / n_edgs as f64))
+        Ok((max_gradation, 2.0 * count as f64 / edges.len() as f64))
     }
 
     /// Enforce a maximum gradiation on a metric field
     /// Algorithm taken from "Size gradation control of anisotropic meshes", F. Alauzet, 2010 assuming
     ///  - a linear interpolation on h
     ///  - physical-space-gradation (eq. 10)
+    ///
+    /// and modified for parallel implementation
     pub fn apply_metric_gradation<M: Metric<D>>(
         &self,
         m: &mut [M],
         beta: f64,
         max_iter: Idx,
-    ) -> Result<(Idx, Idx)> {
+    ) -> Result<Idx> {
         debug!(
             "Apply metric gradation (beta = {}, max_iter = {})",
             beta, max_iter
         );
 
-        let edges = self.get_edges()?;
+        let v2v = self.get_vertex_to_vertices()?;
 
         let mut n = 0;
         for iter in 0..max_iter {
-            n = 0;
-            let mut c = Vec::with_capacity(edges.len());
-            c.extend(
-                edges
-                    .iter()
-                    .map(|edg| self.edge_gradation(m, edg[0], edg[1])),
+            let mut tmp = m.par_iter().cloned().collect::<Vec<_>>();
+
+            n = tmp
+                .par_iter_mut()
+                .enumerate()
+                .map(|(i_vert, m_new)| {
+                    let neighbors = v2v.row(i_vert as Idx);
+                    let v = self.vert(i_vert as Idx);
+                    let mut fixed = false;
+                    for &i_neigh in neighbors {
+                        let g = self.edge_gradation(m, i_vert as Idx, i_neigh);
+                        if g < 1.01 * beta {
+                            continue;
+                        }
+                        fixed = true;
+                        let e = self.vert(i_neigh) - v;
+                        let m_spanned = m[i_neigh as usize].span(&e, beta);
+                        *m_new = m_new.intersect(&m_spanned);
+                    }
+                    fixed
+                })
+                .filter(|&x| x)
+                .count();
+            m.par_iter_mut()
+                .zip(tmp.par_iter())
+                .for_each(|(m, m_new)| *m = *m_new);
+
+            debug!(
+                "Iteration {}, {}/{} metrics modified",
+                iter,
+                n,
+                self.n_verts()
             );
-            // argsort
-            let mut indices = Vec::with_capacity(c.len());
-            indices.extend(0..c.len());
-            indices.sort_by(|j, i| c[*i].partial_cmp(&c[*j]).unwrap());
-            for i_edge in indices {
-                if c[i_edge] < beta {
-                    break;
-                }
-                let edg = edges[i_edge];
-                let i0 = edg[0] as usize;
-                let i1 = edg[1] as usize;
-
-                let e = self.vert(i1 as Idx) - self.vert(i0 as Idx);
-                let m0 = m[i0];
-                let m1 = m[i1];
-
-                let m01 = m0.span(&e, beta);
-                m[i1] = m1.intersect(&m01);
-
-                let m10 = m1.span(&e, beta);
-                m[i0] = m0.intersect(&m10);
-                if m0.differs_from(&m[i0], 1e-8) || m1.differs_from(&m[i1], 1e-8) {
-                    n += 1;
-                }
-            }
-            debug!("Iteration {}, {}/{} edges modified", iter, n, edges.len());
             if n == 0 {
                 break;
             }
@@ -534,16 +562,16 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             );
         }
 
-        Ok((n, edges.len() as Idx))
+        Ok(n as Idx)
     }
 
-    /// Extend a metric defined on the boundary inside the whole domain
-    /// - geom : the geometry on which the curvature is computed
-    /// - r_h: the curvature radius to element size ratio
+    /// Extend a metric defined on some of the vertices to the whole domain assuming a
+    /// gradation
+    /// - metric: the metric field at every vertex
+    /// - flg: a flag defined at every vertex indicating whether the metric is to be used at
+    ///   that vertex
     /// - beta: the mesh gradation
-    /// - h_n: the normal size, defined at the boundary vertices
-    ///   if <0, the min of the tangential sizes is used
-    pub fn extend_metric<M: AnisoMetric<D>>(
+    pub fn extend_metric<M: Metric<D>>(
         &self,
         metric: &mut [M],
         flg: &mut [bool],
@@ -556,18 +584,25 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         debug!("Extend the metric into the domain using gradation = {beta}");
 
         let n_verts = self.n_verts() as usize;
-        let n_set = flg.iter().filter(|&&x| x).count();
 
-        let mut to_fix = n_verts - n_set;
+        let mut to_fix = flg.iter().filter(|&&x| !x).count();
         debug!("{} / {} internal vertices to fix", to_fix, n_verts);
 
         let v2v = self.get_vertex_to_vertices()?;
 
         let mut n_iter = 0;
         loop {
-            let mut fixed = Vec::with_capacity(to_fix);
-            for (i_vert, pt) in self.verts().enumerate() {
-                if !flg[i_vert] {
+            let mut fixed = vec![false; n_verts];
+            let mut tmp = vec![M::default(); n_verts];
+            fixed
+                .par_iter_mut()
+                .zip(tmp.par_iter_mut())
+                .enumerate()
+                .for_each(|(i_vert, (is_fixed, m_new))| {
+                    if flg[i_vert] {
+                        return;
+                    }
+                    let pt = self.vert(i_vert as Idx);
                     let neighbors = v2v.row(i_vert as Idx);
                     let mut valid_neighbors =
                         neighbors.iter().copied().filter(|&i| flg[i as usize]);
@@ -575,32 +610,39 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                         let m_i = metric[i as usize];
                         let pt_i = self.vert(i);
                         let e = pt - pt_i;
-                        let mut m = m_i.span(&e, beta);
+                        *m_new = m_i.span(&e, beta);
                         for i in valid_neighbors {
                             let m_i = metric[i as usize];
                             let pt_i = self.vert(i);
                             let e = pt - pt_i;
                             let m_i_spanned = m_i.span(&e, beta);
-                            m = m.intersect(&m_i_spanned);
+                            *m_new = m_new.intersect(&m_i_spanned);
                         }
-                        metric[i_vert] = m;
-                        to_fix -= 1;
-                        fixed.push(i_vert);
+                        *is_fixed = true;
                     }
-                }
-            }
-            if fixed.is_empty() {
+                });
+
+            flg.par_iter_mut()
+                .zip(metric.par_iter_mut())
+                .zip(fixed.par_iter().zip(tmp.par_iter()))
+                .for_each(|((f, m), (is_fixed, m_new))| {
+                    if *is_fixed {
+                        *f = true;
+                        *m = *m_new;
+                    }
+                });
+            to_fix = flg.par_iter().filter(|&&x| !x).count();
+            if to_fix == 0 {
+                break;
+            } else if !fixed.par_iter().copied().any(|x| x) {
                 // No element was fixed
-                if to_fix > 0 {
-                    warn!(
-                        "stop at iteration {}, {} elements cannot be fixed",
-                        n_iter + 1,
-                        to_fix
-                    );
-                }
+                warn!(
+                    "stop at iteration {}, {} elements cannot be fixed",
+                    n_iter + 1,
+                    to_fix
+                );
                 break;
             }
-            fixed.iter().for_each(|&i| flg[i] = true);
             n_iter += 1;
 
             debug!(
@@ -608,7 +650,6 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 n_iter, to_fix, n_verts
             );
         }
-
         Ok(())
     }
 }
@@ -616,8 +657,13 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 impl SimplexMesh<3, Tetrahedron> {
     /// Compute the element-implied metric
     pub fn implied_metric(&self) -> Result<Vec<AnisoMetric3d>> {
-        let mut implied_metric = Vec::with_capacity(self.n_elems() as usize);
-        implied_metric.extend(self.gelems().map(|ge| ge.implied_metric()));
+        let mut implied_metric = vec![AnisoMetric3d::default(); self.n_elems() as usize];
+
+        implied_metric
+            .par_iter_mut()
+            .zip(self.par_gelems())
+            .for_each(|(m, ge)| *m = ge.implied_metric());
+
         self.elem_data_to_vertex_data_metric(&implied_metric)
     }
 
@@ -688,8 +734,13 @@ impl SimplexMesh<3, Tetrahedron> {
 impl SimplexMesh<2, Triangle> {
     /// Compute the element-implied metric
     pub fn implied_metric(&self) -> Result<Vec<AnisoMetric2d>> {
-        let mut implied_metric = Vec::with_capacity(self.n_elems() as usize);
-        implied_metric.extend(self.gelems().map(|ge| ge.implied_metric()));
+        let mut implied_metric = vec![AnisoMetric2d::default(); self.n_elems() as usize];
+
+        implied_metric
+            .par_iter_mut()
+            .zip(self.par_gelems())
+            .for_each(|(m, ge)| *m = ge.implied_metric());
+
         self.elem_data_to_vertex_data_metric(&implied_metric)
     }
 
@@ -775,17 +826,17 @@ mod tests {
         let h = vec![0.1; mesh.n_verts() as usize];
         let mut m: Vec<_> = h.iter().map(|&x| IsoMetric::<2>::from(x)).collect();
 
-        let c = mesh.complexity(m.iter().copied(), 0.0, f64::MAX);
+        let c = mesh.complexity(&m, 0.0, f64::MAX);
         assert!(f64::abs(c - 100. * 4. / f64::sqrt(3.0)) < 1e-6);
 
-        let c = mesh.complexity(m.iter().copied(), 0.0, 0.05);
+        let c = mesh.complexity(&m, 0.0, 0.05);
         assert!(f64::abs(c - 400. * 4. / f64::sqrt(3.0)) < 1e-6);
 
         let c0 = mesh
             .scale_metric(&mut m, 0.0, 0.05, 1000, None, None, None, 10)
             .unwrap();
         assert!(c0 > 0.0);
-        let c1 = mesh.complexity(m.iter().copied(), 0.0, 0.05);
+        let c1 = mesh.complexity(&m, 0.0, 0.05);
         assert!(f64::abs(c1 - 1000.) < 100.);
     }
 
@@ -802,17 +853,17 @@ mod tests {
 
         let mut m: Vec<_> = mesh.verts().map(mfunc).collect();
 
-        let c = mesh.complexity(m.iter().copied(), 0.0, f64::MAX);
+        let c = mesh.complexity(&m, 0.0, f64::MAX);
         assert!(f64::abs(c - 0.5 * 4. / f64::sqrt(3.0)) < 1e-6);
 
-        let c = mesh.complexity(m.iter().copied(), 1., 3.);
+        let c = mesh.complexity(&m, 1., 3.);
         assert!(f64::abs(c - 1.0 / 3.0 * 4. / f64::sqrt(3.0)) < 1e-6);
 
         let c0 = mesh
             .scale_metric(&mut m, 0.0, 0.05, 1000, None, None, None, 10)
             .unwrap();
         assert!(c0 > 0.0);
-        let c1 = mesh.complexity(m.iter().copied(), 0.0, 0.05);
+        let c1 = mesh.complexity(&m, 0.0, 0.05);
         assert!(f64::abs(c1 - 1000.) < 100.);
     }
 
@@ -824,10 +875,10 @@ mod tests {
         let h = vec![0.1; mesh.n_verts() as usize];
         let mut m: Vec<_> = h.iter().map(|&x| IsoMetric::<3>::from(x)).collect();
 
-        let c = mesh.complexity(m.iter().copied(), 0.0, f64::MAX);
+        let c = mesh.complexity(&m, 0.0, f64::MAX);
         assert!(f64::abs(c - 1000. * 6. * f64::sqrt(2.0)) < 1e-6);
 
-        let c = mesh.complexity(m.iter().copied(), 0.0, 0.05);
+        let c = mesh.complexity(&m, 0.0, 0.05);
         assert!(f64::abs(c - 8000. * 6. * f64::sqrt(2.0)) < 1e-6);
 
         let c0 = mesh.scale_metric(&mut m, 0.0, 0.05, 1000, None, None, None, 10);
@@ -836,7 +887,7 @@ mod tests {
         let n_target = (1.0 / f64::powi(0.05, 3) * 15.0) as Idx;
         let c0 = mesh.scale_metric(&mut m, 0.0, 0.05, n_target, None, None, None, 10)?;
         assert!(c0 > 0.0);
-        let c1 = mesh.complexity(m.iter().copied(), 0.0, 0.05);
+        let c1 = mesh.complexity(&m, 0.0, 0.05);
         assert!(f64::abs(c1 - f64::from(n_target)) < 0.1 * f64::from(n_target));
 
         Ok(())
@@ -856,10 +907,10 @@ mod tests {
 
         let mut m: Vec<_> = mesh.verts().map(mfunc).collect();
 
-        let c = mesh.complexity(m.iter().copied(), 0.0, f64::MAX);
+        let c = mesh.complexity(&m, 0.0, f64::MAX);
         assert!(f64::abs(c - 1.0 / 12.0 * 6. * f64::sqrt(2.0)) < 1e-6);
 
-        let c = mesh.complexity(m.iter().copied(), 1.0, 5.0);
+        let c = mesh.complexity(&m, 1.0, 5.0);
         assert!(f64::abs(c - 1.0 / 20. * 6. * f64::sqrt(2.0)) < 1e-6);
 
         let c0 = mesh.scale_metric(&mut m, 0.0, 0.05, 1000, None, None, None, 10);
@@ -868,7 +919,7 @@ mod tests {
         let n_target = (1.0 / f64::powi(0.05, 3) * 50.0) as Idx;
         let c0 = mesh.scale_metric(&mut m, 0.0, 0.05, n_target, None, None, None, 10)?;
         assert!(c0 > 0.0);
-        let c1 = mesh.complexity(m.iter().copied(), 0.0, 0.05);
+        let c1 = mesh.complexity(&m, 0.0, 0.05);
         assert!(f64::abs(c1 - f64::from(n_target)) < 0.1 * f64::from(n_target));
         Ok(())
     }
@@ -889,7 +940,7 @@ mod tests {
 
         let c0 = mesh.scale_metric(&mut m, 0.0, 0.05, n_target, Some(&fixed_m), None, None, 10)?;
         assert!(c0 > 0.0);
-        let c1 = mesh.complexity(m.iter().copied(), 0.0, 0.05);
+        let c1 = mesh.complexity(&m, 0.0, 0.05);
         assert!(f64::abs(c1 - f64::from(n_target)) < 0.1 * f64::from(n_target));
 
         Ok(())
@@ -1017,11 +1068,12 @@ mod tests {
         assert!(c_max > beta);
         assert!(frac_large_c > 0.0);
 
-        let (n, _n_edgs) = mesh.apply_metric_gradation(&mut m, beta, 10).unwrap();
+        mesh.compute_vertex_to_vertices();
+        let n = mesh.apply_metric_gradation(&mut m, beta, 10).unwrap();
         assert_eq!(n, 0);
 
         let (c_max, frac_large_c) = mesh.gradation(&m, beta).unwrap();
-        assert!(c_max < 1.001 * beta);
+        assert!(c_max < 1.02 * beta);
         assert!(frac_large_c < 1e-12);
 
         let edges = mesh.get_edges().unwrap();
@@ -1186,7 +1238,7 @@ mod tests {
         // Complexity
         mesh.compute_volumes();
         mesh.scale_metric(&mut m, 1e-2, 0.2, 10000, Some(&m_curv), None, None, 20)?;
-        let c = mesh.complexity(m.iter().copied(), 0.0, 1.0);
+        let c = mesh.complexity(&m, 0.0, 1.0);
         assert!(f64::abs(c - 10000.) < 1000.);
         for (i_vert, &m) in m.iter().enumerate() {
             let s = m.sizes();
@@ -1203,6 +1255,33 @@ mod tests {
                 assert!(l_m_curv < 1.01 * l_m);
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn test_extend() -> Result<()> {
+        let mut mesh = test_mesh_3d().split().split().split();
+
+        let mut m = vec![IsoMetric::<3>::default(); mesh.n_verts() as usize];
+        let mut flg = vec![false; mesh.n_verts() as usize];
+
+        for (f, t) in mesh.faces().zip(mesh.ftags()) {
+            if t == 1 {
+                for i in f {
+                    flg[i as usize] = true;
+                    m[i as usize] = IsoMetric::<3>::from(0.01);
+                }
+            }
+        }
+
+        mesh.compute_vertex_to_vertices();
+
+        mesh.extend_metric(&mut m, &mut flg, 1.0)?;
+
+        for x in m {
+            assert!(f64::abs(x.h() - 0.01) < 1e-6);
+        }
+
         Ok(())
     }
 }

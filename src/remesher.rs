@@ -2615,7 +2615,7 @@ mod tests {
         let c_ref = 4. / f64::sqrt(3.0) / (0.1 * 0.01);
 
         let h: Vec<_> = mesh.verts().map(mfunc).collect();
-        let c = mesh.complexity(h.iter().copied(), 0.0, f64::MAX);
+        let c = mesh.complexity(&h, 0.0, f64::MAX);
         assert!(f64::abs(c - c_ref) < 1e-6 * c);
 
         let geom = NoGeometry();
@@ -2642,7 +2642,7 @@ mod tests {
         let c_ref = 6. * f64::sqrt(2.0) / (0.1 * 0.01 * 2.0);
 
         let h: Vec<_> = mesh.verts().map(mfunc).collect();
-        let c = mesh.complexity(h.iter().copied(), 0.0, f64::MAX);
+        let c = mesh.complexity(&h, 0.0, f64::MAX);
         assert!(f64::abs(c - c_ref) < 1e-6 * c);
 
         let geom = NoGeometry();
