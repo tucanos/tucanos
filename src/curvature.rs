@@ -4,7 +4,7 @@ use crate::{
     topo_elems::{Edge, Elem, Triangle},
     Idx, Result, H_MAX,
 };
-use log::{debug, warn};
+use log::debug;
 use nalgebra::{SMatrix, SVector, SymmetricEigen};
 
 /// Compute the surface normals at the mesh vertices
@@ -277,7 +277,7 @@ pub fn fix_curvature<const D: usize, E: Elem>(
         if fixed.is_empty() {
             // No element was fixed
             if to_fix > 0 {
-                warn!(
+                debug!(
                     "stop at iteration {}, {} elements cannot be fixed",
                     n_iter + 1,
                     to_fix
