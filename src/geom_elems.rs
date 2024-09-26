@@ -98,7 +98,6 @@ pub trait GElem<const D: usize, M: Metric<D>>: Clone + Copy + Debug + Send {
     ///  =
     /// \begin{bmatrix} 1 \\ x_0 \\ \vdots \\ x_d\end{bmatrix}
     /// ```
-
     fn bcoords(&self, p: &Point<D>) -> Self::BCoords; // todo: improve
 
     /// Get the element normal
