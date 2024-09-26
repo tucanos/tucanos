@@ -1,11 +1,16 @@
 use crate::{
     geometry::{LinearGeometry2d, LinearGeometry3d},
     mesh::{Mesh22, Mesh33},
+    to_numpy_1d, to_numpy_2d,
 };
-use numpy::{PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
+use numpy::{
+    PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods,
+};
 use pyo3::{
     exceptions::{PyRuntimeError, PyValueError},
-    pyclass, pymethods, PyResult, Python,
+    pyclass, pymethods,
+    types::PyType,
+    Bound, PyResult, Python,
 };
 use tucanos::{
     mesh_partition::PartitionType,
@@ -66,8 +71,8 @@ macro_rules! create_parallel_remesher {
             }
 
             #[allow(clippy::too_many_arguments)]
-            pub fn remesh(&mut self,
-                py: Python<'_>,
+            pub fn remesh<'py>(&mut self,
+                py: Python<'py>,
                 geometry: &$geom,
                 m: PyReadonlyArray2<f64>,
                 num_iter:Option< u32>,
@@ -96,7 +101,7 @@ macro_rules! create_parallel_remesher {
                 n_layers: Option<Idx>,
                 n_levels: Option<Idx>,
                 min_verts: Option<Idx>,
-            ) -> PyResult<($mesh, String)> {
+            ) -> PyResult<($mesh, Bound<'py, PyArray2<f64>>, String)> {
 
                 if m.shape()[0] != self.dd.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
@@ -154,12 +159,41 @@ macro_rules! create_parallel_remesher {
                     min_verts.unwrap_or(0)
                 );
 
-                let (mesh, info) = py.allow_threads(|| self.dd.remesh(&m, &geometry.geom, params, dd_params).unwrap());
+                let (mesh, info, m) = py.allow_threads(|| self.dd.remesh(&m, &geometry.geom, params, dd_params).unwrap());
 
                 let mesh = $mesh{mesh};
-                Ok((mesh, info.to_json()))
+
+                let m = m.iter().flat_map(|m| m.into_iter()).collect::<Vec<_>>();
+
+                Ok((mesh, to_numpy_2d(py, m, <$metric as Metric<$dim>>::N), info.to_json()))
 
             }
+
+            /// Compute the element qualities & edge lengths
+            #[classmethod]
+            pub fn qualities_and_lengths<'py>(
+                _cls: &Bound<'_, PyType>,
+                py: Python<'py>,
+                mesh: &$mesh,
+                m: PyReadonlyArray2<f64>,
+            ) -> PyResult<(Bound<'py,PyArray1<f64>>, Bound<'py,PyArray1<f64>>)> {
+
+                if m.shape()[0] != mesh.n_verts() as usize {
+                    return Err(PyValueError::new_err("Invalid dimension 0"));
+                }
+                if m.shape()[1] != $metric::N as usize {
+                    return Err(PyValueError::new_err("Invalid dimension 1"));
+                }
+
+                let m = m.as_slice()?;
+                let m: Vec<_> = m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect();
+
+                let q = mesh.mesh.qualities(&m);
+                let l = mesh.mesh.edge_lengths(&m).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+
+                Ok((to_numpy_1d(py, q), to_numpy_1d(py, l)))
+            }
+
         }
     }
 }

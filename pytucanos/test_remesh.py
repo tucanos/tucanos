@@ -57,7 +57,7 @@ class TestRemesh(unittest.TestCase):
         h = 0.1 * np.ones(msh.n_verts()).reshape((-1, 1))
 
         remesher = ParallelRemesher2dIso(msh, "hilbert", 2)
-        (msh, _) = remesher.remesh(geom, h, num_iter=4, n_levels=2)
+        (msh, _, _) = remesher.remesh(geom, h, num_iter=4, n_levels=2)
 
         self.assertTrue(np.allclose(msh.vol(), 1.0))
         etags = np.unique(msh.get_etags())
@@ -193,7 +193,7 @@ class TestRemesh(unittest.TestCase):
             m[:, 1] = 1.0 / hy**2
 
             remesher = ParallelRemesher2dAniso(msh, "hilbert", 2)
-            (msh, _) = remesher.remesh(geom, m, split_min_l_abs=0.1, n_levels=2)
+            (msh, _, _) = remesher.remesh(geom, m, split_min_l_abs=0.1, n_levels=2)
 
             msh.compute_topology()
 

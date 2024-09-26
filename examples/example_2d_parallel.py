@@ -29,10 +29,6 @@ if __name__ == "__main__":
     msh.add_boundary_faces()
     msh.compute_topology()
 
-    fig, ax = plt.subplots()
-    plot_mesh(ax, msh)
-    ax.set_title("Initial")
-
     geom = LinearGeometry2d(msh)
 
     m = get_h(msh).reshape((-1, 1))
@@ -47,10 +43,24 @@ if __name__ == "__main__":
     remesher.partitionned_mesh().write_vtk("initial.vtu")
 
     remesher.set_debug(True)
-    (msh, info) = remesher.remesh(
+    (msh, m, info) = remesher.remesh(
         geom, m, split_min_q_abs=0.1, collapse_min_q_abs=0.1, n_levels=2
     )
 
     print(info)
 
     msh.write_vtk("final.vtu")
+
+    msh.compute_edges()
+    q, l = ParallelRemesher2dIso.qualities_and_lengths(msh, m)
+
+    fig, (ax0, ax1) = plt.subplots(2, 1)
+
+    fig, axs = plt.subplots(2, 1, tight_layout=True)
+    axs[0].hist(q, bins=50, alpha=0.25, density=True)
+    axs[0].set_xlabel("quality")
+    axs[1].hist(l, bins=50, alpha=0.25, density=True)
+    axs[1].axvline(x=0.5**0.5, c="r")
+    axs[1].axvline(x=2**0.5, c="r")
+    axs[1].set_xlabel("edge lengths")
+    fig.savefig("parallel_remeshing.png", dpi=600)
