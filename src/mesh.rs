@@ -12,6 +12,10 @@ use crate::{
 };
 use log::{debug, warn};
 use nalgebra::SVector;
+use rayon::{
+    prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator},
+    slice::ParallelSliceMut,
+};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -191,6 +195,12 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         self.verts.iter()
     }
 
+    /// Get a parallel iterator through the vertices
+    #[must_use]
+    pub fn par_verts(&self) -> impl IndexedParallelIterator<Item = Point<D>> + '_ {
+        (0..self.n_verts()).into_par_iter().map(|i| self.vert(i))
+    }
+
     /// Get the bounding box
     #[must_use]
     pub fn bounding_box(&self) -> (Point<D>, Point<D>) {
@@ -222,6 +232,12 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         self.elems.iter()
     }
 
+    /// Get a parallel iterator through the elements
+    #[must_use]
+    pub fn par_elems(&self) -> impl IndexedParallelIterator<Item = E> + '_ {
+        (0..self.n_elems()).into_par_iter().map(|i| self.elem(i))
+    }
+
     /// Get an iterator through the elements
     pub fn mut_elems(&mut self) -> impl ExactSizeIterator<Item = &mut E> + '_ {
         self.elems.as_std_mut().iter_mut()
@@ -237,6 +253,12 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     #[must_use]
     pub fn etags(&self) -> impl ExactSizeIterator<Item = Tag> + '_ {
         self.etags.iter()
+    }
+
+    /// Get a parallel iterator through the elements tags
+    #[must_use]
+    pub fn par_etags(&self) -> impl IndexedParallelIterator<Item = Tag> + '_ {
+        (0..self.n_elems()).into_par_iter().map(|i| self.etag(i))
     }
 
     /// Get an iterator through the elements tags
@@ -257,6 +279,12 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         self.elems().map(|e| self.gelem(e))
     }
 
+    /// Get a parallel iterator through the geometric elements
+    #[must_use]
+    pub fn par_gelems(&self) -> impl IndexedParallelIterator<Item = E::Geom<D, IsoMetric<D>>> + '_ {
+        self.par_elems().map(|e| self.gelem(e))
+    }
+
     /// Get the i-th face
     #[must_use]
     pub fn face(&self, idx: Idx) -> E::Face {
@@ -267,6 +295,12 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     #[must_use]
     pub fn faces(&self) -> impl ExactSizeIterator<Item = E::Face> + '_ {
         self.faces.iter()
+    }
+
+    /// Get a parallel iterator through the faces
+    #[must_use]
+    pub fn par_faces(&self) -> impl IndexedParallelIterator<Item = E::Face> + '_ {
+        (0..self.n_faces()).into_par_iter().map(|i| self.face(i))
     }
 
     /// Get an iterator through the faces
@@ -286,6 +320,12 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         self.ftags.iter()
     }
 
+    /// Get a parallel iterator through the face tags
+    #[must_use]
+    pub fn par_ftags(&self) -> impl IndexedParallelIterator<Item = Tag> + '_ {
+        (0..self.n_faces()).into_par_iter().map(|i| self.ftag(i))
+    }
+
     /// Get an iterator through the face tags
     pub fn mut_ftags(&mut self) -> impl ExactSizeIterator<Item = &mut Tag> + '_ {
         self.ftags.as_std_mut().iter_mut()
@@ -298,9 +338,17 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         )
     }
 
-    /// Get an iterator through the geometric elements
+    /// Get an iterator through the geometric faces
     pub fn gfaces(&self) -> impl Iterator<Item = <E::Face as Elem>::Geom<D, IsoMetric<D>>> + '_ {
         self.faces().map(|f| self.gface(f))
+    }
+
+    /// Get an iterator through the geometric faces
+    #[must_use]
+    pub fn par_gfaces(
+        &self,
+    ) -> impl IndexedParallelIterator<Item = <E::Face as Elem>::Geom<D, IsoMetric<D>>> + '_ {
+        self.par_faces().map(|f| self.gface(f))
     }
 
     /// Get the total volume of a mesh
@@ -558,18 +606,18 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let elem_vol = self.elem_vol.as_ref().unwrap();
         let node_vol = self.vert_vol.as_ref().unwrap();
 
-        for i_vert in 0..n_verts {
-            for i_elem in v2e.row(i_vert as Idx).iter().copied() {
-                let w = elem_vol[i_elem as usize] / f64::from(E::N_VERTS);
-                for i_comp in 0..n_comp {
-                    res[n_comp * i_vert + i_comp] += w * v[n_comp * i_elem as usize + i_comp];
+        res.par_chunks_mut(n_comp)
+            .enumerate()
+            .for_each(|(i_vert, vals)| {
+                for i_elem in v2e.row(i_vert as Idx).iter().copied() {
+                    let w = elem_vol[i_elem as usize] / f64::from(E::N_VERTS);
+                    for i_comp in 0..n_comp {
+                        vals[i_comp] += w * v[n_comp * i_elem as usize + i_comp];
+                    }
                 }
-            }
-            let w = node_vol[i_vert];
-            for i_comp in 0..n_comp {
-                res[n_comp * i_vert + i_comp] /= w;
-            }
-        }
+                let w = node_vol[i_vert];
+                vals.iter_mut().for_each(|v| *v /= w);
+            });
 
         Ok(res)
     }
@@ -587,13 +635,15 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let mut res = vec![0.; n_comp * n_elems];
 
         let f = 1. / f64::from(E::N_VERTS);
-        for (i_elem, e) in self.elems().enumerate() {
-            for i_comp in 0..n_comp {
-                for i_vert in e.iter().copied() {
-                    res[n_comp * i_elem + i_comp] += f * v[n_comp * i_vert as usize + i_comp];
+        res.par_chunks_mut(n_comp)
+            .zip(self.par_elems())
+            .for_each(|(vals, e)| {
+                for i_comp in 0..n_comp {
+                    for i_vert in e.iter().copied() {
+                        vals[i_comp] += f * v[n_comp * i_vert as usize + i_comp];
+                    }
                 }
-            }
-        }
+            });
 
         Ok(res)
     }
