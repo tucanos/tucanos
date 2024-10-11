@@ -1,11 +1,8 @@
 use crate::{
-    geom_elems::GElem,
     geometry::Geometry,
-    mesh::{Point, SimplexMesh},
+    mesh::{Elem, GElem, Point, SimplexMesh, Topology},
     metric::Metric,
     remesher::Remesher,
-    topo_elems::Elem,
-    topology::Topology,
     Dim, Idx, Tag, TopoTag,
 };
 use core::fmt;

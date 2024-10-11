@@ -1,6 +1,5 @@
 use crate::{
-    mesh::{Point, SimplexMesh},
-    topo_elems::Elem,
+    mesh::{Elem, Point, SimplexMesh},
     Idx,
 };
 use lindel::Lineariseable;
@@ -168,10 +167,10 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        geom_elems::GElem,
-        mesh::SimplexMesh,
-        test_meshes::{test_mesh_2d, test_mesh_3d},
-        topo_elems::Elem,
+        mesh::{
+            test_meshes::{test_mesh_2d, test_mesh_3d},
+            Elem, GElem, SimplexMesh,
+        },
         Idx,
     };
     use rand::{prelude::SliceRandom, rngs::StdRng, SeedableRng};

@@ -4,8 +4,7 @@ use self::libmeshb_sys::{
     GmfSetLin, GmfStatKwd, GmfSymMat, GmfVec, GmfWrite,
 };
 use crate::{
-    mesh::{Point, SimplexMesh},
-    topo_elems::Elem,
+    mesh::{Elem, Point, SimplexMesh},
     Error, Idx, Result, Tag,
 };
 use log::debug;
@@ -633,10 +632,11 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 mod tests {
 
     use crate::{
-        mesh::{Point, SimplexMesh},
+        mesh::{
+            test_meshes::{test_mesh_2d, test_mesh_3d},
+            Point, SimplexMesh, Tetrahedron, Triangle,
+        },
         metric::{AnisoMetric2d, AnisoMetric3d, Metric},
-        test_meshes::{test_mesh_2d, test_mesh_3d},
-        topo_elems::{Tetrahedron, Triangle},
         Result,
     };
     use tempfile::NamedTempFile;

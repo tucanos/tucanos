@@ -1,38 +1,10 @@
 use core::fmt;
-mod cavity;
-pub mod curvature;
-pub mod geom_elems;
+
 pub mod geometry;
-pub mod graph;
-#[cfg(feature = "libmeshb-sys")]
-pub mod libmeshb_io;
-#[allow(dead_code)]
-#[allow(clippy::enum_variant_names)]
 pub mod mesh;
-pub mod mesh_autotag;
-mod mesh_interpolate;
-mod mesh_l2proj;
-mod mesh_ls;
-pub mod mesh_metric;
-mod mesh_ordering;
-pub mod mesh_partition;
-mod mesh_split;
-pub mod mesh_stl;
-pub mod mesh_vtk;
-#[cfg(not(feature = "libmeshb-sys"))]
-pub mod meshb_io;
 pub mod metric;
-mod metric_reduction;
-pub mod parallel;
 pub mod remesher;
 mod spatialindex;
-pub mod split_elements;
-mod stats;
-pub mod test_meshes; // to suppress warnings!
-pub mod topo_elems;
-pub mod topology;
-mod twovec;
-mod vector;
 
 /// Isotropic or anisotropic remesher in 2 and 3 dimensions
 const H_MAX: f64 = 1e8;

@@ -1,4 +1,7 @@
-use crate::{topo_elems::Elem, vector, Error, Idx, Result};
+use crate::{
+    mesh::{vector, Elem},
+    Error, Idx, Result,
+};
 use num::PrimInt;
 use rustc_hash::FxHashMap;
 use std::{collections::hash_map::Entry, fmt::Display, ops::AddAssign};
@@ -220,11 +223,12 @@ impl<T: PrimInt + AddAssign + Display> ConnectedComponents<T> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        topo_elems::{Edge, Triangle},
+        mesh::{
+            graph::{reindex, CSRGraph, ConnectedComponents},
+            Edge, Elem, Triangle,
+        },
         Tag,
     };
-
-    use super::*;
 
     #[test]
     fn test_reindex() {

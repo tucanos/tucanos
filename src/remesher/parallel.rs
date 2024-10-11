@@ -1,10 +1,8 @@
 use crate::{
     geometry::Geometry,
-    mesh::{SimplexMesh, SubSimplexMesh},
-    mesh_partition::PartitionType,
+    mesh::{Elem, PartitionType, SimplexMesh, SubSimplexMesh},
     metric::Metric,
     remesher::{Remesher, RemesherParams},
-    topo_elems::Elem,
     Idx, Result, Tag,
 };
 use log::{debug, warn};
@@ -476,11 +474,13 @@ mod tests {
 
     use crate::{
         geometry::NoGeometry,
-        mesh::Point,
+        mesh::{
+            test_meshes::{test_mesh_2d, test_mesh_3d},
+            PartitionType, Point,
+        },
         metric::IsoMetric,
-        parallel::{ParallelRemesher, ParallelRemeshingParams, PartitionType},
         remesher::RemesherParams,
-        test_meshes::{test_mesh_2d, test_mesh_3d},
+        remesher::{ParallelRemesher, ParallelRemeshingParams},
         Result,
     };
 

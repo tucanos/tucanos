@@ -1,8 +1,6 @@
 use crate::{
-    geom_elems::{AsSliceF64, GElem},
-    mesh::SimplexMesh,
+    mesh::{AsSliceF64, Elem, GElem, SimplexMesh},
     spatialindex::{DefaultObjectIndex, DefaultPointIndex, ObjectIndex, PointIndex},
-    topo_elems::Elem,
     Result,
 };
 
@@ -68,8 +66,10 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        mesh::Point,
-        test_meshes::{test_mesh_2d, test_mesh_3d},
+        mesh::{
+            test_meshes::{test_mesh_2d, test_mesh_3d},
+            Point,
+        },
         Result,
     };
     use nalgebra::{Rotation2, Rotation3};

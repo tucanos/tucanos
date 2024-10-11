@@ -1,6 +1,8 @@
-use crate::geom_elems::{GEdge, GElem, GTetrahedron, GTriangle, GVertex};
+use super::{
+    geom_elems::{GEdge, GElem, GTetrahedron, GTriangle, GVertex},
+    twovec,
+};
 use crate::metric::Metric;
-use crate::twovec;
 use crate::Idx;
 use core::hash::Hash;
 use core::slice::Iter;
@@ -445,7 +447,7 @@ pub fn get_face_to_elem<E: Elem, I: Iterator<Item = E>>(
 
 #[cfg(test)]
 mod tests {
-    use crate::topo_elems::{get_face_to_elem, Edge, Idx, Triangle};
+    use super::{get_face_to_elem, Edge, Idx, Triangle};
 
     #[test]
     fn test_2d() {

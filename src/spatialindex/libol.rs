@@ -1,7 +1,6 @@
 use crate::{
-    mesh::{Point, SimplexMesh},
+    mesh::{Elem, Point, SimplexMesh},
     spatialindex::{ObjectIndex, PointIndex},
-    topo_elems::Elem,
     Idx,
 };
 use log::debug;

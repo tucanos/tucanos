@@ -1,7 +1,5 @@
 use crate::{
-    geom_elems::GElem,
-    mesh::{Point, SimplexMesh},
-    topo_elems::{Edge, Elem, Triangle},
+    mesh::{Edge, Elem, GElem, Point, SimplexMesh, Triangle},
     Idx, Result, H_MAX,
 };
 use log::debug;
@@ -316,10 +314,7 @@ impl HasCurvature<3> for SimplexMesh<3, Triangle> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        geom_elems::GElem,
-        mesh::{Point, SimplexMesh},
-        test_meshes::test_mesh_2d,
-        topo_elems::Triangle,
+        mesh::{test_meshes::test_mesh_2d, GElem, Point, SimplexMesh, Triangle},
         Result, H_MAX,
     };
 

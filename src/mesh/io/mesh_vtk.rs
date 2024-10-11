@@ -1,4 +1,7 @@
-use crate::{mesh::SimplexMesh, topo_elems::Elem, Result};
+use crate::{
+    mesh::{Elem, SimplexMesh},
+    Result,
+};
 use log::debug;
 use std::collections::HashMap;
 use vtkio::{

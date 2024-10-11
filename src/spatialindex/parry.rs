@@ -1,10 +1,17 @@
 use parry2d_f64::query::{PointQuery as _, PointQueryWithLocation as _};
 use parry3d_f64::query::{PointQuery as _, PointQueryWithLocation as _};
 
-use crate::{mesh::Point, mesh::SimplexMesh, topo_elems::Elem, Idx};
+use crate::{
+    mesh::Point,
+    mesh::{Elem, SimplexMesh},
+    Idx,
+};
 
 mod parry2d {
-    use crate::{mesh::SimplexMesh, topo_elems::Elem, Idx};
+    use crate::{
+        mesh::{Elem, SimplexMesh},
+        Idx,
+    };
     use nalgebra::Point2;
     use parry2d_f64::{
         bounding_volume::Aabb,
@@ -139,7 +146,10 @@ mod parry2d {
 }
 
 mod parry3d {
-    use crate::{mesh::SimplexMesh, topo_elems::Elem, Idx};
+    use crate::{
+        mesh::{Elem, SimplexMesh},
+        Idx,
+    };
     use nalgebra::Point3;
     use parry3d_f64::{
         bounding_volume::{Aabb, BoundingSphere},

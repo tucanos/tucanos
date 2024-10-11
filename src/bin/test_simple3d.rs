@@ -3,15 +3,10 @@ use nalgebra::SMatrix;
 use rustc_hash::FxHashMap;
 use std::{f64::consts::PI, time::Instant};
 use tucanos::{
-    geom_elems::GElem,
     geometry::Geometry,
-    mesh::{Point, SimplexMesh},
-    mesh_partition::PartitionType,
+    mesh::{GElem, PartitionType, Point, SimplexMesh, Tetrahedron, Topology},
     metric::{AnisoMetric3d, Metric},
-    parallel::{ParallelRemesher, ParallelRemeshingParams},
-    remesher::{Remesher, RemesherParams},
-    topo_elems::Tetrahedron,
-    topology::Topology,
+    remesher::{ParallelRemesher, ParallelRemeshingParams, Remesher, RemesherParams},
     Result, Tag, TopoTag,
 };
 

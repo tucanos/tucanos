@@ -621,8 +621,7 @@ mod tests {
     use nalgebra::{Matrix2, Matrix3};
 
     use crate::{
-        geom_elems::{GElem, GTetrahedron, GTriangle},
-        mesh::Point,
+        mesh::{GElem, GTetrahedron, GTriangle, Point},
         metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric},
     };
 

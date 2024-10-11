@@ -1,15 +1,13 @@
+use super::cavity::{Cavity, CavityCheckStatus, FilledCavity, FilledCavityType, Seed};
+use super::stats::{
+    CollapseStats, InitStats, SmoothStats, SplitStats, Stats, StepStats, SwapStats,
+};
 use crate::{
-    cavity::{self, Cavity, CavityCheckStatus, FilledCavity, FilledCavityType},
-    geom_elems::{AsSliceF64, GElem},
     geometry::Geometry,
     max_iter,
-    mesh::{Point, SimplexMesh},
+    mesh::{get_face_to_elem, AsSliceF64, Elem, GElem, Point, SimplexMesh, Topology},
     metric::Metric,
-    min_iter,
-    stats::{CollapseStats, InitStats, SmoothStats, SplitStats, Stats, StepStats, SwapStats},
-    topo_elems::{get_face_to_elem, Elem},
-    topology::Topology,
-    Dim, Error, Idx, Result, Tag, TopoTag,
+    min_iter, Dim, Error, Idx, Result, Tag, TopoTag,
 };
 use log::{debug, trace};
 #[cfg(feature = "nlopt")]
@@ -759,7 +757,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     trace!("Try to split edge {:?}, l = {}", edg, length);
                     cavity.init_from_edge(edg, self);
                     // TODO: move to Cavity?
-                    let cavity::Seed::Edge(local_edg) = cavity.seed else {
+                    let Seed::Edge(local_edg) = cavity.seed else {
                         unreachable!()
                     };
                     let (mut edge_center, new_metric) = cavity.seed_barycenter();
@@ -868,7 +866,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             l_max
         );
 
-        let cavity::Seed::Edge(local_edg) = cavity.seed else {
+        let Seed::Edge(local_edg) = cavity.seed else {
             unreachable!()
         };
         let local_i0 = local_edg[0] as usize;
@@ -1174,7 +1172,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     /// TODO: move to Cavity
     fn get_smoothing_neighbors(&self, cavity: &Cavity<D, E, M>) -> (bool, Vec<Idx>) {
         let mut res = Vec::<Idx>::with_capacity(cavity.n_verts() as usize);
-        let cavity::Seed::Vertex(i0) = cavity.seed else {
+        let Seed::Vertex(i0) = cavity.seed else {
             unreachable!()
         };
 
@@ -1212,7 +1210,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     fn smooth_laplacian(cavity: &Cavity<D, E, M>, neighbors: &[Idx]) -> Point<D> {
-        let cavity::Seed::Vertex(i0) = cavity.seed else {
+        let Seed::Vertex(i0) = cavity.seed else {
             unreachable!()
         };
         let (p0, _, _) = cavity.vert(i0);
@@ -1228,7 +1226,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     fn smooth_laplacian_2(cavity: &Cavity<D, E, M>, neighbors: &[Idx]) -> Point<D> {
-        let cavity::Seed::Vertex(i0) = cavity.seed else {
+        let Seed::Vertex(i0) = cavity.seed else {
             unreachable!()
         };
         let (p0, _, m0) = cavity.vert(i0);
@@ -1246,7 +1244,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     fn smooth_avro(cavity: &Cavity<D, E, M>, neighbors: &[Idx]) -> Point<D> {
-        let cavity::Seed::Vertex(i0) = cavity.seed else {
+        let Seed::Vertex(i0) = cavity.seed else {
             unreachable!()
         };
         let (p0, _, m0) = cavity.vert(i0);
@@ -1266,7 +1264,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
     #[cfg(feature = "nlopt")]
     fn smooth_nlopt(cavity: &Cavity<D, E, M>, neighbors: &[Idx]) -> Point<D> {
-        let cavity::Seed::Vertex(i0) = cavity.seed else {
+        let Seed::Vertex(i0) = cavity.seed else {
             unreachable!()
         };
         let (_, t0, m0) = cavity.vert(i0);
@@ -1337,7 +1335,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         for i0 in verts.iter().copied() {
             trace!("Try to smooth vertex {}", i0);
             cavity.init_from_vertex(i0, self);
-            let cavity::Seed::Vertex(i0_local) = cavity.seed else {
+            let Seed::Vertex(i0_local) = cavity.seed else {
                 unreachable!()
             };
             if cavity.tags[i0_local as usize].0 == 0 {
@@ -1577,18 +1575,18 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
 #[cfg(test)]
 mod tests_topo {
-    use rustc_hash::{FxHashMap, FxHashSet};
-    use std::collections::hash_map::Entry;
-
-    /// Test the topology representation
     use crate::{
         geometry::NoGeometry,
-        mesh::Point,
+        mesh::{
+            test_meshes::{test_mesh_2d, test_mesh_3d},
+            Point,
+        },
         metric::IsoMetric,
         remesher::Remesher,
-        test_meshes::{test_mesh_2d, test_mesh_3d},
         Tag,
     };
+    use rustc_hash::{FxHashMap, FxHashSet};
+    use std::collections::hash_map::Entry;
 
     fn test_topo_2d(etags: [Tag; 2], ftags: [Tag; 4], add_boundary_faces: bool, n_split: i32) {
         let mut mesh = test_mesh_2d();
@@ -1769,16 +1767,16 @@ mod tests_topo {
 mod tests {
     use super::RemesherParams;
     use crate::{
-        geom_elems::GElem,
         geometry::NoGeometry,
-        mesh::{Point, SimplexMesh},
+        mesh::{
+            test_meshes::{
+                h_2d, h_3d, test_mesh_2d, test_mesh_3d, test_mesh_3d_single_tet,
+                test_mesh_3d_two_tets, test_mesh_moon_2d, GeomHalfCircle2d,
+            },
+            Edge, Elem, GElem, Point, SimplexMesh, Tetrahedron, Triangle,
+        },
         metric::{AnisoMetric, AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
         remesher::{Remesher, SmoothingType},
-        test_meshes::{
-            h_2d, h_3d, test_mesh_2d, test_mesh_3d, test_mesh_3d_single_tet, test_mesh_3d_two_tets,
-            test_mesh_moon_2d, GeomHalfCircle2d,
-        },
-        topo_elems::{Edge, Elem, Tetrahedron, Triangle},
         Result,
     };
     use std::f64::consts::PI;

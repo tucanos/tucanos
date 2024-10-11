@@ -1,13 +1,15 @@
-use crate::{
+use super::{
     geom_elems::GElem,
     graph::{reindex, CSRGraph},
-    metric::IsoMetric,
-    spatialindex::{DefaultObjectIndex, DefaultPointIndex, ObjectIndex, PointIndex},
-    split_elements::{hex2tets, pri2tets, pyr2tets, qua2tris},
+    to_simplices::{hex2tets, pri2tets, pyr2tets, qua2tris},
     topo_elems::{get_face_to_elem, Edge, Elem, Tetrahedron, Triangle},
     topology::Topology,
     twovec,
     vector::Vector,
+};
+use crate::{
+    metric::IsoMetric,
+    spatialindex::{DefaultObjectIndex, DefaultPointIndex, ObjectIndex, PointIndex},
     Dim, Error, Idx, Result, Tag, TopoTag,
 };
 use log::{debug, warn};
@@ -1392,10 +1394,10 @@ impl SimplexMesh<3, Tetrahedron> {
 mod tests {
 
     use crate::{
-        geom_elems::GElem,
-        mesh::SimplexMesh,
-        test_meshes::{test_mesh_2d, test_mesh_3d},
-        topo_elems::{Edge, Elem, Tetrahedron, Triangle},
+        mesh::{
+            test_meshes::{test_mesh_2d, test_mesh_3d},
+            Edge, Elem, GElem, SimplexMesh, Tetrahedron, Triangle,
+        },
         Result,
     };
 

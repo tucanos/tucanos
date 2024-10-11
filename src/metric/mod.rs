@@ -1,4 +1,7 @@
-use crate::metric_reduction::{control_step, simultaneous_reduction, step};
+mod compute_metric;
+mod reduction;
+
+use crate::metric::reduction::{control_step, simultaneous_reduction, step};
 use crate::{mesh::Point, Error, Result};
 use crate::{H_MAX, S_MAX, S_MIN, S_RATIO_MAX};
 use nalgebra::allocator::Allocator;

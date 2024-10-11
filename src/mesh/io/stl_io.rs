@@ -1,8 +1,7 @@
 use crate::{
-    geom_elems::GElem,
-    mesh::{Point, SimplexMesh},
+    mesh::geom_elems::GElem,
+    mesh::{Elem, Point, SimplexMesh, Triangle},
     spatialindex::{DefaultObjectIndex, ObjectIndex},
-    topo_elems::{Elem, Triangle},
     Idx,
 };
 use log::{debug, warn};
@@ -89,9 +88,9 @@ mod tests {
 
     use super::orient_stl;
     use crate::{
-        mesh_stl::read_stl,
-        test_meshes::{test_mesh_3d, write_stl_file},
-        topo_elems::Triangle,
+        mesh::io::read_stl,
+        mesh::test_meshes::{test_mesh_3d, write_stl_file},
+        mesh::Triangle,
         Result,
     };
 
