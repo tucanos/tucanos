@@ -1,5 +1,10 @@
-mod compute_metric;
+mod complexity;
+mod curvature;
+mod gradation;
+mod implied;
 mod reduction;
+mod scaling;
+mod smoothing;
 
 use crate::metric::reduction::{control_step, simultaneous_reduction, step};
 use crate::{mesh::Point, Error, Result};
