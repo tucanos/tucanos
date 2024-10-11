@@ -89,7 +89,7 @@ enum Iter<'a, T: FromNativePointer> {
     Native(NativeIter<T>),
 }
 
-impl<'a, T: Copy + FromNativePointer> Iterator for Iter<'a, T> {
+impl<T: Copy + FromNativePointer> Iterator for Iter<'_, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -106,7 +106,7 @@ impl<'a, T: Copy + FromNativePointer> Iterator for Iter<'a, T> {
     }
 }
 
-impl<'a, T: Copy + FromNativePointer> ExactSizeIterator for Iter<'a, T> {
+impl<T: Copy + FromNativePointer> ExactSizeIterator for Iter<'_, T> {
     fn len(&self) -> usize {
         match self {
             Iter::Std(x) => x.len(),
