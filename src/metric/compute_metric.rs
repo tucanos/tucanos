@@ -1,9 +1,8 @@
 use crate::{
-    geom_elems::GElem,
     geometry::LinearGeometry,
-    mesh::{Point, SimplexMesh},
+    mesh::GElem,
+    mesh::{Edge, Elem, Point, SimplexMesh, Tetrahedron, Triangle},
     metric::{AnisoMetric2d, AnisoMetric3d, Metric},
-    topo_elems::{Edge, Elem, Tetrahedron, Triangle},
     Error, Idx, Result, Tag,
 };
 use log::{debug, warn};
@@ -834,16 +833,14 @@ impl SimplexMesh<2, Triangle> {
 
 #[cfg(test)]
 mod tests {
-    use nalgebra::{Matrix3, SVector};
-
     use crate::{
         geometry::LinearGeometry,
+        mesh::test_meshes::{test_mesh_2d, test_mesh_3d},
         mesh::Point,
         metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
-        min_iter,
-        test_meshes::{test_mesh_2d, test_mesh_3d},
-        Idx, Result, ANISO_MAX,
+        min_iter, Idx, Result, ANISO_MAX,
     };
+    use nalgebra::{Matrix3, SVector};
 
     #[test]
     fn test_complexity_2d() {

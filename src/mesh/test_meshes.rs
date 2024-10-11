@@ -1,6 +1,5 @@
 use crate::geometry::Geometry;
-use crate::mesh::{Point, SimplexMesh};
-use crate::topo_elems::{Edge, Tetrahedron, Triangle};
+use crate::mesh::{Edge, Point, SimplexMesh, Tetrahedron, Triangle};
 use crate::{Dim, Error, Result, TopoTag};
 use std::fs::File;
 use std::io::Write;
@@ -107,7 +106,7 @@ pub fn test_mesh_moon_2d() -> SimplexMesh<2, Triangle> {
 pub struct GeomHalfCircle2d();
 
 impl Geometry<2> for GeomHalfCircle2d {
-    fn check(&self, topo: &crate::topology::Topology) -> Result<()> {
+    fn check(&self, topo: &crate::mesh::Topology) -> Result<()> {
         let ntags = [1, 2, 1];
         let tags: [TopoTag; 4] = [(2, 1), (1, 1), (1, 2), (0, 1)];
 

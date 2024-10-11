@@ -1,7 +1,6 @@
 use crate::{
-    graph::CSRGraph,
-    topo_elems::{get_face_to_elem, Elem},
-    vector::Vector,
+    mesh::graph::CSRGraph,
+    mesh::{get_face_to_elem, vector::Vector, Elem},
     Dim, Idx, Result, Tag, TopoTag,
 };
 use core::result;
@@ -516,10 +515,11 @@ impl Topology {
 #[cfg(test)]
 mod tests {
     use crate::{
-        mesh::{Point, SimplexMesh},
-        test_meshes::{test_mesh_2d, test_mesh_2d_nobdy, test_mesh_3d},
-        topo_elems::{Tetrahedron, Triangle},
-        topology::{Tag, Topology},
+        mesh::{
+            test_meshes::{test_mesh_2d, test_mesh_2d_nobdy, test_mesh_3d},
+            Point, SimplexMesh, Tetrahedron, Topology, Triangle,
+        },
+        Tag,
     };
 
     #[test]

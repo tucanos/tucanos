@@ -1,6 +1,5 @@
 use crate::{
-    mesh::{Point, SimplexMesh},
-    topo_elems::Elem,
+    mesh::{Elem, Point, SimplexMesh},
     Error, Idx, Result,
 };
 
@@ -390,7 +389,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 mod tests {
 
     use crate::{
-        test_meshes::{test_mesh_2d, test_mesh_3d},
+        mesh::test_meshes::{test_mesh_2d, test_mesh_3d},
         Result,
     };
 

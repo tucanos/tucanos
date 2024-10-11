@@ -1,10 +1,10 @@
+mod curvature;
+
 use crate::{
-    curvature::HasCurvature,
-    geom_elems::GElem,
+    geometry::curvature::HasCurvature,
+    mesh::{Elem, GElem, Topology},
     mesh::{Point, SimplexMesh},
     spatialindex::{DefaultObjectIndex, ObjectIndex},
-    topo_elems::Elem,
-    topology::Topology,
     Dim, Error, Result, Tag, TopoTag,
 };
 use log::debug;
@@ -321,10 +321,11 @@ where
 mod tests {
     use super::{Geometry, LinearGeometry};
     use crate::{
-        mesh::Point,
-        mesh_stl::read_stl,
-        test_meshes::write_stl_file,
-        test_meshes::{test_mesh_2d, test_mesh_3d},
+        mesh::{
+            io::read_stl,
+            test_meshes::{test_mesh_2d, test_mesh_3d, write_stl_file},
+            Point,
+        },
         Result,
     };
     use std::fs::remove_file;

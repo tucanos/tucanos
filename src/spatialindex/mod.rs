@@ -1,6 +1,5 @@
 use crate::{
-    mesh::{Point, SimplexMesh},
-    topo_elems::Elem,
+    mesh::{Elem, Point, SimplexMesh},
     Idx,
 };
 
@@ -66,9 +65,8 @@ mod tests {
     use std::{f64::consts::PI, time::Instant};
 
     use crate::{
-        mesh::{Point, SimplexMesh},
+        mesh::{Edge, Elem, Point, SimplexMesh, Triangle},
         spatialindex::{DefaultObjectIndex, ObjectIndex},
-        topo_elems::{Edge, Elem, Triangle},
         Tag,
     };
 

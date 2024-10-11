@@ -6,10 +6,9 @@
 
 use tucanos::{
     geometry::LinearGeometry,
-    mesh::SimplexMesh,
+    mesh::{SimplexMesh, Tetrahedron, Triangle},
     metric::{AnisoMetric3d, IsoMetric, Metric},
     remesher::{self, Remesher},
-    topo_elems::{Tetrahedron, Triangle},
 };
 
 pub struct tucanos_remesher3diso_t {

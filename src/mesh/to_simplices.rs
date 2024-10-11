@@ -1,5 +1,5 @@
 use crate::{
-    topo_elems::{Tetrahedron, Triangle},
+    mesh::{Tetrahedron, Triangle},
     Idx,
 };
 

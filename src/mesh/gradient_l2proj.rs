@@ -1,7 +1,5 @@
 use crate::{
-    geom_elems::GElem,
-    mesh::{Point, SimplexMesh},
-    topo_elems::Elem,
+    mesh::{Elem, GElem, Point, SimplexMesh},
     Idx, Result,
 };
 use log::debug;
@@ -132,9 +130,10 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 mod tests {
 
     use crate::{
-        mesh::Point,
-        test_meshes::{test_mesh_2d, test_mesh_3d},
-        topo_elems::Elem,
+        mesh::{
+            test_meshes::{test_mesh_2d, test_mesh_3d},
+            Elem, Point,
+        },
         Result,
     };
 
