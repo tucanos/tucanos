@@ -365,6 +365,7 @@ impl Geometry<3> for SphereGeometry {
     }
 }
 
+#[must_use]
 pub fn sphere_mesh(level: usize) -> SimplexMesh<3, Triangle> {
     let verts = vec![
         Point::<3>::new(0., 0., 1.),
