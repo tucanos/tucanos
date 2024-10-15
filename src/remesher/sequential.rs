@@ -1773,8 +1773,8 @@ mod tests {
         geometry::NoGeometry,
         mesh::{
             test_meshes::{
-                h_2d, h_3d, test_mesh_2d, test_mesh_3d, test_mesh_3d_single_tet,
-                test_mesh_3d_two_tets, test_mesh_moon_2d, GeomHalfCircle2d,
+                h_2d, h_3d, sphere_mesh, test_mesh_2d, test_mesh_3d, test_mesh_3d_single_tet,
+                test_mesh_3d_two_tets, test_mesh_moon_2d, GeomHalfCircle2d, SphereGeometry,
             },
             Edge, Elem, GElem, Point, SimplexMesh, Tetrahedron, Triangle,
         },
@@ -2655,6 +2655,40 @@ mod tests {
         remesher.check()?;
 
         let _mesh = remesher.to_mesh(true);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_adapt_1d_surf() -> Result<()> {
+        let mesh = sphere_mesh(3);
+
+        let h = |p: Point<3>| {
+            let c = Point::<3>::new(1.0, 0.0, 0.0);
+            let d = (p - c).norm();
+            let s = 0.25;
+            let h_min = 1e-2;
+            let h_max = 1e-1;
+            h_max - (h_max - h_min) * f64::exp(-(d / s).powi(2))
+        };
+
+        let m = mesh
+            .verts()
+            .map(|p| IsoMetric::<3>::from(h(p)))
+            .collect::<Vec<_>>();
+
+        let geom = SphereGeometry;
+        let mut remesher = Remesher::new(&mesh, &m, &geom)?;
+
+        let params = RemesherParams {
+            split_min_q_abs: 0.4,
+            ..RemesherParams::default()
+        };
+        remesher.remesh(params, &geom)?;
+        remesher.check()?;
+
+        let _mesh = remesher.to_mesh(true);
+        // mesh.write_vtk("sphere_out.vtu", None, None)?;
 
         Ok(())
     }
