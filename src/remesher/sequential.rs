@@ -775,7 +775,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     }
 
                     // projection if needed
-                    if tag.0 < E::DIM as Dim {
+                    if tag.0 < D as Dim {
                         geom.project(&mut edge_center, &tag);
                     }
 
@@ -843,6 +843,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     ) -> Result<TrySwapResult> {
         trace!("Try to swap edge {:?}", edg);
         cavity.init_from_edge(edg, self);
+        if E::DIM == 2 {
+            assert!(cavity.n_elems() <= 2);
+        }
         if cavity.global_elem_ids.len() == 1 {
             trace!("Cannot swap, only one adjacent cell");
             return Ok(TrySwapResult::QualitySufficient);
@@ -885,7 +888,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             return Ok(TrySwapResult::FixedEdge);
         }
 
-        if etag.0 < E::Face::DIM as Dim {
+        if etag.0 == 1 {
             return Ok(TrySwapResult::CouldNotSwap);
         }
 
@@ -921,7 +924,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 continue;
             }
 
-            if !filled_cavity.check_boundary_normals(&self.topo, geom, max_angle) {
+            if !filled_cavity.check_normals(&self.topo, geom, max_angle) {
                 trace!("Cannot swap, would create a non smooth surface");
                 continue;
             }
@@ -1103,7 +1106,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                         continue;
                     }
 
-                    if !filled_cavity.check_boundary_normals(&self.topo, geom, params.max_angle) {
+                    if !filled_cavity.check_normals(&self.topo, geom, params.max_angle) {
                         trace!("Cannot collapse, would create a non smooth surface");
                         continue;
                     }
@@ -1378,7 +1381,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             for omega in params.smooth_relax.iter().copied() {
                 p0_new = (1.0 - omega) * p0 + omega * p0_smoothed;
 
-                if t0.0 < E::DIM as Dim {
+                if t0.0 < D as Dim {
                     geom.project(&mut p0_new, t0);
                 }
 
@@ -1390,7 +1393,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 let ftype = FilledCavityType::MovedVertex((i0_local, p0_new, *m0));
                 let filled_cavity = FilledCavity::new(cavity, ftype);
 
-                if !filled_cavity.check_boundary_normals(&self.topo, geom, params.max_angle) {
+                if !filled_cavity.check_normals(&self.topo, geom, params.max_angle) {
                     trace!("Cannot smooth, would create a non smooth surface");
                     continue;
                 }
@@ -1770,8 +1773,8 @@ mod tests {
         geometry::NoGeometry,
         mesh::{
             test_meshes::{
-                h_2d, h_3d, test_mesh_2d, test_mesh_3d, test_mesh_3d_single_tet,
-                test_mesh_3d_two_tets, test_mesh_moon_2d, GeomHalfCircle2d,
+                h_2d, h_3d, sphere_mesh, test_mesh_2d, test_mesh_3d, test_mesh_3d_single_tet,
+                test_mesh_3d_two_tets, test_mesh_moon_2d, GeomHalfCircle2d, SphereGeometry,
             },
             Edge, Elem, GElem, Point, SimplexMesh, Tetrahedron, Triangle,
         },
@@ -2652,6 +2655,97 @@ mod tests {
         remesher.check()?;
 
         let _mesh = remesher.to_mesh(true);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_adapt_3d_surf() -> Result<()> {
+        let mesh = sphere_mesh(3);
+
+        let h = |p: Point<3>| {
+            let c = Point::<3>::new(1.0, 0.0, 0.0);
+            let d = (p - c).norm();
+            let s = 0.25;
+            let h_min = 1e-2;
+            let h_max = 1e-1;
+            h_max - (h_max - h_min) * f64::exp(-(d / s).powi(2))
+        };
+
+        let m = mesh
+            .verts()
+            .map(|p| IsoMetric::<3>::from(h(p)))
+            .collect::<Vec<_>>();
+
+        let geom = SphereGeometry;
+        let mut remesher = Remesher::new(&mesh, &m, &geom)?;
+
+        let params = RemesherParams {
+            split_min_q_abs: 0.4,
+            ..RemesherParams::default()
+        };
+        remesher.remesh(params, &geom)?;
+        remesher.check()?;
+
+        let _mesh = remesher.to_mesh(true);
+        // mesh.write_vtk("sphere_out.vtu", None, None)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_adapt_3d_surf_aniso() -> Result<()> {
+        let mesh = sphere_mesh(3);
+
+        let m = |p: Point<3>| {
+            let s = 0.25;
+            let h_min = 1e-2;
+            let h_max = 1e-1;
+
+            let x = p[0];
+            let y = p[1];
+            let r_xy = (x * x + y * y).sqrt();
+            if r_xy > f64::EPSILON {
+                let r = p.norm();
+                let z = p[2];
+                let theta = (z / r).acos();
+
+                let e_r = p / r;
+                // let phi = y.signum() * (x / r_xy).acos();
+
+                let e_phi = Point::<3>::new(y / r_xy, -x / r_xy, 0.0);
+                let e_theta = -e_r.cross(&e_phi);
+
+                let h_r = h_max;
+                let h_theta = h_max - (h_max - h_min) * f64::exp(-((theta - 0.5 * PI) / s).powi(2));
+                let h_phi = h_max;
+
+                let e_r = h_r * e_r;
+                let e_theta = h_theta * e_theta;
+                let e_phi = h_phi * e_phi;
+                AnisoMetric3d::from_sizes(&e_r, &e_theta, &e_phi)
+            } else {
+                let e_x = Point::<3>::new(h_max, 0.0, 0.0);
+                let e_y = Point::<3>::new(0.0, h_max, 0.0);
+                let e_z = Point::<3>::new(0.0, 0.0, h_max);
+                AnisoMetric3d::from_sizes(&e_x, &e_y, &e_z)
+            }
+        };
+
+        let m = mesh.verts().map(m).collect::<Vec<_>>();
+
+        let geom = SphereGeometry;
+        let mut remesher = Remesher::new(&mesh, &m, &geom)?;
+
+        let params = RemesherParams {
+            split_min_q_abs: 0.4,
+            ..RemesherParams::default()
+        };
+        remesher.remesh(params, &geom)?;
+        remesher.check()?;
+
+        let _mesh = remesher.to_mesh(true);
+        // mesh.write_vtk("sphere_out.vtu", None, None)?;
 
         Ok(())
     }
