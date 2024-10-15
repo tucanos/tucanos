@@ -2706,7 +2706,7 @@ mod tests {
     }
 
     #[test]
-    fn test_adapt_1d_surf() -> Result<()> {
+    fn test_adapt_3d_surf() -> Result<()> {
         let mesh = sphere_mesh(3);
 
         let h = |p: Point<3>| {
@@ -2722,6 +2722,63 @@ mod tests {
             .verts()
             .map(|p| IsoMetric::<3>::from(h(p)))
             .collect::<Vec<_>>();
+
+        let geom = SphereGeometry;
+        let mut remesher = Remesher::new(&mesh, &m, &geom)?;
+
+        let params = RemesherParams {
+            split_min_q_abs: 0.4,
+            ..RemesherParams::default()
+        };
+        remesher.remesh(params, &geom)?;
+        remesher.check()?;
+
+        let _mesh = remesher.to_mesh(true);
+        // mesh.write_vtk("sphere_out.vtu", None, None)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_adapt_3d_surf_aniso() -> Result<()> {
+        let mesh = sphere_mesh(3);
+
+        let m = |p: Point<3>| {
+            let s = 0.25;
+            let h_min = 1e-2;
+            let h_max = 1e-1;
+
+            let x = p[0];
+            let y = p[1];
+            let r_xy = (x * x + y * y).sqrt();
+            if r_xy > f64::EPSILON {
+                let r = p.norm();
+                let z = p[2];
+                let theta = (z / r).acos();
+
+                let e_r = p / r;
+                // let phi = y.signum() * (x / r_xy).acos();
+
+                let e_phi = Point::<3>::new(y / r_xy, -x / r_xy, 0.0);
+                let e_theta = -e_r.cross(&e_phi);
+
+                let h_r = h_max;
+                let h_theta = h_max - (h_max - h_min) * f64::exp(-((theta - 0.5 * PI) / s).powi(2));
+                let h_phi = h_max;
+
+                let e_r = h_r * e_r;
+                let e_theta = h_theta * e_theta;
+                let e_phi = h_phi * e_phi;
+                AnisoMetric3d::from_sizes(&e_r, &e_theta, &e_phi)
+            } else {
+                let e_x = Point::<3>::new(h_max, 0.0, 0.0);
+                let e_y = Point::<3>::new(0.0, h_max, 0.0);
+                let e_z = Point::<3>::new(0.0, 0.0, h_max);
+                AnisoMetric3d::from_sizes(&e_x, &e_y, &e_z)
+            }
+        };
+
+        let m = mesh.verts().map(m).collect::<Vec<_>>();
 
         let geom = SphereGeometry;
         let mut remesher = Remesher::new(&mesh, &m, &geom)?;
