@@ -1770,8 +1770,8 @@ mod tests {
         geometry::NoGeometry,
         mesh::{
             test_meshes::{
-                h_2d, h_3d, test_mesh_2d, test_mesh_3d, test_mesh_3d_single_tet,
-                test_mesh_3d_two_tets, test_mesh_moon_2d, GeomHalfCircle2d,
+                h_2d, h_3d, sphere_mesh, test_mesh_2d, test_mesh_3d, test_mesh_3d_single_tet,
+                test_mesh_3d_two_tets, test_mesh_moon_2d, GeomHalfCircle2d, SphereGeometry,
             },
             Edge, Elem, GElem, Point, SimplexMesh, Tetrahedron, Triangle,
         },
@@ -2593,6 +2593,50 @@ mod tests {
                 assert!(mini > 0.3, "min. edge length: {mini}");
                 assert!(maxi < 1.7, "max. edge length: {maxi}");
             }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_adapt_aniso_3d_geom() -> Result<()> {
+        let mut mesh = sphere_mesh(2);
+
+        let mfunc = |_p| {
+            let v0 = Point::<3>::new(0.5, 0., 0.);
+            let v1 = Point::<3>::new(0.0, 0.5, 0.);
+            let v2 = Point::<3>::new(0., 0.0, 0.1);
+            AnisoMetric3d::from_sizes(&v0, &v1, &v2)
+        };
+
+        let geom = SphereGeometry;
+
+        let fname = format!("sphere_{}.vtu", 0);
+        mesh.write_vtk(&fname, None, None)?;
+
+        for iter in 0..2 {
+            let h: Vec<_> = mesh.verts().map(mfunc).collect();
+            let mut remesher = Remesher::new(&mesh, &h, &geom)?;
+
+            let params = RemesherParams {
+                split_min_q_abs: 0.4,
+                ..RemesherParams::default()
+            };
+            remesher.remesh(params, &geom)?;
+            remesher.check()?;
+
+            mesh = remesher.to_mesh(true);
+            mesh.compute_topology();
+
+            let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
+
+            if iter == 1 {
+                assert!(mini > 0.3, "min. edge length: {mini}");
+                assert!(maxi < 1.7, "max. edge length: {maxi}");
+            }
+
+            let fname = format!("sphere_{}.vtu", iter + 1);
+            mesh.write_vtk(&fname, None, None)?;
         }
 
         Ok(())
