@@ -344,3 +344,111 @@ endsolid Created by Gmsh";
 
     Ok(())
 }
+
+pub struct SphereGeometry;
+
+impl Geometry<3> for SphereGeometry {
+    fn check(&self, _topo: &super::Topology) -> Result<()> {
+        Ok(())
+    }
+
+    fn project(&self, pt: &mut Point<3>, _tag: &TopoTag) -> f64 {
+        let nrm = pt.norm();
+        *pt /= nrm;
+        nrm - 1.0
+    }
+
+    fn angle(&self, pt: &Point<3>, n: &Point<3>, _tag: &TopoTag) -> f64 {
+        let n_ref = pt.normalize();
+        let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
+        f64::acos(cos_a).to_degrees()
+    }
+}
+
+#[must_use]
+pub fn sphere_mesh_surf(level: usize) -> SimplexMesh<3, Triangle> {
+    let verts = vec![
+        Point::<3>::new(0., 0., 1.),
+        Point::<3>::new(1., 0., 0.),
+        Point::<3>::new(0., 1., 0.),
+        Point::<3>::new(-1., 0., 0.),
+        Point::<3>::new(0., -1., 0.),
+        Point::<3>::new(0., 0., -1.),
+    ];
+
+    let elems = vec![
+        Triangle::new(0, 1, 2),
+        Triangle::new(0, 2, 3),
+        Triangle::new(0, 3, 4),
+        Triangle::new(0, 4, 1),
+        Triangle::new(5, 2, 1),
+        Triangle::new(5, 3, 2),
+        Triangle::new(5, 4, 3),
+        Triangle::new(5, 1, 4),
+    ];
+
+    let etags = vec![1; elems.len()];
+    let faces = Vec::new();
+    let ftags = Vec::new();
+
+    let mut grid = SimplexMesh::new(verts, elems, etags, faces, ftags);
+
+    let geom = SphereGeometry;
+    for _ in 0..level {
+        grid = grid.split();
+        grid.mut_verts().for_each(|v| {
+            geom.project(v, &(2, 1));
+        });
+    }
+    grid.compute_topology();
+    grid
+}
+
+#[must_use]
+pub fn sphere_mesh(level: usize) -> SimplexMesh<3, Tetrahedron> {
+    let verts = vec![
+        Point::<3>::new(0., 0., 1.),
+        Point::<3>::new(1., 0., 0.),
+        Point::<3>::new(0., 1., 0.),
+        Point::<3>::new(-1., 0., 0.),
+        Point::<3>::new(0., -1., 0.),
+        Point::<3>::new(0., 0., -1.),
+        Point::<3>::new(0., 0., 0.),
+    ];
+
+    let elems = vec![
+        Tetrahedron::new(6, 0, 1, 2),
+        Tetrahedron::new(6, 0, 2, 3),
+        Tetrahedron::new(6, 0, 3, 4),
+        Tetrahedron::new(6, 0, 4, 1),
+        Tetrahedron::new(6, 5, 2, 1),
+        Tetrahedron::new(6, 5, 3, 2),
+        Tetrahedron::new(6, 5, 4, 3),
+        Tetrahedron::new(6, 5, 1, 4),
+    ];
+
+    let etags = vec![1; elems.len()];
+
+    let faces = vec![
+        Triangle::new(0, 1, 2),
+        Triangle::new(0, 2, 3),
+        Triangle::new(0, 3, 4),
+        Triangle::new(0, 4, 1),
+        Triangle::new(5, 2, 1),
+        Triangle::new(5, 3, 2),
+        Triangle::new(5, 4, 3),
+        Triangle::new(5, 1, 4),
+    ];
+
+    let ftags = vec![1; faces.len()];
+
+    let mut grid = SimplexMesh::new(verts, elems, etags, faces, ftags);
+
+    let geom = SphereGeometry;
+    for _ in 0..level {
+        grid = grid.split();
+        grid.compute_topology();
+        geom.project_vertices(&mut grid);
+    }
+    grid
+}
