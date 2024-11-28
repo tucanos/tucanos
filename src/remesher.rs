@@ -488,6 +488,13 @@ macro_rules! create_remesher {
             pub fn stats_json(&self) -> String {
                 self.remesher.stats_json()
             }
+
+            /// Get the metric
+            #[must_use]
+            pub fn metric<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray2<f64>> {
+
+                return to_numpy_2d(py, self.remesher.metric(), <$metric as Metric<$dim>>::N);
+            }
         }
     };
 }
