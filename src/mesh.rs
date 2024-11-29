@@ -14,12 +14,8 @@ use pyo3::{
 };
 use std::collections::HashMap;
 use tucanos::{
-    geom_elems::GElem,
-    mesh::Point,
-    mesh::SimplexMesh,
-    mesh_stl::read_stl,
+    mesh::{io::read_stl, Edge, Elem, GElem, Point, SimplexMesh, Tetrahedron, Triangle},
     metric::Metric,
-    topo_elems::{Edge, Elem, Tetrahedron, Triangle},
     Idx, Tag,
 };
 

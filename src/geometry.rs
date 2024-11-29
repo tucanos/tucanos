@@ -6,8 +6,7 @@ use numpy::PyArray2;
 use pyo3::{exceptions::PyRuntimeError, pyclass, pymethods, Bound, PyResult, Python};
 use tucanos::{
     geometry::{Geometry, LinearGeometry},
-    mesh_stl::orient_stl,
-    topo_elems::{Edge, Triangle},
+    mesh::{io::orient_stl, Edge, Triangle},
 };
 macro_rules! create_geometry {
     ($name: ident, $dim: expr, $etype: ident, $mesh: ident, $geom: ident) => {

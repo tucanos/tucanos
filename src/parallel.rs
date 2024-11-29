@@ -13,11 +13,9 @@ use pyo3::{
     Bound, PyResult, Python,
 };
 use tucanos::{
-    mesh_partition::PartitionType,
+    mesh::{PartitionType, Tetrahedron, Triangle},
     metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
-    parallel::{ParallelRemesher, ParallelRemeshingParams},
-    remesher::{RemesherParams, SmoothingType},
-    topo_elems::{Tetrahedron, Triangle},
+    remesher::{ParallelRemesher, ParallelRemeshingParams, RemesherParams, SmoothingType},
     Idx,
 };
 

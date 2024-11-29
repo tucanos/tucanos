@@ -14,9 +14,9 @@ use pyo3::{
     Bound, PyResult, Python,
 };
 use tucanos::{
+    mesh::{Tetrahedron, Triangle},
     metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
     remesher::{Remesher, RemesherParams, SmoothingType},
-    topo_elems::{Tetrahedron, Triangle},
     Idx,
 };
 
