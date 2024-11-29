@@ -15,9 +15,9 @@ log = "0.4.22"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 nlopt = { version="0.7.0", optional = true}
-stl_io = {version="0.8.2"}
+stl_io = {version="0.8.3"}
 rustc-hash = "2.0.0"
-sorted-vec = "0.8.2"
+sorted-vec = "0.8.5"
 rand = "0.8.5"
 lindel = "0.1.1"
 marechal-libol-sys = { git = "https://github.com/tucanos/marechal-libol-sys.git", optional = true }
@@ -28,11 +28,11 @@ metis = { git = "https://github.com/tucanos/metis-rs.git", version = "0.1.2", op
 kdtree = { version = "0.7", optional = true }
 parry3d-f64 = { version = "0.17", optional = true }
 parry2d-f64 = { version = "0.17", optional = true }
-rayon = "1.8.0"
+rayon = "1.10"
 typenum = { version ="1.17", features = ["const-generics"] }
-num = "0.4.1"
+num = "0.4.3"
 minimeshb = { git = "https://github.com/tucanos/minimeshb.git"}
-tempfile = "3.12"
+tempfile = "3.14"
 
 [features]
 default = ["parry"]
