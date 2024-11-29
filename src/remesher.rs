@@ -385,7 +385,7 @@ macro_rules! create_remesher {
             /// Get the default remesher parameters
             pub fn default_params<'py>(&mut self, py: Python<'py>) -> Bound<'py, PyDict> {
                 let default_params = RemesherParams::default();
-                let dict = PyDict::new_bound(py);
+                let dict = PyDict::new(py);
                 dict.set_item("num_iter", default_params.num_iter).unwrap();
                 dict.set_item("two_steps", default_params.two_steps).unwrap();
                 dict.set_item("split_max_iter", default_params.split_max_iter).unwrap();

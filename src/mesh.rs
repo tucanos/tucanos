@@ -231,11 +231,11 @@ macro_rules! create_mesh {
             pub fn add_boundary_faces<'py>(&mut self, py: Python<'py>) ->
             PyResult<(Bound<'py, PyDict>, Bound<'py, PyDict>)> {
                 let (bdy, ifc) = self.mesh.add_boundary_faces();
-                let  dict_bdy = PyDict::new_bound(py);
+                let  dict_bdy = PyDict::new(py);
                 for (k, v) in bdy.iter() {
                     dict_bdy.set_item(k, v)?;
                 }
-                let  dict_ifc = PyDict::new_bound(py);
+                let  dict_ifc = PyDict::new(py);
                 for (k, v) in ifc.iter() {
                     dict_ifc.set_item(k, to_numpy_1d(py, v.to_vec()))?;
                 }
@@ -554,7 +554,7 @@ macro_rules! create_mesh {
                 if let Err(res) = res {
                      Err(PyRuntimeError::new_err(res.to_string()))
                 } else {
-                    let dict = PyDict::new_bound(py);
+                    let dict = PyDict::new(py);
                     for (k, v) in res.unwrap().iter() {
                         dict.set_item(k, to_numpy_1d(py, v.to_vec()))?;
                     }
@@ -569,7 +569,7 @@ macro_rules! create_mesh {
                 if let Err(res) = res {
                      Err(PyRuntimeError::new_err(res.to_string()))
                 } else {
-                    let dict = PyDict::new_bound(py);
+                    let dict = PyDict::new(py);
                     for (k, v) in res.unwrap().iter() {
                         dict.set_item(k, to_numpy_1d(py, v.to_vec()))?;
                     }

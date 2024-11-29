@@ -10,9 +10,9 @@ crate-type = ["cdylib"]
 [dependencies]
 log = "0.4.22"
 tucanos = { git = "https://github.com/tucanos/tucanos.git", rev = "252380e" }
-numpy = "0.22"
-pyo3 = { version = "0.22", features = ["extension-module", "multiple-pymethods"] }
-pyo3-log = "0.11"
+numpy = "0.23"
+pyo3 = { version = "0.23", features = ["extension-module", "multiple-pymethods"] }
+pyo3-log = "0.12"
 
 [features]
 default = ["parry"]
@@ -32,10 +32,7 @@ all = { level = "deny", priority = -1 }
 pedantic = { level = "deny", priority = -1 }
 nursery = { level = "deny", priority = -1 }
 cargo = { level = "deny", priority = -1 }
-module_name_repetitions = "allow"
 missing_panics_doc = "allow"
-match_same_arms = "allow"
-similar_names = "allow"
 cast_possible_truncation = "allow"
 missing_errors_doc = "allow"
 cast_precision_loss = "allow"
@@ -43,12 +40,8 @@ multiple_crate_versions = "allow"
 cargo_common_metadata = "allow"
 doc_markdown = "allow"
 suboptimal_flops = "allow"
-many_single_char_names = "allow"
-cast_sign_loss = "allow"
-cast_possible_wrap = "allow"
 should_panic_without_expect = "allow"
-unreadable_literal = "allow"
-manual_clamp = "allow"
-# TODO: to remove
-cognitive_complexity = "allow"
+ptr_as_ptr = "allow"
+ptr_as_ref = "allow"
+ref_as_ptr = "allow"
 needless_pass_by_value = "allow"

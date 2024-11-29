@@ -10,12 +10,12 @@ use pyo3::{
 };
 
 fn to_numpy_1d<T: numpy::Element>(py: Python<'_>, vec: Vec<T>) -> Bound<'_, PyArray1<T>> {
-    PyArray::from_vec_bound(py, vec)
+    PyArray::from_vec(py, vec)
 }
 
 fn to_numpy_2d<T: numpy::Element>(py: Python<'_>, vec: Vec<T>, m: usize) -> Bound<'_, PyArray2<T>> {
     let n = vec.len();
-    PyArray::from_vec_bound(py, vec)
+    PyArray::from_vec(py, vec)
         .reshape([n / m, m])
         .unwrap()
 }
