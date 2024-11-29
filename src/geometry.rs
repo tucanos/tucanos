@@ -10,7 +10,8 @@ use tucanos::{
 };
 macro_rules! create_geometry {
     ($name: ident, $dim: expr, $etype: ident, $mesh: ident, $geom: ident) => {
-        #[doc = concat!("Piecewise linear geometry consisting of ", stringify!($etype), " in ", stringify!($dim), "D")]
+        #[doc = concat!("Piecewise linear geometry consisting of ", stringify!($etype), " in ",
+                    stringify!($dim), "D")]
         #[pyclass]
         // #[derive(Clone)]
         pub struct $name {
@@ -22,11 +23,7 @@ macro_rules! create_geometry {
             #[new]
             #[must_use]
             #[pyo3(signature = (mesh, geom=None))]
-            pub fn new(
-                mesh: &$mesh,
-                geom: Option<&$geom>,
-            ) -> Self {
-
+            pub fn new(mesh: &$mesh, geom: Option<&$geom>) -> Self {
                 let mut gmesh = if let Some(geom) = geom {
                     geom.mesh.clone()
                 } else {
@@ -51,19 +48,23 @@ macro_rules! create_geometry {
             }
 
             /// Compute the curvature
-            pub fn compute_curvature(&mut self)  {
-               self.geom.compute_curvature()
+            pub fn compute_curvature(&mut self) {
+                self.geom.compute_curvature()
             }
 
             /// Export the curvature to a vtk file
             pub fn write_curvature_vtk(&self, fname: &str) -> PyResult<()> {
-               self.geom
+                self.geom
                     .write_curvature(fname)
                     .map_err(|e| PyRuntimeError::new_err(e.to_string()))
             }
 
             /// Project vertices
-            pub fn project<'py>(&self, py: Python<'py>, mesh: &$mesh) -> PyResult<Bound<'py, PyArray2<f64>>> {
+            pub fn project<'py>(
+                &self,
+                py: Python<'py>,
+                mesh: &$mesh,
+            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
                 let vtags = mesh.mesh.get_vertex_tags().unwrap();
                 let mut coords = Vec::with_capacity(mesh.mesh.n_verts() as usize * $dim);
 
@@ -74,14 +75,10 @@ macro_rules! create_geometry {
                     coords.extend(pt.iter().copied());
                 }
 
-                Ok(to_numpy_2d(
-                    py,
-                    coords,
-                    $dim,
-                ))
+                Ok(to_numpy_2d(py, coords, $dim))
             }
         }
-    }
+    };
 }
 
 create_geometry!(LinearGeometry3d, 3, Triangle, Mesh33, Mesh32);

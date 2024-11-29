@@ -66,10 +66,12 @@ macro_rules! create_mesh {
                 ).collect();
 
                 let elems = elems.as_slice()?;
-                let elems = elems.chunks($etype::N_VERTS as usize).map(|e| $etype::from_slice(e)).collect();
+                let elems = elems.chunks($etype::N_VERTS as usize).map(
+                    |e| $etype::from_slice(e)).collect();
 
                 let faces = faces.as_slice()?;
-                let faces = faces.chunks(<$etype as Elem>::Face::N_VERTS as usize).map(|e| <$etype as Elem>::Face::from_slice(e)).collect();
+                let faces = faces.chunks(<$etype as Elem>::Face::N_VERTS as usize).map(
+                    |e| <$etype as Elem>::Face::from_slice(e)).collect();
 
                 Ok(Self {
                     mesh: SimplexMesh::<$dim, $etype>::new(
@@ -99,7 +101,8 @@ macro_rules! create_mesh {
 
             /// Write a solution to a .sol(b) file
             pub fn write_solb(&self, fname: &str, arr: PyReadonlyArray2<f64>) -> PyResult<()> {
-                self.mesh.write_solb(&arr.to_vec().unwrap(), fname).map_err(|e| PyRuntimeError::new_err(e.to_string()))
+                self.mesh.write_solb(&arr.to_vec().unwrap(), fname).map_err(
+                    |e| PyRuntimeError::new_err(e.to_string()))
             }
 
 
@@ -222,9 +225,11 @@ macro_rules! create_mesh {
                 }
             }
 
-            /// Add the missing boundary faces and make sure that boundary faces are oriented outwards
+            /// Add the missing boundary faces and make sure that boundary faces are oriented
+            /// outwards.
             /// If internal faces are present, these are keps
-            pub fn add_boundary_faces<'py>(&mut self, py: Python<'py>) -> PyResult<(Bound<'py, PyDict>, Bound<'py, PyDict>)> {
+            pub fn add_boundary_faces<'py>(&mut self, py: Python<'py>) ->
+            PyResult<(Bound<'py, PyDict>, Bound<'py, PyDict>)> {
                 let (bdy, ifc) = self.mesh.add_boundary_faces();
                 let  dict_bdy = PyDict::new_bound(py);
                 for (k, v) in bdy.iter() {
@@ -277,7 +282,9 @@ macro_rules! create_mesh {
                 Ok(())
             }
 
-            #[doc = concat!("Get a copy of the mesh coordinates as a numpy array of shape (# of vertices, ", stringify!($dim), ")")]
+            #[doc = concat!(
+                "Get a copy of the mesh coordinates as a numpy array of shape (# of vertices, ",
+                stringify!($dim), ")")]
             pub fn get_coords<'py>(&mut self, py: Python<'py>) -> Bound<'py, PyArray2<f64>> {
                 let mut coords = Vec::with_capacity(self.mesh.n_verts() as usize * $dim);
                 for v in self.mesh.verts() {
@@ -318,8 +325,11 @@ macro_rules! create_mesh {
             }
 
             /// Reorder the vertices, element and faces using a Hilbert SFC
-            pub fn reorder_hilbert<'py>(&mut self, py: Python<'py>) -> PyResult<(Bound<'py, PyArray1<Idx>>, Bound<'py, PyArray1<Idx>>, Bound<'py, PyArray1<Idx>>)>{
-                let (new_vertex_indices, new_elem_indices, new_face_indices) = self.mesh.reorder_hilbert();
+            pub fn reorder_hilbert<'py>(&mut self, py: Python<'py>) ->
+            PyResult<(Bound<'py, PyArray1<Idx>>, Bound<'py, PyArray1<Idx>>,
+            Bound<'py, PyArray1<Idx>>)>{
+                let (new_vertex_indices, new_elem_indices, new_face_indices) =
+                self.mesh.reorder_hilbert();
                 Ok(
                     (
                         to_numpy_1d(py, new_vertex_indices),
@@ -330,8 +340,8 @@ macro_rules! create_mesh {
 
             }
 
-            /// Convert a (scalar or vector) field defined at the element centers (P0) to a field defined at the vertices (P1)
-            /// using a weighted average.
+            /// Convert a (scalar or vector) field defined at the element centers (P0) to a field
+            /// defined at the vertices (P1) using a weighted average.
             pub fn elem_data_to_vertex_data<'py>(
                 &mut self,
                 py: Python<'py>,
@@ -349,8 +359,8 @@ macro_rules! create_mesh {
                 Ok(to_numpy_2d(py, res.unwrap(), arr.shape()[1]))
             }
 
-            /// Convert a field (scalar or vector) defined at the vertices (P1) to a field defined at the
-            /// element centers (P0)
+            /// Convert a field (scalar or vector) defined at the vertices (P1) to a field defined
+            /// at the element centers (P0)
             pub fn vertex_data_to_elem_data<'py>(
                 &mut self,
                 py: Python<'py>,
@@ -363,7 +373,8 @@ macro_rules! create_mesh {
                 Ok(to_numpy_2d(py, res.unwrap(), arr.shape()[1]))
             }
 
-            /// Interpolate a field (scalar or vector) defined at the vertices (P1) to a different mesh using linear interpolation
+            /// Interpolate a field (scalar or vector) defined at the vertices (P1) to a different
+            /// mesh using linear interpolation
             #[pyo3(signature = (other, arr, tol=None))]
             pub fn interpolate_linear<'py>(
                 &mut self,
@@ -376,11 +387,13 @@ macro_rules! create_mesh {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
                 let tree = self.mesh.compute_elem_tree();
-                let res = self.mesh.interpolate_linear(&tree, &other.mesh, arr.as_slice().unwrap(), tol);
+                let res = self.mesh.interpolate_linear(&tree, &other.mesh, arr.as_slice().unwrap(),
+                tol);
                 Ok(to_numpy_2d(py, res.unwrap(), arr.shape()[1]))
             }
 
-            /// Interpolate a field (scalar or vector) defined at the vertices (P1) to a different mesh using nearest neighbor interpolation
+            /// Interpolate a field (scalar or vector) defined at the vertices (P1) to a different
+            /// mesh using nearest neighbor interpolation
             pub fn interpolate_nearest<'py>(
                 &mut self,
                 py: Python<'py>,
@@ -391,11 +404,13 @@ macro_rules! create_mesh {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
                 let tree = self.mesh.compute_vert_tree();
-                let res = self.mesh.interpolate_nearest(&tree, &other.mesh, arr.as_slice().unwrap());
+                let res = self.mesh.interpolate_nearest(&tree, &other.mesh,
+                    arr.as_slice().unwrap());
                 Ok(to_numpy_2d(py, res.unwrap(), arr.shape()[1]))
             }
 
-            /// Smooth a field defined at the mesh vertices using a 1st order least-square approximation
+            /// Smooth a field defined at the mesh vertices using a 1st order least-square
+            /// approximation
             #[pyo3(signature = (arr, weight_exp=None))]
             pub fn smooth<'py>(
                 &self,
@@ -419,7 +434,8 @@ macro_rules! create_mesh {
                 Ok(to_numpy_2d(py, res.unwrap(), arr.shape()[1]))
             }
 
-            /// Compute the gradient of a field defined at the mesh vertices using a 1st order least-square approximation
+            /// Compute the gradient of a field defined at the mesh vertices using a 1st order
+            /// least-square approximation
             #[pyo3(signature = (arr, weight_exp=None))]
             pub fn compute_gradient<'py>(
                 &self,
@@ -447,9 +463,10 @@ macro_rules! create_mesh {
                 ))
             }
 
-            /// Compute the hessian of a field defined at the mesh vertices using a 2nd order least-square approximation
-            /// if `weight_exp` is `None`, the vertex has a weight 10, its first order neighbors have
-            /// a weight 1 and the 2nd order neighbors (if used) have a weight of 0.1
+            /// Compute the hessian of a field defined at the mesh vertices using a 2nd order
+            /// least-square approximation
+            /// if `weight_exp` is `None`, the vertex has a weight 10, its first order neighbors
+            /// have a weight 1 and the 2nd order neighbors (if used) have a weight of 0.1
             #[pyo3(signature = (arr, weight_exp=None, use_second_order_neighbors=None))]
             pub fn compute_hessian<'py>(
                 &self,
@@ -467,7 +484,8 @@ macro_rules! create_mesh {
 
                 let res = self
                     .mesh
-                    .hessian(arr.as_slice().unwrap(), weight_exp, use_second_order_neighbors.unwrap_or(true));
+                    .hessian(arr.as_slice().unwrap(), weight_exp,
+                    use_second_order_neighbors.unwrap_or(true));
                 if let Err(res) = res {
                     return Err(PyRuntimeError::new_err(res.to_string()));
                 }
@@ -530,7 +548,8 @@ macro_rules! create_mesh {
             }
 
             /// Automatically tag the elements based on a feature angle
-            pub fn autotag<'py>(&mut self, py: Python<'py>, angle_deg: f64) -> PyResult<Bound<'py, PyDict>> {
+            pub fn autotag<'py>(&mut self, py: Python<'py>, angle_deg: f64)
+            -> PyResult<Bound<'py, PyDict>> {
                 let res = self.mesh.autotag(angle_deg);
                 if let Err(res) = res {
                      Err(PyRuntimeError::new_err(res.to_string()))
@@ -544,7 +563,8 @@ macro_rules! create_mesh {
             }
 
             /// Automatically tag the faces based on a feature angle
-            pub fn autotag_bdy<'py>(&mut self, py: Python<'py>, angle_deg: f64) -> PyResult<Bound<'py, PyDict>> {
+            pub fn autotag_bdy<'py>(&mut self, py: Python<'py>, angle_deg: f64)
+            -> PyResult<Bound<'py, PyDict>> {
                 let res = self.mesh.autotag_bdy(angle_deg);
                 if let Err(res) = res {
                      Err(PyRuntimeError::new_err(res.to_string()))
@@ -572,7 +592,9 @@ impl Mesh33 {
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::too_many_lines)]
     #[classmethod]
-    #[pyo3(signature = (coords, hexs=None, hex_tags=None, pris=None, pri_tags=None, pyrs=None, pyr_tags=None, tets=None, tet_tags=None, quas=None, qua_tags=None, tris=None, tri_tags=None))]
+    #[pyo3(signature = (coords, hexs=None, hex_tags=None, pris=None, pri_tags=None, pyrs=None,
+        pyr_tags=None, tets=None, tet_tags=None, quas=None, qua_tags=None, tris=None,
+        tri_tags=None))]
     pub fn from_basic_elems(
         _cls: &Bound<'_, PyType>,
         coords: PyReadonlyArray2<f64>,
@@ -734,10 +756,11 @@ impl Mesh33 {
     }
 
     /// Get a metric defined on all the mesh vertices such that
-    ///  - for boundary vertices, the principal directions are aligned with the principal curvature directions
-    ///    and the sizes to curvature radius ratio is r_h
+    ///  - for boundary vertices, the principal directions are aligned with the principal curvature
+    ///    directions and the sizes to curvature radius ratio is r_h
     ///  - the metric is entended into the volume with gradation beta
-    ///  - if an implied metric is provided, the result is limited to (1/step,step) times the implied metric
+    ///  - if an implied metric is provided, the result is limited to (1/step,step) times the
+    ///    implied metric
     ///  - if a normal size array is not provided, the minimum of the tangential sizes is used.
     #[allow(clippy::too_many_arguments)]
     #[pyo3(signature = (geom, r_h, beta, h_min=None, h_n=None, h_n_tags=None))]
@@ -786,7 +809,8 @@ impl Mesh32 {
     /// Create a Mesh32 from basic elements
     #[classmethod]
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature = (coords, quas=None, qua_tags=None, tris=None, tri_tags=None, edgs=None, edg_tags=None))]
+    #[pyo3(signature = (coords, quas=None, qua_tags=None, tris=None, tri_tags=None, edgs=None,
+        edg_tags=None))]
     pub fn from_basic_elems(
         _cls: &Bound<'_, PyType>,
         coords: PyReadonlyArray2<f64>,
@@ -895,7 +919,8 @@ impl Mesh22 {
     /// Create a Mesh22 from basic elements
     #[allow(clippy::too_many_arguments)]
     #[classmethod]
-    #[pyo3(signature = (coords, quas=None, qua_tags=None, tris=None, tri_tags=None, edgs=None, edg_tags=None))]
+    #[pyo3(signature = (coords, quas=None, qua_tags=None, tris=None, tri_tags=None, edgs=None,
+        edg_tags=None))]
     pub fn from_basic_elems(
         _cls: &Bound<'_, PyType>,
         coords: PyReadonlyArray2<f64>,
@@ -993,8 +1018,8 @@ impl Mesh22 {
     }
 
     /// Get a metric defined on all the mesh vertices such that
-    ///  - for boundary vertices, the principal directions are aligned with the principal curvature directions
-    ///    and the sizes to curvature radius ratio is r_h
+    ///  - for boundary vertices, the principal directions are aligned with the principal curvature
+    ///    directions and the sizes to curvature radius ratio is r_h
     ///  - the metric is entended into the volume with gradation beta
     ///  - if a normal size array is not provided, the minimum of the tangential sizes is used.
     #[allow(clippy::too_many_arguments)]

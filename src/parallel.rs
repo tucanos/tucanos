@@ -21,15 +21,20 @@ use tucanos::{
 
 macro_rules! create_parallel_remesher {
     ($name: ident, $dim: expr, $etype: ident, $metric: ident, $mesh: ident, $geom: ident) => {
-        #[doc = concat!("Parallel remesher for a meshes consisting of ", stringify!($etype), " in ", stringify!($dim), "D")]
-        #[doc = concat!("using ", stringify!($metric), " as metric and a piecewise linear representation of the geometry")]
+        #[doc = concat!("Parallel remesher for a meshes consisting of ", stringify!($etype),
+        " in ", stringify!($dim), "D")]
+        #[doc = concat!("using ", stringify!($metric),
+        " as metric and a piecewise linear representation of the geometry")]
         #[pyclass]
         pub struct $name {
             dd: ParallelRemesher<$dim, $etype>,
         }
 
-        #[doc = concat!("Create a parallel remesher from a ", stringify!($mesh), " and a ",stringify!($metric) ," metric defined at the mesh vertices")]
-        #[doc = concat!("A piecewise linear representation of the geometry is used, either from the ", stringify!($geom), " given or otherwise from the mesh boundary.")]
+        #[doc = concat!("Create a parallel remesher from a ", stringify!($mesh), " and a ",
+        stringify!($metric) ," metric defined at the mesh vertices")]
+        #[doc = concat!(
+            "A piecewise linear representation of the geometry is used, either from the ",
+            stringify!($geom), " given or otherwise from the mesh boundary.")]
         #[pymethods]
         impl $name {
             #[new]
@@ -48,7 +53,8 @@ macro_rules! create_parallel_remesher {
                 } else if partition_type == "hilbert" {
                     PartitionType::Hilbert(n_partitions)
                 } else {
-                    return Err(PyValueError::new_err("Invalid partition type: allowed values are scotch, metis_kway, metis_recursive"));
+                    return Err(PyValueError::new_err(
+"Invalid partition type: allowed values are scotch, metis_kway, metis_recursive"));
                 };
 
                 let dd = ParallelRemesher::new(mesh.mesh.clone(), partition_type);
@@ -69,7 +75,14 @@ macro_rules! create_parallel_remesher {
             }
 
             #[allow(clippy::too_many_arguments)]
-            #[pyo3(signature = (geometry, m, num_iter=None, two_steps=None, split_max_iter=None, split_min_l_rel=None, split_min_l_abs=None, split_min_q_rel=None, split_min_q_abs=None, collapse_max_iter=None, collapse_max_l_rel=None, collapse_max_l_abs=None, collapse_min_q_rel=None, collapse_min_q_abs=None, swap_max_iter=None, swap_max_l_rel=None, swap_max_l_abs=None, swap_min_l_rel=None, swap_min_l_abs=None, smooth_iter=None, smooth_type=None, smooth_relax=None, smooth_keep_local_minima=None, max_angle=None, debug=None, n_layers=None, n_levels=None, min_verts=None))]
+            #[pyo3(signature = (geometry, m, num_iter=None, two_steps=None, split_max_iter=None,
+                split_min_l_rel=None, split_min_l_abs=None, split_min_q_rel=None,
+                split_min_q_abs=None, collapse_max_iter=None, collapse_max_l_rel=None,
+                collapse_max_l_abs=None, collapse_min_q_rel=None, collapse_min_q_abs=None,
+                swap_max_iter=None, swap_max_l_rel=None, swap_max_l_abs=None, swap_min_l_rel=None,
+                swap_min_l_abs=None, smooth_iter=None, smooth_type=None, smooth_relax=None,
+                smooth_keep_local_minima=None, max_angle=None, debug=None, n_layers=None,
+                n_levels=None, min_verts=None))]
             pub fn remesh<'py>(&mut self,
                 py: Python<'py>,
                 geometry: &$geom,
@@ -134,11 +147,16 @@ macro_rules! create_parallel_remesher {
                     split_min_l_abs: split_min_l_abs.unwrap_or(default_params.split_min_l_abs),
                     split_min_q_rel: split_min_q_rel.unwrap_or(default_params.split_min_q_rel),
                     split_min_q_abs: split_min_q_abs.unwrap_or(default_params.split_min_q_abs),
-                    collapse_max_iter: collapse_max_iter.unwrap_or(default_params.collapse_max_iter),
-                    collapse_max_l_rel: collapse_max_l_rel.unwrap_or(default_params.collapse_max_l_rel),
-                    collapse_max_l_abs: collapse_max_l_abs.unwrap_or(default_params.collapse_max_l_abs),
-                    collapse_min_q_rel: collapse_min_q_rel.unwrap_or(default_params.collapse_min_q_rel),
-                    collapse_min_q_abs: collapse_min_q_abs.unwrap_or(default_params.collapse_min_q_abs),
+                    collapse_max_iter: collapse_max_iter.unwrap_or(
+                        default_params.collapse_max_iter),
+                    collapse_max_l_rel: collapse_max_l_rel.unwrap_or(
+                        default_params.collapse_max_l_rel),
+                    collapse_max_l_abs: collapse_max_l_abs.unwrap_or(
+                        default_params.collapse_max_l_abs),
+                    collapse_min_q_rel: collapse_min_q_rel.unwrap_or(
+                        default_params.collapse_min_q_rel),
+                    collapse_min_q_abs: collapse_min_q_abs.unwrap_or(
+                        default_params.collapse_min_q_abs),
                     swap_max_iter: swap_max_iter.unwrap_or(default_params.swap_max_iter),
                     swap_max_l_rel: swap_max_l_rel.unwrap_or(default_params.swap_max_l_rel),
                     swap_max_l_abs: swap_max_l_abs.unwrap_or(default_params.swap_max_l_abs),
@@ -146,8 +164,10 @@ macro_rules! create_parallel_remesher {
                     swap_min_l_abs: swap_min_l_abs.unwrap_or(default_params.swap_min_l_abs),
                     smooth_iter: smooth_iter.unwrap_or(default_params.smooth_iter),
                     smooth_type,
-                    smooth_relax: smooth_relax.map(|x| x.to_vec().unwrap()).unwrap_or(default_params.smooth_relax),
-                    smooth_keep_local_minima: smooth_keep_local_minima.unwrap_or(default_params.smooth_keep_local_minima),
+                    smooth_relax: smooth_relax.map(|x| x.to_vec().unwrap()).unwrap_or(
+                        default_params.smooth_relax),
+                    smooth_keep_local_minima: smooth_keep_local_minima.unwrap_or(
+                        default_params.smooth_keep_local_minima),
                     max_angle: max_angle.unwrap_or(default_params.max_angle),
                     debug: debug.unwrap_or(default_params.debug),
                 };
@@ -158,7 +178,8 @@ macro_rules! create_parallel_remesher {
                     min_verts.unwrap_or(0)
                 );
 
-                let (mesh, info, m) = py.allow_threads(|| self.dd.remesh(&m, &geometry.geom, params, dd_params).unwrap());
+                let (mesh, info, m) = py.allow_threads(||
+                self.dd.remesh(&m, &geometry.geom, params, dd_params).unwrap());
 
                 let mesh = $mesh{mesh};
 
@@ -188,7 +209,8 @@ macro_rules! create_parallel_remesher {
                 let m: Vec<_> = m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect();
 
                 let q = mesh.mesh.qualities(&m);
-                let l = mesh.mesh.edge_lengths(&m).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+                let l = mesh.mesh.edge_lengths(&m).map_err(
+                    |e| PyRuntimeError::new_err(e.to_string()))?;
 
                 Ok((to_numpy_1d(py, q), to_numpy_1d(py, l)))
             }

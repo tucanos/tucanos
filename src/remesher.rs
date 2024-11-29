@@ -22,15 +22,20 @@ use tucanos::{
 
 macro_rules! create_remesher {
     ($name: ident, $dim: expr, $etype: ident, $metric: ident, $mesh: ident, $geom: ident) => {
-        #[doc = concat!("Remesher for a meshes consisting of ", stringify!($etype), " in ", stringify!($dim), "D")]
-        #[doc = concat!("using ", stringify!($metric), " as metric and a piecewise linear representation of the geometry")]
+        #[doc = concat!("Remesher for a meshes consisting of ", stringify!($etype), " in ",
+        stringify!($dim), "D")]
+        #[doc = concat!("using ", stringify!($metric),
+        " as metric and a piecewise linear representation of the geometry")]
         #[pyclass]
         pub struct $name {
             remesher: Remesher<$dim, $etype, $metric>,
         }
 
-        #[doc = concat!("Create a remesher from a ", stringify!($mesh), " and a ",stringify!($metric) ," metric defined at the mesh vertices")]
-        #[doc = concat!("A piecewise linear representation of the geometry is used, either from the ", stringify!($geom), " given or otherwise from the mesh boundary.")]
+        #[doc = concat!("Create a remesher from a ", stringify!($mesh), " and a ",
+        stringify!($metric) ," metric defined at the mesh vertices")]
+        #[doc = concat!(
+            "A piecewise linear representation of the geometry is used, either from the ",
+            stringify!($geom), " given or otherwise from the mesh boundary.")]
         #[pymethods]
         impl $name {
             #[new]
@@ -95,10 +100,12 @@ macro_rules! create_remesher {
                 return Ok(to_numpy_2d(py, res, <$metric as Metric<$dim>>::N));
             }
 
-            /// Scale a metric field to reach the desired (ideal) number of elements using min / max bounds on the cell size
+            /// Scale a metric field to reach the desired (ideal) number of elements using
+            /// min / max bounds on the cell size
             #[classmethod]
             #[allow(clippy::too_many_arguments)]
-            #[pyo3(signature = (mesh, m, h_min, h_max, n_elems, fixed_m=None, implied_m=None, step=None, max_iter=None))]
+            #[pyo3(signature = (mesh, m, h_min, h_max, n_elems, fixed_m=None, implied_m=None,
+                step=None, max_iter=None))]
             pub fn scale_metric<'py>(
                 _cls: &Bound<'_, PyType>,
                 py: Python<'py>,
@@ -124,24 +131,31 @@ macro_rules! create_remesher {
 
                 let res =  if let Some(fixed_m) = fixed_m {
                     let fixed_m = fixed_m.as_slice().unwrap();
-                    let fixed_m: Vec<_> = fixed_m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect();
+                    let fixed_m: Vec<_> = fixed_m.chunks($metric::N).map(|x|
+                        $metric::from_slice(x)).collect();
                     if let Some(implied_m) = implied_m {
                         let implied_m = implied_m.as_slice().unwrap();
-                        let implied_m: Vec<_> = implied_m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect();
+                        let implied_m: Vec<_> = implied_m.chunks($metric::N).map(|x|
+                            $metric::from_slice(x)).collect();
                         mesh.mesh
-                            .scale_metric(&mut m, h_min, h_max, n_elems, Some(&fixed_m), Some(&implied_m), step, max_iter.unwrap_or(10))
+                            .scale_metric(&mut m, h_min, h_max, n_elems, Some(&fixed_m),
+                            Some(&implied_m), step, max_iter.unwrap_or(10))
                     } else {
                         mesh.mesh
-                            .scale_metric(&mut m, h_min, h_max, n_elems, Some(&fixed_m), None, step, max_iter.unwrap_or(10))
+                            .scale_metric(&mut m, h_min, h_max, n_elems, Some(&fixed_m), None,
+                            step, max_iter.unwrap_or(10))
                     }
                 } else if let Some(implied_m) = implied_m {
                     let implied_m = implied_m.as_slice().unwrap();
-                    let implied_m: Vec<_> = implied_m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect();
+                    let implied_m: Vec<_> = implied_m.chunks($metric::N).map(|x|
+                        $metric::from_slice(x)).collect();
                     mesh.mesh
-                        .scale_metric(&mut m, h_min, h_max, n_elems, None, Some(&implied_m), step, max_iter.unwrap_or(10))
+                        .scale_metric(&mut m, h_min, h_max, n_elems, None, Some(&implied_m), step,
+                        max_iter.unwrap_or(10))
                 } else {
                     mesh.mesh
-                    .scale_metric(&mut m, h_min, h_max, n_elems, None, None, None, max_iter.unwrap_or(10))
+                    .scale_metric(&mut m, h_min, h_max, n_elems, None, None, None,
+                        max_iter.unwrap_or(10))
                 };
 
                 if let Err(res) = res {
@@ -211,8 +225,8 @@ macro_rules! create_remesher {
                 }
             }
 
-            /// Convert a metic field defined at the element centers (P0) to a field defined at the vertices (P1)
-            /// using a weighted average.
+            /// Convert a metic field defined at the element centers (P0) to a field defined at the
+            /// vertices (P1) using a weighted average.
             #[classmethod]
             pub fn elem_data_to_vertex_data_metric<'py>(
                 _cls: &Bound<'_, PyType>,
@@ -302,7 +316,8 @@ macro_rules! create_remesher {
                 let m_other = m_other.as_slice().unwrap();
                 let m_other = m_other.chunks($metric::N).map(|x| $metric::from_slice(x));
 
-                let mut res = Vec::with_capacity(mesh.mesh.n_verts() as usize * <$metric as Metric<$dim>>::N);
+                let mut res = Vec::with_capacity(mesh.mesh.n_verts() as usize *
+                <$metric as Metric<$dim>>::N);
 
                 for (mut m_i, m_other_i) in m.zip(m_other) {
                     m_i.control_step(&m_other_i, step);
@@ -397,7 +412,8 @@ macro_rules! create_remesher {
                     tucanos::remesher::SmoothingType::Laplacian2 => "laplacian2",
                 };
                 dict.set_item("smooth_type", smooth_type).unwrap();
-                dict.set_item("smooth_relax", to_numpy_1d(py, default_params.smooth_relax)).unwrap();
+                dict.set_item("smooth_relax", to_numpy_1d(py, default_params.smooth_relax)
+            ).unwrap();
                 dict.set_item("max_angle", default_params.max_angle).unwrap();
 
                 dict
@@ -405,7 +421,13 @@ macro_rules! create_remesher {
 
             /// Perform a remeshing iteration
             #[allow(clippy::too_many_arguments)]
-            #[pyo3(signature = (geometry, num_iter=None, two_steps=None, split_max_iter=None, split_min_l_rel=None, split_min_l_abs=None, split_min_q_rel=None, split_min_q_abs=None, collapse_max_iter=None, collapse_max_l_rel=None, collapse_max_l_abs=None, collapse_min_q_rel=None, collapse_min_q_abs=None, swap_max_iter=None, swap_max_l_rel=None, swap_max_l_abs=None, swap_min_l_rel=None, swap_min_l_abs=None, smooth_iter=None, smooth_type=None, smooth_relax=None, smooth_keep_local_minima=None, max_angle=None, debug=None))]
+            #[pyo3(signature = (geometry, num_iter=None, two_steps=None, split_max_iter=None,
+                split_min_l_rel=None, split_min_l_abs=None, split_min_q_rel=None,
+                split_min_q_abs=None, collapse_max_iter=None, collapse_max_l_rel=None,
+                collapse_max_l_abs=None, collapse_min_q_rel=None, collapse_min_q_abs=None,
+                swap_max_iter=None, swap_max_l_rel=None, swap_max_l_abs=None, swap_min_l_rel=None,
+                swap_min_l_abs=None, smooth_iter=None, smooth_type=None, smooth_relax=None,
+                smooth_keep_local_minima=None, max_angle=None, debug=None))]
             pub fn remesh(
                 &mut self,
                 geometry: &$geom,
@@ -455,11 +477,16 @@ macro_rules! create_remesher {
                     split_min_l_abs: split_min_l_abs.unwrap_or(default_params.split_min_l_abs),
                     split_min_q_rel: split_min_q_rel.unwrap_or(default_params.split_min_q_rel),
                     split_min_q_abs: split_min_q_abs.unwrap_or(default_params.split_min_q_abs),
-                    collapse_max_iter: collapse_max_iter.unwrap_or(default_params.collapse_max_iter),
-                    collapse_max_l_rel: collapse_max_l_rel.unwrap_or(default_params.collapse_max_l_rel),
-                    collapse_max_l_abs: collapse_max_l_abs.unwrap_or(default_params.collapse_max_l_abs),
-                    collapse_min_q_rel: collapse_min_q_rel.unwrap_or(default_params.collapse_min_q_rel),
-                    collapse_min_q_abs: collapse_min_q_abs.unwrap_or(default_params.collapse_min_q_abs),
+                    collapse_max_iter: collapse_max_iter.unwrap_or(
+                        default_params.collapse_max_iter),
+                    collapse_max_l_rel: collapse_max_l_rel.unwrap_or(
+                        default_params.collapse_max_l_rel),
+                    collapse_max_l_abs: collapse_max_l_abs.unwrap_or(
+                        default_params.collapse_max_l_abs),
+                    collapse_min_q_rel: collapse_min_q_rel.unwrap_or(
+                        default_params.collapse_min_q_rel),
+                    collapse_min_q_abs: collapse_min_q_abs.unwrap_or(
+                        default_params.collapse_min_q_abs),
                     swap_max_iter: swap_max_iter.unwrap_or(default_params.swap_max_iter),
                     swap_max_l_rel: swap_max_l_rel.unwrap_or(default_params.swap_max_l_rel),
                     swap_max_l_abs: swap_max_l_abs.unwrap_or(default_params.swap_max_l_abs),
@@ -467,12 +494,15 @@ macro_rules! create_remesher {
                     swap_min_l_abs: swap_min_l_abs.unwrap_or(default_params.swap_min_l_abs),
                     smooth_iter: smooth_iter.unwrap_or(default_params.smooth_iter),
                     smooth_type,
-                    smooth_relax: smooth_relax.map(|x| x.to_vec().unwrap()).unwrap_or(default_params.smooth_relax),
-                    smooth_keep_local_minima: smooth_keep_local_minima.unwrap_or(default_params.smooth_keep_local_minima),
+                    smooth_relax: smooth_relax.map(|x| x.to_vec().unwrap()).unwrap_or(
+                        default_params.smooth_relax),
+                    smooth_keep_local_minima: smooth_keep_local_minima.unwrap_or(
+                        default_params.smooth_keep_local_minima),
                     max_angle: max_angle.unwrap_or(default_params.max_angle),
                     debug: debug.unwrap_or(default_params.debug),
                 };
-                self.remesher.remesh(params, &geometry.geom).map_err(|e| PyRuntimeError::new_err(e.to_string()))
+                self.remesher.remesh(params, &geometry.geom).map_err(|e|
+                    PyRuntimeError::new_err(e.to_string()))
             }
 
             /// Get the element qualities as a numpy array of size (# or elements)
