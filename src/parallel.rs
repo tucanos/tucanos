@@ -69,6 +69,7 @@ macro_rules! create_parallel_remesher {
             }
 
             #[allow(clippy::too_many_arguments)]
+            #[pyo3(signature = (geometry, m, num_iter=None, two_steps=None, split_max_iter=None, split_min_l_rel=None, split_min_l_abs=None, split_min_q_rel=None, split_min_q_abs=None, collapse_max_iter=None, collapse_max_l_rel=None, collapse_max_l_abs=None, collapse_min_q_rel=None, collapse_min_q_abs=None, swap_max_iter=None, swap_max_l_rel=None, swap_max_l_abs=None, swap_min_l_rel=None, swap_min_l_abs=None, smooth_iter=None, smooth_type=None, smooth_relax=None, smooth_keep_local_minima=None, max_angle=None, debug=None, n_layers=None, n_levels=None, min_verts=None))]
             pub fn remesh<'py>(&mut self,
                 py: Python<'py>,
                 geometry: &$geom,

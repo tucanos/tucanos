@@ -21,6 +21,7 @@ macro_rules! create_geometry {
             /// Create a new geometry
             #[new]
             #[must_use]
+            #[pyo3(signature = (mesh, geom=None))]
             pub fn new(
                 mesh: &$mesh,
                 geom: Option<&$geom>,

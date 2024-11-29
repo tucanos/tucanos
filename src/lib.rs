@@ -3,7 +3,11 @@ mod mesh;
 mod parallel;
 mod remesher;
 use numpy::{PyArray, PyArray1, PyArray2, PyArrayMethods};
-use pyo3::{pymodule, types::PyModule, Bound, PyResult, Python};
+use pyo3::{
+    pymodule,
+    types::{PyModule, PyModuleMethods},
+    Bound, PyResult, Python,
+};
 
 fn to_numpy_1d<T: numpy::Element>(py: Python<'_>, vec: Vec<T>) -> Bound<'_, PyArray1<T>> {
     PyArray::from_vec_bound(py, vec)

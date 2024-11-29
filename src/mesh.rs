@@ -240,6 +240,7 @@ macro_rules! create_mesh {
             }
 
             /// Write a vtk file containing the mesh
+            #[pyo3(signature = (file_name, vert_data=None, elem_data=None))]
             pub fn write_vtk(&self,
                 file_name: &str,
                 vert_data : Option<HashMap<String, PyReadonlyArray2<f64>>>,
@@ -363,6 +364,7 @@ macro_rules! create_mesh {
             }
 
             /// Interpolate a field (scalar or vector) defined at the vertices (P1) to a different mesh using linear interpolation
+            #[pyo3(signature = (other, arr, tol=None))]
             pub fn interpolate_linear<'py>(
                 &mut self,
                 py: Python<'py>,
@@ -394,6 +396,7 @@ macro_rules! create_mesh {
             }
 
             /// Smooth a field defined at the mesh vertices using a 1st order least-square approximation
+            #[pyo3(signature = (arr, weight_exp=None))]
             pub fn smooth<'py>(
                 &self,
                 py: Python<'py>,
@@ -417,6 +420,7 @@ macro_rules! create_mesh {
             }
 
             /// Compute the gradient of a field defined at the mesh vertices using a 1st order least-square approximation
+            #[pyo3(signature = (arr, weight_exp=None))]
             pub fn compute_gradient<'py>(
                 &self,
                 py: Python<'py>,
@@ -446,6 +450,7 @@ macro_rules! create_mesh {
             /// Compute the hessian of a field defined at the mesh vertices using a 2nd order least-square approximation
             /// if `weight_exp` is `None`, the vertex has a weight 10, its first order neighbors have
             /// a weight 1 and the 2nd order neighbors (if used) have a weight of 0.1
+            #[pyo3(signature = (arr, weight_exp=None, use_second_order_neighbors=None))]
             pub fn compute_hessian<'py>(
                 &self,
                 py: Python<'py>,
@@ -567,6 +572,7 @@ impl Mesh33 {
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::too_many_lines)]
     #[classmethod]
+    #[pyo3(signature = (coords, hexs=None, hex_tags=None, pris=None, pri_tags=None, pyrs=None, pyr_tags=None, tets=None, tet_tags=None, quas=None, qua_tags=None, tris=None, tri_tags=None))]
     pub fn from_basic_elems(
         _cls: &Bound<'_, PyType>,
         coords: PyReadonlyArray2<f64>,
@@ -734,6 +740,7 @@ impl Mesh33 {
     ///  - if an implied metric is provided, the result is limited to (1/step,step) times the implied metric
     ///  - if a normal size array is not provided, the minimum of the tangential sizes is used.
     #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (geom, r_h, beta, h_min=None, h_n=None, h_n_tags=None))]
     pub fn curvature_metric<'py>(
         &self,
         py: Python<'py>,
@@ -779,6 +786,7 @@ impl Mesh32 {
     /// Create a Mesh32 from basic elements
     #[classmethod]
     #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (coords, quas=None, qua_tags=None, tris=None, tri_tags=None, edgs=None, edg_tags=None))]
     pub fn from_basic_elems(
         _cls: &Bound<'_, PyType>,
         coords: PyReadonlyArray2<f64>,
@@ -887,6 +895,7 @@ impl Mesh22 {
     /// Create a Mesh22 from basic elements
     #[allow(clippy::too_many_arguments)]
     #[classmethod]
+    #[pyo3(signature = (coords, quas=None, qua_tags=None, tris=None, tri_tags=None, edgs=None, edg_tags=None))]
     pub fn from_basic_elems(
         _cls: &Bound<'_, PyType>,
         coords: PyReadonlyArray2<f64>,
@@ -989,6 +998,7 @@ impl Mesh22 {
     ///  - the metric is entended into the volume with gradation beta
     ///  - if a normal size array is not provided, the minimum of the tangential sizes is used.
     #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (geom, r_h, beta, h_min=None, h_n=None, h_n_tags=None))]
     pub fn curvature_metric<'py>(
         &self,
         py: Python<'py>,
