@@ -19,6 +19,7 @@ impl SimplexMesh<3, Tetrahedron> {
         geom: &LinearGeometry<3, Triangle>,
         r_h: f64,
         beta: f64,
+        h_max: Option<f64>,
         h_n: Option<&[f64]>,
         h_n_tags: Option<&[Tag]>,
     ) -> Result<Vec<AnisoMetric3d>> {
@@ -46,14 +47,19 @@ impl SimplexMesh<3, Tetrahedron> {
                     let pt = self.vert(i_vert);
                     let (mut u, v) = geom.curvature(&pt, tag).unwrap();
                     let mut v = v.unwrap();
-                    let hu = 1. / (r_h * u.norm());
-                    let hv = 1. / (r_h * v.norm());
+                    let mut hu = 1. / (r_h * u.norm());
+                    let mut hv = 1. / (r_h * v.norm());
                     let mut hn = f64::min(hu, hv);
                     if use_h_n {
                         if let Some(h_n) = h_n {
                             assert!(h_n[i_bdy_vert as usize] > 0.0);
                             hn = h_n[i_bdy_vert as usize].min(hn);
                         }
+                    }
+                    if let Some(h_max) = h_max {
+                        hu = hu.min(h_max);
+                        hv = hv.min(h_max);
+                        hn = hn.min(h_max);
                     }
                     u.normalize_mut();
                     v.normalize_mut();
@@ -190,7 +196,7 @@ mod tests {
         geom.compute_curvature();
 
         // curvature metric (no prescribes normal size)
-        let m_curv = mesh.curvature_metric(&geom, 4.0, 2.0, None, None)?;
+        let m_curv = mesh.curvature_metric(&geom, 4.0, 2.0, None, None, None)?;
         for (i_bdy_vert, &i_vert) in bdy_ids.iter().enumerate() {
             if bdy_flg[i_bdy_vert] == 1 {
                 let m = m_curv[i_vert as usize];
@@ -217,7 +223,7 @@ mod tests {
             }
         });
 
-        let m_curv = mesh.curvature_metric(&geom, 4.0, 2.0, Some(&h_n), Some(&[tag_in]))?;
+        let m_curv = mesh.curvature_metric(&geom, 4.0, 2.0, None, Some(&h_n), Some(&[tag_in]))?;
         for (i_bdy_vert, &i_vert) in bdy_ids.iter().enumerate() {
             if bdy_flg[i_bdy_vert] == 1 {
                 let m = m_curv[i_vert as usize];
