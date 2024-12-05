@@ -57,6 +57,29 @@ def mat2sym(m):
     return mm
 
 
+def anisotropy(m):
+
+    m = sym2mat(m)
+    eigvals, _ = np.linalg.eigh(m)
+    sizes = 1.0 / np.sqrt(eigvals)
+    return sizes.max(axis=1) / sizes.min(axis=1)
+
+
+def bound_anisotropy(m, aniso_max):
+
+    m = sym2mat(m)
+
+    eigvals, eigvecs = np.linalg.eigh(m)
+    sizes = 1.0 / np.sqrt(eigvals)
+    min_sizes = sizes.min(axis=1)
+    for i in range(3):
+        sizes[:, i] = np.minimum(sizes[:, i], aniso_max * min_sizes)
+    eigvals = 1.0 / sizes**2
+    res = np.einsum("ijk,ik,ilk->ijl", eigvecs, eigvals, eigvecs)
+
+    return mat2sym(res)
+
+
 def metric2sizes(m):
 
     m = sym2mat(m)
