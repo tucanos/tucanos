@@ -763,7 +763,7 @@ impl Mesh33 {
     ///    implied metric
     ///  - if a normal size array is not provided, the minimum of the tangential sizes is used.
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature = (geom, r_h, beta, h_min=None, h_n=None, h_n_tags=None))]
+    #[pyo3(signature = (geom, r_h, beta, h_min=None, h_max=None, h_n=None, h_n_tags=None))]
     pub fn curvature_metric<'py>(
         &self,
         py: Python<'py>,
@@ -771,6 +771,7 @@ impl Mesh33 {
         r_h: f64,
         beta: f64,
         h_min: Option<f64>,
+        h_max: Option<f64>,
         h_n: Option<PyReadonlyArray1<f64>>,
         h_n_tags: Option<PyReadonlyArray1<Tag>>,
     ) -> PyResult<Bound<'py, PyArray2<f64>>> {
@@ -782,21 +783,16 @@ impl Mesh33 {
             let h_n_tags = h_n_tags.unwrap();
             let h_n_tags = h_n_tags.as_slice()?;
             self.mesh
-                .curvature_metric(&geom.geom, r_h, beta, Some(h_n), Some(h_n_tags))
+                .curvature_metric(&geom.geom, r_h, beta, h_min, h_max, Some(h_n), Some(h_n_tags))
         } else {
             self.mesh
-                .curvature_metric(&geom.geom, r_h, beta, None, None)
+                .curvature_metric(&geom.geom, r_h, beta, h_min, h_max, None, None)
         };
 
         if let Err(res) = res {
             return Err(PyRuntimeError::new_err(res.to_string()));
         }
         let mut m = res.unwrap();
-
-        if let Some(h_min) = h_min {
-            m.iter_mut()
-                .for_each(|x| x.scale_with_bounds(1.0, h_min, f64::MAX));
-        }
 
         let m: Vec<f64> = m.iter().flat_map(|m| m.into_iter()).collect();
 
