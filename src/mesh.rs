@@ -576,6 +576,42 @@ macro_rules! create_mesh {
                     Ok(dict)
                 }
             }
+
+            // Compute the skewness for all internal faces in the mesh
+            /// Skewness is the normalized distance between a line that connects two
+            /// adjacent cell centroids and the distance from that line to the shared
+            /// face’s center.
+            #[must_use]
+            pub fn face_skewnesses<'py>(&self, py: Python<'py>) -> PyResult<(Bound<'py, PyArray2<Idx>>, Bound<'py, PyArray1<f64>>)> {
+                let res = self.mesh.face_skewnesses();
+                if let Err(res) = res {
+                    return Err(PyRuntimeError::new_err(res.to_string()));
+                } else {
+                    let mut ids = Vec::new();
+                    let mut vals = Vec::new();
+                    res.unwrap().for_each(|(i, j, v)| {
+                        ids.push(i);
+                        ids.push(j);
+                        vals.push(v);
+                    });
+                    Ok((to_numpy_2d(py, ids, 2), to_numpy_1d(py, vals)))
+                }
+            }
+
+            /// Compute the edge ratio for all the elements in the mesh
+            #[must_use]
+            pub fn edge_length_ratios<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
+                let res = self.mesh.edge_length_ratios().collect::<Vec<_>>();
+                to_numpy_1d(py, res)
+            }
+
+            /// Compute the ratio of inscribed radius to circumradius
+            /// (normalized to be between 0 and 1) for all the elements in the mesh
+            #[must_use]
+            pub fn elem_gammas<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
+                let res = self.mesh.elem_gammas().collect::<Vec<_>>();
+                to_numpy_1d(py, res)
+            }
         }
     };
 }
@@ -782,8 +818,15 @@ impl Mesh33 {
             }
             let h_n_tags = h_n_tags.unwrap();
             let h_n_tags = h_n_tags.as_slice()?;
-            self.mesh
-                .curvature_metric(&geom.geom, r_h, beta, h_min, h_max, Some(h_n), Some(h_n_tags))
+            self.mesh.curvature_metric(
+                &geom.geom,
+                r_h,
+                beta,
+                h_min,
+                h_max,
+                Some(h_n),
+                Some(h_n_tags),
+            )
         } else {
             self.mesh
                 .curvature_metric(&geom.geom, r_h, beta, h_min, h_max, None, None)
@@ -792,9 +835,8 @@ impl Mesh33 {
         if let Err(res) = res {
             return Err(PyRuntimeError::new_err(res.to_string()));
         }
-        let mut m = res.unwrap();
-
-        let m: Vec<f64> = m.iter().flat_map(|m| m.into_iter()).collect();
+        let m = res.unwrap();
+        let m = m.iter().flat_map(|m| m.into_iter()).collect();
 
         Ok(to_numpy_2d(py, m, 6))
     }
