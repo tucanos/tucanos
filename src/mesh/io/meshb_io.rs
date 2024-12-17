@@ -31,27 +31,44 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         match E::N_VERTS {
             3 => {
                 writer.write_triangles(
-                    self.elems()
-                        .map(|v| [v[0].into(), v[1].into(), v[2].into()]),
+                    self.elems().map(|v| {
+                        [
+                            v[0].try_into().unwrap(),
+                            v[1].try_into().unwrap(),
+                            v[2].try_into().unwrap(),
+                        ]
+                    }),
                     #[allow(clippy::unnecessary_fallible_conversions)]
                     self.etags().map(|t| t.try_into().unwrap()),
                 )?;
                 writer.write_edges(
-                    self.faces().map(|v| [v[0].into(), v[1].into()]),
+                    self.faces()
+                        .map(|v| [v[0].try_into().unwrap(), v[1].try_into().unwrap()]),
                     #[allow(clippy::unnecessary_fallible_conversions)]
                     self.ftags().map(|t| t.try_into().unwrap()),
                 )?;
             }
             4 => {
                 writer.write_tetrahedra(
-                    self.elems()
-                        .map(|v| [v[0].into(), v[1].into(), v[2].into(), v[3].into()]),
+                    self.elems().map(|v| {
+                        [
+                            v[0].try_into().unwrap(),
+                            v[1].try_into().unwrap(),
+                            v[2].try_into().unwrap(),
+                            v[3].try_into().unwrap(),
+                        ]
+                    }),
                     #[allow(clippy::unnecessary_fallible_conversions)]
                     self.etags().map(|t| t.try_into().unwrap()),
                 )?;
                 writer.write_triangles(
-                    self.faces()
-                        .map(|v| [v[0].into(), v[1].into(), v[2].into()]),
+                    self.faces().map(|v| {
+                        [
+                            v[0].try_into().unwrap(),
+                            v[1].try_into().unwrap(),
+                            v[2].try_into().unwrap(),
+                        ]
+                    }),
                     #[allow(clippy::unnecessary_fallible_conversions)]
                     self.ftags().map(|t| t.try_into().unwrap()),
                 )?;
