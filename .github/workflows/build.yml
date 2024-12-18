@@ -85,9 +85,7 @@ jobs:
           key: ${{ runner.os }}-cargo-nightly-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-nightly-
     - name: Run clippy
-      uses: actions-rs/clippy-check@v1
-      with:
-        token: ${{ github.token }}
+      uses: clechasseur/rs-clippy-check@v3
     - uses: actions/setup-python@v4
       with:
         python-version: '3.11'
@@ -159,9 +157,7 @@ jobs:
           key: ${{ runner.os }}-cargo-stable-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-stable-
     - name: Run clippy
-      uses: actions-rs/clippy-check@v1
-      with:
-        token: ${{ github.token }}
+      uses: clechasseur/rs-clippy-check@v3
     - uses: actions/setup-python@v4
       with:
         python-version: '3.11'
