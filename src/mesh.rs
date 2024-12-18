@@ -581,21 +581,19 @@ macro_rules! create_mesh {
             /// Skewness is the normalized distance between a line that connects two
             /// adjacent cell centroids and the distance from that line to the shared
             /// face’s center.
-            #[must_use]
             pub fn face_skewnesses<'py>(&self, py: Python<'py>) -> PyResult<(Bound<'py, PyArray2<Idx>>, Bound<'py, PyArray1<f64>>)> {
                 let res = self.mesh.face_skewnesses();
                 if let Err(res) = res {
                     return Err(PyRuntimeError::new_err(res.to_string()));
-                } else {
-                    let mut ids = Vec::new();
-                    let mut vals = Vec::new();
-                    res.unwrap().for_each(|(i, j, v)| {
-                        ids.push(i);
-                        ids.push(j);
-                        vals.push(v);
-                    });
-                    Ok((to_numpy_2d(py, ids, 2), to_numpy_1d(py, vals)))
                 }
+                let mut ids = Vec::new();
+                let mut vals = Vec::new();
+                for (i, j, v) in res.unwrap() {
+                    ids.push(i);
+                    ids.push(j);
+                    vals.push(v);
+                }
+                Ok((to_numpy_2d(py, ids, 2), to_numpy_1d(py, vals)))
             }
 
             /// Compute the edge ratio for all the elements in the mesh
