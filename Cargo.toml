@@ -20,19 +20,19 @@ rustc-hash = "2.0.0"
 sorted-vec = "0.8.5"
 rand = "0.8.5"
 lindel = "0.1.1"
-marechal-libol-sys = { git = "https://github.com/tucanos/marechal-libol-sys.git", optional = true }
-libmeshb-sys = {git = "https://github.com/tucanos/libmeshb-sys.git", optional = true}
 vtkio = {version = "0.6.3"}
-scotch = { git = "https://github.com/tucanos/scotch-rs.git", version = "0.2.1", optional = true }
-metis = { git = "https://github.com/tucanos/metis-rs.git", version = "0.1.2", optional = true }
 kdtree = { version = "0.7", optional = true }
 parry3d-f64 = { version = "0.17", optional = true }
 parry2d-f64 = { version = "0.17", optional = true }
 rayon = "1.10"
 typenum = { version ="1.17", features = ["const-generics"] }
 num = "0.4.3"
-minimeshb = { git = "https://github.com/tucanos/minimeshb.git"}
 tempfile = "3.14"
+marechal-libol-sys = { git = "https://github.com/tucanos/marechal-libol-sys.git", optional = true, rev = "c63ed26" }
+libmeshb-sys = {git = "https://github.com/tucanos/libmeshb-sys.git", optional = true, rev = "7b0dfd2"}
+scotch = { git = "https://github.com/tucanos/scotch-rs.git", optional = true, rev = "f3f83e6" }
+metis = { git = "https://github.com/tucanos/metis-rs.git", optional = true, rev = "d31aa3e"}
+minimeshb = { git = "https://github.com/tucanos/minimeshb.git", rev="8f91d52"}
 
 [features]
 default = ["parry"]
