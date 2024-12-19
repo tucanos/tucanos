@@ -29,14 +29,14 @@ typenum = { version ="1.17", features = ["const-generics"] }
 num = "0.4.3"
 tempfile = "3.14"
 marechal-libol-sys = { git = "https://github.com/tucanos/marechal-libol-sys.git", optional = true, rev = "c63ed26" }
-libmeshb-sys = {git = "https://github.com/tucanos/libmeshb-sys.git", optional = true, rev = "7b0dfd2"}
 scotch = { git = "https://github.com/tucanos/scotch-rs.git", optional = true, rev = "f3f83e6" }
 metis = { git = "https://github.com/tucanos/metis-rs.git", optional = true, rev = "d31aa3e"}
-minimeshb = { git = "https://github.com/tucanos/minimeshb.git", rev="8f91d52"}
+minimeshb = { git = "https://github.com/tucanos/minimeshb.git", rev="2e6e5f3"}
+libmeshb-sys = {git = "https://github.com/tucanos/libmeshb-sys.git", optional = true, rev = "7b0dfd2"}
 
 [features]
 default = ["parry"]
-libmeshb = ["libmeshb-sys"]
+libmeshb = ["libmeshb-sys", "minimeshb/libmeshb-sys"]
 libol = ["marechal-libol-sys"]
 parry = ["kdtree", "parry3d-f64", "parry2d-f64"]
 32bit-tags = []

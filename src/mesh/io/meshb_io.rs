@@ -2,7 +2,14 @@ use crate::{
     mesh::{Elem, Point, SimplexMesh},
     Idx, Result, Tag,
 };
-use minimeshb::{reader::MeshbReader, writer::MeshbWriter};
+#[cfg(not(feature = "libmeshb"))]
+type Reader = minimeshb::reader::MeshbReader;
+#[cfg(not(feature = "libmeshb"))]
+type Writer = minimeshb::writer::MeshbWriter;
+#[cfg(feature = "libmeshb")]
+type Reader = minimeshb::libmeshb::GmfReader;
+#[cfg(feature = "libmeshb")]
+type Writer = minimeshb::libmeshb::GmfWriter;
 
 // /// Reorder the entries (actually used only for symmetric tensors) to ensure consistency between
 // /// with the conventions used the meshb format
@@ -24,7 +31,7 @@ use minimeshb::{reader::MeshbReader, writer::MeshbWriter};
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn write_meshb(&self, file_name: &str) -> Result<()> {
-        let mut writer = MeshbWriter::new(file_name, 2, D as u8)?;
+        let mut writer = Writer::new(file_name, 2, D as u8)?;
 
         writer.write_vertices(self.verts().map(Into::into), (0..self.n_verts()).map(|_| 1))?;
 
@@ -88,7 +95,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     ) -> Result<()> {
         assert_eq!(arr.len(), N * self.n_verts() as usize);
 
-        let mut writer = MeshbWriter::new(file_name, 2, D as u8)?;
+        let mut writer = Writer::new(file_name, 2, D as u8)?;
         writer.write_solution(arr.chunks(N).map(f))?;
         writer.close();
 
@@ -119,7 +126,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     pub fn read_meshb(file_name: &str) -> Result<Self> {
-        let mut reader = MeshbReader::new(file_name)?;
+        let mut reader = Reader::new(file_name)?;
         assert_eq!(reader.dimension(), D as u8);
 
         let it = reader.read_vertices::<D>()?;
@@ -172,7 +179,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     fn read_solb_it<const N: usize, F: FnMut([f64; N]) -> [f64; N]>(
-        mut reader: MeshbReader,
+        #[cfg(feature = "libmeshb")] reader: Reader,
+        #[cfg(not(feature = "libmeshb"))] mut reader: Reader,
         f: F,
     ) -> Result<Vec<f64>> {
         let sol = reader.read_solution::<N>()?;
@@ -180,7 +188,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     pub fn read_solb(file_name: &str) -> Result<(Vec<f64>, usize)> {
-        let mut reader = MeshbReader::new(file_name)?;
+        let mut reader = Reader::new(file_name)?;
         let d = reader.dimension();
         assert_eq!(d, D as u8);
         let m = reader.get_solution_size()?;
