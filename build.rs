@@ -7,11 +7,10 @@ fn main() {
     }
     println!("cargo:rerun-if-env-changed=DEP_OL_1_RPATH");
 
-    // See https://github.com/xgarnaud/libmeshb-sys#using
-    if let Ok(meshb_rpath) = std::env::var("DEP_MESHB.7_RPATH") {
+    if let Ok(meshb_rpath) = std::env::var("DEP_MINIMESHB_RPATH") {
         rpath.push(meshb_rpath);
     }
-    println!("cargo:rerun-if-env-changed=DEP_MESHB.7_RPATH");
+    println!("cargo:rerun-if-env-changed=DEP_MINIMESHB_RPATH");
 
     if let Ok(ld) = std::env::var("REMESH_LINK_DIRS") {
         for p in std::env::split_paths(&ld) {
