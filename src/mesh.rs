@@ -84,6 +84,13 @@ macro_rules! create_mesh {
                 })
             }
 
+            #[doc = concat!("Create an empty ", stringify!($name))]
+            #[classmethod]
+            pub fn empty(_cls: &Bound<'_, PyType>) -> Self {
+
+                Self{mesh: SimplexMesh::<$dim, $etype>::empty()}
+            }
+
             #[doc = concat!("Read a ", stringify!($name), " from a .mesh(b) file")]
             #[classmethod]
             pub fn from_meshb(_cls: &Bound<'_, PyType>, fname: &str) -> PyResult<Self> {
