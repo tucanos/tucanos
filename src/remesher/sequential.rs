@@ -1537,6 +1537,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
     /// Return the stats at each remeshing step
     #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
     pub fn stats(&self) -> &[StepStats] {
         &self.stats
     }
