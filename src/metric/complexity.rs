@@ -16,16 +16,23 @@ use rayon::{
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Get the metric information (min/max size, max anisotropy, complexity)
     pub fn metric_info<M: Metric<D>>(&self, m: &[M]) -> (f64, f64, f64, f64) {
-        let (h_min, h_max, aniso_max) =
-            m.iter()
-                .map(Metric::sizes)
-                .fold((f64::MAX, 0.0, 0.0), |(a, b, c), d| {
+        let (h_min, h_max, aniso_max) = m
+            .par_iter()
+            .map(Metric::sizes)
+            .fold(
+                || (f64::MAX, 0.0, 0.0),
+                |(a, b, c), d| {
                     (
                         f64::min(a, d[0]),
                         f64::max(b, d[2]),
                         f64::max(c, d[2] / d[0]),
                     )
-                });
+                },
+            )
+            .reduce(
+                || (f64::MAX, 0.0, 0.0),
+                |a, b| (f64::min(a.0, b.0), f64::max(a.1, b.1), f64::max(a.2, b.2)),
+            );
 
         (h_min, h_max, aniso_max, self.complexity(m, 0.0, f64::MAX))
     }
