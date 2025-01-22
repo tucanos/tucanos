@@ -20,6 +20,7 @@ impl SimplexMesh<3, Tetrahedron> {
         geom: &LinearGeometry<3, Triangle>,
         r_h: f64,
         beta: f64,
+        t: f64,
         h_min: Option<f64>,
         h_max: Option<f64>,
         h_n: Option<&[f64]>,
@@ -79,7 +80,7 @@ impl SimplexMesh<3, Tetrahedron> {
                 });
         }
 
-        self.extend_metric(&mut curvature_metric, &mut flg, beta)?;
+        self.extend_metric(&mut curvature_metric, &mut flg, beta, t)?;
 
         Ok(curvature_metric)
     }
@@ -97,6 +98,7 @@ impl SimplexMesh<2, Triangle> {
         geom: &LinearGeometry<2, Edge>,
         r_h: f64,
         beta: f64,
+        t: f64,
         h_n: Option<&[f64]>,
         h_n_tags: Option<&[Tag]>,
     ) -> Result<Vec<AnisoMetric2d>> {
@@ -141,7 +143,7 @@ impl SimplexMesh<2, Triangle> {
                 });
         }
 
-        self.extend_metric(&mut curvature_metric, &mut flg, beta)?;
+        self.extend_metric(&mut curvature_metric, &mut flg, beta, t)?;
 
         Ok(curvature_metric)
     }
@@ -203,7 +205,7 @@ mod tests {
         geom.compute_curvature();
 
         // curvature metric (no prescribes normal size)
-        let m_curv = mesh.curvature_metric(&geom, 4.0, 2.0, None, None, None, None)?;
+        let m_curv = mesh.curvature_metric(&geom, 4.0, 2.0, 1.0, None, None, None, None)?;
         for (i_bdy_vert, &i_vert) in bdy_ids.iter().enumerate() {
             if bdy_flg[i_bdy_vert] == 1 {
                 let m = m_curv[i_vert as usize];
@@ -230,8 +232,16 @@ mod tests {
             }
         });
 
-        let m_curv =
-            mesh.curvature_metric(&geom, 4.0, 2.0, None, None, Some(&h_n), Some(&[tag_in]))?;
+        let m_curv = mesh.curvature_metric(
+            &geom,
+            4.0,
+            2.0,
+            1.0,
+            None,
+            None,
+            Some(&h_n),
+            Some(&[tag_in]),
+        )?;
         for (i_bdy_vert, &i_vert) in bdy_ids.iter().enumerate() {
             if bdy_flg[i_bdy_vert] == 1 {
                 let m = m_curv[i_vert as usize];
