@@ -46,7 +46,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             )
             .reduce(|| (0_usize, 0.0), |a, b| (a.0 + b.0, a.1.max(b.1)));
 
-        Ok((max_gradation, 2.0 * count as f64 / edges.len() as f64))
+        Ok((max_gradation, count as f64 / edges.len() as f64))
     }
 
     /// Enforce a maximum gradiation on a metric field
