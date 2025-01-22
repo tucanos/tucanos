@@ -45,7 +45,7 @@ pub trait Metric<const D: usize>:
     fn intersect(&self, other: &Self) -> Self;
     /// Span a metric field at location e with a maximum gradation of bets
     #[must_use]
-    fn span(&self, e: &Point<D>, beta: f64) -> Self;
+    fn span(&self, e: &Point<D>, beta: f64, t: f64) -> Self;
     /// Check if metrics are different with a given tolerance
     fn differs_from(&self, other: &Self, tol: f64) -> bool;
     /// Compute the step between two metrics, i.e. the min and max of
@@ -193,8 +193,8 @@ impl<const D: usize> Metric<D> for IsoMetric<D> {
         Self(f64::min(self.0, other.0))
     }
 
-    fn span(&self, e: &Point<D>, beta: f64) -> Self {
-        // assumption: linear variation of h along e (see "Size gradation control of anisotropic meshes", F. Alauzet, 2010)
+    // assumption: linear variation of h along e (see "Size gradation control of anisotropic meshes", F. Alauzet, 2010)
+    fn span(&self, e: &Point<D>, beta: f64, _t: f64) -> Self {
         let f = 1. + self.length(e) * f64::ln(beta);
         Self::from(self.0 * f)
     }
@@ -451,16 +451,21 @@ where
     }
 
     /// Span a metric using progression $`\beta`$ using physical-space-gradation
-    /// (see "Size gradation control of anisotropic meshes", F. Alauzet, 2010)
-    fn span(&self, e: &Point<D>, beta: f64) -> Self {
+    /// (see "Size gradation control of anisotropic meshes", F. Alauzet, 2010 and
+    /// "Feature-based and goal-oriented anisotropic mesh adaptation for RANS
+    /// applications in aeronautics and aerospace", F. Alauzet & L. Frazza, 2021
+    ///
+    fn span(&self, e: &Point<D>, beta: f64, t: f64) -> Self {
         let nrm = e.norm();
         let mat = self.as_mat();
         let mut eig = mat.symmetric_eigen();
+        let eta_0 = 1. + self.length(e) * f64::ln(beta);
+        let eta_0 = eta_0.powf(1.0 - t);
         eig.eigenvalues.iter_mut().for_each(|s| {
-            // *s = s.max(S_MIN);
-            let eta = 1.0 + f64::sqrt(*s) * nrm * f64::ln(beta);
+            let eta_1 = 1.0 + f64::sqrt(*s) * nrm * f64::ln(beta);
+            let eta_1 = eta_1.powf(t);
+            let eta = eta_0 * eta_1;
             *s /= eta * eta;
-            // *s = s.max(S_MIN);
         });
         Self::bound_eigenvalues(&mut eig.eigenvalues);
         let mat = eig.recompose();
@@ -945,11 +950,11 @@ mod tests {
     fn test_span_2d_iso() {
         let m = IsoMetric::<2>::from(0.1);
         let e = Point::<2>::new(0.0, 0.1);
-        let m2 = m.span(&e, 1.2);
+        let m2 = m.span(&e, 1.2, 1.0);
 
         assert!(f64::abs(m2.0 - 0.118) < 0.001);
 
-        let m2 = m.span(&e, 2.0);
+        let m2 = m.span(&e, 2.0, 1.0);
 
         assert!(f64::abs(m2.0 - 0.169) < 0.001);
     }
@@ -961,34 +966,34 @@ mod tests {
         let m = AnisoMetric2d::from_sizes(&v0, &v1);
 
         let e = Point::<2>::new(1.0, 0.);
-        let m2 = m.span(&e, 1.2);
+        let m2 = m.span(&e, 1.2, 1.0);
 
         let l = m2.length(&e);
         assert!(f64::abs(1. / l - 1.18) < 0.01);
 
-        let m2 = m.span(&e, 2.0);
+        let m2 = m.span(&e, 2.0, 1.0);
 
         let l = m2.length(&e);
         assert!(f64::abs(1. / l - 1.69) < 0.01);
 
         let e = Point::<2>::new(0.0, 0.1);
-        let m2 = m.span(&e, 1.2);
+        let m2 = m.span(&e, 1.2, 1.0);
 
         let l = m2.length(&e);
         assert!(f64::abs(1. / l - 1.18) < 0.01);
 
-        let m2 = m.span(&e, 2.0);
+        let m2 = m.span(&e, 2.0, 1.0);
 
         let l = m2.length(&e);
         assert!(f64::abs(1. / l - 1.69) < 0.01);
 
         let e = Point::<2>::new(0.0, 0.2);
-        let m2 = m.span(&e, 1.2);
+        let m2 = m.span(&e, 1.2, 1.0);
 
         let l = m2.length(&e);
         assert!(f64::abs(1. / l - 0.5 * 1.36) < 0.01);
 
-        let m2 = m.span(&e, 2.0);
+        let m2 = m.span(&e, 2.0, 1.0);
 
         let l = m2.length(&e);
         assert!(f64::abs(1. / l - 0.5 * 2.38) < 0.01);
@@ -1002,45 +1007,45 @@ mod tests {
         let m = AnisoMetric3d::from_sizes(&v0, &v1, &v2);
 
         let e = Point::<3>::new(1.0, 0.0, 0.0);
-        let m2 = m.span(&e, 1.2);
+        let m2 = m.span(&e, 1.2, 1.0);
 
         let l = m2.length(&e);
         assert!(f64::abs(1. / l - 1.18) < 0.01);
 
-        let m2 = m.span(&e, 2.0);
+        let m2 = m.span(&e, 2.0, 1.0);
 
         let l = m2.length(&e);
         assert!(f64::abs(1. / l - 1.69) < 0.01);
 
         let e = Point::<3>::new(0.0, 0.1, 0.0);
-        let m2 = m.span(&e, 1.2);
+        let m2 = m.span(&e, 1.2, 1.0);
 
         let l = m2.length(&e);
         assert!(f64::abs(1. / l - 1.18) < 0.01);
 
-        let m2 = m.span(&e, 2.0);
+        let m2 = m.span(&e, 2.0, 1.0);
 
         let l = m2.length(&e);
         assert!(f64::abs(1. / l - 1.69) < 0.01);
 
         let e = Point::<3>::new(0.0, 0.0, 0.01);
-        let m2 = m.span(&e, 1.2);
+        let m2 = m.span(&e, 1.2, 1.0);
 
         let l = m2.length(&e);
         assert!(f64::abs(1. / l - 1.18) < 0.01);
 
-        let m2 = m.span(&e, 2.0);
+        let m2 = m.span(&e, 2.0, 1.0);
 
         let l = m2.length(&e);
         assert!(f64::abs(1. / l - 1.69) < 0.01);
 
         let e = Point::<3>::new(0.0, 0.2, 0.0);
-        let m2 = m.span(&e, 1.2);
+        let m2 = m.span(&e, 1.2, 1.0);
 
         let l = m2.length(&e);
         assert!(f64::abs(1. / l - 0.5 * 1.36) < 0.01);
 
-        let m2 = m.span(&e, 2.0);
+        let m2 = m.span(&e, 2.0, 1.0);
 
         let l = m2.length(&e);
         assert!(f64::abs(1. / l - 0.5 * 2.38) < 0.01);

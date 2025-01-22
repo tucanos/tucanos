@@ -1,5 +1,5 @@
 use crate::{
-    mesh::{Elem, SimplexMesh},
+    mesh::{Elem, Point, SimplexMesh},
     metric::Metric,
     Idx, Result,
 };
@@ -11,19 +11,16 @@ use rayon::prelude::{
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Compute the gradation on an edge
-    fn edge_gradation<M: Metric<D>>(&self, m: &[M], i0: Idx, i1: Idx) -> f64 {
-        let m0 = &m[i0 as usize];
-        let m1 = &m[i1 as usize];
-        let e = self.vert(i1) - self.vert(i0);
+    fn edge_gradation<M: Metric<D>>(m0: &M, m1: &M, e: &Point<D>) -> f64 {
         let l0 = m0.length(&e);
         let l1 = m1.length(&e);
         let a = l0 / l1;
-        if f64::abs(a - 1.0) < 1e-3 {
-            1.0
+        let l = if f64::abs(a - 1.0) < 1e-3 {
+            l0
         } else {
-            let l = l0 * f64::ln(a) / (a - 1.0);
-            f64::max(a, 1.0 / a).powf(1. / l).min(100.0)
-        }
+            l0 * f64::ln(a) / (a - 1.0)
+        };
+        f64::max(a, 1.0 / a).powf(1. / l)
     }
 
     /// Compute the maximum metric gradation and the fraction of edges with a gradation
@@ -33,7 +30,12 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         let (count, max_gradation) = edges
             .par_iter()
-            .map(|&e| self.edge_gradation(m, e[0], e[1]))
+            .map(|&e| {
+                let m0 = &m[e[0] as usize];
+                let m1 = &m[e[1] as usize];
+                let e = self.vert(e[1]) - self.vert(e[0]);
+                Self::edge_gradation(m0, m1, &e)
+            })
             .fold(
                 || (0_usize, 0.0_f64),
                 |mut a, b| {
@@ -53,12 +55,16 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Algorithm taken from "Size gradation control of anisotropic meshes", F. Alauzet, 2010 assuming
     ///  - a linear interpolation on h
     ///  - physical-space-gradation (eq. 10)
+    /// and
+    /// "Feature-based and goal-oriented anisotropic mesh adaptation for RANS
+    /// applications in aeronautics and aerospace", F. Alauzet & L. Frazza, 2021
     ///
     /// and modified for parallel implementation
     pub fn apply_metric_gradation<M: Metric<D>>(
         &self,
         m: &mut [M],
         beta: f64,
+        t: f64,
         max_iter: Idx,
     ) -> Result<Idx> {
         debug!(
@@ -69,40 +75,32 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let v2v = self.get_vertex_to_vertices()?;
 
         let mut n = 0;
-        for iter in 0..max_iter {
-            let mut tmp = m.par_iter().cloned().collect::<Vec<_>>();
+        for _ in 0..max_iter {
+            let tmp = m.to_vec();
 
-            n = tmp
+            n = m
                 .par_iter_mut()
                 .enumerate()
                 .map(|(i_vert, m_new)| {
                     let neighbors = v2v.row(i_vert as Idx);
-                    let v = self.vert(i_vert as Idx);
+                    let v0 = self.vert(i_vert as Idx);
                     let mut fixed = false;
                     for &i_neigh in neighbors {
-                        let g = self.edge_gradation(m, i_vert as Idx, i_neigh);
+                        let e = self.vert(i_neigh) - v0;
+                        let m = &tmp[i_neigh as usize];
+                        let g = Self::edge_gradation(m_new, m, &e);
                         if g < 1.01 * beta {
                             continue;
                         }
                         fixed = true;
-                        let e = self.vert(i_neigh) - v;
-                        let m_spanned = m[i_neigh as usize].span(&e, beta);
+                        let m_spanned = m.span(&e, beta, t);
                         *m_new = m_new.intersect(&m_spanned);
                     }
                     fixed
                 })
                 .filter(|&x| x)
                 .count();
-            m.par_iter_mut()
-                .zip(tmp.par_iter())
-                .for_each(|(m, m_new)| *m = *m_new);
 
-            debug!(
-                "Iteration {}, {}/{} metrics modified",
-                iter,
-                n,
-                self.n_verts()
-            );
             if n == 0 {
                 break;
             }
@@ -132,6 +130,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         metric: &mut [M],
         flg: &mut [bool],
         beta: f64,
+        t: f64,
     ) -> Result<()>
     where
         Const<D>: nalgebra::ToTypenum + nalgebra::DimSub<nalgebra::U1>,
@@ -166,12 +165,12 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                         let m_i = metric[i as usize];
                         let pt_i = self.vert(i);
                         let e = pt - pt_i;
-                        *m_new = m_i.span(&e, beta);
+                        *m_new = m_i.span(&e, beta, t);
                         for i in valid_neighbors {
                             let m_i = metric[i as usize];
                             let pt_i = self.vert(i);
                             let e = pt - pt_i;
-                            let m_i_spanned = m_i.span(&e, beta);
+                            let m_i_spanned = m_i.span(&e, beta, t);
                             *m_new = m_new.intersect(&m_i_spanned);
                         }
                         *is_fixed = true;
@@ -213,10 +212,78 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        mesh::test_meshes::{test_mesh_2d, test_mesh_3d},
-        metric::{IsoMetric, Metric},
+        mesh::{
+            test_meshes::{test_mesh_2d, test_mesh_3d},
+            Point, SimplexMesh, Tetrahedron,
+        },
+        metric::{AnisoMetric, AnisoMetric3d, IsoMetric, Metric},
         Idx, Result,
     };
+    use nalgebra::SMatrix;
+    use rand::{rngs::StdRng, Rng, SeedableRng};
+    #[test]
+    fn test_gradation_iso() {
+        let beta = 1.5;
+        let e = Point::<3>::new(1.0, 0.0, 0.0);
+        let m0 = IsoMetric::<3>::from(0.01);
+        for h in [0.02, 0.1, 1.0, 10.0, 100.0] {
+            let m1 = IsoMetric::<3>::from(h);
+            let m = m0.span(&e, beta, 1.0);
+            let m1 = m1.intersect(&m);
+            let g = SimplexMesh::<3, Tetrahedron>::edge_gradation(&m0, &m1, &e);
+            assert!(g < 1.01 * beta, "{g} > {beta}");
+        }
+
+        for h in [0.02, 0.1, 1.0, 10.0, 100.0] {
+            let m1 = IsoMetric::<3>::from(h);
+            let g = SimplexMesh::<3, Tetrahedron>::edge_gradation(&m0, &m1, &e);
+            let beta = (0.5 * g).max(1.1);
+            let m = m0.span(&e, beta, 1.0);
+            let m1 = m1.intersect(&m);
+            let g = SimplexMesh::<3, Tetrahedron>::edge_gradation(&m0, &m1, &e);
+            assert!(g < 1.01 * beta, "{g} > {beta}");
+        }
+    }
+
+    #[test]
+    fn test_gradation_aniso() {
+        let mut rng = StdRng::seed_from_u64(0);
+
+        let e = Point::<3>::new(1.0, 0.0, 0.0);
+
+        let beta = 1.5;
+        let t = 0.125;
+        for _ in 0..100 {
+            let mat = SMatrix::<f64, 3, 3>::from_fn(|_, _| rng.gen());
+            let mat = mat.transpose() * mat;
+            let m0 = AnisoMetric3d::from_mat(mat);
+
+            let mat = 0.1 * SMatrix::<f64, 3, 3>::from_fn(|_, _| rng.gen());
+            let mat = mat.transpose() * mat;
+            let m1 = AnisoMetric3d::from_mat(mat);
+            let before = SimplexMesh::<3, Tetrahedron>::edge_gradation(&m0, &m1, &e);
+            let m = m0.span(&e, beta, t);
+            let m1 = m1.intersect(&m);
+            let after = SimplexMesh::<3, Tetrahedron>::edge_gradation(&m0, &m1, &e);
+            // println!("{before} {after} {}", after < before);
+            assert!(after < before, "{after} > {before}");
+        }
+
+        let t = 0.0;
+        for _ in 0..100 {
+            let mat = SMatrix::<f64, 3, 3>::from_fn(|_, _| rng.gen());
+            let mat = mat.transpose() * mat;
+            let m0 = AnisoMetric3d::from_mat(mat);
+
+            let mat = 0.1 * SMatrix::<f64, 3, 3>::from_fn(|_, _| rng.gen());
+            let mat = mat.transpose() * mat;
+            let m1 = AnisoMetric3d::from_mat(mat);
+            let m = m0.span(&e, beta, t);
+            let m1 = m1.intersect(&m);
+            let after = SimplexMesh::<3, Tetrahedron>::edge_gradation(&m0, &m1, &e);
+            assert!(after < 1.01 * beta, "{after} > {beta}");
+        }
+    }
 
     #[test]
     fn test_gradation_2d() {
@@ -229,12 +296,13 @@ mod tests {
         m[0] = IsoMetric::<2>::from(0.0001);
 
         let beta = 1.2;
+        let t = 1.0;
         let (c_max, frac_large_c) = mesh.gradation(&m, beta).unwrap();
         assert!(c_max > beta);
         assert!(frac_large_c > 0.0);
 
         mesh.compute_vertex_to_vertices();
-        let n = mesh.apply_metric_gradation(&mut m, beta, 10).unwrap();
+        let n = mesh.apply_metric_gradation(&mut m, beta, t, 10).unwrap();
         assert_eq!(n, 0);
 
         let (c_max, frac_large_c) = mesh.gradation(&m, beta).unwrap();
@@ -276,7 +344,7 @@ mod tests {
 
         mesh.compute_vertex_to_vertices();
 
-        mesh.extend_metric(&mut m, &mut flg, 1.0)?;
+        mesh.extend_metric(&mut m, &mut flg, 1.0, 1.0)?;
 
         for x in m {
             assert!(f64::abs(x.h() - 0.01) < 1e-6);
