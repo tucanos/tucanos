@@ -1205,16 +1205,21 @@ impl SimplexMesh<2, Triangle> {
         &mut self,
         quas: I1,
         qua_tags: I2,
-    ) {
+    ) -> ([Idx; 2], Vec<Idx>) {
         assert_eq!(quas.len(), qua_tags.len());
 
-        for (q, tag) in quas.zip(qua_tags) {
+        let start = self.n_elems();
+        let mut indices = Vec::with_capacity(2 * quas.len());
+        for (i, (q, tag)) in quas.zip(qua_tags).enumerate() {
             debug_assert_eq!(q.len(), 4);
             for t in qua2tris(q) {
                 self.elems.push(t);
                 self.etags.push(tag);
+                indices.push(i as Idx);
             }
         }
+        let end = self.n_elems();
+        ([start, end], indices)
     }
 
     pub fn add_tris<
@@ -1225,14 +1230,19 @@ impl SimplexMesh<2, Triangle> {
         &mut self,
         tris: I1,
         tri_tags: I2,
-    ) {
+    ) -> ([Idx; 2], Vec<Idx>) {
         assert_eq!(tris.len(), tri_tags.len());
 
-        for (t, tag) in tris.zip(tri_tags) {
+        let start = self.n_elems();
+        let mut indices = Vec::with_capacity(tris.len());
+        for (i, (t, tag)) in tris.zip(tri_tags).enumerate() {
             debug_assert_eq!(t.len(), 3);
             self.elems.push(Triangle::new(t[0], t[1], t[2]));
             self.etags.push(tag);
+            indices.push(i as Idx);
         }
+        let end = self.n_elems();
+        ([start, end], indices)
     }
 
     pub fn add_edgs<
@@ -1243,14 +1253,19 @@ impl SimplexMesh<2, Triangle> {
         &mut self,
         edgs: I1,
         edg_tags: I2,
-    ) {
+    ) -> ([Idx; 2], Vec<Idx>) {
         assert_eq!(edgs.len(), edg_tags.len());
 
-        for (e, tag) in edgs.zip(edg_tags) {
+        let start = self.n_elems();
+        let mut indices = Vec::with_capacity(edgs.len());
+        for (i, (e, tag)) in edgs.zip(edg_tags).enumerate() {
             debug_assert_eq!(e.len(), 2);
             self.faces.push(Edge::new(e[0], e[1]));
             self.ftags.push(tag);
+            indices.push(i as Idx);
         }
+        let end = self.n_elems();
+        ([start, end], indices)
     }
 }
 
@@ -1263,16 +1278,21 @@ impl SimplexMesh<3, Triangle> {
         &mut self,
         quas: I1,
         qua_tags: I2,
-    ) {
+    ) -> ([Idx; 2], Vec<Idx>) {
         assert_eq!(quas.len(), qua_tags.len());
 
-        for (q, tag) in quas.zip(qua_tags) {
+        let start = self.n_elems();
+        let mut indices = Vec::with_capacity(2 * quas.len());
+        for (i, (q, tag)) in quas.zip(qua_tags).enumerate() {
             debug_assert_eq!(q.len(), 4);
             for t in qua2tris(q) {
                 self.elems.push(t);
                 self.etags.push(tag);
+                indices.push(i as Idx);
             }
         }
+        let end = self.n_elems();
+        ([start, end], indices)
     }
 
     pub fn add_tris<
@@ -1283,14 +1303,19 @@ impl SimplexMesh<3, Triangle> {
         &mut self,
         tris: I1,
         tri_tags: I2,
-    ) {
+    ) -> ([Idx; 2], Vec<Idx>) {
         assert_eq!(tris.len(), tri_tags.len());
 
-        for (t, tag) in tris.zip(tri_tags) {
+        let start = self.n_elems();
+        let mut indices = Vec::with_capacity(tris.len());
+        for (i, (t, tag)) in tris.zip(tri_tags).enumerate() {
             debug_assert_eq!(t.len(), 3);
             self.elems.push(Triangle::new(t[0], t[1], t[2]));
             self.etags.push(tag);
+            indices.push(i as Idx);
         }
+        let end = self.n_elems();
+        ([start, end], indices)
     }
 
     pub fn add_edgs<
@@ -1301,14 +1326,19 @@ impl SimplexMesh<3, Triangle> {
         &mut self,
         edgs: I1,
         edg_tags: I2,
-    ) {
+    ) -> ([Idx; 2], Vec<Idx>) {
         assert_eq!(edgs.len(), edg_tags.len());
 
-        for (e, tag) in edgs.zip(edg_tags) {
+        let start = self.n_elems();
+        let mut indices = Vec::with_capacity(edgs.len());
+        for (i, (e, tag)) in edgs.zip(edg_tags).enumerate() {
             debug_assert_eq!(e.len(), 2);
             self.faces.push(Edge::new(e[0], e[1]));
             self.ftags.push(tag);
+            indices.push(i as Idx);
         }
+        let end = self.n_elems();
+        ([start, end], indices)
     }
 }
 
@@ -1321,21 +1351,27 @@ impl SimplexMesh<3, Tetrahedron> {
         &mut self,
         hexs: I1,
         hex_tags: I2,
-    ) {
+    ) -> ([Idx; 2], Vec<Idx>) {
         assert_eq!(hexs.len(), hex_tags.len());
 
-        for (h, tag) in hexs.zip(hex_tags) {
+        let start = self.n_elems();
+        let mut indices = Vec::with_capacity(6 * hexs.len());
+        for (i, (h, tag)) in hexs.zip(hex_tags).enumerate() {
             debug_assert_eq!(h.len(), 8);
             let (first, last) = hex2tets(h);
             for t in first {
                 self.elems.push(t);
                 self.etags.push(tag);
+                indices.push(i as Idx);
             }
             if let Some(t) = last {
                 self.elems.push(t);
                 self.etags.push(tag);
+                indices.push(i as Idx);
             }
         }
+        let end = self.n_elems();
+        ([start, end], indices)
     }
 
     pub fn add_pris<
@@ -1346,16 +1382,21 @@ impl SimplexMesh<3, Tetrahedron> {
         &mut self,
         pris: I1,
         pri_tags: I2,
-    ) {
+    ) -> ([Idx; 2], Vec<Idx>) {
         assert_eq!(pris.len(), pri_tags.len());
 
-        for (p, tag) in pris.zip(pri_tags) {
+        let start = self.n_elems();
+        let mut indices = Vec::with_capacity(3 * pris.len());
+        for (i, (p, tag)) in pris.zip(pri_tags).enumerate() {
             debug_assert_eq!(p.len(), 6);
             for t in pri2tets(p) {
                 self.elems.push(t);
                 self.etags.push(tag);
+                indices.push(i as Idx);
             }
         }
+        let end = self.n_elems();
+        ([start, end], indices)
     }
 
     pub fn add_pyrs<
@@ -1366,16 +1407,21 @@ impl SimplexMesh<3, Tetrahedron> {
         &mut self,
         pyrs: I1,
         pyr_tags: I2,
-    ) {
+    ) -> ([Idx; 2], Vec<Idx>) {
         assert_eq!(pyrs.len(), pyr_tags.len());
 
-        for (p, tag) in pyrs.zip(pyr_tags) {
+        let start = self.n_elems();
+        let mut indices = Vec::with_capacity(2 * pyrs.len());
+        for (i, (p, tag)) in pyrs.zip(pyr_tags).enumerate() {
             debug_assert_eq!(p.len(), 5);
             for t in pyr2tets(p) {
                 self.elems.push(t);
                 self.etags.push(tag);
+                indices.push(i as Idx);
             }
         }
+        let end = self.n_elems();
+        ([start, end], indices)
     }
 
     pub fn add_tets<
@@ -1386,14 +1432,19 @@ impl SimplexMesh<3, Tetrahedron> {
         &mut self,
         tets: I1,
         tet_tags: I2,
-    ) {
+    ) -> ([Idx; 2], Vec<Idx>) {
         assert_eq!(tets.len(), tet_tags.len());
 
-        for (t, tag) in tets.zip(tet_tags) {
+        let start = self.n_elems();
+        let mut indices = Vec::with_capacity(tets.len());
+        for (i, (t, tag)) in tets.zip(tet_tags).enumerate() {
             debug_assert_eq!(t.len(), 4);
             self.elems.push(Tetrahedron::new(t[0], t[1], t[2], t[3]));
             self.etags.push(tag);
+            indices.push(i as Idx);
         }
+        let end = self.n_elems();
+        ([start, end], indices)
     }
 
     pub fn add_quas<
@@ -1404,16 +1455,21 @@ impl SimplexMesh<3, Tetrahedron> {
         &mut self,
         quas: I1,
         qua_tags: I2,
-    ) {
+    ) -> ([Idx; 2], Vec<Idx>) {
         assert_eq!(quas.len(), qua_tags.len());
 
-        for (q, tag) in quas.zip(qua_tags) {
+        let start = self.n_elems();
+        let mut indices = Vec::with_capacity(2 * quas.len());
+        for (i, (q, tag)) in quas.zip(qua_tags).enumerate() {
             debug_assert_eq!(q.len(), 4);
             for t in qua2tris(q) {
                 self.faces.push(t);
                 self.ftags.push(tag);
+                indices.push(i as Idx);
             }
         }
+        let end = self.n_elems();
+        ([start, end], indices)
     }
 
     pub fn add_tris<
@@ -1424,14 +1480,19 @@ impl SimplexMesh<3, Tetrahedron> {
         &mut self,
         tris: I1,
         tri_tags: I2,
-    ) {
+    ) -> ([Idx; 2], Vec<Idx>) {
         assert_eq!(tris.len(), tri_tags.len());
 
-        for (t, tag) in tris.zip(tri_tags) {
+        let start = self.n_elems();
+        let mut indices = Vec::with_capacity(tris.len());
+        for (i, (t, tag)) in tris.zip(tri_tags).enumerate() {
             debug_assert_eq!(t.len(), 3);
             self.faces.push(Triangle::new(t[0], t[1], t[2]));
             self.ftags.push(tag);
+            indices.push(i as Idx);
         }
+        let end = self.n_elems();
+        ([start, end], indices)
     }
 }
 
