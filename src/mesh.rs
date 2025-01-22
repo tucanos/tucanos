@@ -805,13 +805,14 @@ impl Mesh33 {
     ///    implied metric
     ///  - if a normal size array is not provided, the minimum of the tangential sizes is used.
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature = (geom, r_h, beta, h_min=None, h_max=None, h_n=None, h_n_tags=None))]
+    #[pyo3(signature = (geom, r_h, beta, t=1.0/8.0, h_min=None, h_max=None, h_n=None, h_n_tags=None))]
     pub fn curvature_metric<'py>(
         &self,
         py: Python<'py>,
         geom: &LinearGeometry3d,
         r_h: f64,
         beta: f64,
+        t: f64,
         h_min: Option<f64>,
         h_max: Option<f64>,
         h_n: Option<PyReadonlyArray1<f64>>,
@@ -828,6 +829,7 @@ impl Mesh33 {
                 &geom.geom,
                 r_h,
                 beta,
+                t,
                 h_min,
                 h_max,
                 Some(h_n),
@@ -835,7 +837,7 @@ impl Mesh33 {
             )
         } else {
             self.mesh
-                .curvature_metric(&geom.geom, r_h, beta, h_min, h_max, None, None)
+                .curvature_metric(&geom.geom, r_h, beta, t, h_min, h_max, None, None)
         };
 
         if let Err(res) = res {
@@ -1040,13 +1042,14 @@ impl Mesh22 {
     ///  - the metric is entended into the volume with gradation beta
     ///  - if a normal size array is not provided, the minimum of the tangential sizes is used.
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature = (geom, r_h, beta, h_min=None, h_n=None, h_n_tags=None))]
+    #[pyo3(signature = (geom, r_h, beta, t=1.0/8.0, h_min=None, h_n=None, h_n_tags=None))]
     pub fn curvature_metric<'py>(
         &self,
         py: Python<'py>,
         geom: &LinearGeometry2d,
         r_h: f64,
         beta: f64,
+        t: f64,
         h_min: Option<f64>,
         h_n: Option<PyReadonlyArray1<f64>>,
         h_n_tags: Option<PyReadonlyArray1<Tag>>,
@@ -1059,10 +1062,10 @@ impl Mesh22 {
             let h_n_tags = h_n_tags.unwrap();
             let h_n_tags = h_n_tags.as_slice()?;
             self.mesh
-                .curvature_metric(&geom.geom, r_h, beta, Some(h_n), Some(h_n_tags))
+                .curvature_metric(&geom.geom, r_h, beta, t, Some(h_n), Some(h_n_tags))
         } else {
             self.mesh
-                .curvature_metric(&geom.geom, r_h, beta, None, None)
+                .curvature_metric(&geom.geom, r_h, beta, t, None, None)
         };
 
         if let Err(res) = res {

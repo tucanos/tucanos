@@ -195,6 +195,7 @@ macro_rules! create_remesher {
 
             /// Apply a maximum gradation to a metric field
             #[classmethod]
+            #[pyo3(signature = (mesh, m, beta, t=1.0/8.0, n_iter=10))]
             pub fn apply_metric_gradation<'py>(
                 _cls: &Bound<'_, PyType>,
                 py: Python<'py>,
