@@ -12,8 +12,8 @@ use rayon::prelude::{
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Compute the gradation on an edge
     fn edge_gradation<M: Metric<D>>(m0: &M, m1: &M, e: &Point<D>) -> f64 {
-        let l0 = m0.length(&e);
-        let l1 = m1.length(&e);
+        let l0 = m0.length(e);
+        let l1 = m1.length(e);
         let a = l0 / l1;
         let l = if f64::abs(a - 1.0) < 1e-3 {
             l0
@@ -52,10 +52,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     /// Enforce a maximum gradiation on a metric field
-    /// Algorithm taken from "Size gradation control of anisotropic meshes", F. Alauzet, 2010 assuming
-    ///  - a linear interpolation on h
-    ///  - physical-space-gradation (eq. 10)
-    /// and
+    /// Algorithm taken from "Size gradation control of anisotropic meshes", F. Alauzet, 2010 and
     /// "Feature-based and goal-oriented anisotropic mesh adaptation for RANS
     /// applications in aeronautics and aerospace", F. Alauzet & L. Frazza, 2021
     ///
