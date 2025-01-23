@@ -274,7 +274,7 @@ if __name__ == "__main__":
             max_iter=0,
         )
 
-        m = Remesher2dAniso.apply_metric_gradation(msh, m, 1.5, n_iter=10)
+        m = Remesher2dAniso.apply_metric_gradation(msh, m, 1.5, 1.0 / 8.0, n_iter=10)
 
         # fig, (ax0, ax1) = plt.subplots(
         #     1, 2, sharex=True, sharey=True, tight_layout=True
