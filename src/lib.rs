@@ -2,11 +2,12 @@ mod geometry;
 mod mesh;
 mod parallel;
 mod remesher;
+use log::warn;
 use numpy::{PyArray, PyArray1, PyArray2, PyArrayMethods};
 use pyo3::{
-    pymodule,
+    pyfunction, pymodule,
     types::{PyModule, PyModuleMethods},
-    Bound, PyResult, Python,
+    wrap_pyfunction, Bound, PyResult, Python,
 };
 
 fn to_numpy_1d<T: numpy::Element>(py: Python<'_>, vec: Vec<T>) -> Bound<'_, PyArray1<T>> {
@@ -15,9 +16,22 @@ fn to_numpy_1d<T: numpy::Element>(py: Python<'_>, vec: Vec<T>) -> Bound<'_, PyAr
 
 fn to_numpy_2d<T: numpy::Element>(py: Python<'_>, vec: Vec<T>, m: usize) -> Bound<'_, PyArray2<T>> {
     let n = vec.len();
-    PyArray::from_vec(py, vec)
-        .reshape([n / m, m])
-        .unwrap()
+    PyArray::from_vec(py, vec).reshape([n / m, m]).unwrap()
+}
+
+#[must_use]
+#[pyfunction]
+pub fn set_thread_affinity(n: usize) -> usize {
+    let bound_cores = affinity::get_thread_affinity().unwrap();
+    if bound_cores.len() == 1 {
+        let cores = (bound_cores[0]..bound_cores[0] + n).collect::<Vec<_>>();
+        warn!("Set thread affinity: {cores:?}");
+        affinity::set_thread_affinity(cores).unwrap();
+    } else if bound_cores.len() != n {
+        warn!("bound cores: {bound_cores:?}");
+    }
+
+    rayon::current_num_threads()
 }
 
 /// Python bindings for pytucanos
@@ -25,6 +39,7 @@ fn to_numpy_2d<T: numpy::Element>(py: Python<'_>, vec: Vec<T>, m: usize) -> Boun
 #[pyo3(name = "_pytucanos")]
 pub fn pytucanos(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     pyo3_log::init();
+    m.add_function(wrap_pyfunction!(set_thread_affinity, m)?)?;
     m.add_class::<crate::mesh::Mesh33>()?;
     m.add_class::<crate::mesh::Mesh32>()?;
     m.add_class::<crate::mesh::Mesh31>()?;
