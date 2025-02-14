@@ -372,7 +372,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
         for vert in self.verts.values() {
             // Do all element exist ?
-            for i_elem in vert.els.iter() {
+            for i_elem in &vert.els {
                 if !self.elems.contains_key(i_elem) {
                     return Err(Error::from("Invalid vertex to element (missing element)"));
                 }
@@ -391,8 +391,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 }
 
                 // Do all the elements contain the edge ?
-                let v2e = &vert.unwrap().els;
-                for i_elem in v2e.iter() {
+                for i_elem in &vert.unwrap().els {
                     let e = &self.elems.get(i_elem).unwrap().el;
                     if !e.contains_edge(*edg) && vert.is_none() {
                         return Err(Error::from("Invalid edge"));
@@ -487,7 +486,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         let vx = self.verts.get(&idx);
         if vx.is_none() {
             return Err(Error::from("Vertex not present"));
-        };
+        }
         if !vx.unwrap().els.is_empty() {
             return Err(Error::from("Vertex used"));
         }
@@ -714,11 +713,11 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     /// Loop over the edges and split them if
-    ///   - their length is larger that `l_0`
-    ///   - no edge smaller than
-    ///       min(1/sqrt(2), max(params.split_min_l_abs, params.collapse_min_l_rel * min(l)))
-    ///   - no element with a quality lower than
-    ///       max(params.collapse_min_q_abs, params.collapse_min_q_rel * min(q)))
+    /// - their length is larger that `l_0`
+    /// - no edge smaller than
+    ///   min(1/sqrt(2), max(params.split_min_l_abs, params.collapse_min_l_rel * min(l)))
+    /// - no element with a quality lower than
+    ///   max(params.collapse_min_q_abs, params.collapse_min_q_rel * min(q)))
     ///
     /// where min(l) and min(q) as the max edge length and min quality over the entire mesh
     pub fn split<G: Geometry<D>>(
@@ -963,14 +962,14 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     /// Loop over the edges and perform edge swaps if
-    ///   - the quality of an adjacent element is < `q_target`
-    ///   - no edge smaller than
-    ///       min(1/sqrt(2), max(params.swap_min_l_abs, params.cswap_min_l_rel * min(l)))
-    ///   - no edge larger than
-    ///       max(sqrt(2), min(params.swap_max_l_abs, params.swap_max_l_rel * max(l)))
-    ///   - no new boundary face is created if its normal forms an angle > than
-    ///       params.max_angle with the normal of the geometry at the face center
-    ///   - the edge swap increases the minimum quality of the adjacent elements
+    /// - the quality of an adjacent element is < `q_target`
+    /// - no edge smaller than
+    ///   min(1/sqrt(2), max(params.swap_min_l_abs, params.cswap_min_l_rel * min(l)))
+    /// - no edge larger than
+    ///   max(sqrt(2), min(params.swap_max_l_abs, params.swap_max_l_rel * max(l)))
+    /// - no new boundary face is created if its normal forms an angle > than
+    ///   params.max_angle with the normal of the geometry at the face center
+    /// - the edge swap increases the minimum quality of the adjacent elements
     ///
     /// where min(l) and max(l) as the min/max edge length over the entire mesh
     pub fn swap<G: Geometry<D>>(
@@ -1017,13 +1016,13 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     /// Loop over the edges and collapse them if
-    ///   - their length is smaller that 1/sqrt(2)
-    ///   - no edge larger than
-    ///       max(sqrt(2), min(params.collapse_max_l_abs, params.collapse_max_l_rel * max(l)))
-    ///   - no new boundary face is created if its normal forms an angle > than
-    ///       params.max_angle with the normal of the geometry at the face center
-    ///   - no element with a quality lower than
-    ///       max(params.collapse_min_q_abs, params.collapse_min_q_rel * min(q))
+    /// - their length is smaller that 1/sqrt(2)
+    /// - no edge larger than
+    ///   max(sqrt(2), min(params.collapse_max_l_abs, params.collapse_max_l_rel * max(l)))
+    /// - no new boundary face is created if its normal forms an angle > than
+    ///   params.max_angle with the normal of the geometry at the face center
+    /// - no element with a quality lower than
+    ///   max(params.collapse_min_q_abs, params.collapse_min_q_rel * min(q))
     ///
     /// where max(l) and min(q) as the max edge length and min quality over the entire mesh
     #[allow(clippy::too_many_lines)]
