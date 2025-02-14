@@ -3,7 +3,7 @@
 #![allow(non_snake_case)]
 #![allow(clippy::missing_safety_doc)]
 #![allow(clippy::doc_markdown)]
-
+use log::warn;
 use tucanos::{
     geometry::LinearGeometry,
     mesh::{SimplexMesh, Tetrahedron, Triangle},
@@ -179,9 +179,13 @@ pub unsafe extern "C" fn tucanos_remesher3diso_new(
     let mesh = &(*mesh).implem;
     let metric = new_metric(metric, mesh.n_verts());
     let geom = &(*geom).implem;
-    Remesher::new_with_iter(mesh, metric, geom).map_or(std::ptr::null_mut(), |implem| {
-        Box::into_raw(Box::new(tucanos_remesher3diso_t { implem }))
-    })
+    match Remesher::new_with_iter(mesh, metric, geom) {
+        Ok(implem) => Box::into_raw(Box::new(tucanos_remesher3diso_t { implem })),
+        Err(e) => {
+            warn!("{:?}", e);
+            std::ptr::null_mut()
+        }
+    }
 }
 
 #[no_mangle]
@@ -209,9 +213,13 @@ pub unsafe extern "C" fn tucanos_remesher3daniso_new(
     let mesh = &(*mesh).implem;
     let metric = new_metric(metric, mesh.n_verts());
     let geom = &(*geom).implem;
-    Remesher::new_with_iter(mesh, metric, geom).map_or(std::ptr::null_mut(), |implem| {
-        Box::into_raw(Box::new(tucanos_remesher3daniso_t { implem }))
-    })
+    match Remesher::new_with_iter(mesh, metric, geom) {
+        Ok(implem) => Box::into_raw(Box::new(tucanos_remesher3daniso_t { implem })),
+        Err(e) => {
+            warn!("{:?}", e);
+            std::ptr::null_mut()
+        }
+    }
 }
 
 #[no_mangle]
@@ -331,4 +339,12 @@ pub unsafe extern "C" fn tucanos_mesh33_boundary(
 #[no_mangle]
 pub unsafe extern "C" fn tucanos_mesh33_delete(m: *mut tucanos_mesh33_t) {
     let _ = Box::from_raw(m);
+}
+
+/// @brief Enable Rust logger
+///
+/// See <https://docs.rs/env_logger/latest/env_logger/#enabling-logging> for details
+#[no_mangle]
+pub unsafe extern "C" fn tucanos_init_log() {
+    tucanos::init_log("warn");
 }

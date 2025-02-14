@@ -10,6 +10,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 tucanos = { path = ".." }
+log = "0.4.22"
 
 [build-dependencies]
 cbindgen = "0.28"
