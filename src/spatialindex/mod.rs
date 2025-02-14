@@ -166,7 +166,7 @@ mod tests {
         let start = Instant::now();
         let num_proj = 10000;
         for _ in 0..num_proj {
-            let tmp = SVector::<f64, 3>::from_fn(|_, _| rng.gen());
+            let tmp = SVector::<f64, 3>::from_fn(|_, _| rng.random());
             let theta = 2.0 * PI * tmp[0];
             let r = r_in + tmp[1] * (r_out * 0.999 - r_in);
             let x = r * f64::cos(theta);

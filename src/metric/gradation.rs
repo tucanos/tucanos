@@ -251,11 +251,11 @@ mod tests {
         let beta = 1.5;
         let t = 0.125;
         for _ in 0..100 {
-            let mat = SMatrix::<f64, 3, 3>::from_fn(|_, _| rng.gen());
+            let mat = SMatrix::<f64, 3, 3>::from_fn(|_, _| rng.random());
             let mat = mat.transpose() * mat;
             let m0 = AnisoMetric3d::from_mat(mat);
 
-            let mat = 0.1 * SMatrix::<f64, 3, 3>::from_fn(|_, _| rng.gen());
+            let mat = 0.1 * SMatrix::<f64, 3, 3>::from_fn(|_, _| rng.random());
             let mat = mat.transpose() * mat;
             let m1 = AnisoMetric3d::from_mat(mat);
             let before = SimplexMesh::<3, Tetrahedron>::edge_gradation(&m0, &m1, &e);
@@ -268,11 +268,11 @@ mod tests {
 
         let t = 0.0;
         for _ in 0..100 {
-            let mat = SMatrix::<f64, 3, 3>::from_fn(|_, _| rng.gen());
+            let mat = SMatrix::<f64, 3, 3>::from_fn(|_, _| rng.random());
             let mat = mat.transpose() * mat;
             let m0 = AnisoMetric3d::from_mat(mat);
 
-            let mat = 0.1 * SMatrix::<f64, 3, 3>::from_fn(|_, _| rng.gen());
+            let mat = 0.1 * SMatrix::<f64, 3, 3>::from_fn(|_, _| rng.random());
             let mat = mat.transpose() * mat;
             let m1 = AnisoMetric3d::from_mat(mat);
             let m = m0.span(&e, beta, t);
