@@ -172,7 +172,7 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
         })
     }
 
-    pub fn set_debug(&mut self, debug: bool) {
+    pub const fn set_debug(&mut self, debug: bool) {
         self.debug = debug;
     }
 

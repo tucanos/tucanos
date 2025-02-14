@@ -476,7 +476,7 @@ impl Topology {
             self.check_and_fix(elems, etags, &mut vtags);
             self.check_and_fix(faces, ftags, &mut vtags);
             self.check_and_fix(&verts.into(), &verttags.into(), &mut vtags);
-        };
+        }
 
         self.compute_parents();
 
