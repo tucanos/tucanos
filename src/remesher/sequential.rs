@@ -523,7 +523,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         let ge = self.gelem(&el);
         let q = ge.quality();
         if q <= 0.0 {
-            return Err(Error::from("Invalid element"));
+            return Err(Error::from(&format!(
+                "Invalid element: {el:?} / {ge:?}, quality: {q}"
+            )));
         }
         self.elems.insert(self.next_elem, ElemInfo { el, tag, q });
 

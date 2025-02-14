@@ -79,6 +79,7 @@ Here is an example of a C program using Tucanos:
 #include <stdio.h>
 #include <tucanos.h>
 int main(void) {
+  tucanos_init_log(); // use export RUST_LOG=debug to log more
   double vertices[] = {0., 0., 0., 1., 0., 0., 0., 1., 0., 0., 0., 1.};
   uint32_t faces[] = {0, 2, 1, 0, 1, 3, 1, 2, 3, 2, 0, 3};
   int16_t faces_tags[] = {1, 1, 1, 1};
