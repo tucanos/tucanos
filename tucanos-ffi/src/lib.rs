@@ -233,6 +233,9 @@ pub unsafe extern "C" fn tucanos_remesher3diso_remesh(
     params: *const tucanos_params_t,
     geom: *const tucanos_geom3d_t,
 ) -> bool {
+    assert!(!remesher.is_null());
+    assert!(!geom.is_null());
+    assert!(!params.is_null());
     let remesher = &mut (*remesher).implem;
     let geom = &(*geom).implem;
     let params = &*params;
@@ -245,6 +248,9 @@ pub unsafe extern "C" fn tucanos_remesher3daniso_remesh(
     params: *const tucanos_params_t,
     geom: *const tucanos_geom3d_t,
 ) -> bool {
+    assert!(!remesher.is_null());
+    assert!(!geom.is_null());
+    assert!(!params.is_null());
     let remesher = &mut (*remesher).implem;
     let geom = &(*geom).implem;
     let params = &*params;
