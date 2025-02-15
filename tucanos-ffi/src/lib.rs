@@ -261,6 +261,11 @@ pub unsafe extern "C" fn tucanos_remesher3daniso_tomesh(
     Box::into_raw(Box::new(tucanos_mesh33_t { implem }))
 }
 
+/// Create a new 3D mesh containing tetrahedrons
+///
+/// The numbering convention of the elements is the one Of VTK or CGNS:
+/// - <https://docs.vtk.org/en/latest/design_documents/VTKFileFormats.html>
+/// - <https://cgns.github.io/standard/SIDS/convention.html>
 #[no_mangle]
 pub extern "C" fn tucanos_mesh33_new(
     num_verts: usize,
