@@ -89,22 +89,22 @@ jobs:
       uses: clechasseur/rs-clippy-check@v3
     - run: cargo fmt --check --all
     - name: Run cargo test (libol / libmeshb)
-      uses: clechasseur/rs-cargo@v2
+      uses: clechasseur/rs-cargo@v3
       with:
         command: test 
         args: --no-default-features --features=libol,libmeshb,scotch,metis,nlopt
     - name: Run cargo test --release (libol / libmeshb)
-      uses: clechasseur/rs-cargo@v2
+      uses: clechasseur/rs-cargo@v3
       with:
         command: test
         args: --release --no-default-features --features=libol,libmeshb,scotch,metis,nlopt
     - name: Run cargo test
-      uses: clechasseur/rs-cargo@v2
+      uses: clechasseur/rs-cargo@v3
       with:
         command: test 
         args: --features=scotch,metis,nlopt
     - name: Run cargo test --release
-      uses: clechasseur/rs-cargo@v2
+      uses: clechasseur/rs-cargo@v3
       with:
         command: test
         args: --release --features=scotch,metis,nlopt
@@ -146,22 +146,22 @@ jobs:
     - name: Run clippy
       uses: clechasseur/rs-clippy-check@v3
     - name: Run cargo test (libol / libmeshb)
-      uses: clechasseur/rs-cargo@v2
+      uses: clechasseur/rs-cargo@v3
       with:
         command: test 
         args: --no-default-features --features=libol,libmeshb,scotch,metis,nlopt
     - name: Run cargo test --release (libol / libmeshb)
-      uses: clechasseur/rs-cargo@v2
+      uses: clechasseur/rs-cargo@v3
       with:
         command: test
         args: --release --no-default-features --features=libol,libmeshb,scotch,metis,nlopt
     - name: Run cargo test
-      uses: clechasseur/rs-cargo@v2
+      uses: clechasseur/rs-cargo@v3
       with:
         command: test 
         args: --features=scotch,metis,nlopt
     - name: Run cargo test --release
-      uses: clechasseur/rs-cargo@v2
+      uses: clechasseur/rs-cargo@v3
       with:
         command: test
         args: --release --features=scotch,metis,nlopt
