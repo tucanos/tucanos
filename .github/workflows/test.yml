@@ -86,7 +86,7 @@ jobs:
           key: ${{ runner.os }}-cargo-nightly-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-nightly-
     - name: Run clippy
-      uses: clechasseur/rs-clippy-check@v3
+      uses: clechasseur/rs-clippy-check@v4
     - run: cargo fmt --check --all
     - name: Run cargo test (libol / libmeshb)
       uses: clechasseur/rs-cargo@v3
@@ -144,7 +144,7 @@ jobs:
           key: ${{ runner.os }}-cargo-stable-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-stable-
     - name: Run clippy
-      uses: clechasseur/rs-clippy-check@v3
+      uses: clechasseur/rs-clippy-check@v4
     - name: Run cargo test (libol / libmeshb)
       uses: clechasseur/rs-cargo@v3
       with:
