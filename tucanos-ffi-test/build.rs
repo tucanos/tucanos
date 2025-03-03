@@ -15,9 +15,10 @@ fn main() {
     println!("cargo:rustc-link-arg=-Wl,-rpath,{}", out_path.display());
     println!("cargo:rustc-link-search=native={}", out_path.display());
     let header = out_path.join("tucanos.h");
-    println!("cargo:rerun-if-changed={header:?}");
+    let header = header.to_str().expect("Invalid UTF-8 caracter in path");
+    println!("cargo:rerun-if-changed={header}");
     bindgen::Builder::default()
-        .header(header.to_str().unwrap())
+        .header(header)
         .generate()
         .expect("Unable to generate bindings")
         .write_to_file(out_path.join("bindgen.rs"))

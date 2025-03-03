@@ -279,7 +279,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 return Err(Error::from("Vertex not found"));
             }
             let v2e = &res.unwrap().els;
-            if !v2e.iter().any(|&x| x == i_elem) {
+            if !v2e.contains(&i_elem) {
                 return Err(Error::from("Invalid vertex to element (missing vertex)"));
             }
         }
@@ -1185,7 +1185,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             if i1 == i0 {
                 continue;
             }
-            if res.iter().any(|x| *x == i1) {
+            if res.contains(&i1) {
                 continue;
             }
             // check tag

@@ -202,7 +202,6 @@ mod tests {
         mesh::test_meshes::{test_mesh_2d, test_mesh_3d},
         mesh::Point,
         metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric},
-        Result,
     };
 
     #[test]
@@ -241,7 +240,7 @@ mod tests {
     }
 
     #[test]
-    fn test_complexity_3d() -> Result<()> {
+    fn test_complexity_3d() {
         let mut mesh = test_mesh_3d().split().split();
         mesh.compute_volumes();
 
@@ -253,12 +252,10 @@ mod tests {
 
         let c = mesh.complexity(&m, 0.0, 0.05);
         assert!(f64::abs(c - 8000. * 6. * f64::sqrt(2.0)) < 1e-6);
-
-        Ok(())
     }
 
     #[test]
-    fn test_complexity_3d_aniso() -> Result<()> {
+    fn test_complexity_3d_aniso() {
         let mut mesh = test_mesh_3d().split().split();
         mesh.compute_volumes();
 
@@ -276,7 +273,5 @@ mod tests {
 
         let c = mesh.complexity(&m, 1.0, 5.0);
         assert!(f64::abs(c - 1.0 / 20. * 6. * f64::sqrt(2.0)) < 1e-6);
-
-        Ok(())
     }
 }
