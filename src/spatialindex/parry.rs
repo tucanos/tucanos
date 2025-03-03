@@ -436,7 +436,7 @@ impl<const D: usize> super::ObjectIndex<D> for ObjectIndex<D> {
                 })
                 .collect();
             Self {
-                inner: ParryImpl::Tria3D(parry3d_f64::shape::TriMesh::new(coords, elems)),
+                inner: ParryImpl::Tria3D(parry3d_f64::shape::TriMesh::new(coords, elems).unwrap()),
             }
         } else if D == 2 && E::N_VERTS == 2 {
             Self {
@@ -463,7 +463,7 @@ impl<const D: usize> super::ObjectIndex<D> for ObjectIndex<D> {
                 })
                 .collect();
             Self {
-                inner: ParryImpl::Tria2D(parry2d_f64::shape::TriMesh::new(coords, elems)),
+                inner: ParryImpl::Tria2D(parry2d_f64::shape::TriMesh::new(coords, elems).unwrap()),
             }
         } else {
             unimplemented!("D={D} E::N_VERTS={}", E::N_VERTS);
