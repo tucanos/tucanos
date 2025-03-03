@@ -708,7 +708,6 @@ impl AnisoMetric<3> for AnisoMetric3d {
     const N: usize = 6;
 
     /// Convert from 6 scalars to a matrix
-    #[must_use]
     fn slice_to_mat(m: &[f64]) -> SMatrix<f64, 3, 3> {
         SMatrix::<f64, 3, 3>::new(m[0], m[3], m[5], m[3], m[1], m[4], m[5], m[4], m[2])
     }

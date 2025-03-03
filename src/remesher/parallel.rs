@@ -156,7 +156,7 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
 
         // Use negative tags for interfaces
         mesh.mut_ftags().for_each(|t| {
-            if partition_bdy_tags.iter().any(|&x| x == *t) {
+            if partition_bdy_tags.contains(t) {
                 *t = -*t;
             }
         });
