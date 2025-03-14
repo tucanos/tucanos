@@ -844,6 +844,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     ) -> Result<TrySwapResult> {
         trace!("Try to swap edge {:?}", edg);
         cavity.init_from_edge(edg, self);
+        if E::DIM == 2 {
+            assert!(cavity.n_elems() <= 2);
+        }
         if cavity.global_elem_ids.len() == 1 {
             trace!("Cannot swap, only one adjacent cell");
             return Ok(TrySwapResult::QualitySufficient);
@@ -922,7 +925,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 continue;
             }
 
-            if !filled_cavity.check_boundary_normals(&self.topo, geom, max_angle) {
+            if !filled_cavity.check_normals(&self.topo, geom, max_angle) {
                 trace!("Cannot swap, would create a non smooth surface");
                 continue;
             }
@@ -1104,7 +1107,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                         continue;
                     }
 
-                    if !filled_cavity.check_boundary_normals(&self.topo, geom, params.max_angle) {
+                    if !filled_cavity.check_normals(&self.topo, geom, params.max_angle) {
                         trace!("Cannot collapse, would create a non smooth surface");
                         continue;
                     }
@@ -1391,7 +1394,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 let ftype = FilledCavityType::MovedVertex((i0_local, p0_new, *m0));
                 let filled_cavity = FilledCavity::new(cavity, ftype);
 
-                if !filled_cavity.check_boundary_normals(&self.topo, geom, params.max_angle) {
+                if !filled_cavity.check_normals(&self.topo, geom, params.max_angle) {
                     trace!("Cannot smooth, would create a non smooth surface");
                     continue;
                 }
