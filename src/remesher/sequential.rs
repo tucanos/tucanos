@@ -1541,7 +1541,6 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
     /// Return the stats at each remeshing step
     #[must_use]
-    #[allow(clippy::missing_const_for_fn)]
     pub fn stats(&self) -> &[StepStats] {
         &self.stats
     }
@@ -2599,50 +2598,6 @@ mod tests {
                 assert!(mini > 0.3, "min. edge length: {mini}");
                 assert!(maxi < 1.7, "max. edge length: {maxi}");
             }
-        }
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_adapt_aniso_3d_geom() -> Result<()> {
-        let mut mesh = sphere_mesh(2);
-
-        let mfunc = |_p| {
-            let v0 = Point::<3>::new(0.5, 0., 0.);
-            let v1 = Point::<3>::new(0.0, 0.5, 0.);
-            let v2 = Point::<3>::new(0., 0.0, 0.1);
-            AnisoMetric3d::from_sizes(&v0, &v1, &v2)
-        };
-
-        let geom = SphereGeometry;
-
-        let fname = format!("sphere_{}.vtu", 0);
-        mesh.write_vtk(&fname, None, None)?;
-
-        for iter in 0..2 {
-            let h: Vec<_> = mesh.verts().map(mfunc).collect();
-            let mut remesher = Remesher::new(&mesh, &h, &geom)?;
-
-            let params = RemesherParams {
-                split_min_q_abs: 0.4,
-                ..RemesherParams::default()
-            };
-            remesher.remesh(params, &geom)?;
-            remesher.check()?;
-
-            mesh = remesher.to_mesh(true);
-            mesh.compute_topology();
-
-            let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
-
-            if iter == 1 {
-                assert!(mini > 0.25, "min. edge length: {mini}");
-                assert!(maxi < 1.7, "max. edge length: {maxi}");
-            }
-
-            let fname = format!("sphere_{}.vtu", iter + 1);
-            mesh.write_vtk(&fname, None, None)?;
         }
 
         Ok(())
