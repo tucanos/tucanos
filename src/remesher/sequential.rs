@@ -1774,9 +1774,8 @@ mod tests {
         geometry::NoGeometry,
         mesh::{
             test_meshes::{
-                h_2d, h_3d, sphere_mesh, sphere_mesh_surf, test_mesh_2d, test_mesh_3d,
-                test_mesh_3d_single_tet, test_mesh_3d_two_tets, test_mesh_moon_2d,
-                GeomHalfCircle2d, SphereGeometry,
+                h_2d, h_3d, sphere_mesh_surf, test_mesh_2d, test_mesh_3d, test_mesh_3d_single_tet,
+                test_mesh_3d_two_tets, test_mesh_moon_2d, GeomHalfCircle2d, SphereGeometry,
             },
             Edge, Elem, GElem, Point, SimplexMesh, Tetrahedron, Triangle,
         },
