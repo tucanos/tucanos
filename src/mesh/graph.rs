@@ -182,7 +182,6 @@ impl<T: PrimInt + AddAssign + Display> ConnectedComponents<T> {
     }
 
     #[must_use]
-    #[allow(clippy::missing_const_for_fn)]
     pub fn tags(&self) -> &[T] {
         &self.vtag
     }
