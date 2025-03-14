@@ -1,4 +1,5 @@
 mod curvature;
+pub mod quadratic_mesh;
 
 use crate::{
     geometry::curvature::HasCurvature,
