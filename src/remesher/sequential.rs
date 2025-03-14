@@ -776,7 +776,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     }
 
                     // projection if needed
-                    if tag.0 < E::DIM as Dim {
+                    if tag.0 < D as Dim {
                         geom.project(&mut edge_center, &tag);
                     }
 
@@ -1379,7 +1379,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             for omega in params.smooth_relax.iter().copied() {
                 p0_new = (1.0 - omega) * p0 + omega * p0_smoothed;
 
-                if t0.0 < E::DIM as Dim {
+                if t0.0 < D as Dim {
                     geom.project(&mut p0_new, t0);
                 }
 
