@@ -886,7 +886,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             return Ok(TrySwapResult::FixedEdge);
         }
 
-        if etag.0 < E::Face::DIM as Dim {
+        if etag.0 == 1 {
             return Ok(TrySwapResult::CouldNotSwap);
         }
 
