@@ -1,7 +1,6 @@
 use crate::{mesh::Point, Idx, Tag};
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
-
 pub struct QuadraticMesh {
     verts: Vec<Point<3>>,
     tris: Vec<[Idx; 6]>,
@@ -11,6 +10,7 @@ pub struct QuadraticMesh {
 }
 
 impl QuadraticMesh {
+    #[must_use]
     pub fn new(
         verts: Vec<Point<3>>,
         tris: Vec<[Idx; 6]>,
