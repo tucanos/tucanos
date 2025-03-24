@@ -2,7 +2,7 @@ use crate::{
     Idx,
     mesh::geom_elems::GElem,
     mesh::{Elem, Point, SimplexMesh, Triangle},
-    spatialindex::{DefaultObjectIndex, ObjectIndex},
+    spatialindex::ObjectIndex,
 };
 use log::{debug, warn};
 use std::{f64::consts::PI, fs::OpenOptions};
@@ -47,7 +47,7 @@ pub fn orient_stl<const D: usize, E: Elem>(
     debug!("Orient the boundary mesh");
 
     let (bdy, _) = mesh.boundary();
-    let tree = <DefaultObjectIndex<D> as ObjectIndex<D>>::new(&bdy);
+    let tree = bdy.compute_elem_tree();
     let mut dmin = 1.0;
     let mut n_inverted = 0;
     let mut new_elems = Vec::with_capacity(stl_mesh.n_elems() as usize);
@@ -62,8 +62,7 @@ pub fn orient_stl<const D: usize, E: Elem>(
         let mut d = n.dot(&n_mesh);
         let mut new_e = e;
         if d < 0.0 {
-            new_e[0] = e[1];
-            new_e[1] = e[0];
+            new_e.invert();
             d = -d;
             n_inverted += 1;
         }

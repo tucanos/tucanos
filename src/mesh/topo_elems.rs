@@ -93,6 +93,8 @@ pub trait Elem:
         e.sort_unstable();
         e
     }
+
+    fn invert(&mut self);
 }
 
 /// Tetrahedron
@@ -161,6 +163,10 @@ impl Elem for Tetrahedron {
             5 => [self.0[2], self.0[3]],
             _ => [0, 0],
         }
+    }
+
+    fn invert(&mut self) {
+        self.0.swap(0, 1);
     }
 }
 
@@ -249,6 +255,10 @@ impl Elem for Triangle {
             _ => [0, 0],
         }
     }
+
+    fn invert(&mut self) {
+        self.0.swap(0, 1);
+    }
 }
 
 impl IntoIterator for Triangle {
@@ -331,6 +341,10 @@ impl Elem for Edge {
             _ => [0, 0],
         }
     }
+
+    fn invert(&mut self) {
+        self.0.swap(0, 1);
+    }
 }
 
 impl IntoIterator for Edge {
@@ -396,6 +410,10 @@ impl Elem for Vertex {
     }
 
     fn edge(&self, _i: Idx) -> [Idx; 2] {
+        unreachable!();
+    }
+
+    fn invert(&mut self) {
         unreachable!();
     }
 }
