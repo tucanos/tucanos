@@ -5,6 +5,7 @@ use crate::{
     spatialindex::ObjectIndex,
 };
 use log::{debug, warn};
+use rustc_hash::FxHashSet;
 use std::{f64::consts::PI, fs::OpenOptions};
 
 /// Read a .stl file (ascii or binary) and return a new SimplexMesh<3, Triangle>
@@ -47,27 +48,39 @@ pub fn orient_stl<const D: usize, E: Elem>(
     debug!("Orient the boundary mesh");
 
     let (bdy, _) = mesh.boundary();
-    let tree = bdy.compute_elem_tree();
+    let tags = bdy.etags().collect::<FxHashSet<_>>();
+
+    let n_elems = stl_mesh.n_elems();
+    let mut new_elems = stl_mesh.elems().collect::<Vec<_>>();
     let mut dmin = 1.0;
     let mut n_inverted = 0;
-    let mut new_elems = Vec::with_capacity(stl_mesh.n_elems() as usize);
-    for e in stl_mesh.elems() {
-        let ge = stl_mesh.gelem(e);
-        let c = ge.center();
-        let n = ge.normal();
-        let i_face_mesh = tree.nearest_elem(&c);
-        let f_mesh = mesh.face(i_face_mesh);
-        let gf_mesh = mesh.gface(f_mesh);
-        let n_mesh = gf_mesh.normal();
-        let mut d = n.dot(&n_mesh);
-        let mut new_e = e;
-        if d < 0.0 {
-            new_e.invert();
-            d = -d;
-            n_inverted += 1;
+
+    for tag in tags {
+        let bdy = bdy.extract_tag(tag);
+        let tree = bdy.mesh.compute_elem_tree();
+        for i in 0..n_elems {
+            let t = stl_mesh.etag(i);
+            let e = stl_mesh.elem(i);
+            if t == tag {
+                let ge = stl_mesh.gelem(e);
+                let c = ge.center();
+                let n = ge.normal();
+                let i_face_mesh = tree.nearest_elem(&c);
+                let i_face_mesh = bdy.parent_elem_ids[i_face_mesh as usize] as Idx;
+                let f_mesh = mesh.face(i_face_mesh);
+                let t_mesh = mesh.ftag(i_face_mesh);
+                assert_eq!(t, t_mesh);
+                let gf_mesh = mesh.gface(f_mesh);
+                let n_mesh = gf_mesh.normal();
+                let mut d = n.dot(&n_mesh);
+                if d < 0.0 {
+                    new_elems[i as usize].invert();
+                    d = -d;
+                    n_inverted += 1;
+                }
+                dmin = f64::min(dmin, d);
+            }
         }
-        dmin = f64::min(dmin, d);
-        new_elems.push(new_e);
     }
 
     stl_mesh
@@ -76,7 +89,7 @@ pub fn orient_stl<const D: usize, E: Elem>(
         .for_each(|(e0, e1)| *e0 = e1);
 
     if n_inverted > 0 {
-        warn!("{n_inverted} faces reoriented");
+        warn!("{n_inverted} / {} faces reoriented", stl_mesh.n_elems());
     }
     (n_inverted, f64::acos(dmin) * 180. / PI)
 }
@@ -109,6 +122,7 @@ mod tests {
     fn test_reorient() -> Result<()> {
         let mut mesh = test_mesh_3d().split().split();
         mesh.add_boundary_faces();
+        mesh.mut_ftags().for_each(|t| *t = 1);
 
         write_stl_file("cube1.stl")?;
         let mut geom = read_stl("cube1.stl");
