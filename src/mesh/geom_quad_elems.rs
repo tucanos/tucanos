@@ -43,6 +43,10 @@ pub trait GQuadElem<M: Metric<3>>: Clone + Copy + Debug + Send {
     const IDEAL_VOL: f64;
 
     #[allow(dead_code)]
+    /// Create a `GQuadElem` from its vertices and the metric at each vertex
+    fn from_verts<I: Iterator<Item = (Point<3>, M)>>(points_n_metrics: I) -> Self;
+
+    #[allow(dead_code)]
     fn center(&self) -> Point<3>;
 
     #[allow(dead_code)]
@@ -139,6 +143,15 @@ impl<M: Metric<3>> GQuadElem<M> for GQuadraticTriangle<M> {
     type BCoords = Vector3<f64>;
     const IDEAL_VOL: f64 = SQRT_3 / 4.;
 
+    fn from_verts<I: Iterator<Item = (Point<3>, M)>>(mut points_n_metrics: I) -> Self {
+        let p: [_; 6] = std::array::from_fn(|_| points_n_metrics.next().unwrap());
+        assert!(points_n_metrics.next().is_none());
+        Self {
+            points: p.map(|x| x.0),
+            metrics: p.map(|x| x.1),
+        }
+    }
+
     fn vert(&self, i: Idx) -> Point<3> {
         self.points[i as usize]
     }
@@ -209,6 +222,15 @@ impl<M: Metric<3>> GQuadElem<M> for GQuadraticEdge<M> {
     type BCoords = Vector2<f64>;
     const IDEAL_VOL: f64 = 1.0;
 
+    fn from_verts<I: Iterator<Item = (Point<3>, M)>>(mut points_n_metrics: I) -> Self {
+        let p: [_; 3] = std::array::from_fn(|_| points_n_metrics.next().unwrap());
+        assert!(points_n_metrics.next().is_none());
+        Self {
+            points: p.map(|x| x.0),
+            metrics: p.map(|x| x.1),
+        }
+    }
+
     fn vert(&self, i: Idx) -> Point<3> {
         self.points[i as usize]
     }
@@ -267,6 +289,15 @@ impl<M: Metric<3>> GQuadElem<M> for GVertex<M> {
     type BCoords = Vector1<f64>;
     const IDEAL_VOL: f64 = 1.0;
 
+    fn from_verts<I: Iterator<Item = (Point<3>, M)>>(mut points_n_metrics: I) -> Self {
+        let (p, m) = points_n_metrics.next().unwrap();
+        assert!(points_n_metrics.next().is_none());
+        Self {
+            points: [p],
+            metrics: [m],
+        }
+    }
+
     fn vert(&self, i: Idx) -> Point<3> {
         self.points[i as usize]
     }
@@ -286,8 +317,11 @@ impl<M: Metric<3>> GQuadElem<M> for GVertex<M> {
 
 #[cfg(test)]
 mod tests {
+    use nalgebra::SMatrix;
+
     use super::*;
     use crate::mesh::Point;
+    use crate::metric::{AnisoMetric, AnisoMetric3d};
     use std::error::Error;
     use std::fmt;
     use std::fmt::Debug;
@@ -487,5 +521,24 @@ mod tests {
         let interpolated =
             SimpleMetric::interpolate(vec![(0.5, &metric1), (0.5, &metric2)].into_iter());
         assert_eq!(interpolated.values, [1.5, 0.0, 0.0, 1.5]);
+    }
+
+    #[test]
+    fn test_quad_tri() {
+        let mat = SMatrix::<f64, 3, 3>::new(1., 0.1, 0.2, 0.1, 1.0, 0.3, 0.2, 0.3, 1.0);
+        let metric = AnisoMetric3d::from_mat(mat);
+
+        let points = [
+            Point::<3>::from([0., 0., 0.]),
+            Point::<3>::from([1., 0., 0.]),
+            Point::<3>::from([0., 1., 0.]),
+            Point::<3>::from([0.5, 0.5, 0.]),
+            Point::<3>::from([0.5, 0., 0.5]),
+            Point::<3>::from([0., 0.5, 0.5]),
+        ];
+
+        let points_and_metrics = points.iter().map(|&p| (p, metric));
+        let triangle = GQuadraticTriangle::from_verts(points_and_metrics);
+        assert_eq!(triangle.vert(0), points[0]);
     }
 }
