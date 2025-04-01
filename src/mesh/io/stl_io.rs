@@ -1,6 +1,7 @@
 use crate::{
-    mesh::geom_elems::GElem,
-    mesh::{Elem, Point, SimplexMesh, Triangle},
+    mesh::{
+        geom_elems::GElem, Elem, Point, QuadraticMesh, QuadraticTriangle, SimplexMesh, Triangle,
+    },
     spatialindex::{DefaultObjectIndex, ObjectIndex},
     Idx,
 };
@@ -35,6 +36,39 @@ pub fn read_stl(file_name: &str) -> SimplexMesh<3, Triangle> {
     let ftags = Vec::new();
 
     SimplexMesh::<3, Triangle>::new(verts, elems, etags, faces, ftags)
+}
+
+/// Read a .stl file (ascii or binary) and return a new SimplexMesh<3, Triangle>
+#[must_use]
+pub fn read_stl_quadratic(file_name: &str) -> QuadraticMesh {
+    debug!("Read {file_name}");
+
+    let mut file = OpenOptions::new().read(true).open(file_name).unwrap();
+    let stl = stl_io::read_stl(&mut file).unwrap();
+
+    let mut verts = Vec::with_capacity(stl.vertices.len());
+    verts.extend(
+        stl.vertices
+            .iter()
+            .map(|v| Point::<3>::new(f64::from(v[0]), f64::from(v[1]), f64::from(v[2]))),
+    );
+
+    let mut tris = Vec::with_capacity(3 * stl.faces.len());
+    tris.extend(stl.faces.iter().map(|v| {
+        QuadraticTriangle::new(
+            v.vertices[0] as Idx,
+            v.vertices[1] as Idx,
+            v.vertices[2] as Idx,
+            v.vertices[3] as Idx,
+            v.vertices[4] as Idx,
+            v.vertices[5] as Idx,
+        )
+    }));
+    let tri_tags = vec![1; stl.faces.len()];
+    let edgs = Vec::new();
+    let edg_tags = Vec::new();
+
+    QuadraticMesh::new(verts, tris, tri_tags, edgs, edg_tags)
 }
 
 /// Reorder a surface mesh that provides a representation of the geometry of the boundary of a

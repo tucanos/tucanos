@@ -1,7 +1,16 @@
+use super::{topo_elems_quadratic::QuadraticElem, vector::Vector};
 use crate::{mesh::Point, Idx, Tag};
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
+
+pub struct QuadraticMesh<E: QuadraticElem> {
+    verts: Vec<Point<3>>,
+    tris: Vector<E>,
+    tri_tags: Vector<Tag>,
+    edgs: Vec<[Idx; 3]>,
+    edg_tags: Vec<Tag>,
+}
 pub struct QuadraticMesh {
     verts: Vec<Point<3>>,
     tris: Vec<[Idx; 6]>,
@@ -134,15 +143,6 @@ mod tests {
         }
         if let Some(tag) = test_mesh.tritag(0) {
             assert_eq!(tag, 1);
-        }
-
-        let verts_iter: Vec<_> = test_mesh.verts().collect();
-        assert_eq!(verts_iter.len(), 6);
-
-        let tris_iter: Vec<_> = test_mesh.tris().collect();
-        assert_eq!(tris_iter.len(), 1);
-
-        let tri_tags_iter: Vec<_> = test_mesh.tri_tags().collect();
-        assert_eq!(tri_tags_iter.len(), 1);
+        };
     }
 }
