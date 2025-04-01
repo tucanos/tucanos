@@ -1,17 +1,19 @@
-use super::{topo_elems_quadratic::QuadraticElem, vector::Vector};
+use super::{topo_elems_quadratic::QuadraticElem, vector::VectorQuadratic};
 use crate::{mesh::Point, Idx, Tag};
+use log::debug;
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 
-pub struct QuadraticMesh<E: QuadraticElem> {
-    verts: Vec<Point<3>>,
-    tris: Vector<E>,
-    tri_tags: Vector<Tag>,
-    edgs: Vec<[Idx; 3]>,
-    edg_tags: Vec<Tag>,
+pub struct QuadraticMesh<QE: QuadraticElem> {
+    verts: VectorQuadratic<Point<3>>,
+    tris: VectorQuadratic<QE>,
+    tri_tags: VectorQuadratic<Tag>,
+    edgs: VectorQuadratic<QE::Face>,
+    edg_tags: VectorQuadratic<Tag>,
 }
-pub struct QuadraticMesh {
+
+pub struct QuadraticMesh2 {
     verts: Vec<Point<3>>,
     tris: Vec<[Idx; 6]>,
     tri_tags: Vec<Tag>,
@@ -19,15 +21,24 @@ pub struct QuadraticMesh {
     edg_tags: Vec<Tag>,
 }
 
-impl QuadraticMesh {
+impl<QE: QuadraticElem> QuadraticMesh<QE> {
     #[must_use]
-    pub fn new(
-        verts: Vec<Point<3>>,
-        tris: Vec<[Idx; 6]>,
-        tri_tags: Vec<Tag>,
-        edgs: Vec<[Idx; 3]>,
-        edg_tags: Vec<Tag>,
+    pub fn new_with_vector(
+        verts: VectorQuadratic<Point<3>>,
+        tris: VectorQuadratic<QE>,
+        tri_tags: VectorQuadratic<Tag>,
+        edgs: VectorQuadratic<QE::Face>,
+        edg_tags: VectorQuadratic<Tag>,
     ) -> Self {
+        debug!(
+            "Create a Quadratic mesh with {} {}D vertices / {} {} / {} {}",
+            verts.len(),
+            3,
+            tris.len(),
+            QE::NAME,
+            edgs.len(),
+            QE::Face::NAME
+        );
         Self {
             verts,
             tris,

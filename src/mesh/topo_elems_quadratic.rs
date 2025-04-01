@@ -1,8 +1,12 @@
 use super::geom_quad_elems::{GQuadElem, GQuadraticEdge, GQuadraticTriangle, GVertex};
 use crate::metric::Metric;
 use crate::Idx;
+use core::hash::Hash;
+use std::fmt::Debug;
 
-pub trait QuadraticElem {
+pub trait QuadraticElem:
+    Clone + Copy + Eq + PartialEq + Hash + Default + Debug + Send + Sync
+{
     /// Number of vertices in the element
     const N_VERTS: Idx;
     /// Number of faces in the element
@@ -17,6 +21,8 @@ pub trait QuadraticElem {
     type Face: QuadraticElem;
     /// Type for the element geometry
     type Geom<M: Metric<3>>: GQuadElem<M>;
+    /// Create from a slice containing the element connectivity
+    fn from_slice(s: &[Idx]) -> Self;
 }
 
 /// Quadratic Triangle
@@ -38,6 +44,12 @@ impl QuadraticElem for QuadraticTriangle {
     const NAME: &'static str = "QuadraticTriangle";
     type Face = QuadraticEdge;
     type Geom<M: Metric<3>> = GQuadraticTriangle<M>;
+
+    fn from_slice(s: &[Idx]) -> Self {
+        let mut res = Self([0; 6]);
+        res.0.clone_from_slice(s);
+        res
+    }
 }
 
 /// Quadratic Edge
@@ -59,6 +71,12 @@ impl QuadraticElem for QuadraticEdge {
     const NAME: &'static str = "QuadraticPolyline";
     type Face = Vertex;
     type Geom<M: Metric<3>> = GQuadraticEdge<M>;
+
+    fn from_slice(s: &[Idx]) -> Self {
+        let mut res = Self([0; 3]);
+        res.0.clone_from_slice(s);
+        res
+    }
 }
 
 /// Vertex
@@ -74,4 +92,10 @@ impl QuadraticElem for Vertex {
     const NAME: &'static str = "Polyvertex";
     type Face = Self;
     type Geom<M: Metric<3>> = GVertex<M>;
+
+    fn from_slice(s: &[Idx]) -> Self {
+        let mut res = Self([0; 1]);
+        res.0.clone_from_slice(s);
+        res
+    }
 }
