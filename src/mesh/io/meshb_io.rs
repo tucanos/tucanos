@@ -2,14 +2,8 @@ use crate::{
     Idx, Result, Tag,
     mesh::{Elem, Point, SimplexMesh},
 };
-#[cfg(not(feature = "libmeshb"))]
 type Reader = minimeshb::reader::MeshbReader;
-#[cfg(not(feature = "libmeshb"))]
 type Writer = minimeshb::writer::MeshbWriter;
-#[cfg(feature = "libmeshb")]
-type Reader = minimeshb::libmeshb::GmfReader;
-#[cfg(feature = "libmeshb")]
-type Writer = minimeshb::libmeshb::GmfWriter;
 
 // /// Reorder the entries (actually used only for symmetric tensors) to ensure consistency between
 // /// with the conventions used the meshb format
@@ -179,8 +173,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     fn read_solb_it<const N: usize, F: FnMut([f64; N]) -> [f64; N]>(
-        #[cfg(feature = "libmeshb")] reader: Reader,
-        #[cfg(not(feature = "libmeshb"))] mut reader: Reader,
+        mut reader: Reader,
         f: F,
     ) -> Result<Vec<f64>> {
         let sol = reader.read_solution::<N>()?;

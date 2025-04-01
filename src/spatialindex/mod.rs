@@ -3,23 +3,8 @@ use crate::{
     mesh::{Elem, Point, SimplexMesh},
 };
 
-#[cfg(not(any(feature = "libol", feature = "parry")))]
-compile_error!("One of libol or parry features must be enabled");
-#[cfg(all(feature = "libol", feature = "parry"))]
-compile_error!("Only one of libol and parry features can be enabled");
-
-#[cfg(feature = "libol")]
-mod libol;
-#[cfg(feature = "libol")]
-pub type DefaultPointIndex<const D: usize> = libol::Octree;
-#[cfg(feature = "libol")]
-pub type DefaultObjectIndex<const D: usize> = libol::Octree;
-
-#[cfg(feature = "parry")]
 mod parry;
-#[cfg(feature = "parry")]
 pub type DefaultPointIndex<const D: usize> = KdTreePointIndex<D>;
-#[cfg(feature = "parry")]
 pub type DefaultObjectIndex<const D: usize> = parry::ObjectIndex<D>;
 
 pub trait PointIndex<const D: usize> {
@@ -33,12 +18,10 @@ pub trait ObjectIndex<const D: usize> {
     fn project(&self, pt: &Point<D>) -> (f64, Point<D>);
 }
 
-#[cfg(feature = "parry")]
 pub struct KdTreePointIndex<const D: usize> {
     tree: kdtree::KdTree<f64, usize, [f64; D]>,
 }
 
-#[cfg(feature = "parry")]
 impl<const D: usize> PointIndex<D> for KdTreePointIndex<D> {
     fn new<E: Elem>(mesh: &SimplexMesh<D, E>) -> Self {
         assert!(mesh.n_verts() > 0);
