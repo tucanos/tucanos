@@ -1,16 +1,5 @@
 fn main() {
     let mut rpath = Vec::new();
-    // Ensure transition of libOL1 RPATH to dependent crates
-    // See https://github.com/jeromerobert/marechal-libol-sys#using
-    if let Ok(ol_rpath) = std::env::var("DEP_OL_1_RPATH") {
-        rpath.push(ol_rpath);
-    }
-    println!("cargo:rerun-if-env-changed=DEP_OL_1_RPATH");
-
-    if let Ok(meshb_rpath) = std::env::var("DEP_MINIMESHB_RPATH") {
-        rpath.push(meshb_rpath);
-    }
-    println!("cargo:rerun-if-env-changed=DEP_MINIMESHB_RPATH");
 
     if let Ok(ld) = std::env::var("REMESH_LINK_DIRS") {
         for p in std::env::split_paths(&ld) {

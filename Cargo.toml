@@ -21,23 +21,18 @@ sorted-vec = "0.8.6"
 rand = "0.9.0"
 lindel = "0.1.1"
 vtkio = {version = "0.6.3"}
-kdtree = { version = "0.7", optional = true }
-parry3d-f64 = { version = "0.21.1", optional = true }
-parry2d-f64 = { version = "0.21.1", optional = true }
+kdtree = { version = "0.7" }
+parry3d-f64 = { version = "0.21.1" }
+parry2d-f64 = { version = "0.21.1" }
 rayon = "1.10"
 typenum = { version ="1.17", features = ["const-generics"] }
 num = "0.4.3"
 tempfile = "3.14"
-marechal-libol-sys = { git = "https://github.com/tucanos/marechal-libol-sys.git", optional = true, tag = "0.1.0" }
 scotch = { git = "https://github.com/tucanos/scotch-rs.git", optional = true, rev = "f3f83e6" }
 metis = { git = "https://github.com/tucanos/metis-rs.git", optional = true, rev = "d31aa3e"}
 minimeshb = { git = "https://github.com/tucanos/minimeshb.git", tag = "0.1.0" }
 
 [features]
-default = ["parry"]
-libmeshb = ["minimeshb/libmeshb-sys"]
-libol = ["marechal-libol-sys"]
-parry = ["kdtree", "parry3d-f64", "parry2d-f64"]
 32bit-tags = []
 64bit-tags = []
 
