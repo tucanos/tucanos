@@ -38,9 +38,9 @@ pub fn read_stl(file_name: &str) -> SimplexMesh<3, Triangle> {
     SimplexMesh::<3, Triangle>::new(verts, elems, etags, faces, ftags)
 }
 
-/// Read a .stl file (ascii or binary) and return a new SimplexMesh<3, Triangle>
+/// Read a .stl file (ascii or binary) and return a new QuadraticMesh<QuadraticTriangle>
 #[must_use]
-pub fn read_stl_quadratic(file_name: &str) -> QuadraticMesh {
+pub fn read_stl_quadratic(file_name: &str) -> QuadraticMesh<QuadraticTriangle> {
     debug!("Read {file_name}");
 
     let mut file = OpenOptions::new().read(true).open(file_name).unwrap();
@@ -68,7 +68,7 @@ pub fn read_stl_quadratic(file_name: &str) -> QuadraticMesh {
     let edgs = Vec::new();
     let edg_tags = Vec::new();
 
-    QuadraticMesh::new(verts, tris, tri_tags, edgs, edg_tags)
+    QuadraticMesh::<QuadraticTriangle>::new(verts, tris, tri_tags, edgs, edg_tags)
 }
 
 /// Reorder a surface mesh that provides a representation of the geometry of the boundary of a
@@ -120,13 +120,15 @@ pub fn orient_stl<const D: usize, E: Elem>(
 mod tests {
     use std::fs::remove_file;
 
-    use super::orient_stl;
+    use super::{orient_stl, read_stl_quadratic};
     use crate::{
         mesh::io::read_stl,
-        mesh::test_meshes::{test_mesh_3d, write_stl_file},
-        mesh::Triangle,
+        mesh::test_meshes::{test_mesh_3d, test_mesh_2d_quadratic, write_stl_file},
+        mesh::{Triangle, QuadraticTriangle, QuadraticEdge},
         Result,
     };
+    use std::fs::File;
+    use std::io::Write;
 
     #[test]
     fn test_stl() -> Result<()> {
@@ -166,5 +168,36 @@ mod tests {
         let v: f64 = geom.vol();
         assert!(f64::abs(v - 6.0) < 1e-10);
         Ok(())
+    }
+
+    #[test]
+    fn test_read_stl_quadratic() {
+        // Create a temporary STL file from `test_mesh_2d_quadratic`
+        let mesh = test_mesh_2d_quadratic();
+        let mut file = File::create("test_quadratic.stl").unwrap();
+        for tritag in mesh.tritags() {
+            writeln!(
+                file,
+                "facet normal 0 0 0\n  outer loop\n    vertex {} {} {}\n    vertex {} {} {}\n    vertex {} {} {}\n  endloop\nendfacet",
+                mesh.vert(mesh.tri_vertex(tritag, 0))[0], mesh.vert(mesh.tri_vertex(tritag, 0))[1], mesh.vert(mesh.tri_vertex(tritag, 0))[2],
+                mesh.vert(mesh.tri_vertex(tritag, 1))[0], mesh.vert(mesh.tri_vertex(tritag, 1))[1], mesh.vert(mesh.tri_vertex(tritag, 1))[2],
+                mesh.vert(mesh.tri_vertex(tritag, 2))[0], mesh.vert(mesh.tri_vertex(tritag, 2))[1], mesh.vert(mesh.tri_vertex(tritag, 2))[2],
+            ).unwrap();
+        }
+
+        // Read the STL file back into a quadratic mesh
+        let read_mesh = read_stl_quadratic("test_quadratic.stl");
+
+        // Verify the mesh properties
+        assert_eq!(read_mesh.n_verts(), mesh.n_verts());
+        assert_eq!(read_mesh.n_tris(), mesh.n_tris());
+        assert_eq!(read_mesh.n_edges(), mesh.n_edges());
+
+        assert_eq!(read_mesh.vert(0), mesh.vert(0));
+        assert_eq!(read_mesh.tri(0), QuadraticTriangle::new(0, 1, 2, 3, 4, 5));
+        assert_eq!(read_mesh.edge(0), QuadraticEdge::new(0, 1, 3));
+
+        // Clean up the temporary file
+        std::fs::remove_file("test_quadratic.stl").unwrap();
     }
 }

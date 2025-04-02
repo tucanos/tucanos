@@ -1,6 +1,7 @@
-use super::{topo_elems_quadratic::QuadraticElem, vector::VectorQuadratic};
+use crate::mesh::topo_elems_quadratic::QuadraticElem; // Adjusted the path to `crate::mesh`
 use crate::{mesh::Point, Idx, Tag};
 use log::debug;
+use super::vector::VectorQuadratic;
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -48,6 +49,24 @@ impl<QE: QuadraticElem> QuadraticMesh<QE> {
         }
     }
 
+    /// Create a new `QuadraticMesh`. The extra connectivity information is not built.
+    #[must_use]
+    pub fn new(
+        verts: Vec<Point<3>>,
+        tris: Vec<QE>,
+        tri_tags: Vec<Tag>,
+        edgs: Vec<QE::Face>,
+        edg_tags: Vec<Tag>,
+    ) -> Self {
+        Self::new_with_vector(
+            verts.into(),
+            tris.into(),
+            tri_tags.into(),
+            edgs.into(),
+            edg_tags.into(),
+        )
+    }
+
     /// Get the number of vertices
     #[must_use]
     pub fn n_verts(&self) -> Idx {
@@ -68,92 +87,73 @@ impl<QE: QuadraticElem> QuadraticMesh<QE> {
 
     /// Get the i-th vertex
     #[must_use]
-    pub fn vert(&self, idx: Idx) -> Option<Point<3>> {
-        self.verts.get(idx as usize).copied()
+    pub fn vert(&self, idx: Idx) -> Point<3> {
+        self.verts.index(idx)
     }
 
     /// Get the i-th edge
     #[must_use]
-    pub fn edge(&self, idx: Idx) -> Option<[Idx; 3]> {
-        self.edgs.get(idx as usize).copied()
+    pub fn edge(&self, idx: Idx) -> QE::Face {
+        self.edgs.index(idx)
     }
 
     /// Get the i-th triangle
     #[must_use]
-    pub fn tri(&self, idx: Idx) -> Option<[Idx; 6]> {
-        self.tris.get(idx as usize).copied()
+    pub fn tri(&self, idx: Idx) -> QE {
+        self.tris.index(idx)
+    }
+
+    /// Get the i-th vertex of the i-th triangle
+    #[must_use]
+    pub fn tri_vertex(&self, tri_idx: Idx, vert_idx: usize) -> Idx {
+        self.tri(tri_idx).index(vert_idx)
     }
 
     /// Get the i-th edge tag
     #[must_use]
-    pub fn edgetag(&self, idx: Idx) -> Option<Tag> {
-        self.edg_tags.get(idx as usize).copied()
+    pub fn edgetag(&self, idx: Idx) -> Tag {
+        self.edg_tags.index(idx)
     }
 
     /// Get the i-th triangle tag
     #[must_use]
-    pub fn tritag(&self, idx: Idx) -> Option<Tag> {
-        self.tri_tags.get(idx as usize).copied()
-    }
-
-    /// Get an iterator through the vertices
-    pub fn verts(&self) -> impl Iterator<Item = &Point<3>> {
-        self.verts.iter()
+    pub fn tritag(&self, idx: Idx) -> Tag {
+        self.tri_tags.index(idx)
     }
 
     /// Get an iterator through the triangles
-    pub fn tris(&self) -> impl Iterator<Item = &[Idx; 6]> {
+    #[must_use]
+    pub fn tris(&self) -> impl ExactSizeIterator<Item = QE> + '_ {
         self.tris.iter()
     }
 
-    /// Get an iterator through the triangles tag
-    pub fn tri_tags(&self) -> impl Iterator<Item = &Tag> {
-        self.tri_tags.iter()
+    /// Get an iterator through the vertices
+    #[must_use]
+    pub fn verts(&self) -> impl ExactSizeIterator<Item = Point<3>> + '_ {
+        self.verts.iter()
+    }
+
+    /// Get an iterator through the triangle tags as u32
+    #[must_use]
+    pub fn tritags(&self) -> impl ExactSizeIterator<Item = u32> + '_ {
+        self.tri_tags.iter().map(|tag| *tag as u32)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::mesh::Point;
+    use crate::mesh::test_meshes::test_mesh_2d_quadratic;
+    use crate::mesh::{QuadraticEdge, QuadraticTriangle, Point};
+    #[test]   
+    fn test_2d_quadratic() {
+        let mesh = test_mesh_2d_quadratic();
 
-    use super::QuadraticMesh;
+        assert_eq!(mesh.n_verts(), 6);
+        assert_eq!(mesh.n_tris(), 1);
+        assert_eq!(mesh.n_edges(), 3);
 
-    #[test]
-    fn test_new() {
-        let verts = vec![
-            Point::<3>::new(0., 0., 0.),
-            Point::<3>::new(1., 0., 0.),
-            Point::<3>::new(0., 1., 0.),
-            Point::<3>::new(0.5, 0.5, 0.),
-            Point::<3>::new(0.5, 0., 0.),
-            Point::<3>::new(0., 0.5, 0.),
-        ];
-        let tris = vec![[0, 1, 2, 3, 4, 5]];
-        let tri_tags = vec![1];
-        let edgs = vec![[0, 3, 1], [1, 4, 2], [2, 5, 0]];
-        let edg_tags = vec![1, 2, 3];
-        let test_mesh = QuadraticMesh::new(verts, tris, tri_tags, edgs, edg_tags);
-
-        assert_eq!(test_mesh.n_verts(), 6);
-        assert_eq!(test_mesh.n_tris(), 1);
-
-        if let Some(vert) = test_mesh.vert(0) {
-            assert_eq!(vert, Point::<3>::new(0., 0., 0.));
-        }
-
-        if let Some(edge) = test_mesh.edge(0) {
-            assert_eq!(edge, [0, 3, 1]);
-        }
-
-        if let Some(tri) = test_mesh.tri(0) {
-            assert_eq!(tri, [0, 1, 2, 3, 4, 5]);
-        }
-
-        if let Some(tag) = test_mesh.edgetag(0) {
-            assert_eq!(tag, 1);
-        }
-        if let Some(tag) = test_mesh.tritag(0) {
-            assert_eq!(tag, 1);
-        };
+        assert_eq!(mesh.vert(0), Point::<3>::new(0., 0., 0.));
+        assert_eq!(mesh.tri(0), QuadraticTriangle::new(0, 1, 2, 3, 4, 5));
+        assert_eq!(mesh.edge(0), QuadraticEdge::new(0, 1, 3));
     }
 }
