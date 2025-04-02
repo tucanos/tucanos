@@ -1,5 +1,4 @@
 mod curvature;
-
 use crate::{
     geometry::curvature::HasCurvature,
     mesh::{Elem, GElem, Topology},

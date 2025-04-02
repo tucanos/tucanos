@@ -3,7 +3,9 @@ use crate::mesh::{Edge, Point, SimplexMesh, Tetrahedron, Triangle};
 use crate::{Dim, Error, Result, TopoTag};
 use std::fs::File;
 use std::io::Write;
-
+use crate::mesh::{
+    QuadraticMesh, topo_elems_quadratic::{QuadraticTriangle, QuadraticEdge}
+};
 /// Build a 2d mesh of a square with 2 triangles tagged differently
 /// WARNING: the mesh tags are not valid as the diagonal (0, 2) is between
 /// two different element tags not is not tagged
@@ -451,4 +453,29 @@ pub fn sphere_mesh(level: usize) -> SimplexMesh<3, Tetrahedron> {
         geom.project_vertices(&mut grid);
     }
     grid
+}
+
+pub fn test_mesh_2d_quadratic() -> QuadraticMesh<QuadraticTriangle> {
+    let verts = vec![
+        Point::<3>::new(0., 0., 0.),
+        Point::<3>::new(1., 0., 0.),
+        Point::<3>::new(0., 1., 0.),
+        Point::<3>::new(0.5, 0., 0.),
+        Point::<3>::new(0.5, 0.5, 0.),
+        Point::<3>::new(0., 0.5, 0.),
+    ];
+
+    let tris = vec![
+        QuadraticTriangle::new(0, 1, 2, 3, 4, 5),
+    ];
+
+    let tri_tags = vec![1];
+    let edgs = vec![
+        QuadraticEdge::new(0, 1, 3),
+        QuadraticEdge::new(1, 2, 4),
+        QuadraticEdge::new(2, 0, 5),
+    ];
+    let edg_tags = vec![1, 2, 3];
+
+    QuadraticMesh::new(verts, tris, tri_tags, edgs, edg_tags)
 }

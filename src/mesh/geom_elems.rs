@@ -555,6 +555,7 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GTriangle<D, M> {
     }
 }
 
+/// Edge
 #[derive(Clone, Copy, Debug)]
 pub struct GEdge<const D: usize, M: Metric<D>> {
     points: [Point<D>; 2],
