@@ -1,6 +1,6 @@
 use crate::{
+    H_MAX, Idx, Result,
     mesh::{Edge, Elem, GElem, Point, SimplexMesh, Triangle},
-    Idx, Result, H_MAX,
 };
 use log::debug;
 use nalgebra::{SMatrix, SVector, SymmetricEigen};
@@ -314,8 +314,8 @@ impl HasCurvature<3> for SimplexMesh<3, Triangle> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        mesh::{test_meshes::test_mesh_2d, GElem, Point, SimplexMesh, Triangle},
-        Result, H_MAX,
+        H_MAX, Result,
+        mesh::{GElem, Point, SimplexMesh, Triangle, test_meshes::test_mesh_2d},
     };
 
     use super::{compute_curvature_tensor, compute_curvature_tensor_2d, fix_curvature};

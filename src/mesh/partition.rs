@@ -1,6 +1,6 @@
 use crate::{
-    mesh::{ordering::hilbert_indices, Elem, GElem, SimplexMesh},
     Idx, Result, Tag,
+    mesh::{Elem, GElem, SimplexMesh, ordering::hilbert_indices},
 };
 use log::{debug, warn};
 
@@ -178,8 +178,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        mesh::test_meshes::{test_mesh_2d, test_mesh_3d},
         Result,
+        mesh::test_meshes::{test_mesh_2d, test_mesh_3d},
     };
 
     #[test]

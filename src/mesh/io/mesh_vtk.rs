@@ -1,15 +1,15 @@
 use crate::{
-    mesh::{Elem, SimplexMesh},
     Result,
+    mesh::{Elem, SimplexMesh},
 };
 use log::debug;
 use std::collections::HashMap;
 use vtkio::{
+    IOBuffer, Vtk,
     model::{
         Attribute, Attributes, ByteOrder, CellType, Cells, DataArrayBase, DataSet, ElementType,
         UnstructuredGridPiece, Version, VertexNumbers,
     },
-    IOBuffer, Vtk,
 };
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {

@@ -1,7 +1,7 @@
 use crate::{
+    Error, Idx, Result,
     mesh::{Elem, SimplexMesh},
     metric::Metric,
-    Error, Idx, Result,
 };
 use log::{debug, warn};
 use rayon::prelude::{
@@ -47,16 +47,12 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             } else {
                 self.complexity_from_sizes::<M>(&sizes, h_min, h_max)
             };
-            debug!(
-                "Iteration {iter}, complexity = {c:.2e}, scale = {scale:.2e}"
-            );
+            debug!("Iteration {iter}, complexity = {c:.2e}, scale = {scale:.2e}");
             if f64::abs(c - f64::from(n_elems)) < 0.05 * f64::from(n_elems) {
                 return scale;
             }
             if iter == max_iter - 1 {
-                warn!(
-                    "Target complexity {n_elems} not reached: complexity {c:.2e}"
-                );
+                warn!("Target complexity {n_elems} not reached: complexity {c:.2e}");
                 return -1.0;
             }
             fac = f64::powf(f64::from(n_elems) / c, -1. / f64::from(E::DIM));
@@ -114,7 +110,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         step: Option<f64>,
         max_iter: Idx,
     ) -> Result<f64> {
-        debug!("Scaling the metric (h_min = {h_min}, h_max = {h_max}, n_elems = {n_elems}, max_iter = {max_iter})");
+        debug!(
+            "Scaling the metric (h_min = {h_min}, h_max = {h_max}, n_elems = {n_elems}, max_iter = {max_iter})"
+        );
         if fixed_m.is_some() {
             debug!("Using a fixed metric");
         }
@@ -170,9 +168,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 for iter in 0..max_iter {
                     let tmp_m = m_iter(scale_high);
                     let c = self.complexity_iter(tmp_m, h_min, h_max);
-                    debug!(
-                        "Iteration {iter}: scale_high = {scale_high:.2e}, complexity = {c:.2e}"
-                    );
+                    debug!("Iteration {iter}: scale_high = {scale_high:.2e}, complexity = {c:.2e}");
 
                     if iter == max_iter - 1 {
                         return Err(Error::from("Unable to scale the metric (bisection)"));
@@ -238,10 +234,10 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        mesh::test_meshes::{test_mesh_2d, test_mesh_3d},
-        mesh::Point,
-        metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric},
         Idx, Result,
+        mesh::Point,
+        mesh::test_meshes::{test_mesh_2d, test_mesh_3d},
+        metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric},
     };
 
     #[test]

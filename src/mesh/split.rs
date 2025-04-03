@@ -1,6 +1,6 @@
 use crate::{
-    mesh::{Elem, Point, SimplexMesh},
     Idx, Tag,
+    mesh::{Elem, Point, SimplexMesh},
 };
 use log::debug;
 use rustc_hash::FxHashMap;
@@ -187,12 +187,11 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 mod tests {
 
     use crate::{
-        mesh::{
-            get_face_to_elem,
-            test_meshes::{test_mesh_2d, test_mesh_3d},
-            Elem, GElem,
-        },
         Idx,
+        mesh::{
+            Elem, GElem, get_face_to_elem,
+            test_meshes::{test_mesh_2d, test_mesh_3d},
+        },
     };
 
     #[test]

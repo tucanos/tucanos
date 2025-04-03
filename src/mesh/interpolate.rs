@@ -1,7 +1,7 @@
 use crate::{
+    Result,
     mesh::{AsSliceF64, Elem, GElem, SimplexMesh},
     spatialindex::{DefaultObjectIndex, DefaultPointIndex, ObjectIndex, PointIndex},
-    Result,
 };
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
@@ -66,11 +66,11 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        mesh::{
-            test_meshes::{test_mesh_2d, test_mesh_3d},
-            Point,
-        },
         Result,
+        mesh::{
+            Point,
+            test_meshes::{test_mesh_2d, test_mesh_3d},
+        },
     };
     use nalgebra::{Rotation2, Rotation3};
     use std::f64::consts::FRAC_PI_4;

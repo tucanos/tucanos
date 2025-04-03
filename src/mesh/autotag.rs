@@ -1,10 +1,10 @@
 use crate::{
+    Result, Tag,
     mesh::{
-        graph::{CSRGraph, ConnectedComponents},
         Elem, GElem, Point, SimplexMesh,
+        graph::{CSRGraph, ConnectedComponents},
     },
     spatialindex::ObjectIndex,
-    Result, Tag,
 };
 use log::debug;
 use std::collections::HashMap;

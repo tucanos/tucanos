@@ -1,4 +1,4 @@
-use crate::{mesh::Elem, Idx, Tag};
+use crate::{Idx, Tag, mesh::Elem};
 
 pub trait FromNativePointer: Send {
     type PointerType: std::fmt::Debug;

@@ -1,6 +1,6 @@
 use crate::{
-    mesh::{Elem, Point, SimplexMesh},
     Idx, Result, Tag,
+    mesh::{Elem, Point, SimplexMesh},
 };
 #[cfg(not(feature = "libmeshb"))]
 type Reader = minimeshb::reader::MeshbReader;
@@ -217,12 +217,12 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 mod tests {
 
     use crate::{
+        Result,
         mesh::{
-            test_meshes::{test_mesh_2d, test_mesh_3d},
             Point, SimplexMesh, Tetrahedron, Triangle,
+            test_meshes::{test_mesh_2d, test_mesh_3d},
         },
         metric::{AnisoMetric2d, AnisoMetric3d, Metric},
-        Result,
     };
     use tempfile::NamedTempFile;
 

@@ -1,11 +1,11 @@
 mod curvature;
 
 use crate::{
+    Dim, Error, Result, Tag, TopoTag,
     geometry::curvature::HasCurvature,
     mesh::{Elem, GElem, Topology},
     mesh::{Point, SimplexMesh},
     spatialindex::{DefaultObjectIndex, ObjectIndex},
-    Dim, Error, Result, Tag, TopoTag,
 };
 use log::debug;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -226,7 +226,9 @@ where
         for tag in face_tags.iter().copied() {
             debug!("Create LinearPatchGeometryWithCurvature for patch {tag}");
             if mesh_topo.get((E::DIM as Dim, tag)).is_none() {
-                return Err(Error::from(&format!("LinearGeometry: face tag {tag:?} not found in topo (mesh: {mesh_face_tags:?}, bdy: {face_tags:?})")));
+                return Err(Error::from(&format!(
+                    "LinearGeometry: face tag {tag:?} not found in topo (mesh: {mesh_face_tags:?}, bdy: {face_tags:?})"
+                )));
             }
             let submesh = bdy.extract_tag(tag).mesh;
             patches.insert(tag, LinearPatchGeometryWithCurvature::new(submesh));
@@ -321,12 +323,12 @@ where
 mod tests {
     use super::{Geometry, LinearGeometry};
     use crate::{
+        Result,
         mesh::{
+            Point,
             io::read_stl,
             test_meshes::{test_mesh_2d, test_mesh_3d, write_stl_file},
-            Point,
         },
-        Result,
     };
     use std::fs::remove_file;
 

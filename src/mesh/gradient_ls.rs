@@ -1,6 +1,6 @@
 use crate::{
-    mesh::{Elem, Point, SimplexMesh},
     Error, Idx, Result,
+    mesh::{Elem, Point, SimplexMesh},
 };
 
 use log::debug;
@@ -120,9 +120,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// P is `weight_exp` and typically $`P \in \left \{ 0,1,2 \right \}`$.
     /// $`W_0`$ is set here to $`\sqrt{2} \max(W_j)`$.
     pub fn smooth(&self, f: &[f64], weight_exp: i32) -> Result<Vec<f64>> {
-        debug!(
-            "Compute smoothing using 1st order LS (weight = {weight_exp})"
-        );
+        debug!("Compute smoothing using 1st order LS (weight = {weight_exp})");
         let n = self.n_verts() as usize;
         assert_eq!(f.len(), n);
         let mut res = vec![0.0; n];
@@ -215,9 +213,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// P is `weight_exp` and typically $`P \in \left \{ 0,1,2 \right \}`$.
     /// $`W_0`$ is set here to $`\sqrt{2} \max(W_j)`$.
     pub fn gradient(&self, f: &[f64], weight_exp: i32) -> Result<Vec<f64>> {
-        debug!(
-            "Compute gradient using 1st order LS (weight = {weight_exp})"
-        );
+        debug!("Compute gradient using 1st order LS (weight = {weight_exp})");
         let n = self.n_verts() as usize;
         assert_eq!(f.len(), n);
 
@@ -387,8 +383,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 mod tests {
 
     use crate::{
-        mesh::test_meshes::{test_mesh_2d, test_mesh_3d},
         Result,
+        mesh::test_meshes::{test_mesh_2d, test_mesh_3d},
     };
 
     #[test]

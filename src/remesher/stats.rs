@@ -1,4 +1,4 @@
-use crate::{mesh::Elem, metric::Metric, remesher::Remesher, Idx};
+use crate::{Idx, mesh::Elem, metric::Metric, remesher::Remesher};
 use core::fmt;
 use serde::Serialize;
 

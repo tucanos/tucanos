@@ -1,13 +1,13 @@
 use crate::{
+    Dim, Idx, Tag, TopoTag,
     geometry::Geometry,
     mesh::{Elem, GElem, Point, SimplexMesh, Topology},
     metric::Metric,
     remesher::Remesher,
-    Dim, Idx, Tag, TopoTag,
 };
 use core::fmt;
 use log::trace;
-use std::cmp::{min, Ordering};
+use std::cmp::{Ordering, min};
 
 #[derive(Debug, Clone, Copy)]
 pub enum Seed {

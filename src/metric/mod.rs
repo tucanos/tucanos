@@ -7,7 +7,7 @@ mod scaling;
 mod smoothing;
 
 use crate::metric::reduction::{control_step, simultaneous_reduction, step};
-use crate::{mesh::Point, Error, Result};
+use crate::{Error, Result, mesh::Point};
 use crate::{H_MAX, S_MAX, S_MIN, S_RATIO_MAX};
 use nalgebra::allocator::Allocator;
 use nalgebra::{Const, DefaultAllocator, SMatrix, SVector};
@@ -775,7 +775,7 @@ impl Index<usize> for AnisoMetric3d {
 #[cfg(test)]
 mod tests {
     use super::{AnisoMetric, AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric};
-    use crate::{mesh::Point, Result, S_RATIO_MAX};
+    use crate::{Result, S_RATIO_MAX, mesh::Point};
     use nalgebra::{SMatrix, SVector};
 
     #[test]

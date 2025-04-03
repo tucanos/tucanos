@@ -1,7 +1,7 @@
 use crate::{
+    Result,
     mesh::{SimplexMesh, Tetrahedron, Triangle},
     metric::{AnisoMetric2d, AnisoMetric3d},
-    Result,
 };
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
 
@@ -35,7 +35,7 @@ impl SimplexMesh<2, Triangle> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{mesh::test_meshes::test_mesh_3d, metric::Metric, Result};
+    use crate::{Result, mesh::test_meshes::test_mesh_3d, metric::Metric};
     use nalgebra::Matrix3;
 
     #[test]

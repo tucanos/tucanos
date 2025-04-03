@@ -1,7 +1,7 @@
 use crate::{
+    Idx, Result,
     mesh::{Elem, SimplexMesh},
     metric::Metric,
-    Idx, Result,
 };
 use log::debug;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
@@ -78,8 +78,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        mesh::test_meshes::{test_mesh_2d, test_mesh_3d},
         mesh::Point,
+        mesh::test_meshes::{test_mesh_2d, test_mesh_3d},
         metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
         min_iter,
     };

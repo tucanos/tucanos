@@ -1,6 +1,6 @@
 use crate::{
-    mesh::{Elem, GElem, Point, SimplexMesh},
     Idx, Result,
+    mesh::{Elem, GElem, Point, SimplexMesh},
 };
 use log::debug;
 use nalgebra::SMatrix;
@@ -130,11 +130,11 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 mod tests {
 
     use crate::{
-        mesh::{
-            test_meshes::{test_mesh_2d, test_mesh_3d},
-            Elem, Point,
-        },
         Result,
+        mesh::{
+            Elem, Point,
+            test_meshes::{test_mesh_2d, test_mesh_3d},
+        },
     };
 
     #[test]

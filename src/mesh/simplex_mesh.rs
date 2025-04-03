@@ -1,17 +1,17 @@
 use super::{
     geom_elems::GElem,
-    graph::{reindex, CSRGraph},
+    graph::{CSRGraph, reindex},
     to_simplices::{hex2tets, pri2tets, pyr2tets, qua2tris},
-    topo_elems::{get_face_to_elem, Edge, Elem, Tetrahedron, Triangle},
+    topo_elems::{Edge, Elem, Tetrahedron, Triangle, get_face_to_elem},
     topology::Topology,
     twovec,
     vector::Vector,
 };
 use crate::{
+    Dim, Error, Idx, Result, Tag, TopoTag,
     metric::IsoMetric,
     min_max_iter,
     spatialindex::{DefaultObjectIndex, DefaultPointIndex, ObjectIndex, PointIndex},
-    Dim, Error, Idx, Result, Tag, TopoTag,
 };
 use log::{debug, warn};
 use nalgebra::SVector;
@@ -1502,11 +1502,12 @@ mod tests {
     use std::f64::consts::SQRT_2;
 
     use crate::{
+        Result,
         mesh::{
-            test_meshes::{test_mesh_2d, test_mesh_3d},
             Edge, Elem, GElem, SimplexMesh, Tetrahedron, Triangle,
+            test_meshes::{test_mesh_2d, test_mesh_3d},
         },
-        min_max_iter, Result,
+        min_max_iter,
     };
 
     #[test]

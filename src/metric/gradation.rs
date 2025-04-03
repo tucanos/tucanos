@@ -1,10 +1,10 @@
 use crate::{
+    Idx, Result,
     mesh::{Elem, Point, SimplexMesh},
     metric::Metric,
-    Idx, Result,
 };
 use log::{debug, warn};
-use nalgebra::{allocator::Allocator, Const, DefaultAllocator};
+use nalgebra::{Const, DefaultAllocator, allocator::Allocator};
 use rayon::prelude::{
     IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
@@ -64,9 +64,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         t: f64,
         max_iter: Idx,
     ) -> Result<Idx> {
-        debug!(
-            "Apply metric gradation (beta = {beta}, max_iter = {max_iter})"
-        );
+        debug!("Apply metric gradation (beta = {beta}, max_iter = {max_iter})");
 
         let v2v = self.get_vertex_to_vertices()?;
 
@@ -196,9 +194,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             }
             n_iter += 1;
 
-            debug!(
-                "iteration {n_iter}: {to_fix} / {n_verts} vertices remain to be fixed"
-            );
+            debug!("iteration {n_iter}: {to_fix} / {n_verts} vertices remain to be fixed");
         }
         Ok(())
     }
@@ -207,15 +203,15 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 #[cfg(test)]
 mod tests {
     use crate::{
+        Idx, Result,
         mesh::{
-            test_meshes::{test_mesh_2d, test_mesh_3d},
             Point, SimplexMesh, Tetrahedron,
+            test_meshes::{test_mesh_2d, test_mesh_3d},
         },
         metric::{AnisoMetric, AnisoMetric3d, IsoMetric, Metric},
-        Idx, Result,
     };
     use nalgebra::SMatrix;
-    use rand::{rngs::StdRng, Rng, SeedableRng};
+    use rand::{Rng, SeedableRng, rngs::StdRng};
     #[test]
     fn test_gradation_iso() {
         let beta = 1.5;

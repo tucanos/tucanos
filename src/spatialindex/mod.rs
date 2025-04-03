@@ -1,6 +1,6 @@
 use crate::{
-    mesh::{Elem, Point, SimplexMesh},
     Idx,
+    mesh::{Elem, Point, SimplexMesh},
 };
 
 #[cfg(not(any(feature = "libol", feature = "parry")))]
@@ -61,13 +61,13 @@ impl<const D: usize> PointIndex<D> for KdTreePointIndex<D> {
 #[cfg(test)]
 mod tests {
     use nalgebra::SVector;
-    use rand::{rngs::StdRng, Rng, SeedableRng};
+    use rand::{Rng, SeedableRng, rngs::StdRng};
     use std::{f64::consts::PI, time::Instant};
 
     use crate::{
+        Tag,
         mesh::{Edge, Elem, Point, SimplexMesh, Triangle},
         spatialindex::{DefaultObjectIndex, ObjectIndex},
-        Tag,
     };
 
     #[test]

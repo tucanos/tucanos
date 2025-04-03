@@ -1,9 +1,9 @@
 use crate::{
+    Idx, Result, Tag,
     geometry::Geometry,
     mesh::{Elem, PartitionType, SimplexMesh, SubSimplexMesh},
     metric::Metric,
     remesher::{Remesher, RemesherParams},
-    Idx, Result, Tag,
 };
 use log::{debug, warn};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
@@ -473,15 +473,15 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
 mod tests {
 
     use crate::{
+        Result,
         geometry::NoGeometry,
         mesh::{
-            test_meshes::{test_mesh_2d, test_mesh_3d},
             PartitionType, Point,
+            test_meshes::{test_mesh_2d, test_mesh_3d},
         },
         metric::IsoMetric,
         remesher::RemesherParams,
         remesher::{ParallelRemesher, ParallelRemeshingParams},
-        Result,
     };
 
     fn test_domain_decomposition_2d(debug: bool, ptype: PartitionType) -> Result<()> {

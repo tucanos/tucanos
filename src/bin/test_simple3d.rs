@@ -3,11 +3,11 @@ use nalgebra::SMatrix;
 use rustc_hash::FxHashMap;
 use std::{f64::consts::PI, time::Instant};
 use tucanos::{
+    Result, Tag, TopoTag,
     geometry::Geometry,
     mesh::{GElem, PartitionType, Point, SimplexMesh, Tetrahedron, Topology},
     metric::{AnisoMetric3d, Metric},
     remesher::{ParallelRemesher, ParallelRemeshingParams, Remesher, RemesherParams},
-    Result, Tag, TopoTag,
 };
 
 pub fn init_log(level: &str) {
