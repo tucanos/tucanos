@@ -29,7 +29,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 
     pub fn partition_hilbert(&mut self, n_parts: Idx) {
-        debug!("Partition the mesh into {} using a Hilbert curve", n_parts);
+        debug!("Partition the mesh into {n_parts} using a Hilbert curve");
 
         if self.etags().any(|t| t != 1) {
             warn!("Erase the element tags");
@@ -60,7 +60,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// is stored in self.etags
     #[cfg(feature = "scotch")]
     pub fn partition_scotch(&mut self, n_parts: Idx) -> Result<()> {
-        debug!("Partition the mesh into {} using scotch", n_parts);
+        debug!("Partition the mesh into {n_parts} using scotch");
 
         if self.etags().any(|t| t != 1) {
             warn!("Erase the element tags");

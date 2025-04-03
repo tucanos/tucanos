@@ -728,12 +728,12 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         params: &RemesherParams,
         geom: &G,
     ) -> Result<u32> {
-        debug!("Split edges with length > {:.2e}", l_0);
+        debug!("Split edges with length > {l_0:.2e}");
 
         let l_min = params.split_min_l_abs;
-        debug!("min. allowed length: {:.2}", l_min);
+        debug!("min. allowed length: {l_min:.2}");
         let q_min = params.split_min_q_abs;
-        debug!("min. allowed quality: {:.2}", q_min);
+        debug!("min. allowed quality: {q_min:.2}");
 
         let mut n_iter = 0;
         let mut cavity = Cavity::new();
@@ -755,7 +755,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 let edg = edges[i_edge];
                 let length = dims_and_lengths[i_edge].1;
                 if length > l_0 {
-                    trace!("Try to split edge {:?}, l = {}", edg, length);
+                    trace!("Try to split edge {edg:?}, l = {length}");
                     cavity.init_from_edge(edg, self);
                     // TODO: move to Cavity?
                     let Seed::Edge(local_edg) = cavity.seed else {
@@ -813,8 +813,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             }
 
             debug!(
-                "Iteration {}: {} edges split ({} failed)",
-                n_iter, n_splits, n_fails
+                "Iteration {n_iter}: {n_splits} edges split ({n_fails} failed)"
             );
             self.stats
                 .push(StepStats::Split(SplitStats::new(n_splits, n_fails, self)));
@@ -842,7 +841,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         cavity: &mut Cavity<D, E, M>,
         geom: &G,
     ) -> Result<TrySwapResult> {
-        trace!("Try to swap edge {:?}", edg);
+        trace!("Try to swap edge {edg:?}");
         cavity.init_from_edge(edg, self);
         if cavity.global_elem_ids.len() == 1 {
             trace!("Cannot swap, only one adjacent cell");
@@ -862,9 +861,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             .min(params.swap_max_l_rel * cavity.l_max);
 
         trace!(
-            "min. / max. allowed edge length = {:.2}, {:.2}",
-            l_min,
-            l_max
+            "min. / max. allowed edge length = {l_min:.2}, {l_max:.2}"
         );
 
         let Seed::Edge(local_edg) = cavity.seed else {
@@ -928,7 +925,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             }
 
             if let CavityCheckStatus::Ok(min_quality) = filled_cavity.check(l_min, l_max, q_ref) {
-                trace!("Can swap  from {} : ({} > {})", n, min_quality, q_ref);
+                trace!("Can swap  from {n} : ({min_quality} > {q_ref})");
                 succeed = true;
                 q_ref = min_quality;
                 vx = n;
@@ -936,7 +933,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         }
 
         if succeed {
-            trace!("Swap from {}", vx);
+            trace!("Swap from {vx}");
             let ftype = FilledCavityType::ExistingVertex(vx);
             let filled_cavity = FilledCavity::new(cavity, ftype);
             for e in &cavity.global_elem_ids {
@@ -980,7 +977,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         params: &RemesherParams,
         geom: &G,
     ) -> Result<u32> {
-        debug!("Swap edges: target quality = {}", q_target);
+        debug!("Swap edges: target quality = {q_target}");
 
         let mut n_iter = 0;
         let mut cavity = Cavity::new();
@@ -1003,8 +1000,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             }
 
             debug!(
-                "Iteration {}: {} edges swapped ({} failed, {} OK)",
-                n_iter, n_swaps, n_fails, n_ok
+                "Iteration {n_iter}: {n_swaps} edges swapped ({n_fails} failed, {n_ok} OK)"
             );
             self.stats
                 .push(StepStats::Swap(SwapStats::new(n_swaps, n_fails, self)));
@@ -1032,9 +1028,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         debug!("Collapse elements");
 
         let l_max = params.collapse_max_l_abs;
-        debug!("max. allowed length: {:.2}", l_max);
+        debug!("max. allowed length: {l_max:.2}");
         let q_min = params.collapse_min_q_abs;
-        debug!("min. allowed quality: {:.2}", q_min);
+        debug!("min. allowed quality: {q_min:.2}");
 
         let mut n_iter = 0;
         let mut cavity = Cavity::new();
@@ -1050,7 +1046,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             for i_edge in indices {
                 let edg = edges[i_edge];
                 if dims_and_lengths[i_edge].1 < f64::sqrt(0.5) {
-                    trace!("Try to collapse edgs {:?}", edg);
+                    trace!("Try to collapse edgs {edg:?}");
                     let (mut i0, mut i1) = edg.into();
                     if !self.verts.contains_key(&i0) {
                         trace!("Cannot collapse: vertex deleted");
@@ -1305,7 +1301,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 assert!(opt.add_inequality_constraint(constraint, (), 1e-8).is_ok());
 
                 let res = opt.optimize(&mut x);
-                trace!("NLOpt: {:?}", res);
+                trace!("NLOpt: {res:?}");
                 if res.unwrap().1 > qmax {
                     qmax = res.unwrap().1;
                     let mut sum = 0.0;
@@ -1315,8 +1311,8 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     }
                     x[0] = 1.0 - sum;
                     p0_new = ge.point(&x);
-                    trace!("bcoords = {:?}", x);
-                    trace!("p0_new = {:?}", p0_new);
+                    trace!("bcoords = {x:?}");
+                    trace!("p0_new = {p0_new:?}");
                 }
             }
             p0_new
@@ -1334,7 +1330,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     ) -> (Idx, Idx, Idx) {
         let (mut n_fails, mut n_min, mut n_smooth) = (0, 0, 0);
         for i0 in verts.iter().copied() {
-            trace!("Try to smooth vertex {}", i0);
+            trace!("Try to smooth vertex {i0}");
             cavity.init_from_vertex(i0, self);
             let Seed::Vertex(i0_local) = cavity.seed else {
                 unreachable!()
@@ -1400,7 +1396,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     valid = true;
                     break;
                 }
-                trace!("Smooth, quality would decrease for omega={}", omega,);
+                trace!("Smooth, quality would decrease for omega={omega}",);
             }
 
             if !valid {
@@ -1470,7 +1466,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     /// Perform a remeshing iteration
-    pub fn remesh<G: Geometry<D>>(&mut self, params: RemesherParams, geom: &G) -> Result<()> {
+    pub fn remesh<G: Geometry<D>>(&mut self, params: &RemesherParams, geom: &G) -> Result<()> {
         debug!("Adapt the mesh");
         let now = Instant::now();
 
@@ -1501,20 +1497,20 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
         }
 
         for _ in 0..params.num_iter {
-            self.collapse(&params, geom)?;
+            self.collapse(params, geom)?;
 
-            self.split(f64::sqrt(2.0), &params, geom)?;
+            self.split(f64::sqrt(2.0), params, geom)?;
 
-            self.swap(0.4, &params, geom)?;
+            self.swap(0.4, params, geom)?;
 
-            self.swap(0.8, &params, geom)?;
+            self.swap(0.8, params, geom)?;
 
-            self.smooth(&params, geom);
+            self.smooth(params, geom);
         }
 
-        self.swap(0.4, &params, geom)?;
+        self.swap(0.4, params, geom)?;
 
-        self.swap(0.8, &params, geom)?;
+        self.swap(0.8, params, geom)?;
 
         debug!("Done in {}s", now.elapsed().as_secs_f32());
         self.print_stats();
@@ -1524,10 +1520,10 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     /// Print length and quality stats on the mesh / metric
     pub fn print_stats(&self) {
         let stats = Stats::new(self.lengths_iter(), &[f64::sqrt(0.5), f64::sqrt(2.0)]);
-        debug!("Length: {}", stats);
+        debug!("Length: {stats}");
 
         let stats = Stats::new(self.qualities_iter(), &[0.4, 0.6, 0.8]);
-        debug!("Qualities: {}", stats);
+        debug!("Qualities: {stats}");
     }
 
     /// Return the stats at each remeshing step as a json string
@@ -2259,7 +2255,7 @@ mod tests {
             let geom = NoGeometry();
             let mut remesher = Remesher::new(&mesh, &h, &geom)?;
 
-            remesher.remesh(RemesherParams::default(), &geom)?;
+            remesher.remesh(&RemesherParams::default(), &geom)?;
             remesher.check()?;
 
             mesh = remesher.to_mesh(false);
@@ -2294,7 +2290,7 @@ mod tests {
             let h: Vec<_> = mesh.verts().map(mfunc).collect();
             let mut remesher = Remesher::new(&mesh, &h, &geom)?;
 
-            remesher.remesh(RemesherParams::default(), &geom)?;
+            remesher.remesh(&RemesherParams::default(), &geom)?;
             remesher.check()?;
             mesh = remesher.to_mesh(true);
 
@@ -2330,7 +2326,7 @@ mod tests {
                 split_min_q_abs: 0.4,
                 ..RemesherParams::default()
             };
-            remesher.remesh(params, &geom)?;
+            remesher.remesh(&params, &geom)?;
             remesher.check()?;
 
             mesh = remesher.to_mesh(true);
@@ -2533,7 +2529,7 @@ mod tests {
                 .collect();
             let mut remesher = Remesher::new(&mesh, &h, &geom)?;
 
-            remesher.remesh(RemesherParams::default(), &geom)?;
+            remesher.remesh(&RemesherParams::default(), &geom)?;
 
             remesher.check()?;
 
@@ -2582,7 +2578,7 @@ mod tests {
                 split_min_q_abs: 0.4,
                 ..RemesherParams::default()
             };
-            remesher.remesh(params, &geom)?;
+            remesher.remesh(&params, &geom)?;
             remesher.check()?;
 
             mesh = remesher.to_mesh(true);
@@ -2624,7 +2620,7 @@ mod tests {
                 split_min_q_abs: 0.4,
                 ..RemesherParams::default()
             };
-            remesher.remesh(params, &geom)?;
+            remesher.remesh(&params, &geom)?;
             remesher.check()?;
 
             mesh = remesher.to_mesh(true);

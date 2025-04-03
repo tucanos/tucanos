@@ -152,7 +152,7 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
         let partition_tags = mesh.etags().collect::<FxHashSet<_>>();
         let partition_tags = partition_tags.iter().copied().collect::<Vec<_>>();
         let partition_bdy_tags = ifc_tags.keys().copied().collect::<Vec<_>>();
-        debug!("Partition tags: {:?}", partition_tags);
+        debug!("Partition tags: {partition_tags:?}");
 
         // Use negative tags for interfaces
         mesh.mut_ftags().for_each(|t| {
@@ -242,7 +242,7 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
         &self,
         m: &[M],
         geom: &G,
-        params: RemesherParams,
+        params: &RemesherParams,
         submesh: SubSimplexMesh<D, E>,
     ) -> (SimplexMesh<D, E>, Vec<M>) {
         let mut local_mesh = submesh.mesh;
@@ -271,7 +271,7 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
         m: &[M],
         geom: &G,
         params: RemesherParams,
-        dd_params: ParallelRemeshingParams,
+        dd_params: &ParallelRemeshingParams,
     ) -> Result<(SimplexMesh<D, E>, ParallelRemeshingInfo, Vec<M>)> {
         let res = Mutex::new(SimplexMesh::empty());
         let res_m = Mutex::new(Vec::new());
@@ -312,7 +312,7 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
                 let n_verts_init = submesh.mesh.n_verts();
                 let now = Instant::now();
                 let (mut local_mesh, local_m) =
-                    self.remesh_submesh(m, geom, params.clone(), submesh);
+                    self.remesh_submesh(m, geom, &params.clone(), submesh);
 
                 // Get the info
                 let mut info = info.lock().unwrap();
@@ -408,7 +408,7 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
                 let mut dd = Self::new(mesh, self.partition_type)?;
                 dd.set_debug(self.debug);
                 dd.interface_bdy_tag = self.interface_bdy_tag + 1;
-                let (ifc, interface_info, ifc_m) = dd.remesh(&ifc_m, geom, params, dd_params)?;
+                let (ifc, interface_info, ifc_m) = dd.remesh(&ifc_m, geom, params, &dd_params)?;
                 info.interface = Some(Box::new(interface_info));
                 (ifc, ifc_m)
             } else {
@@ -419,7 +419,7 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
                 }
                 let n_verts_init = ifc.n_verts();
                 let now = Instant::now();
-                ifc_remesher.remesh(params, geom)?;
+                ifc_remesher.remesh(&params, geom)?;
                 info.interface = Some(Box::new(ParallelRemeshingInfo {
                     info: RemeshingInfo {
                         n_verts_init,
@@ -509,7 +509,7 @@ mod tests {
 
         let dd_params = ParallelRemeshingParams::new(2, 1, 0);
         let (mut mesh, _, _) =
-            dd.remesh(&m, &NoGeometry(), RemesherParams::default(), dd_params)?;
+            dd.remesh(&m, &NoGeometry(), RemesherParams::default(), &dd_params)?;
 
         if debug {
             mesh.write_vtk("res.vtu", None, None)?;
@@ -649,7 +649,7 @@ mod tests {
 
         let dd_params = ParallelRemeshingParams::new(2, 2, 0);
         let (mut mesh, _, _) =
-            dd.remesh(&m, &NoGeometry(), RemesherParams::default(), dd_params)?;
+            dd.remesh(&m, &NoGeometry(), RemesherParams::default(), &dd_params)?;
 
         if debug {
             mesh.write_vtk("res.vtu", None, None)?;

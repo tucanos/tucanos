@@ -1169,7 +1169,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     let e2e = e1 - e0;
                     let l_e2e = e2e.norm();
                     let tmp = e2e.dot(&e2f) / (l_e2e * l_e2f);
-                    let ang = f64::acos(tmp.min(1.0).max(-1.0));
+                    let ang = f64::acos(tmp.clamp(-1., 1.));
                     let s = l_e2f * ang.sin();
                     (elems[0], elems[1], s / l_e2e)
                 })

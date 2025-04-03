@@ -77,7 +77,7 @@ pub fn orient_stl<const D: usize, E: Elem>(
         .for_each(|(e0, e1)| *e0 = e1);
 
     if n_inverted > 0 {
-        warn!("{} faces reoriented", n_inverted);
+        warn!("{n_inverted} faces reoriented");
     }
     (n_inverted, f64::acos(dmin) * 180. / PI)
 }

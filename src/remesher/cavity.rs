@@ -231,7 +231,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
 
         self.compute_faces(r);
 
-        trace!("Cavity built: {:?}", self);
+        trace!("Cavity built: {self:?}");
     }
 
     fn compute_faces(&mut self, r: &Remesher<D, E, M>) {
@@ -561,7 +561,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
                 trace!("cavity check failed: invalid element");
                 return CavityCheckStatus::Invalid;
             } else if q <= q_min {
-                trace!("cavity check failed: low quality ({} < {})", q, q_min);
+                trace!("cavity check failed: low quality ({q} < {q_min})");
                 return CavityCheckStatus::LowQuality;
             }
             min_quality = f64::min(min_quality, q);

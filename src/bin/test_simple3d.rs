@@ -365,14 +365,14 @@ fn main() -> Result<()> {
     let now = Instant::now();
     let mut mesh = if n_part == 1 {
         let mut remesher = Remesher::new(&mesh, &metric, &geom)?;
-        remesher.remesh(params, &geom)?;
+        remesher.remesh(&params, &geom)?;
         remesher.check()?;
         remesher.to_mesh(true)
     } else {
         let mut dd = ParallelRemesher::new(mesh, PartitionType::Scotch(n_part))?;
         dd.set_debug(debug);
         let dd_params = ParallelRemeshingParams::new(2, 2, 10000);
-        let (mesh, stats, _) = dd.remesh(&metric, &geom, params, dd_params)?;
+        let (mesh, stats, _) = dd.remesh(&metric, &geom, params, &dd_params)?;
         stats.print_summary();
         mesh
     };
