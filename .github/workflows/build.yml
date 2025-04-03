@@ -68,7 +68,7 @@ jobs:
         path: ${{ env.LIBMESHB_DIR }}
         key: libmeshb-${{ env.LIBMESHB_COMMIT }}
     - name: Install Rust
-      uses: actions-rs/toolchain@v1
+      uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
         components: clippy
         toolchain: nightly
@@ -139,11 +139,9 @@ jobs:
         path: ${{ env.LIBMESHB_DIR }}
         key: libmeshb-${{ env.LIBMESHB_COMMIT }}
     - name: Install Rust
-      uses: actions-rs/toolchain@v1
+      uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
         components: clippy
-        # because of https://github.com/actions-rs/toolchain/pull/209
-        toolchain: stable
         override: true
     - name: Rust cache
       uses: actions/cache@v3
