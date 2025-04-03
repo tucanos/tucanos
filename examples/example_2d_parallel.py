@@ -3,7 +3,11 @@ import matplotlib.pyplot as plt
 from pytucanos import HAVE_METIS, HAVE_SCOTCH
 from pytucanos.mesh import get_square, Mesh22, plot_mesh
 from pytucanos.geometry import LinearGeometry2d
-from pytucanos.remesh import ParallelRemesher2dIso
+from pytucanos.remesh import (
+    ParallelRemesher2dIso,
+    PyRemesherParams,
+    PyParallelRemesherParams,
+)
 
 
 def get_h(msh):
@@ -44,7 +48,10 @@ if __name__ == "__main__":
 
     remesher.set_debug(True)
     (msh, m, info) = remesher.remesh(
-        geom, m, split_min_q_abs=0.1, collapse_min_q_abs=0.1, n_levels=2
+        geom,
+        m,
+        params=PyRemesherParams.default(),
+        parallel_params=PyParallelRemesherParams.default(),
     )
 
     print(info)

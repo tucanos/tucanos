@@ -61,10 +61,18 @@ pub fn pytucanos(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<crate::mesh::Mesh21>()?;
     m.add_class::<crate::geometry::LinearGeometry2d>()?;
     m.add_class::<crate::geometry::LinearGeometry3d>()?;
+    m.add_class::<crate::remesher::PyCollapseParams>()?;
+    m.add_class::<crate::remesher::PySplitParams>()?;
+    m.add_class::<crate::remesher::PySwapParams>()?;
+    m.add_class::<crate::remesher::PySmoothParams>()?;
+    m.add_class::<crate::remesher::PySmoothingMethod>()?;
+    m.add_class::<crate::remesher::PyRemeshingStep>()?;
+    m.add_class::<crate::remesher::PyRemesherParams>()?;
     m.add_class::<crate::remesher::Remesher2dIso>()?;
     m.add_class::<crate::remesher::Remesher2dAniso>()?;
     m.add_class::<crate::remesher::Remesher3dIso>()?;
     m.add_class::<crate::remesher::Remesher3dAniso>()?;
+    m.add_class::<crate::parallel::PyParallelRemesherParams>()?;
     m.add_class::<crate::parallel::ParallelRemesher2dIso>()?;
     m.add_class::<crate::parallel::ParallelRemesher2dAniso>()?;
     m.add_class::<crate::parallel::ParallelRemesher3dIso>()?;
@@ -77,9 +85,5 @@ pub fn pytucanos(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add("HAVE_SCOTCH", false)?;
     #[cfg(feature = "scotch")]
     m.add("HAVE_SCOTCH", true)?;
-    #[cfg(not(feature = "libmeshb"))]
-    m.add("HAVE_LIBMESHB", false)?;
-    #[cfg(feature = "libmeshb")]
-    m.add("HAVE_LIBMESHB", true)?;
     Ok(())
 }

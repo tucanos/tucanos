@@ -8,10 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  LIBOL_DIR: /opt/libOL
-  LIBOL_COMMIT: ceb112c
-  LIBMESHB_DIR: /opt/libMeshB
-  LIBMESHB_COMMIT: v7.60
+  REMESH_LIBRARIES: lapack
 
 permissions:
   contents: read
@@ -20,52 +17,11 @@ permissions:
   checks: write
 
 jobs:
-  libol:
-    runs-on: ubuntu-latest
-    steps:
-    - id: cache
-      uses: actions/cache@v3
-      with:
-        path: ${{ env.LIBOL_DIR }}
-        key: libol-${{ env.LIBOL_COMMIT }}
-    - if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-      name: build
-      run: |
-        curl -Ls https://github.com/tucanos/libOL/archive/${{ env.LIBOL_COMMIT }}.tar.gz | tar xz
-        cd libOL*
-        cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DCMAKE_INSTALL_PREFIX=${{ env.LIBOL_DIR }} .
-        make -j$(nproc) install
-  libmeshb:
-    runs-on: ubuntu-latest
-    steps:
-    - id: cache
-      uses: actions/cache@v3
-      with:
-        path: ${{ env.LIBMESHB_DIR }}
-        key: libmeshb-${{ env.LIBMESHB_COMMIT }}
-    - if: ${{ steps.cache.outputs.cache-hit != 'true' }}
-      name: build
-      run: |
-        curl -Ls https://github.com/LoicMarechal/libMeshb/archive/${{ env.LIBMESHB_COMMIT }}.tar.gz | tar xz
-        cd libMeshb*
-        cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DCMAKE_INSTALL_PREFIX=${{ env.LIBMESHB_DIR }} .
-        make -j$(nproc) install
   nightly:
-    needs: [libmeshb, libol]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
     - run: sudo apt-get install -y libmetis-dev libscotch-dev
-    - name: libOL cache
-      uses: actions/cache@v3
-      with:
-        path: ${{ env.LIBOL_DIR }}
-        key: libol-${{ env.LIBOL_COMMIT }}
-    - name: libMeshB cache
-      uses: actions/cache@v3
-      with:
-        path: ${{ env.LIBMESHB_DIR }}
-        key: libmeshb-${{ env.LIBMESHB_COMMIT }}
     - name: Install Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
@@ -97,14 +53,6 @@ jobs:
         python -c "import pytucanos; assert not pytucanos.HAVE_METIS"
         python -c "import pytucanos; assert not pytucanos.HAVE_SCOTCH"
         python -m unittest discover pytucanos -v
-    - name: Run pip install & unittests (libmeshb / libol)
-      run: |
-        pip install -C libmeshb=true -C libol=true .
-        cd
-        python -c "import pytucanos; assert pytucanos.HAVE_LIBMESHB"
-        python -c "import pytucanos; assert not pytucanos.HAVE_METIS"
-        python -c "import pytucanos; assert not pytucanos.HAVE_SCOTCH"
-        python -m unittest discover pytucanos -v
     - name: Run pip install & unittests (metis)
       run: |
         pip install -C metis=true .
@@ -122,21 +70,10 @@ jobs:
         python -c "import pytucanos; assert pytucanos.HAVE_SCOTCH"
         python -m unittest discover pytucanos -v
   stable:
-    needs: [libmeshb, libol]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
     - run: sudo apt-get install -y libmetis-dev libscotch-dev
-    - name: libOL cache
-      uses: actions/cache@v3
-      with:
-        path: ${{ env.LIBOL_DIR }}
-        key: libol-${{ env.LIBOL_COMMIT }}
-    - name: libMeshB cache
-      uses: actions/cache@v3
-      with:
-        path: ${{ env.LIBMESHB_DIR }}
-        key: libmeshb-${{ env.LIBMESHB_COMMIT }}
     - name: Install Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
@@ -164,14 +101,6 @@ jobs:
         pip install .
         cd
         python -c "import pytucanos; assert not pytucanos.HAVE_LIBMESHB"
-        python -c "import pytucanos; assert not pytucanos.HAVE_METIS"
-        python -c "import pytucanos; assert not pytucanos.HAVE_SCOTCH"
-        python -m unittest discover pytucanos -v
-    - name: Run pip install & unittests (libmeshb / libol)
-      run: |
-        pip install -C libmeshb=true -C libol=true .
-        cd
-        python -c "import pytucanos; assert pytucanos.HAVE_LIBMESHB"
         python -c "import pytucanos; assert not pytucanos.HAVE_METIS"
         python -c "import pytucanos; assert not pytucanos.HAVE_SCOTCH"
         python -m unittest discover pytucanos -v

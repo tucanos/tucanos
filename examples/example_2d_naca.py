@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import gmsh
 from pytucanos.mesh import Mesh22, Mesh21, plot_mesh, plot_metric, plot_field
 from pytucanos.geometry import LinearGeometry2d
-from pytucanos.remesh import Remesher2dAniso
+from pytucanos.remesh import Remesher2dAniso, PyRemesherParams
 
 
 def naca_profile(
@@ -238,7 +238,13 @@ if __name__ == "__main__":
 
         msh.compute_vertex_to_vertices()
         m_curv = msh.curvature_metric(
-            geom, 4.0, 1.5, 1e-5, h_n, np.array([1, 2], dtype=np.int16)
+            geom,
+            r_h=4.0,
+            beta=1.5,
+            t=0.125,
+            h_min=1e-5,
+            h_n=h_n,
+            h_n_tags=np.array([1, 2], dtype=np.int16),
         )
 
         msh.compute_vertex_to_elems()
@@ -274,7 +280,7 @@ if __name__ == "__main__":
             max_iter=0,
         )
 
-        m = Remesher2dAniso.apply_metric_gradation(msh, m, 1.5, 1.0 / 8.0, n_iter=10)
+        m = Remesher2dAniso.apply_metric_gradation(msh, m, 1.5, t=0.125, n_iter=10)
 
         # fig, (ax0, ax1) = plt.subplots(
         #     1, 2, sharex=True, sharey=True, tight_layout=True
@@ -286,8 +292,7 @@ if __name__ == "__main__":
         remesher = Remesher2dAniso(msh, geom, m)
         remesher.remesh(
             geom,
-            two_steps=True,
-            num_iter=3,
+            params=PyRemesherParams.default(),
         )
         q = remesher.qualities()
         l = remesher.lengths()

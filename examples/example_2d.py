@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pytucanos.mesh import get_square, Mesh22, plot_mesh, plot_field
 from pytucanos.geometry import LinearGeometry2d
-from pytucanos.remesh import Remesher2dIso
+from pytucanos.remesh import Remesher2dIso, PyRemesherParams
 
 
 def get_h(msh):
@@ -57,7 +57,7 @@ if __name__ == "__main__":
         msh.compute_topology()
         geom = LinearGeometry2d(msh)
         remesher = Remesher2dIso(msh, geom, h.reshape((-1, 1)))
-        remesher.remesh(geom)
+        remesher.remesh(geom, params=PyRemesherParams.default())
 
         msh = remesher.to_mesh()
 

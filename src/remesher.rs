@@ -3,47 +3,382 @@ use crate::{
     mesh::{Mesh22, Mesh33},
     to_numpy_1d, to_numpy_2d,
 };
-use numpy::{
-    PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods,
-};
+use numpy::{PyArray1, PyArray2, PyReadonlyArray2, PyUntypedArrayMethods};
 use pyo3::{
     Bound, PyResult, Python,
     exceptions::{PyRuntimeError, PyValueError},
-    prelude::PyDictMethods,
     pyclass, pymethods,
-    types::{PyDict, PyType},
+    types::PyType,
 };
 use tucanos::{
     Idx,
     mesh::{Tetrahedron, Triangle},
     metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
-    remesher::{Remesher, RemesherParams, SmoothingType},
+    remesher::{
+        CollapseParams, Remesher, RemesherParams, RemeshingStep, SmoothParams, SmoothingMethod,
+        SplitParams, SwapParams,
+    },
 };
+
+#[pyclass(get_all, set_all)]
+#[derive(Clone)]
+pub struct PyCollapseParams {
+    l: f64,
+    max_iter: Idx,
+    max_l_rel: f64,
+    max_l_abs: f64,
+    min_q_rel: f64,
+    min_q_abs: f64,
+    max_angle: f64,
+}
+
+impl PyCollapseParams {
+    fn from(other: &CollapseParams) -> Self {
+        Self {
+            l: other.l,
+            max_iter: other.max_iter,
+            max_l_rel: other.max_l_rel,
+            max_l_abs: other.max_l_abs,
+            min_q_rel: other.min_q_rel,
+            min_q_abs: other.min_q_abs,
+            max_angle: other.max_angle,
+        }
+    }
+    fn to(&self) -> CollapseParams {
+        CollapseParams {
+            l: self.l,
+            max_iter: self.max_iter,
+            max_l_rel: self.max_l_rel,
+            max_l_abs: self.max_l_abs,
+            min_q_rel: self.min_q_rel,
+            min_q_abs: self.min_q_abs,
+            max_angle: self.max_angle,
+        }
+    }
+}
+
+#[pymethods]
+impl PyCollapseParams {
+    #[new]
+    pub fn new(
+        l: f64,
+        max_iter: Idx,
+        max_l_rel: f64,
+        max_l_abs: f64,
+        min_q_rel: f64,
+        min_q_abs: f64,
+        max_angle: f64,
+    ) -> Self {
+        Self {
+            l,
+            max_iter,
+            max_l_rel,
+            max_l_abs,
+            min_q_rel,
+            min_q_abs,
+            max_angle,
+        }
+    }
+
+    #[classmethod]
+    pub fn default(_cls: &Bound<'_, PyType>) -> Self {
+        Self::from(&CollapseParams::default())
+    }
+}
+
+#[pyclass(get_all, set_all)]
+#[derive(Clone)]
+pub struct PySplitParams {
+    l: f64,
+    max_iter: Idx,
+    min_l_rel: f64,
+    min_l_abs: f64,
+    min_q_rel: f64,
+    min_q_rel_bdy: f64,
+    min_q_abs: f64,
+}
+
+impl PySplitParams {
+    fn from(other: &SplitParams) -> Self {
+        Self {
+            l: other.l,
+            max_iter: other.max_iter,
+            min_l_rel: other.min_l_rel,
+            min_l_abs: other.min_l_abs,
+            min_q_rel: other.min_q_rel,
+            min_q_rel_bdy: other.min_q_rel_bdy,
+            min_q_abs: other.min_q_abs,
+        }
+    }
+    fn to(&self) -> SplitParams {
+        SplitParams {
+            l: self.l,
+            max_iter: self.max_iter,
+            min_l_rel: self.min_l_rel,
+            min_l_abs: self.min_l_abs,
+            min_q_rel: self.min_q_rel,
+            min_q_rel_bdy: self.min_q_rel_bdy,
+            min_q_abs: self.min_q_abs,
+        }
+    }
+}
+
+#[pymethods]
+impl PySplitParams {
+    #[new]
+    #[allow(clippy::similar_names)]
+    pub fn new(
+        l: f64,
+        max_iter: Idx,
+        min_l_rel: f64,
+        min_l_abs: f64,
+        min_q_rel: f64,
+        min_q_rel_bdy: f64,
+        min_q_abs: f64,
+    ) -> Self {
+        Self {
+            l,
+            max_iter,
+            min_l_rel,
+            min_l_abs,
+            min_q_rel,
+            min_q_rel_bdy,
+            min_q_abs,
+        }
+    }
+    #[classmethod]
+    pub fn default(_cls: &Bound<'_, PyType>) -> Self {
+        Self::from(&SplitParams::default())
+    }
+}
+
+#[pyclass(get_all, set_all)]
+#[derive(Clone)]
+pub struct PySwapParams {
+    q: f64,
+    max_iter: Idx,
+    max_l_rel: f64,
+    max_l_abs: f64,
+    min_l_rel: f64,
+    min_l_abs: f64,
+    max_angle: f64,
+}
+
+impl PySwapParams {
+    fn from(other: &SwapParams) -> Self {
+        Self {
+            q: other.q,
+            max_iter: other.max_iter,
+            max_l_rel: other.max_l_rel,
+            max_l_abs: other.max_l_abs,
+            min_l_rel: other.min_l_rel,
+            min_l_abs: other.min_l_abs,
+            max_angle: other.max_angle,
+        }
+    }
+    fn to(&self) -> SwapParams {
+        SwapParams {
+            q: self.q,
+            max_iter: self.max_iter,
+            max_l_rel: self.max_l_rel,
+            max_l_abs: self.max_l_abs,
+            min_l_rel: self.min_l_rel,
+            min_l_abs: self.min_l_abs,
+            max_angle: self.max_angle,
+        }
+    }
+}
+
+#[pymethods]
+impl PySwapParams {
+    #[new]
+    pub fn new(
+        q: f64,
+        max_iter: Idx,
+        max_l_rel: f64,
+        max_l_abs: f64,
+        min_l_rel: f64,
+        min_l_abs: f64,
+        max_angle: f64,
+    ) -> Self {
+        Self {
+            q,
+            max_iter,
+            max_l_rel,
+            max_l_abs,
+            min_l_rel,
+            min_l_abs,
+            max_angle,
+        }
+    }
+    #[classmethod]
+    pub fn default(_cls: &Bound<'_, PyType>) -> Self {
+        Self::from(&SwapParams::default())
+    }
+}
+
+#[pyclass(eq, eq_int)]
+#[derive(Clone, PartialEq, Eq)]
+pub enum PySmoothingMethod {
+    Laplacian,
+    Avro,
+    #[cfg(feature = "nlopt")]
+    NLOpt,
+    Laplacian2,
+}
+
+#[pyclass(get_all, set_all)]
+#[derive(Clone)]
+pub struct PySmoothParams {
+    n_iter: Idx,
+    method: PySmoothingMethod,
+    relax: Vec<f64>,
+    keep_local_minima: bool,
+    max_angle: f64,
+}
+
+impl PySmoothParams {
+    fn from(other: &SmoothParams) -> Self {
+        let method = match other.method {
+            SmoothingMethod::Laplacian => PySmoothingMethod::Laplacian,
+            SmoothingMethod::Avro => PySmoothingMethod::Avro,
+            #[cfg(feature = "nlopt")]
+            SmoothingMethod::NLOpt => PySmoothingMethod::NLOpt,
+            SmoothingMethod::Laplacian2 => PySmoothingMethod::Laplacian2,
+        };
+        Self {
+            n_iter: other.n_iter,
+            method,
+            relax: other.relax.clone(),
+            keep_local_minima: other.keep_local_minima,
+            max_angle: other.max_angle,
+        }
+    }
+    fn to(&self) -> SmoothParams {
+        let method = match self.method {
+            PySmoothingMethod::Laplacian => SmoothingMethod::Laplacian,
+            PySmoothingMethod::Avro => SmoothingMethod::Avro,
+            #[cfg(feature = "nlopt")]
+            PySmoothingMethod::NLOpt => SmoothingMethod::NLOpt,
+            PySmoothingMethod::Laplacian2 => SmoothingMethod::Laplacian2,
+        };
+        SmoothParams {
+            n_iter: self.n_iter,
+            method,
+            relax: self.relax.clone(),
+            keep_local_minima: self.keep_local_minima,
+            max_angle: self.max_angle,
+        }
+    }
+}
+
+#[pymethods]
+impl PySmoothParams {
+    #[new]
+    pub fn new(
+        n_iter: Idx,
+        method: PySmoothingMethod,
+        relax: Vec<f64>,
+        keep_local_minima: bool,
+        max_angle: f64,
+    ) -> Self {
+        Self {
+            n_iter,
+            method,
+            relax,
+            keep_local_minima,
+            max_angle,
+        }
+    }
+    #[classmethod]
+    pub fn default(_cls: &Bound<'_, PyType>) -> Self {
+        Self::from(&SmoothParams::default())
+    }
+}
+
+#[pyclass(get_all, set_all)]
+#[derive(Clone)]
+pub enum PyRemeshingStep {
+    Split(PySplitParams),
+    Collapse(PyCollapseParams),
+    Swap(PySwapParams),
+    Smooth(PySmoothParams),
+}
+
+#[pyclass(get_all, set_all)]
+#[derive(Clone)]
+pub struct PyRemesherParams {
+    steps: Vec<PyRemeshingStep>,
+    debug: bool,
+}
+impl PyRemesherParams {
+    pub fn from(other: &RemesherParams) -> Self {
+        let steps = other
+            .steps
+            .iter()
+            .map(|s| match s {
+                RemeshingStep::Split(p) => PyRemeshingStep::Split(PySplitParams::from(p)),
+                RemeshingStep::Collapse(p) => PyRemeshingStep::Collapse(PyCollapseParams::from(p)),
+                RemeshingStep::Swap(p) => PyRemeshingStep::Swap(PySwapParams::from(p)),
+                RemeshingStep::Smooth(p) => PyRemeshingStep::Smooth(PySmoothParams::from(p)),
+            })
+            .collect::<Vec<_>>();
+        Self {
+            steps,
+            debug: other.debug,
+        }
+    }
+
+    pub fn to(&self) -> RemesherParams {
+        let steps = self
+            .steps
+            .iter()
+            .map(|s| match s {
+                PyRemeshingStep::Split(p) => RemeshingStep::Split(p.to()),
+                PyRemeshingStep::Collapse(p) => RemeshingStep::Collapse(p.to()),
+                PyRemeshingStep::Swap(p) => RemeshingStep::Swap(p.to()),
+                PyRemeshingStep::Smooth(p) => RemeshingStep::Smooth(p.to()),
+            })
+            .collect::<Vec<_>>();
+        RemesherParams {
+            steps,
+            debug: self.debug,
+        }
+    }
+}
+#[pymethods]
+impl PyRemesherParams {
+    #[new]
+    pub fn new(steps: Vec<PyRemeshingStep>, debug: bool) -> Self {
+        Self { steps, debug }
+    }
+
+    #[classmethod]
+    pub fn default(_cls: &Bound<'_, PyType>) -> Self {
+        Self::from(&RemesherParams::default())
+    }
+}
 
 macro_rules! create_remesher {
     ($name: ident, $dim: expr, $etype: ident, $metric: ident, $mesh: ident, $geom: ident) => {
         #[doc = concat!("Remesher for a meshes consisting of ", stringify!($etype), " in ",
-        stringify!($dim), "D")]
+                stringify!($dim), "D")]
         #[doc = concat!("using ", stringify!($metric),
-        " as metric and a piecewise linear representation of the geometry")]
+                " as metric and a piecewise linear representation of the geometry")]
         #[pyclass]
         pub struct $name {
             remesher: Remesher<$dim, $etype, $metric>,
         }
 
         #[doc = concat!("Create a remesher from a ", stringify!($mesh), " and a ",
-        stringify!($metric) ," metric defined at the mesh vertices")]
+                stringify!($metric) ," metric defined at the mesh vertices")]
         #[doc = concat!(
-            "A piecewise linear representation of the geometry is used, either from the ",
-            stringify!($geom), " given or otherwise from the mesh boundary.")]
+                    "A piecewise linear representation of the geometry is used, either from the ",
+                    stringify!($geom), " given or otherwise from the mesh boundary.")]
         #[pymethods]
         impl $name {
             #[new]
-            pub fn new(
-                mesh: &$mesh,
-                geometry: &$geom,
-                m: PyReadonlyArray2<f64>,
-            ) -> PyResult<Self> {
+            pub fn new(mesh: &$mesh, geometry: &$geom, m: PyReadonlyArray2<f64>) -> PyResult<Self> {
                 if m.shape()[0] != mesh.mesh.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
@@ -52,13 +387,18 @@ macro_rules! create_remesher {
                 }
 
                 let m = m.as_slice()?;
-                let m: Vec<_> = m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect();
+                let m: Vec<_> = m
+                    .chunks($metric::N)
+                    .map(|x| $metric::from_slice(x))
+                    .collect();
 
                 let remesher = Remesher::new(&mesh.mesh, &m, &geometry.geom);
                 if let Err(res) = remesher {
                     return Err(PyRuntimeError::new_err(res.to_string()));
                 }
-                Ok(Self {remesher: remesher.unwrap()})
+                Ok(Self {
+                    remesher: remesher.unwrap(),
+                })
             }
 
             /// Convert a Hessian $H$ to the optimal metric for a Lp norm, i.e.
@@ -71,7 +411,7 @@ macro_rules! create_remesher {
                 mesh: &$mesh,
                 m: PyReadonlyArray2<f64>,
                 p: Option<Idx>,
-            ) -> PyResult<Bound<'py,PyArray2<f64>>> {
+            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
                 if m.shape()[0] != mesh.mesh.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
@@ -81,7 +421,10 @@ macro_rules! create_remesher {
 
                 let mut res = Vec::with_capacity(m.shape()[0] * m.shape()[1]);
                 let m = m.as_slice().unwrap();
-                let mut m: Vec<_> = m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect();
+                let mut m: Vec<_> = m
+                    .chunks($metric::N)
+                    .map(|x| $metric::from_slice(x))
+                    .collect();
 
                 let exponent = if let Some(p) = p {
                     2.0 / (2.0 * f64::from(p) + f64::from($dim))
@@ -105,7 +448,7 @@ macro_rules! create_remesher {
             #[classmethod]
             #[allow(clippy::too_many_arguments)]
             #[pyo3(signature = (mesh, m, h_min, h_max, n_elems, fixed_m=None, implied_m=None,
-                step=None, max_iter=None))]
+                        step=None, max_iter=None))]
             pub fn scale_metric<'py>(
                 _cls: &Bound<'_, PyType>,
                 py: Python<'py>,
@@ -127,35 +470,72 @@ macro_rules! create_remesher {
                 }
 
                 let m = m.as_slice().unwrap();
-                let mut m: Vec<_> = m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect();
+                let mut m: Vec<_> = m
+                    .chunks($metric::N)
+                    .map(|x| $metric::from_slice(x))
+                    .collect();
 
-                let res =  if let Some(fixed_m) = fixed_m {
+                let res = if let Some(fixed_m) = fixed_m {
                     let fixed_m = fixed_m.as_slice().unwrap();
-                    let fixed_m: Vec<_> = fixed_m.chunks($metric::N).map(|x|
-                        $metric::from_slice(x)).collect();
+                    let fixed_m: Vec<_> = fixed_m
+                        .chunks($metric::N)
+                        .map(|x| $metric::from_slice(x))
+                        .collect();
                     if let Some(implied_m) = implied_m {
                         let implied_m = implied_m.as_slice().unwrap();
-                        let implied_m: Vec<_> = implied_m.chunks($metric::N).map(|x|
-                            $metric::from_slice(x)).collect();
-                        mesh.mesh
-                            .scale_metric(&mut m, h_min, h_max, n_elems, Some(&fixed_m),
-                            Some(&implied_m), step, max_iter.unwrap_or(10))
+                        let implied_m: Vec<_> = implied_m
+                            .chunks($metric::N)
+                            .map(|x| $metric::from_slice(x))
+                            .collect();
+                        mesh.mesh.scale_metric(
+                            &mut m,
+                            h_min,
+                            h_max,
+                            n_elems,
+                            Some(&fixed_m),
+                            Some(&implied_m),
+                            step,
+                            max_iter.unwrap_or(10),
+                        )
                     } else {
-                        mesh.mesh
-                            .scale_metric(&mut m, h_min, h_max, n_elems, Some(&fixed_m), None,
-                            step, max_iter.unwrap_or(10))
+                        mesh.mesh.scale_metric(
+                            &mut m,
+                            h_min,
+                            h_max,
+                            n_elems,
+                            Some(&fixed_m),
+                            None,
+                            step,
+                            max_iter.unwrap_or(10),
+                        )
                     }
                 } else if let Some(implied_m) = implied_m {
                     let implied_m = implied_m.as_slice().unwrap();
-                    let implied_m: Vec<_> = implied_m.chunks($metric::N).map(|x|
-                        $metric::from_slice(x)).collect();
-                    mesh.mesh
-                        .scale_metric(&mut m, h_min, h_max, n_elems, None, Some(&implied_m), step,
-                        max_iter.unwrap_or(10))
+                    let implied_m: Vec<_> = implied_m
+                        .chunks($metric::N)
+                        .map(|x| $metric::from_slice(x))
+                        .collect();
+                    mesh.mesh.scale_metric(
+                        &mut m,
+                        h_min,
+                        h_max,
+                        n_elems,
+                        None,
+                        Some(&implied_m),
+                        step,
+                        max_iter.unwrap_or(10),
+                    )
                 } else {
-                    mesh.mesh
-                    .scale_metric(&mut m, h_min, h_max, n_elems, None, None, None,
-                        max_iter.unwrap_or(10))
+                    mesh.mesh.scale_metric(
+                        &mut m,
+                        h_min,
+                        h_max,
+                        n_elems,
+                        None,
+                        None,
+                        None,
+                        max_iter.unwrap_or(10),
+                    )
                 };
 
                 if let Err(res) = res {
@@ -182,7 +562,10 @@ macro_rules! create_remesher {
                 }
 
                 let m = m.as_slice().unwrap();
-                let m: Vec<_> = m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect();
+                let m: Vec<_> = m
+                    .chunks($metric::N)
+                    .map(|x| $metric::from_slice(x))
+                    .collect();
                 let m = mesh.mesh.smooth_metric(&m);
                 if let Err(m) = m {
                     return Err(PyRuntimeError::new_err(m.to_string()));
@@ -213,7 +596,10 @@ macro_rules! create_remesher {
                 }
 
                 let m = m.as_slice().unwrap();
-                let mut m: Vec<_> = m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect();
+                let mut m: Vec<_> = m
+                    .chunks($metric::N)
+                    .map(|x| $metric::from_slice(x))
+                    .collect();
                 let res = mesh.mesh.apply_metric_gradation(&mut m, beta, t, n_iter);
                 match res {
                     Ok(_) => {
@@ -244,7 +630,10 @@ macro_rules! create_remesher {
                 }
 
                 let m = m.as_slice().unwrap();
-                let m: Vec<_> = m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect();
+                let m: Vec<_> = m
+                    .chunks($metric::N)
+                    .map(|x| $metric::from_slice(x))
+                    .collect();
                 let res = mesh.mesh.elem_data_to_vertex_data_metric::<$metric>(&m);
                 match res {
                     Ok(res) => {
@@ -274,7 +663,10 @@ macro_rules! create_remesher {
                 }
 
                 let m = m.as_slice().unwrap();
-                let m: Vec<_> = m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect();
+                let m: Vec<_> = m
+                    .chunks($metric::N)
+                    .map(|x| $metric::from_slice(x))
+                    .collect();
                 let res = mesh.mesh.vertex_data_to_elem_data_metric::<$metric>(&m);
                 match res {
                     Ok(res) => {
@@ -318,8 +710,8 @@ macro_rules! create_remesher {
                 let m_other = m_other.as_slice().unwrap();
                 let m_other = m_other.chunks($metric::N).map(|x| $metric::from_slice(x));
 
-                let mut res = Vec::with_capacity(mesh.mesh.n_verts() as usize *
-                <$metric as Metric<$dim>>::N);
+                let mut res =
+                    Vec::with_capacity(mesh.mesh.n_verts() as usize * <$metric as Metric<$dim>>::N);
 
                 for (mut m_i, m_other_i) in m.zip(m_other) {
                     m_i.control_step(&m_other_i, step);
@@ -337,7 +729,10 @@ macro_rules! create_remesher {
                 m: PyReadonlyArray2<f64>,
             ) -> (f64, f64, f64, f64) {
                 let m = m.as_slice().unwrap();
-                let m = m.chunks($metric::N).map(|x| $metric::from_slice(x)).collect::<Vec<_>>();
+                let m = m
+                    .chunks($metric::N)
+                    .map(|x| $metric::from_slice(x))
+                    .collect::<Vec<_>>();
                 mesh.mesh.metric_info(&m)
             }
 
@@ -384,127 +779,12 @@ macro_rules! create_remesher {
                 self.remesher.n_edges()
             }
 
-            /// Get the default remesher parameters
-            pub fn default_params<'py>(&mut self, py: Python<'py>) -> Bound<'py, PyDict> {
-                let default_params = RemesherParams::default();
-                let dict = PyDict::new(py);
-                dict.set_item("num_iter", default_params.num_iter).unwrap();
-                dict.set_item("two_steps", default_params.two_steps).unwrap();
-                dict.set_item("split_max_iter", default_params.split_max_iter).unwrap();
-                dict.set_item("split_min_l_rel", default_params.split_min_l_rel).unwrap();
-                dict.set_item("split_min_l_abs", default_params.split_min_l_abs).unwrap();
-                dict.set_item("split_min_q_rel", default_params.split_min_q_rel).unwrap();
-                dict.set_item("split_min_q_abs", default_params.split_min_q_abs).unwrap();
-                dict.set_item("collapse_max_iter", default_params.collapse_max_iter).unwrap();
-                dict.set_item("collapse_max_l_rel", default_params.collapse_max_l_rel).unwrap();
-                dict.set_item("collapse_max_l_abs", default_params.collapse_max_l_abs).unwrap();
-                dict.set_item("collapse_min_q_rel", default_params.collapse_min_q_rel).unwrap();
-                dict.set_item("collapse_min_q_abs", default_params.collapse_min_q_abs).unwrap();
-                dict.set_item("swap_max_iter", default_params.swap_max_iter).unwrap();
-                dict.set_item("swap_max_l_rel", default_params.swap_max_l_rel).unwrap();
-                dict.set_item("swap_max_l_abs", default_params.swap_max_l_abs).unwrap();
-                dict.set_item("swap_min_l_rel", default_params.swap_min_l_rel).unwrap();
-                dict.set_item("swap_min_l_abs", default_params.swap_min_l_abs).unwrap();
-                dict.set_item("smooth_iter", default_params.smooth_iter).unwrap();
-                let smooth_type = match default_params.smooth_type {
-                    tucanos::remesher::SmoothingType::Laplacian => "laplacian",
-                    tucanos::remesher::SmoothingType::Avro => "avro",
-                    #[cfg(feature = "nlopt")]
-                    tucanos::remesher::SmoothingType::NLOpt => "nlopt",
-                    tucanos::remesher::SmoothingType::Laplacian2 => "laplacian2",
-                };
-                dict.set_item("smooth_type", smooth_type).unwrap();
-                dict.set_item("smooth_relax", to_numpy_1d(py, default_params.smooth_relax)
-            ).unwrap();
-                dict.set_item("max_angle", default_params.max_angle).unwrap();
-
-                dict
-            }
-
             /// Perform a remeshing iteration
             #[allow(clippy::too_many_arguments)]
-            #[pyo3(signature = (geometry, num_iter=None, two_steps=None, split_max_iter=None,
-                split_min_l_rel=None, split_min_l_abs=None, split_min_q_rel=None,
-                split_min_q_abs=None, collapse_max_iter=None, collapse_max_l_rel=None,
-                collapse_max_l_abs=None, collapse_min_q_rel=None, collapse_min_q_abs=None,
-                swap_max_iter=None, swap_max_l_rel=None, swap_max_l_abs=None, swap_min_l_rel=None,
-                swap_min_l_abs=None, smooth_iter=None, smooth_type=None, smooth_relax=None,
-                smooth_keep_local_minima=None, max_angle=None, debug=None))]
-            pub fn remesh(
-                &mut self,
-                geometry: &$geom,
-                num_iter:Option< u32>,
-                two_steps: Option<bool>,
-                split_max_iter:Option< u32>,
-                split_min_l_rel:Option< f64>,
-                split_min_l_abs:Option< f64>,
-                split_min_q_rel:Option< f64>,
-                split_min_q_abs:Option< f64>,
-                collapse_max_iter:Option< u32>,
-                collapse_max_l_rel:Option< f64>,
-                collapse_max_l_abs:Option< f64>,
-                collapse_min_q_rel:Option< f64>,
-                collapse_min_q_abs:Option< f64>,
-                swap_max_iter:Option< u32>,
-                swap_max_l_rel:Option< f64>,
-                swap_max_l_abs:Option< f64>,
-                swap_min_l_rel:Option< f64>,
-                swap_min_l_abs:Option< f64>,
-                smooth_iter:Option< u32>,
-                smooth_type: Option<&str>,
-                smooth_relax: Option<PyReadonlyArray1<f64>>,
-                smooth_keep_local_minima: Option<bool>,
-                max_angle:Option< f64>,
-                debug: Option<bool>,
-            ) -> PyResult<()>{
-                let smooth_type = smooth_type.unwrap_or("laplacian");
-
-                let smooth_type = if smooth_type == "laplacian" {
-                    SmoothingType::Laplacian
-                } else if smooth_type == "laplacian2" {
-                    SmoothingType::Laplacian2
-                } else if smooth_type == "nlopt" {
-                    unreachable!()
-                } else {
-                    SmoothingType::Avro
-                };
-
-                let default_params = RemesherParams::default();
-
-                let params = RemesherParams {
-                    num_iter: num_iter.unwrap_or(default_params.num_iter),
-                    two_steps: two_steps.unwrap_or(default_params.two_steps),
-                    split_max_iter: split_max_iter.unwrap_or(default_params.split_max_iter),
-                    split_min_l_rel: split_min_l_rel.unwrap_or(default_params.split_min_l_rel),
-                    split_min_l_abs: split_min_l_abs.unwrap_or(default_params.split_min_l_abs),
-                    split_min_q_rel: split_min_q_rel.unwrap_or(default_params.split_min_q_rel),
-                    split_min_q_abs: split_min_q_abs.unwrap_or(default_params.split_min_q_abs),
-                    collapse_max_iter: collapse_max_iter.unwrap_or(
-                        default_params.collapse_max_iter),
-                    collapse_max_l_rel: collapse_max_l_rel.unwrap_or(
-                        default_params.collapse_max_l_rel),
-                    collapse_max_l_abs: collapse_max_l_abs.unwrap_or(
-                        default_params.collapse_max_l_abs),
-                    collapse_min_q_rel: collapse_min_q_rel.unwrap_or(
-                        default_params.collapse_min_q_rel),
-                    collapse_min_q_abs: collapse_min_q_abs.unwrap_or(
-                        default_params.collapse_min_q_abs),
-                    swap_max_iter: swap_max_iter.unwrap_or(default_params.swap_max_iter),
-                    swap_max_l_rel: swap_max_l_rel.unwrap_or(default_params.swap_max_l_rel),
-                    swap_max_l_abs: swap_max_l_abs.unwrap_or(default_params.swap_max_l_abs),
-                    swap_min_l_rel: swap_min_l_rel.unwrap_or(default_params.swap_min_l_rel),
-                    swap_min_l_abs: swap_min_l_abs.unwrap_or(default_params.swap_min_l_abs),
-                    smooth_iter: smooth_iter.unwrap_or(default_params.smooth_iter),
-                    smooth_type,
-                    smooth_relax: smooth_relax.map(|x| x.to_vec().unwrap()).unwrap_or(
-                        default_params.smooth_relax),
-                    smooth_keep_local_minima: smooth_keep_local_minima.unwrap_or(
-                        default_params.smooth_keep_local_minima),
-                    max_angle: max_angle.unwrap_or(default_params.max_angle),
-                    debug: debug.unwrap_or(default_params.debug),
-                };
-                self.remesher.remesh(&params, &geometry.geom).map_err(|e|
-                    PyRuntimeError::new_err(e.to_string()))
+            pub fn remesh(&mut self, geometry: &$geom, params: &PyRemesherParams) -> PyResult<()> {
+                self.remesher
+                    .remesh(&params.to(), &geometry.geom)
+                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
             }
 
             /// Get the element qualities as a numpy array of size (# or elements)
@@ -528,7 +808,6 @@ macro_rules! create_remesher {
             /// Get the metric
             #[must_use]
             pub fn metric<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray2<f64>> {
-
                 return to_numpy_2d(py, self.remesher.metric(), <$metric as Metric<$dim>>::N);
             }
         }

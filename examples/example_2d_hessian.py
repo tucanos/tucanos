@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pytucanos.mesh import get_square, Mesh22, plot_mesh
 from pytucanos.geometry import LinearGeometry2d
-from pytucanos.remesh import Remesher2dAniso
+from pytucanos.remesh import Remesher2dAniso, PyRemesherParams
 
 
 def get_f(msh):
@@ -37,12 +37,14 @@ if __name__ == "__main__":
             m = Remesher2dAniso.scale_metric(
                 msh, m, h_min=0.0001, h_max=0.3, n_elems=1000
             )
-            m = Remesher2dAniso.apply_metric_gradation(msh, m, beta=1.5, n_iter=3)
+            m = Remesher2dAniso.apply_metric_gradation(
+                msh, m, beta=1.5, t=1.0, n_iter=3
+            )
 
         assert np.isfinite(m).all()
 
         remesher = Remesher2dAniso(msh, geom, m)
-        remesher.remesh(geom)
+        remesher.remesh(geom, params=PyRemesherParams.default())
 
         msh = remesher.to_mesh()
         msh.compute_topology()

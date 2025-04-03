@@ -3,16 +3,98 @@ import json
 import subprocess
 import numpy as np
 import matplotlib.pyplot as plt
+from ._pytucanos import (
+    PySplitParams,
+    PyCollapseParams,
+    PySwapParams,
+    PySmoothParams,
+    PySmoothingMethod,
+    PyRemeshingStep,
+    PyRemesherParams,
+)
 from ._pytucanos import Remesher2dIso, Remesher2dAniso, Remesher3dIso, Remesher3dAniso
 from ._pytucanos import (
     ParallelRemesher2dIso,
     ParallelRemesher2dAniso,
     ParallelRemesher3dIso,
     ParallelRemesher3dAniso,
+    PyParallelRemesherParams,
 )
 
 from .mesh import Mesh22, Mesh33
 from .geometry import LinearGeometry2d, LinearGeometry3d
+
+
+def print_params(params):
+
+    for i, step in enumerate(params.steps):
+        step = step._0
+        if isinstance(step, PyCollapseParams):
+            print(f"{i} - Collapse")
+            attrs = [
+                "l",
+                "max_iter",
+                "max_l_rel",
+                "max_l_abs",
+                "min_q_rel",
+                "min_q_abs",
+                "max_angle",
+            ]
+            for attr in attrs:
+                print(f"  {attr} = {getattr(step, attr)}")
+        elif isinstance(step, PySplitParams):
+            print(f"{i} - Split")
+            attrs = [
+                "l",
+                "max_iter",
+                "min_l_rel",
+                "min_l_abs",
+                "min_q_rel",
+                "min_q_rel_bdy",
+                "min_q_abs",
+            ]
+            for attr in attrs:
+                print(f"  {attr} = {getattr(step, attr)}")
+        elif isinstance(step, PySwapParams):
+            print(f"{i} - Swap")
+            attrs = [
+                "q",
+                "max_iter",
+                "max_l_rel",
+                "max_l_abs",
+                "min_l_rel",
+                "min_l_abs",
+                "max_angle",
+            ]
+            for attr in attrs:
+                print(f"  {attr} = {getattr(step, attr)}")
+        elif isinstance(step, PySmoothParams):
+            print(f"{i} - Smooth")
+            attrs = [
+                "n_iter",
+                "method",
+                "relax",
+                "keep_local_minima",
+                "max_angle",
+            ]
+            for attr in attrs:
+                print(f"  {attr} = {getattr(step, attr)}")
+        else:
+            raise RuntimeError()
+
+
+def update_params(params, step, key, value):
+
+    res = []
+    for s in params.steps:
+        if isinstance(s, step):
+            tmp = s._0
+            setattr(tmp, key, value)
+            res.append(step(tmp))
+        else:
+            res.append(s)
+
+    return PyRemesherParams(res, params.debug)
 
 
 def plot_stats(remesher):
@@ -103,7 +185,7 @@ def __iso_to_aniso_3d(h):
     return h
 
 
-def remesh(msh, h, bdy=None, step=None, **remesh_params):
+def remesh(msh, h, bdy=None, step=None, params=None):
     """
     Remesh using tucanos
     """
@@ -129,7 +211,9 @@ def remesh(msh, h, bdy=None, step=None, **remesh_params):
         h = Remesher.control_step_metric(msh, h, m_implied, step)
 
     remesher = Remesher(msh, geom, h)
-    remesher.remesh(geom, **remesh_params)
+    if params is None:
+        params = PyRemesherParams.default()
+    remesher.remesh(geom, params)
 
     return remesher.to_mesh()
 

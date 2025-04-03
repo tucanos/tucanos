@@ -9,7 +9,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 log = "0.4.27"
-tucanos = { git = "https://github.com/tucanos/tucanos.git", rev = "d50e8040" }
+tucanos = { git = "https://github.com/tucanos/tucanos.git", rev = "3f6554e" }
 numpy = "0.24.0"
 pyo3 = { version = "0.24.1", features = ["extension-module", "multiple-pymethods"] }
 pyo3-log = "0.12"
@@ -17,11 +17,7 @@ rayon = "1.10.0"
 affinity = "0.1.2"
 
 [features]
-default = ["parry"]
 nlopt = ["tucanos/nlopt"]
-libmeshb = ["tucanos/libmeshb"]
-libol = ["tucanos/marechal-libol-sys"]
-parry = ["tucanos/parry"]
 scotch = ["tucanos/scotch"]
 metis = ["tucanos/metis"]
 
@@ -47,3 +43,4 @@ ptr_as_ptr = "allow"
 borrow_as_ptr = "allow"
 ref_as_ptr = "allow"
 needless_pass_by_value = "allow"
+missing_const_for_fn = "allow"
