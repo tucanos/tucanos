@@ -1,6 +1,6 @@
 use crate::{
-    mesh::{Tetrahedron, Triangle},
     Idx,
+    mesh::{Tetrahedron, Triangle},
 };
 
 // Subdivision of standard elements to triangles and tetrahedra maintaining a consistent mesh. The algorithms are taken from

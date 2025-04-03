@@ -2,15 +2,15 @@ use parry2d_f64::query::{PointQuery as _, PointQueryWithLocation as _};
 use parry3d_f64::query::{PointQuery as _, PointQueryWithLocation as _};
 
 use crate::{
+    Idx,
     mesh::Point,
     mesh::{Elem, SimplexMesh},
-    Idx,
 };
 
 mod parry2d {
     use crate::{
-        mesh::{Elem, SimplexMesh},
         Idx,
+        mesh::{Elem, SimplexMesh},
     };
     use nalgebra::Point2;
     use parry2d_f64::{
@@ -18,8 +18,8 @@ mod parry2d {
         math::{Isometry, Point, Real},
         partitioning::Qbvh,
         query::{
-            details::NormalConstraints, point::PointCompositeShapeProjWithLocationBestFirstVisitor,
-            PointProjection, PointQueryWithLocation,
+            PointProjection, PointQueryWithLocation, details::NormalConstraints,
+            point::PointCompositeShapeProjWithLocationBestFirstVisitor,
         },
         shape::{Segment, SegmentPointLocation, Shape, TypedSimdCompositeShape},
     };
@@ -147,8 +147,8 @@ mod parry2d {
 
 mod parry3d {
     use crate::{
-        mesh::{Elem, SimplexMesh},
         Idx,
+        mesh::{Elem, SimplexMesh},
     };
     use nalgebra::Point3;
     use parry3d_f64::{
@@ -157,8 +157,8 @@ mod parry3d {
         math::{Isometry, Point, Real},
         partitioning::Qbvh,
         query::{
-            details::NormalConstraints, point::PointCompositeShapeProjWithLocationBestFirstVisitor,
             PointProjection, PointQuery, PointQueryWithLocation, Ray, RayCast, RayIntersection,
+            details::NormalConstraints, point::PointCompositeShapeProjWithLocationBestFirstVisitor,
         },
         shape::{
             FeatureId, Segment, SegmentPointLocation, Shape, ShapeType, Tetrahedron,

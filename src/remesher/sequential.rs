@@ -3,11 +3,12 @@ use super::stats::{
     CollapseStats, InitStats, SmoothStats, SplitStats, Stats, StepStats, SwapStats,
 };
 use crate::{
+    Dim, Error, Idx, Result, Tag, TopoTag,
     geometry::Geometry,
     max_iter,
-    mesh::{get_face_to_elem, AsSliceF64, Elem, GElem, Point, SimplexMesh, Topology},
+    mesh::{AsSliceF64, Elem, GElem, Point, SimplexMesh, Topology, get_face_to_elem},
     metric::Metric,
-    min_iter, Dim, Error, Idx, Result, Tag, TopoTag,
+    min_iter,
 };
 use log::{debug, trace};
 #[cfg(feature = "nlopt")]
@@ -335,17 +336,20 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 let otag = other.tag;
                 if etag != otag && ftag.is_none() {
                     return Err(Error::from(&format!(
-                        "A face ({f:?}:{ftag:?}) belonging to 2 elements ({:?}:{etag:?}, {:?}:{otag:?}) with different tags is not tagged correctly. ", e.el, other.el
+                        "A face ({f:?}:{ftag:?}) belonging to 2 elements ({:?}:{etag:?}, {:?}:{otag:?}) with different tags is not tagged correctly. ",
+                        e.el, other.el
                     )));
                 } else if etag == otag && ftag.is_some() {
                     return Err(Error::from(&format!(
                         "A face (({f:?}:{ftag:?})) belonging to 2 elements ({:?}:{etag:?}, {:?}:{otag:?}) with the same tags is not tagged \
-                        correctly.", e.el, other.el
+                        correctly.",
+                        e.el, other.el
                     )));
                 }
             } else if ftag.is_none() {
-                return Err(Error::from(
-                    &format!("A face (({f:?}:{ftag:?})) belonging to 1 element ({:?}:{etag:?}) is not tagged correctly", e.el
+                return Err(Error::from(&format!(
+                    "A face (({f:?}:{ftag:?})) belonging to 1 element ({:?}:{etag:?}) is not tagged correctly",
+                    e.el
                 )));
             }
         }
@@ -812,9 +816,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 }
             }
 
-            debug!(
-                "Iteration {n_iter}: {n_splits} edges split ({n_fails} failed)"
-            );
+            debug!("Iteration {n_iter}: {n_splits} edges split ({n_fails} failed)");
             self.stats
                 .push(StepStats::Split(SplitStats::new(n_splits, n_fails, self)));
 
@@ -860,9 +862,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
             .swap_max_l_abs
             .min(params.swap_max_l_rel * cavity.l_max);
 
-        trace!(
-            "min. / max. allowed edge length = {l_min:.2}, {l_max:.2}"
-        );
+        trace!("min. / max. allowed edge length = {l_min:.2}, {l_max:.2}");
 
         let Seed::Edge(local_edg) = cavity.seed else {
             unreachable!()
@@ -999,9 +999,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 }
             }
 
-            debug!(
-                "Iteration {n_iter}: {n_swaps} edges swapped ({n_fails} failed, {n_ok} OK)"
-            );
+            debug!("Iteration {n_iter}: {n_swaps} edges swapped ({n_fails} failed, {n_ok} OK)");
             self.stats
                 .push(StepStats::Swap(SwapStats::new(n_swaps, n_fails, self)));
             if n_swaps == 0 || n_iter == params.swap_max_iter {
@@ -1574,14 +1572,14 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 #[cfg(test)]
 mod tests_topo {
     use crate::{
+        Tag,
         geometry::NoGeometry,
         mesh::{
-            test_meshes::{test_mesh_2d, test_mesh_3d},
             Point,
+            test_meshes::{test_mesh_2d, test_mesh_3d},
         },
         metric::IsoMetric,
         remesher::Remesher,
-        Tag,
     };
     use rustc_hash::{FxHashMap, FxHashSet};
     use std::collections::hash_map::Entry;
@@ -1765,17 +1763,17 @@ mod tests_topo {
 mod tests {
     use super::RemesherParams;
     use crate::{
+        Result,
         geometry::NoGeometry,
         mesh::{
-            test_meshes::{
-                h_2d, h_3d, sphere_mesh, test_mesh_2d, test_mesh_3d, test_mesh_3d_single_tet,
-                test_mesh_3d_two_tets, test_mesh_moon_2d, GeomHalfCircle2d, SphereGeometry,
-            },
             Edge, Elem, GElem, Point, SimplexMesh, Tetrahedron, Triangle,
+            test_meshes::{
+                GeomHalfCircle2d, SphereGeometry, h_2d, h_3d, sphere_mesh, test_mesh_2d,
+                test_mesh_3d, test_mesh_3d_single_tet, test_mesh_3d_two_tets, test_mesh_moon_2d,
+            },
         },
         metric::{AnisoMetric, AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
         remesher::{Remesher, SmoothingType},
-        Result,
     };
     use std::f64::consts::PI;
 

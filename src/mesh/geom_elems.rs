@@ -1,7 +1,7 @@
 use crate::{
+    Idx,
     mesh::Point,
     metric::{AnisoMetric, AnisoMetric2d, AnisoMetric3d, Metric},
-    Idx,
 };
 use nalgebra::{Matrix2, Matrix3, Matrix4, Vector1, Vector2, Vector3, Vector4};
 use std::fmt::Debug;

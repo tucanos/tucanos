@@ -1,8 +1,8 @@
 use crate::{
+    Result, Tag,
     geometry::LinearGeometry,
     mesh::{Edge, Point, SimplexMesh, Tetrahedron, Triangle},
     metric::{AnisoMetric2d, AnisoMetric3d},
-    Result, Tag,
 };
 use log::debug;
 use rustc_hash::FxHashSet;
@@ -26,9 +26,7 @@ impl SimplexMesh<3, Tetrahedron> {
         h_n: Option<&[f64]>,
         h_n_tags: Option<&[Tag]>,
     ) -> Result<Vec<AnisoMetric3d>> {
-        debug!(
-            "Compute the curvature metric with r/h = {r_h} and gradation = {beta}"
-        );
+        debug!("Compute the curvature metric with r/h = {r_h} and gradation = {beta}");
 
         let (bdy, boundary_vertex_ids) = self.boundary();
         let bdy_tags: FxHashSet<Tag> = bdy.etags().collect();
@@ -101,9 +99,7 @@ impl SimplexMesh<2, Triangle> {
         h_n: Option<&[f64]>,
         h_n_tags: Option<&[Tag]>,
     ) -> Result<Vec<AnisoMetric2d>> {
-        debug!(
-            "Compute the curvature metric with r/h = {r_h} and gradation = {beta}"
-        );
+        debug!("Compute the curvature metric with r/h = {r_h} and gradation = {beta}");
 
         let (bdy, boundary_vertex_ids) = self.boundary();
         let bdy_tags: FxHashSet<Tag> = bdy.etags().collect();
@@ -150,11 +146,11 @@ impl SimplexMesh<2, Triangle> {
 #[cfg(test)]
 mod tests {
     use crate::{
+        ANISO_MAX, Result,
         geometry::LinearGeometry,
-        mesh::test_meshes::test_mesh_3d,
         mesh::Point,
+        mesh::test_meshes::test_mesh_3d,
         metric::{AnisoMetric3d, Metric},
-        Result, ANISO_MAX,
     };
     use nalgebra::SVector;
 

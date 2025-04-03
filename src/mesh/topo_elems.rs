@@ -2,8 +2,8 @@ use super::{
     geom_elems::{GEdge, GElem, GTetrahedron, GTriangle, GVertex},
     twovec,
 };
-use crate::metric::Metric;
 use crate::Idx;
+use crate::metric::Metric;
 use core::hash::Hash;
 use core::slice::Iter;
 use rustc_hash::FxHashMap;
@@ -447,7 +447,7 @@ pub fn get_face_to_elem<E: Elem, I: Iterator<Item = E>>(
 
 #[cfg(test)]
 mod tests {
-    use super::{get_face_to_elem, Edge, Idx, Triangle};
+    use super::{Edge, Idx, Triangle, get_face_to_elem};
 
     #[test]
     fn test_2d() {

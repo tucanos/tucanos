@@ -1,8 +1,8 @@
 use crate::{
+    Idx,
     mesh::geom_elems::GElem,
     mesh::{Elem, Point, SimplexMesh, Triangle},
     spatialindex::{DefaultObjectIndex, ObjectIndex},
-    Idx,
 };
 use log::{debug, warn};
 use std::{f64::consts::PI, fs::OpenOptions};
@@ -88,10 +88,10 @@ mod tests {
 
     use super::orient_stl;
     use crate::{
+        Result,
+        mesh::Triangle,
         mesh::io::read_stl,
         mesh::test_meshes::{test_mesh_3d, write_stl_file},
-        mesh::Triangle,
-        Result,
     };
 
     #[test]

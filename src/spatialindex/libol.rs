@@ -1,7 +1,7 @@
 use crate::{
+    Idx,
     mesh::{Elem, Point, SimplexMesh},
     spatialindex::{ObjectIndex, PointIndex},
-    Idx,
 };
 use log::debug;
 use marechal_libol_sys::{LolFreeOctree, LolGetNearest, LolNewOctree, LolProjectVertex, TypTag};

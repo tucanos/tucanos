@@ -1,6 +1,6 @@
 use crate::{
-    mesh::{vector, Elem},
     Error, Idx, Result,
+    mesh::{Elem, vector},
 };
 use num::PrimInt;
 use rustc_hash::FxHashMap;
@@ -224,11 +224,11 @@ impl<T: PrimInt + AddAssign + Display> ConnectedComponents<T> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        mesh::{
-            graph::{reindex, CSRGraph, ConnectedComponents},
-            Edge, Elem, Triangle,
-        },
         Tag,
+        mesh::{
+            Edge, Elem, Triangle,
+            graph::{CSRGraph, ConnectedComponents, reindex},
+        },
     };
 
     #[test]

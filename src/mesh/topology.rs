@@ -1,11 +1,11 @@
 use crate::{
-    mesh::graph::CSRGraph,
-    mesh::{get_face_to_elem, vector::Vector, Elem},
     Dim, Idx, Result, Tag, TopoTag,
+    mesh::graph::CSRGraph,
+    mesh::{Elem, get_face_to_elem, vector::Vector},
 };
 use core::result;
 use rustc_hash::{FxHashMap, FxHashSet};
-use serde::{ser::SerializeStruct, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, ser::SerializeStruct};
 use std::fmt;
 use std::{collections::HashSet, fs::File, io::Write};
 
@@ -137,7 +137,9 @@ impl Topology {
         if let Some(node) = self.get(tag) {
             let existing_parents = &node.parents;
             let parents = parents.collect::<Vec<_>>();
-            panic!("Tag {tag:?} already exists with parents {existing_parents:?}. parents = {parents:?}");
+            panic!(
+                "Tag {tag:?} already exists with parents {existing_parents:?}. parents = {parents:?}"
+            );
         }
 
         self.entities[tag.0 as usize].push(TopoNode {
@@ -515,11 +517,11 @@ impl Topology {
 #[cfg(test)]
 mod tests {
     use crate::{
-        mesh::{
-            test_meshes::{test_mesh_2d, test_mesh_2d_nobdy, test_mesh_3d},
-            Point, SimplexMesh, Tetrahedron, Topology, Triangle,
-        },
         Tag,
+        mesh::{
+            Point, SimplexMesh, Tetrahedron, Topology, Triangle,
+            test_meshes::{test_mesh_2d, test_mesh_2d_nobdy, test_mesh_3d},
+        },
     };
 
     #[test]
