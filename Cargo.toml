@@ -1,7 +1,7 @@
 [package]
 name = "tucanos"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 links = "tucanos"
 resolver = "2"
 
@@ -28,10 +28,10 @@ rayon = "1.10"
 typenum = { version ="1.17", features = ["const-generics"] }
 num = "0.4.3"
 tempfile = "3.14"
-marechal-libol-sys = { git = "https://github.com/tucanos/marechal-libol-sys.git", optional = true, rev = "c63ed26" }
+marechal-libol-sys = { git = "https://github.com/tucanos/marechal-libol-sys.git", optional = true, tag = "0.1.0" }
 scotch = { git = "https://github.com/tucanos/scotch-rs.git", optional = true, rev = "f3f83e6" }
 metis = { git = "https://github.com/tucanos/metis-rs.git", optional = true, rev = "d31aa3e"}
-minimeshb = { git = "https://github.com/tucanos/minimeshb.git", rev="953d3dd"}
+minimeshb = { git = "https://github.com/tucanos/minimeshb.git", tag = "0.1.0" }
 
 [features]
 default = ["parry"]
