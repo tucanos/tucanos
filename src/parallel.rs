@@ -179,7 +179,7 @@ macro_rules! create_parallel_remesher {
                 );
 
                 let (mesh, info, m) = py.allow_threads(||
-                self.dd.remesh(&m, &geometry.geom, params, dd_params).unwrap());
+                self.dd.remesh(&m, &geometry.geom, params, &dd_params).unwrap());
 
                 let mesh = $mesh{mesh};
 

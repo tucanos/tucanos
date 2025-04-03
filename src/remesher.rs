@@ -503,7 +503,7 @@ macro_rules! create_remesher {
                     max_angle: max_angle.unwrap_or(default_params.max_angle),
                     debug: debug.unwrap_or(default_params.debug),
                 };
-                self.remesher.remesh(params, &geometry.geom).map_err(|e|
+                self.remesher.remesh(&params, &geometry.geom).map_err(|e|
                     PyRuntimeError::new_err(e.to_string()))
             }
 

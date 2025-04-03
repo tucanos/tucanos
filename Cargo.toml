@@ -1,17 +1,17 @@
 [package]
 name = "_pytucanos"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [lib]
 name = "_pytucanos"
 crate-type = ["cdylib"]
 
 [dependencies]
-log = "0.4.22"
-tucanos = { git = "https://github.com/tucanos/tucanos.git", rev = "2834243" }
-numpy = "0.23"
-pyo3 = { version = "0.23", features = ["extension-module", "multiple-pymethods"] }
+log = "0.4.27"
+tucanos = { git = "https://github.com/tucanos/tucanos.git", rev = "d50e8040" }
+numpy = "0.24.0"
+pyo3 = { version = "0.24.1", features = ["extension-module", "multiple-pymethods"] }
 pyo3-log = "0.12"
 rayon = "1.10.0"
 affinity = "0.1.2"
@@ -44,6 +44,6 @@ doc_markdown = "allow"
 suboptimal_flops = "allow"
 should_panic_without_expect = "allow"
 ptr_as_ptr = "allow"
-ptr_as_ref = "allow"
+borrow_as_ptr = "allow"
 ref_as_ptr = "allow"
 needless_pass_by_value = "allow"
