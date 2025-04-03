@@ -35,7 +35,7 @@ def load_cgns(fname):
             x = CGU.getValue(CGU.getChildByName(cg, CGK.CoordinateX_s))
             y = CGU.getValue(CGU.getChildByName(cg, CGK.CoordinateY_s))
             n = CGU.hasChildName(cg, CGK.CoordinateZ_s)
-            if n is not None:
+            if phys_dim == 3:
                 z = CGU.getValue(n)
                 coords = np.stack([x, y, z], axis=-1, dtype=np.float64)
             else:
@@ -50,20 +50,29 @@ def load_cgns(fname):
                 ids = np.arange(erange[0] - 1, erange[1], dtype=np.uint32)
                 if etype == CGK.TRI_3:
                     tris = np.vstack([tris, econn.reshape((-1, 3)) - 1])
-                    if phys_dim == 3:
+                    if cell_dim == 3:
                         bdy_ids = np.append(bdy_ids, ids)
                 elif etype == CGK.TETRA_4:
                     tets = np.vstack([tets, econn.reshape((-1, 4)) - 1])
                 elif etype == CGK.BAR_2:
                     edgs = np.vstack([edgs, econn.reshape((-1, 2)) - 1])
-                    if phys_dim == 2:
+                    if cell_dim == 2:
                         bdy_ids = np.append(bdy_ids, ids)
+                else:
+                    raise NotImplementedError()
 
             bdy_tags = np.zeros(bdy_ids.size, dtype=np.int16)
             zbc = CGU.getChildByName(zone, "ZoneBC")
             tags = {}
             for i_bc, bc in enumerate(CGU.hasChildType(zbc, CGK.BC_ts)):
-                ids = CGU.getValue(CGU.getChildByName(bc, "PointList")).squeeze() - 1
+                if CGU.getChildByName(bc, "PointList") is not None:
+                    ids = (
+                        CGU.getValue(CGU.getChildByName(bc, "PointList")).squeeze() - 1
+                    )
+                else:
+                    range = CGU.getValue(CGU.getChildByName(bc, "PointRange")).squeeze()
+                    ids = np.arange(range[0] - 1, range[1])
+                ids = np.searchsorted(bdy_ids, ids) - 1
                 bdy_tags[ids] = i_bc + 1
                 tags[bc[0]] = i_bc + 1
 
