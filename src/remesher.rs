@@ -7,17 +7,17 @@ use numpy::{
     PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods,
 };
 use pyo3::{
+    Bound, PyResult, Python,
     exceptions::{PyRuntimeError, PyValueError},
     prelude::PyDictMethods,
     pyclass, pymethods,
     types::{PyDict, PyType},
-    Bound, PyResult, Python,
 };
 use tucanos::{
+    Idx,
     mesh::{Tetrahedron, Triangle},
     metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
     remesher::{Remesher, RemesherParams, SmoothingType},
-    Idx,
 };
 
 macro_rules! create_remesher {

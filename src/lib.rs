@@ -5,9 +5,9 @@ mod remesher;
 use log::warn;
 use numpy::{PyArray, PyArray1, PyArray2, PyArrayMethods};
 use pyo3::{
-    pyfunction, pymodule,
+    Bound, PyResult, Python, pyfunction, pymodule,
     types::{PyModule, PyModuleMethods},
-    wrap_pyfunction, Bound, PyResult, Python,
+    wrap_pyfunction,
 };
 
 fn to_numpy_1d<T: numpy::Element>(py: Python<'_>, vec: Vec<T>) -> Bound<'_, PyArray1<T>> {

@@ -3,15 +3,15 @@ use crate::{
     to_numpy_2d,
 };
 use numpy::PyArray2;
-use pyo3::{exceptions::PyRuntimeError, pyclass, pymethods, Bound, PyResult, Python};
+use pyo3::{Bound, PyResult, Python, exceptions::PyRuntimeError, pyclass, pymethods};
 use tucanos::{
     geometry::{Geometry, LinearGeometry},
-    mesh::{io::orient_stl, Edge, Triangle},
+    mesh::{Edge, Triangle, io::orient_stl},
 };
 macro_rules! create_geometry {
     ($name: ident, $dim: expr, $etype: ident, $mesh: ident, $geom: ident) => {
         #[doc = concat!("Piecewise linear geometry consisting of ", stringify!($etype), " in ",
-                    stringify!($dim), "D")]
+                                    stringify!($dim), "D")]
         #[pyclass]
         // #[derive(Clone)]
         pub struct $name {

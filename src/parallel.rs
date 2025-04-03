@@ -7,16 +7,16 @@ use numpy::{
     PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods,
 };
 use pyo3::{
+    Bound, PyResult, Python,
     exceptions::{PyRuntimeError, PyValueError},
     pyclass, pymethods,
     types::PyType,
-    Bound, PyResult, Python,
 };
 use tucanos::{
+    Idx,
     mesh::{PartitionType, Tetrahedron, Triangle},
     metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
     remesher::{ParallelRemesher, ParallelRemeshingParams, RemesherParams, SmoothingType},
-    Idx,
 };
 
 macro_rules! create_parallel_remesher {

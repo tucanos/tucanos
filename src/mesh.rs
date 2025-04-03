@@ -6,17 +6,17 @@ use numpy::{
     PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods,
 };
 use pyo3::{
+    Bound, PyResult, Python,
     exceptions::{PyRuntimeError, PyValueError},
     prelude::PyDictMethods,
     pyclass, pymethods,
     types::{PyDict, PyType},
-    Bound, PyResult, Python,
 };
 use std::collections::HashMap;
 use tucanos::{
-    mesh::{io::read_stl, Edge, Elem, GElem, Point, SimplexMesh, Tetrahedron, Triangle},
-    metric::Metric,
     Idx, Tag,
+    mesh::{Edge, Elem, GElem, Point, SimplexMesh, Tetrahedron, Triangle, io::read_stl},
+    metric::Metric,
 };
 
 macro_rules! create_mesh {
