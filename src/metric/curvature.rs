@@ -27,8 +27,7 @@ impl SimplexMesh<3, Tetrahedron> {
         h_n_tags: Option<&[Tag]>,
     ) -> Result<Vec<AnisoMetric3d>> {
         debug!(
-            "Compute the curvature metric with r/h = {} and gradation = {}",
-            r_h, beta
+            "Compute the curvature metric with r/h = {r_h} and gradation = {beta}"
         );
 
         let (bdy, boundary_vertex_ids) = self.boundary();
@@ -103,8 +102,7 @@ impl SimplexMesh<2, Triangle> {
         h_n_tags: Option<&[Tag]>,
     ) -> Result<Vec<AnisoMetric2d>> {
         debug!(
-            "Compute the curvature metric with r/h = {} and gradation = {}",
-            r_h, beta
+            "Compute the curvature metric with r/h = {r_h} and gradation = {beta}"
         );
 
         let (bdy, boundary_vertex_ids) = self.boundary();

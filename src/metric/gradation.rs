@@ -65,8 +65,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         max_iter: Idx,
     ) -> Result<Idx> {
         debug!(
-            "Apply metric gradation (beta = {}, max_iter = {})",
-            beta, max_iter
+            "Apply metric gradation (beta = {beta}, max_iter = {max_iter})"
         );
 
         let v2v = self.get_vertex_to_vertices()?;
@@ -138,7 +137,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let n_verts = self.n_verts() as usize;
 
         let mut to_fix = flg.iter().filter(|&&x| !x).count();
-        debug!("{} / {} internal vertices to fix", to_fix, n_verts);
+        debug!("{to_fix} / {n_verts} internal vertices to fix");
 
         let v2v = self.get_vertex_to_vertices()?;
 
@@ -198,8 +197,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             n_iter += 1;
 
             debug!(
-                "iteration {}: {} / {} vertices remain to be fixed",
-                n_iter, to_fix, n_verts
+                "iteration {n_iter}: {to_fix} / {n_verts} vertices remain to be fixed"
             );
         }
         Ok(())

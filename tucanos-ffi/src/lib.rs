@@ -182,7 +182,7 @@ pub unsafe extern "C" fn tucanos_remesher3diso_new(
     match Remesher::new_with_iter(mesh, metric, geom) {
         Ok(implem) => Box::into_raw(Box::new(tucanos_remesher3diso_t { implem })),
         Err(e) => {
-            warn!("{:?}", e);
+            warn!("{e:?}");
             std::ptr::null_mut()
         }
     }
@@ -216,7 +216,7 @@ pub unsafe extern "C" fn tucanos_remesher3daniso_new(
     match Remesher::new_with_iter(mesh, metric, geom) {
         Ok(implem) => Box::into_raw(Box::new(tucanos_remesher3daniso_t { implem })),
         Err(e) => {
-            warn!("{:?}", e);
+            warn!("{e:?}");
             std::ptr::null_mut()
         }
     }
@@ -239,7 +239,7 @@ pub unsafe extern "C" fn tucanos_remesher3diso_remesh(
     let remesher = &mut (*remesher).implem;
     let geom = &(*geom).implem;
     let params = &*params;
-    remesher.remesh(params.into(), geom).is_ok()
+    remesher.remesh(&(params.into()), geom).is_ok()
 }
 
 #[no_mangle]
@@ -254,7 +254,7 @@ pub unsafe extern "C" fn tucanos_remesher3daniso_remesh(
     let remesher = &mut (*remesher).implem;
     let geom = &(*geom).implem;
     let params = &*params;
-    remesher.remesh(params.into(), geom).is_ok()
+    remesher.remesh(&(params.into()), geom).is_ok()
 }
 
 #[no_mangle]

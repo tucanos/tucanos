@@ -5,4 +5,5 @@
 #![allow(improper_ctypes)]
 #![allow(clippy::pub_underscore_fields)]
 #![allow(clippy::too_many_lines)]
+#![allow(clippy::derive_partial_eq_without_eq)]
 include!(concat!(env!("OUT_DIR"), "/../../../bindgen.rs"));

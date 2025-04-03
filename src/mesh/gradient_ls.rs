@@ -121,8 +121,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// $`W_0`$ is set here to $`\sqrt{2} \max(W_j)`$.
     pub fn smooth(&self, f: &[f64], weight_exp: i32) -> Result<Vec<f64>> {
         debug!(
-            "Compute smoothing using 1st order LS (weight = {})",
-            weight_exp
+            "Compute smoothing using 1st order LS (weight = {weight_exp})"
         );
         let n = self.n_verts() as usize;
         assert_eq!(f.len(), n);
@@ -217,8 +216,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// $`W_0`$ is set here to $`\sqrt{2} \max(W_j)`$.
     pub fn gradient(&self, f: &[f64], weight_exp: i32) -> Result<Vec<f64>> {
         debug!(
-            "Compute gradient using 1st order LS (weight = {})",
-            weight_exp
+            "Compute gradient using 1st order LS (weight = {weight_exp})"
         );
         let n = self.n_verts() as usize;
         assert_eq!(f.len(), n);

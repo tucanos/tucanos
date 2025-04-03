@@ -48,16 +48,14 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 self.complexity_from_sizes::<M>(&sizes, h_min, h_max)
             };
             debug!(
-                "Iteration {}, complexity = {:.2e}, scale = {:.2e}",
-                iter, c, scale
+                "Iteration {iter}, complexity = {c:.2e}, scale = {scale:.2e}"
             );
             if f64::abs(c - f64::from(n_elems)) < 0.05 * f64::from(n_elems) {
                 return scale;
             }
             if iter == max_iter - 1 {
                 warn!(
-                    "Target complexity {} not reached: complexity {:.2e}",
-                    n_elems, c
+                    "Target complexity {n_elems} not reached: complexity {c:.2e}"
                 );
                 return -1.0;
             }
@@ -150,7 +148,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 });
                 let constrain_c = self.complexity_iter(constrain_m, h_min, h_max);
 
-                debug!("Complexity of the constrain metric: {}", constrain_c);
+                debug!("Complexity of the constrain metric: {constrain_c}");
 
                 if constrain_c > f64::from(n_elems) {
                     return Err(Error::from(&format!(
@@ -173,8 +171,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     let tmp_m = m_iter(scale_high);
                     let c = self.complexity_iter(tmp_m, h_min, h_max);
                     debug!(
-                        "Iteration {}: scale_high = {:.2e}, complexity = {:.2e}",
-                        iter, scale_high, c
+                        "Iteration {iter}: scale_high = {scale_high:.2e}, complexity = {c:.2e}"
                     );
 
                     if iter == max_iter - 1 {
