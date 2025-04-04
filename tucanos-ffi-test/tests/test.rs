@@ -15,7 +15,7 @@ fn iso3d() {
             [1].as_ptr(),
             4,
             faces.as_ptr(),
-            [1; 4].as_ptr(),
+            [1, 2, 3, 4].as_ptr(),
         );
         let boundary = tucanos_mesh33_boundary(mesh);
         let geom = tucanos_geom3d_new(mesh, boundary);
@@ -27,7 +27,7 @@ fn iso3d() {
         tucanos_mesh33_delete(mesh);
         let mesh = tucanos_remesher3diso_tomesh(remesher, false);
         let num_verts = tucanos_mesh33_num_verts(mesh);
-        assert_eq!(num_verts, 52);
+        assert_eq!(num_verts, 386);
         tucanos_mesh33_delete(mesh);
     }
 }
@@ -49,7 +49,7 @@ fn aniso3d() {
             [1].as_ptr(),
             4,
             faces.as_ptr(),
-            [1; 4].as_ptr(),
+            [1, 2, 3, 4].as_ptr(),
         );
         let boundary = tucanos_mesh33_boundary(mesh);
         let geom = tucanos_geom3d_new(mesh, boundary);
@@ -61,7 +61,7 @@ fn aniso3d() {
         tucanos_mesh33_delete(mesh);
         let mesh = tucanos_remesher3daniso_tomesh(remesher, false);
         let num_verts = tucanos_mesh33_num_verts(mesh);
-        assert_eq!(num_verts, 30);
+        assert_eq!(num_verts, 56);
         tucanos_mesh33_delete(mesh);
     }
 }
