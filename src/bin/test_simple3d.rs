@@ -7,7 +7,7 @@ use tucanos::{
     geometry::Geometry,
     mesh::{GElem, PartitionType, Point, SimplexMesh, Tetrahedron, Topology},
     metric::{AnisoMetric3d, Metric},
-    remesher::{ParallelRemesher, ParallelRemeshingParams, Remesher, RemesherParams},
+    remesher::{ParallelRemesher, ParallelRemesherParams, Remesher, RemesherParams},
 };
 
 pub fn init_log(level: &str) {
@@ -352,11 +352,6 @@ fn main() -> Result<()> {
 
     let debug = false;
     let params = RemesherParams {
-        two_steps: false,
-        num_iter: 2,
-        split_max_iter: 1,
-        collapse_max_iter: 1,
-        max_angle: 25.0,
         debug,
         ..RemesherParams::default()
     };
@@ -371,7 +366,7 @@ fn main() -> Result<()> {
     } else {
         let mut dd = ParallelRemesher::new(mesh, PartitionType::Scotch(n_part))?;
         dd.set_debug(debug);
-        let dd_params = ParallelRemeshingParams::new(2, 2, 10000);
+        let dd_params = ParallelRemesherParams::new(2, 2, 10000);
         let (mesh, stats, _) = dd.remesh(&metric, &geom, params, &dd_params)?;
         stats.print_summary();
         mesh

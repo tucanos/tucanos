@@ -113,14 +113,18 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         debug!(
             "Scaling the metric (h_min = {h_min}, h_max = {h_max}, n_elems = {n_elems}, max_iter = {max_iter})"
         );
-        if fixed_m.is_some() {
+        if let Some(fixed_m) = fixed_m {
             debug!("Using a fixed metric");
+            let c = self.complexity_iter(fixed_m.par_iter().cloned(), h_min, h_max);
+            debug!("Complexity of the fixed metric: {c}");
         }
-        if implied_m.is_some() {
+        if let Some(implied_m) = implied_m {
             debug!(
                 "Using the implied metric with step = {}",
                 step.unwrap_or(4.0)
             );
+            let c = self.complexity_iter(implied_m.par_iter().cloned(), h_min, h_max);
+            debug!("Complexity of the implied metric: {c}");
         }
 
         let mut scale = if max_iter > 0 {
@@ -146,7 +150,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 });
                 let constrain_c = self.complexity_iter(constrain_m, h_min, h_max);
 
-                debug!("Complexity of the constrain metric: {constrain_c}");
+                debug!(
+                    "Complexity of the constrain metric: {constrain_c}, target complexity: {n_elems}"
+                );
 
                 if constrain_c > f64::from(n_elems) {
                     return Err(Error::from(&format!(
