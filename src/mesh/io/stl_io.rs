@@ -1,7 +1,5 @@
 use crate::{
-    mesh::{
-        geom_elems::GElem, Elem, Point, QuadraticMesh, QuadraticTriangle, SimplexMesh, Triangle,
-    },
+    mesh::{geom_elems::GElem, Elem, Point, SimplexMesh, Triangle},
     spatialindex::{DefaultObjectIndex, ObjectIndex},
     Idx,
 };
@@ -36,49 +34,6 @@ pub fn read_stl(file_name: &str) -> SimplexMesh<3, Triangle> {
     let ftags = Vec::new();
 
     SimplexMesh::<3, Triangle>::new(verts, elems, etags, faces, ftags)
-}
-
-/// Read a .stl file (ascii or binary) and return a new QuadraticMesh<QuadraticTriangle>
-#[must_use]
-pub fn read_stl_quadratic(file_name: &str) -> QuadraticMesh<QuadraticTriangle> {
-    debug!("Read {file_name}");
-
-    // Ouvrir le fichier STL
-    let mut file = OpenOptions::new().read(true).open(file_name).unwrap();
-    let stl = stl_io::read_stl(&mut file).unwrap();
-
-    // Lire les sommets
-    let mut verts = Vec::with_capacity(stl.vertices.len());
-    verts.extend(
-        stl.vertices
-            .iter()
-            .map(|v| Point::<3>::new(f64::from(v[0]), f64::from(v[1]), f64::from(v[2]))),
-    );
-
-    // Lire les triangles quadratiques
-    let mut tris = Vec::with_capacity(stl.faces.len());
-    tris.extend(stl.faces.iter().map(|face| {
-        // Assurez-vous que chaque face contient 6 sommets
-        assert_eq!(face.vertices.len(), 6, "Each triangle must have 6 vertices");
-
-        // Créer un `QuadraticTriangle` avec les 6 sommets
-        QuadraticTriangle::new(
-            face.vertices[0] as Idx, // Premier sommet
-            face.vertices[1] as Idx, // Deuxième sommet
-            face.vertices[2] as Idx, // Troisième sommet
-            face.vertices[3] as Idx, // Quatrième sommet (milieu de l'arête 0-1)
-            face.vertices[4] as Idx, // Cinquième sommet (milieu de l'arête 1-2)
-            face.vertices[5] as Idx, // Sixième sommet (milieu de l'arête 2-0)
-        )
-    }));
-
-    // Tags pour les triangles et les arêtes
-    let tri_tags = vec![1; stl.faces.len()];
-    let edgs = Vec::new();
-    let edg_tags = Vec::new();
-
-    // Créer et retourner le maillage quadratique
-    QuadraticMesh::<QuadraticTriangle>::new(verts, tris, tri_tags, edgs, edg_tags)
 }
 
 /// Reorder a surface mesh that provides a representation of the geometry of the boundary of a
@@ -130,14 +85,13 @@ pub fn orient_stl<const D: usize, E: Elem>(
 mod tests {
     use std::fs::remove_file;
 
-    use super::{orient_stl, read_stl_quadratic};
+    use super::orient_stl;
     use crate::{
         mesh::io::read_stl,
-        mesh::test_meshes::{test_mesh_3d, test_mesh_2d_quadratic, write_stl_file},
-        mesh::{Triangle, QuadraticTriangle, QuadraticEdge},
+        mesh::test_meshes::{test_mesh_3d, write_stl_file},
+        mesh::Triangle,
         Result,
     };
-    use std::fs::File;
 
     #[test]
     fn test_stl() -> Result<()> {
@@ -177,28 +131,5 @@ mod tests {
         let v: f64 = geom.vol();
         assert!(f64::abs(v - 6.0) < 1e-10);
         Ok(())
-    }
-
-    #[test]
-    fn test_read_stl_quadratic() {
-        // Create a temporary STL file from `test_mesh_2d_quadratic`
-        let mesh = test_mesh_2d_quadratic();
-        let mut file = File::create("test_quadratic.stl").unwrap();
-    
-
-        // Read the STL file back into a quadratic mesh
-        let read_mesh = read_stl_quadratic("test_quadratic.stl");
-
-        // Verify the mesh properties
-        assert_eq!(read_mesh.n_verts(), mesh.n_verts());
-        assert_eq!(read_mesh.n_tris(), mesh.n_tris());
-        assert_eq!(read_mesh.n_edges(), mesh.n_edges());
-
-        assert_eq!(read_mesh.vert(0), mesh.vert(0));
-        assert_eq!(read_mesh.tri(0), QuadraticTriangle::new(0, 1, 2, 3, 4, 5));
-        assert_eq!(read_mesh.edge(0), QuadraticEdge::new(0, 1, 3));
-
-        // Clean up the temporary file
-        std::fs::remove_file("test_quadratic.stl").unwrap();
     }
 }

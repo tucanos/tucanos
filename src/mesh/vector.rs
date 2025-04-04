@@ -339,6 +339,7 @@ pub struct VectorQuadratic<T: FromNativePointerQuadratic> {
     data: VectorImplQuadratic<T>,
 }
 
+#[allow(dead_code)]
 const VECTORQUADRATIC_MSG: &str =
     "This fonction is not supported with the C array backed mesh. Call tucanos_mesh_clone().";
 

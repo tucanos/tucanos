@@ -1,10 +1,9 @@
+use super::vector::VectorQuadratic;
 use crate::mesh::topo_elems_quadratic::QuadraticElem; // Adjusted the path to `crate::mesh`
 use crate::{mesh::Point, Idx, Tag};
 use log::debug;
-use super::vector::VectorQuadratic;
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 
 pub struct QuadraticMesh<QE: QuadraticElem> {
     verts: VectorQuadratic<Point<3>>,
@@ -132,14 +131,13 @@ impl<QE: QuadraticElem> QuadraticMesh<QE> {
     pub fn tritags(&self) -> impl ExactSizeIterator<Item = Tag> + '_ {
         self.tri_tags.iter()
     }
-
 }
 
 #[cfg(test)]
 mod tests {
     use crate::mesh::test_meshes::test_mesh_2d_quadratic;
-    use crate::mesh::{QuadraticEdge, QuadraticTriangle, Point};
-    #[test]   
+    use crate::mesh::{Point, QuadraticEdge, QuadraticTriangle};
+    #[test]
     fn test_2d_quadratic() {
         let mesh = test_mesh_2d_quadratic();
 
