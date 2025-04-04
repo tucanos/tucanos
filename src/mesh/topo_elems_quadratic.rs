@@ -34,6 +34,12 @@ impl QuadraticTriangle {
     pub const fn new(i0: Idx, i1: Idx, i2: Idx, i3: Idx, i4: Idx, i5: Idx) -> Self {
         Self([i0, i1, i2, i3, i4, i5])
     }
+    /// Get the i-th vertex index
+    #[must_use]
+    pub fn index(&self, idx: usize) -> Idx {
+        self.0[idx]
+    }
+
 }
 
 impl QuadraticElem for QuadraticTriangle {

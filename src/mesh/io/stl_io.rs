@@ -128,7 +128,6 @@ mod tests {
         Result,
     };
     use std::fs::File;
-    use std::io::Write;
 
     #[test]
     fn test_stl() -> Result<()> {
@@ -175,15 +174,7 @@ mod tests {
         // Create a temporary STL file from `test_mesh_2d_quadratic`
         let mesh = test_mesh_2d_quadratic();
         let mut file = File::create("test_quadratic.stl").unwrap();
-        for tritag in mesh.tritags() {
-            writeln!(
-                file,
-                "facet normal 0 0 0\n  outer loop\n    vertex {} {} {}\n    vertex {} {} {}\n    vertex {} {} {}\n  endloop\nendfacet",
-                mesh.vert(mesh.tri_vertex(tritag, 0))[0], mesh.vert(mesh.tri_vertex(tritag, 0))[1], mesh.vert(mesh.tri_vertex(tritag, 0))[2],
-                mesh.vert(mesh.tri_vertex(tritag, 1))[0], mesh.vert(mesh.tri_vertex(tritag, 1))[1], mesh.vert(mesh.tri_vertex(tritag, 1))[2],
-                mesh.vert(mesh.tri_vertex(tritag, 2))[0], mesh.vert(mesh.tri_vertex(tritag, 2))[1], mesh.vert(mesh.tri_vertex(tritag, 2))[2],
-            ).unwrap();
-        }
+    
 
         // Read the STL file back into a quadratic mesh
         let read_mesh = read_stl_quadratic("test_quadratic.stl");

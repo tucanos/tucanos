@@ -103,12 +103,6 @@ impl<QE: QuadraticElem> QuadraticMesh<QE> {
         self.tris.index(idx)
     }
 
-    /// Get the i-th vertex of the i-th triangle
-    #[must_use]
-    pub fn tri_vertex(&self, tri_idx: Idx, vert_idx: usize) -> Idx {
-        self.tri(tri_idx).index(vert_idx)
-    }
-
     /// Get the i-th edge tag
     #[must_use]
     pub fn edgetag(&self, idx: Idx) -> Tag {
@@ -133,11 +127,12 @@ impl<QE: QuadraticElem> QuadraticMesh<QE> {
         self.verts.iter()
     }
 
-    /// Get an iterator through the triangle tags as u32
+    /// Get an iterator through the triangle tags
     #[must_use]
-    pub fn tritags(&self) -> impl ExactSizeIterator<Item = u32> + '_ {
-        self.tri_tags.iter().map(|tag| *tag as u32)
+    pub fn tritags(&self) -> impl ExactSizeIterator<Item = Tag> + '_ {
+        self.tri_tags.iter()
     }
+
 }
 
 #[cfg(test)]
