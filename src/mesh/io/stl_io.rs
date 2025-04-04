@@ -43,9 +43,11 @@ pub fn read_stl(file_name: &str) -> SimplexMesh<3, Triangle> {
 pub fn read_stl_quadratic(file_name: &str) -> QuadraticMesh<QuadraticTriangle> {
     debug!("Read {file_name}");
 
+    // Ouvrir le fichier STL
     let mut file = OpenOptions::new().read(true).open(file_name).unwrap();
     let stl = stl_io::read_stl(&mut file).unwrap();
 
+    // Lire les sommets
     let mut verts = Vec::with_capacity(stl.vertices.len());
     verts.extend(
         stl.vertices
@@ -53,21 +55,29 @@ pub fn read_stl_quadratic(file_name: &str) -> QuadraticMesh<QuadraticTriangle> {
             .map(|v| Point::<3>::new(f64::from(v[0]), f64::from(v[1]), f64::from(v[2]))),
     );
 
-    let mut tris = Vec::with_capacity(3 * stl.faces.len());
-    tris.extend(stl.faces.iter().map(|v| {
+    // Lire les triangles quadratiques
+    let mut tris = Vec::with_capacity(stl.faces.len());
+    tris.extend(stl.faces.iter().map(|face| {
+        // Assurez-vous que chaque face contient 6 sommets
+        assert_eq!(face.vertices.len(), 6, "Each triangle must have 6 vertices");
+
+        // Créer un `QuadraticTriangle` avec les 6 sommets
         QuadraticTriangle::new(
-            v.vertices[0] as Idx,
-            v.vertices[1] as Idx,
-            v.vertices[2] as Idx,
-            v.vertices[3] as Idx,
-            v.vertices[4] as Idx,
-            v.vertices[5] as Idx,
+            face.vertices[0] as Idx, // Premier sommet
+            face.vertices[1] as Idx, // Deuxième sommet
+            face.vertices[2] as Idx, // Troisième sommet
+            face.vertices[3] as Idx, // Quatrième sommet (milieu de l'arête 0-1)
+            face.vertices[4] as Idx, // Cinquième sommet (milieu de l'arête 1-2)
+            face.vertices[5] as Idx, // Sixième sommet (milieu de l'arête 2-0)
         )
     }));
+
+    // Tags pour les triangles et les arêtes
     let tri_tags = vec![1; stl.faces.len()];
     let edgs = Vec::new();
     let edg_tags = Vec::new();
 
+    // Créer et retourner le maillage quadratique
     QuadraticMesh::<QuadraticTriangle>::new(verts, tris, tri_tags, edgs, edg_tags)
 }
 
