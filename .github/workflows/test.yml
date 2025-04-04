@@ -89,6 +89,30 @@ jobs:
       with:
         command: test
         args: --release --features=scotch,metis,nlopt
+  c_api:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        lfs: false
+    - run: sudo apt-get install -y libmetis-dev libscotch-dev libnlopt-dev
+    - id: toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        components: clippy
+        toolchain: stable
+    - run: rustup override set ${{steps.toolchain.outputs.name}}
+    - name: Rust cache
+      uses: actions/cache@v4
+      with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-stable-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-stable-
     - name: Test FFI 16bit tags
       run: cargo build -p tucanos-ffi && cargo test -p tucanos-ffi-test
     - name: Test FFI 32bit tags
