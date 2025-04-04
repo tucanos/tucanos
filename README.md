@@ -18,11 +18,12 @@ To install tucanos in debug mode:
 pip install -C debug=true git+https://github.com/tucanos/pytucanos.git
 ```
 
-To install Tucanos with [libmeshb](https://github.com/LoicMarechal/libMeshb) support:
+To install Tucanos with metis support:
 
 ```bash
-pip install -C meshb=true git+https://github.com/tucanos/pytucanos.git
+pip install -C metis=true git+https://github.com/tucanos/pytucanos.git
 ```
+
 
 # Benchmarks
 
@@ -67,6 +68,10 @@ make -j$(nproc) install
 ### [Avro](https://philipclaude.gitlab.io/avro/)
 
 Detailed installation instructions are available [here](https://philipclaude.gitlab.io/avro/)
+
+### Docker / podman
+
+A [`Dockerfile`](./benchmarks/Dockerfile) is included, and the image containing all the remeshers above may be build with e.g. `podman build . -t remeshers`.
 
 ## Test cases
 

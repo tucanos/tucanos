@@ -218,6 +218,23 @@ def remesh(msh, h, bdy=None, step=None, params=None):
     return remesher.to_mesh()
 
 
+def use_podman():
+
+    if "USE_PODMAN" in os.environ:
+        return [
+            "podman",
+            "run",
+            "-v",
+            "%s:/data:z" % os.getcwd(),
+            "-w",
+            "/data",
+            "-it",
+            "remeshers",
+        ]
+    else:
+        return []
+
+
 def remesh_mmg(msh, h, hgrad=10.0, hausd=10.0):
     """
     Remesh using MMG.
@@ -233,7 +250,8 @@ def remesh_mmg(msh, h, hgrad=10.0, hausd=10.0):
         exe = os.getenv("MMG3D_EXE", "mmg3d_O3")
 
     subprocess.check_output(
-        [
+        use_podman()
+        + [
             exe,
             "-in",
             "tmp.meshb",
@@ -266,7 +284,8 @@ def remesh_omega_h(msh, h):
 
     exe = os.getenv("OSH_EXE", "osh_adapt")
     subprocess.check_output(
-        [
+        use_podman()
+        + [
             "osh_adapt",
             "--mesh-in",
             "tmp.meshb",
@@ -310,7 +329,7 @@ def remesh_refine(msh, h, geom=None):
         args += ["-g", geom]
 
     subprocess.check_output(
-        args,
+        use_podman() + args,
         stderr=subprocess.STDOUT,
     )
 
@@ -331,7 +350,8 @@ def remesh_avro(msh, h, geom, limit=False):
 
     exe = os.getenv("AVRO_EXE", "avro")
     subprocess.check_output(
-        [
+        use_podman()
+        + [
             exe,
             "-adapt",
             "tmp.meshb",
