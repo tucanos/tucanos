@@ -133,6 +133,52 @@ impl<QE: QuadraticElem> QuadraticMesh<QE> {
     }
 }
 
+impl QuadraticMesh<QuadraticTriangle> {
+    /// Create a QuadraticMesh from a SimplexMesh by adding midpoints on each edge
+    pub fn from_simplex_mesh(mesh: &SimplexMesh<2, Triangle>) -> Self {
+        let mut verts = mesh.verts().collect::<Vec<_>>();
+        let mut tris = Vec::new();
+        let mut tri_tags = Vec::new();
+        let mut edgs = Vec::new();
+        let mut edg_tags = Vec::new();
+
+        let mut edge_to_midpoint = std::collections::HashMap::new();
+
+        for (tri, tag) in mesh.elems().zip(mesh.etags()) {
+            let mut quad_tri = [0; 6];
+            for (i, &v) in tri.iter().enumerate() {
+                quad_tri[i] = v;
+            }
+
+            for i in 0..3 {
+                let edge = if tri[i] < tri[(i + 1) % 3] {
+                    (tri[i], tri[(i + 1) % 3])
+                } else {
+                    (tri[(i + 1) % 3], tri[i])
+                };
+
+                let midpoint_idx = *edge_to_midpoint.entry(edge).or_insert_with(|| {
+                    let midpoint = (mesh.vert(edge.0) + mesh.vert(edge.1)) / 2.0;
+                    verts.push(midpoint);
+                    (verts.len() - 1) as Idx
+                });
+
+                quad_tri[3 + i] = midpoint_idx;
+            }
+
+            tris.push(QuadraticTriangle::from_slice(&quad_tri));
+            tri_tags.push(tag);
+        }
+
+        for (edge, &midpoint_idx) in &edge_to_midpoint {
+            edgs.push(QuadraticEdge::new(edge.0, edge.1, midpoint_idx));
+            edg_tags.push(0); // Default tag for edges
+        }
+
+        Self::new(verts, tris, tri_tags, edgs, edg_tags)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::mesh::test_meshes::test_mesh_2d_quadratic;
