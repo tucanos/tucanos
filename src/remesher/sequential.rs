@@ -140,6 +140,8 @@ pub struct RemesherParams {
     pub split_min_l_abs: f64,
     /// Constraint the quality of the newly created elements to be > split_min_q_rel * min(q) during split
     pub split_min_q_rel: f64,
+    /// Constraint the quality of the newly created elements to be > split_min_q_rel * min(q) during split for boundary vertices
+    pub split_min_q_rel_bdy: f64,
     /// Constraint the quality of the newly created elements to be > split_min_q_abs during split
     pub split_min_q_abs: f64,
     /// Max. number of loops through the mesh edges during the collapse step
@@ -185,6 +187,7 @@ impl Default for RemesherParams {
             split_min_l_rel: 1.0,
             split_min_l_abs: 0.75 / f64::sqrt(2.0),
             split_min_q_rel: 1.0,
+            split_min_q_rel_bdy: 0.0,
             split_min_q_abs: 0.5,
             collapse_max_iter: 1,
             collapse_max_l_rel: 1.0,
@@ -726,6 +729,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     ///   max(params.collapse_min_q_abs, params.collapse_min_q_rel * min(q)))
     ///
     /// where min(l) and min(q) as the max edge length and min quality over the entire mesh
+    #[allow(clippy::too_many_lines)]
     pub fn split<G: Geometry<D>>(
         &mut self,
         l_0: f64,
@@ -755,6 +759,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
             let mut n_splits = 0;
             let mut n_fails = 0;
+            let mut n_removed = 0;
             for i_edge in indices {
                 let edg = edges[i_edge];
                 let length = dims_and_lengths[i_edge].1;
@@ -788,9 +793,14 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     let filled_cavity = FilledCavity::new(&cavity, ftype);
 
                     // lower the min quality threshold if the min quality in the cavity increases
-                    let q_min = q_min.min(cavity.q_min * params.split_min_q_rel);
+                    let q_min = if tag.0 == E::DIM as Dim {
+                        q_min.min(cavity.q_min * params.split_min_q_rel)
+                    } else {
+                        q_min.min(cavity.q_min * params.split_min_q_rel_bdy)
+                    };
                     let l_min = l_min.min(cavity.l_min * params.split_min_l_rel);
-                    if let CavityCheckStatus::Ok(_) = filled_cavity.check(l_min, f64::MAX, q_min) {
+                    let status = filled_cavity.check(l_min, f64::MAX, q_min);
+                    if let CavityCheckStatus::Ok(_) = status {
                         trace!("Edge split");
                         for i in &cavity.global_elem_ids {
                             self.remove_elem(*i)?;
@@ -810,13 +820,55 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                             self.add_tagged_face(E::Face::from_vertex_and_face(ip, &b), t)?;
                         }
                         n_splits += 1;
+                    } else if matches!(status, CavityCheckStatus::Invalid)
+                        && cavity.elems.len() == 1
+                        && tag.0 < E::DIM as Dim
+                    {
+                        // If the cavity contains one element with two (1 in 2D) tagged faces with the same tag
+                        // then we remove the element from the mesh
+
+                        let e = cavity.global_elem(&cavity.elems[0]);
+                        let mut tags = vec![0; E::N_FACES as usize];
+                        let mut face_tag = 0;
+                        let mut n_tagged = 0;
+                        let mut same_tags = true;
+                        for i in 0..E::N_FACES {
+                            let f = e.face(i);
+                            let f = f.sorted();
+                            let tag = self.tagged_faces.get(&f);
+                            if let Some(tag) = tag {
+                                tags[i as usize] = *tag;
+                                n_tagged += 1;
+                                if face_tag == 0 {
+                                    face_tag = *tag;
+                                } else if *tag != face_tag {
+                                    same_tags = false;
+                                }
+                            }
+                        }
+
+                        if n_tagged == E::Face::DIM && same_tags {
+                            // remove the element
+                            self.remove_elem(cavity.global_elem_ids[0])?;
+                            for (i, &t) in tags.iter().enumerate() {
+                                let f = e.face(i as Idx);
+                                if t == face_tag {
+                                    self.remove_tagged_face(f)?;
+                                } else {
+                                    self.add_tagged_face(f, face_tag)?;
+                                }
+                            }
+                            n_removed += 1;
+                        }
                     } else {
                         n_fails += 1;
                     }
                 }
             }
 
-            debug!("Iteration {n_iter}: {n_splits} edges split ({n_fails} failed)");
+            debug!(
+                "Iteration {n_iter}: {n_splits} edges split ({n_fails} failed - {n_removed} elements removed)"
+            );
             self.stats
                 .push(StepStats::Split(SplitStats::new(n_splits, n_fails, self)));
 
@@ -1764,7 +1816,7 @@ mod tests {
     use super::RemesherParams;
     use crate::{
         Result,
-        geometry::NoGeometry,
+        geometry::{LinearGeometry, NoGeometry},
         mesh::{
             Edge, Elem, GElem, Point, SimplexMesh, Tetrahedron, Triangle,
             test_meshes::{
@@ -2692,6 +2744,85 @@ mod tests {
         remesher.check()?;
 
         let _mesh = remesher.to_mesh(true);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_iso3d() -> Result<()> {
+        // test used in tucanos-ffi-test
+        let verts = [0., 0., 0., 1., 0., 0., 0., 1., 0., 0., 0., 1.];
+        let elems = [0, 1, 2, 3];
+        let faces = [0, 2, 1, 0, 1, 3, 1, 2, 3, 2, 0, 3];
+        let metric = [0.1; 4];
+
+        let verts = verts
+            .chunks(3)
+            .map(Point::<3>::from_column_slice)
+            .collect::<Vec<_>>();
+        let elems = elems
+            .chunks(Tetrahedron::N_VERTS as usize)
+            .map(Tetrahedron::from_slice)
+            .collect::<Vec<_>>();
+        let etags = vec![1; elems.len()];
+        let faces = faces
+            .chunks(Triangle::N_VERTS as usize)
+            .map(Triangle::from_slice)
+            .collect::<Vec<_>>();
+        let ftags = vec![1, 2, 3, 4];
+        let metric = metric
+            .iter()
+            .map(|&x| IsoMetric::<3>::from(x))
+            .collect::<Vec<_>>();
+        let mut mesh = SimplexMesh::<3, Tetrahedron>::new(verts, elems, etags, faces, ftags);
+        mesh.compute_topology();
+        let bdy = mesh.boundary().0;
+        let geom = LinearGeometry::new(&mesh, bdy)?;
+        let mut remesher = Remesher::new(&mesh, &metric, &geom)?;
+        remesher.remesh(&RemesherParams::default(), &geom)?;
+        let mesh = remesher.to_mesh(false);
+        // mesh.write_meshb("iso3d.meshb")?;
+        assert_eq!(mesh.n_verts(), 386);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_aniso3d() -> Result<()> {
+        // test used in tucanos-ffi-test
+        let verts = [0., 0., 0., 1., 0., 0., 0., 1., 0., 0., 0., 1.];
+        let elems = [0, 1, 2, 3];
+        let faces = [0, 2, 1, 0, 1, 3, 1, 2, 3, 2, 0, 3];
+        let metric = [[10., 20., 15., 0., 0., 0.]; 4];
+
+        let verts = verts
+            .chunks(3)
+            .map(Point::<3>::from_column_slice)
+            .collect::<Vec<_>>();
+        let elems = elems
+            .chunks(Tetrahedron::N_VERTS as usize)
+            .map(Tetrahedron::from_slice)
+            .collect::<Vec<_>>();
+        let etags = vec![1; elems.len()];
+        let faces = faces
+            .chunks(Triangle::N_VERTS as usize)
+            .map(Triangle::from_slice)
+            .collect::<Vec<_>>();
+        let ftags = vec![1, 2, 3, 4];
+        let metric = metric
+            .iter()
+            .map(|x| AnisoMetric3d::from_slice(x))
+            .collect::<Vec<_>>();
+
+        let mut mesh = SimplexMesh::<3, Tetrahedron>::new(verts, elems, etags, faces, ftags);
+        mesh.compute_topology();
+        let bdy = mesh.boundary().0;
+        let geom = LinearGeometry::new(&mesh, bdy)?;
+        let mut remesher = Remesher::new(&mesh, &metric, &geom)?;
+        remesher.remesh(&RemesherParams::default(), &geom)?;
+        let mesh = remesher.to_mesh(false);
+        // mesh.write_meshb("aniso3d.meshb")?;
+        assert_eq!(mesh.n_verts(), 56);
 
         Ok(())
     }
