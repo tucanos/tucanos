@@ -74,9 +74,7 @@ int main(void) {
   tucanos_geom3d_t *geom = tucanos_geom3d_new(mesh, boundary);
   assert(geom != NULL);
   tucanos_remesher3diso_t *remesher = tucanos_remesher3diso_new(mesh, metric, geom);
-  struct tucanos_params_t params;
-  tucanos_params_init(&params);
-  tucanos_remesher3diso_remesh(remesher, &params, geom);
+  tucanos_remesher3diso_remesh(remesher, geom);
   tucanos_mesh33_delete(mesh);
   tucanos_geom3d_delete(geom);
   tucanos_mesh33_t *new_mesh = tucanos_remesher3diso_tomesh(remesher, false);
