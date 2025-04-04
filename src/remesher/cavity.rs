@@ -10,7 +10,7 @@ use log::trace;
 use std::cmp::{Ordering, min};
 
 #[derive(Debug, Clone, Copy)]
-pub enum Seed {
+pub(super) enum Seed {
     No,
     Vertex(Idx),
     Edge([Idx; 2]),
@@ -18,7 +18,7 @@ pub enum Seed {
 
 #[derive(Debug)]
 #[allow(dead_code)]
-pub enum CavityCheckStatus {
+pub(super) enum CavityCheckStatus {
     LongEdge(f64),
     ShortEdge(f64),
     Invalid,
@@ -30,39 +30,39 @@ pub enum CavityCheckStatus {
 /// Vertices and elements are copied from the original mesh and stored using a local numbering
 ///
 #[derive(Debug)]
-pub struct Cavity<const D: usize, E: Elem, M: Metric<D>> {
+pub(super) struct Cavity<const D: usize, E: Elem, M: Metric<D>> {
     /// Conversion from local to global vertex indices
-    pub local2global: Vec<Idx>,
+    pub(super) local2global: Vec<Idx>,
     /// Coordinates of the vertices
-    pub points: Vec<Point<D>>,
+    pub(super) points: Vec<Point<D>>,
     /// Metric field at the vertices
-    pub metrics: Vec<M>,
+    pub(super) metrics: Vec<M>,
     /// TopoTag of the vertices
-    pub tags: Vec<TopoTag>,
+    pub(super) tags: Vec<TopoTag>,
     /// Elements stored using the local vertex numbering
-    pub elems: Vec<E>,
+    pub(super) elems: Vec<E>,
     /// Element tags
-    pub etags: Vec<Tag>,
+    pub(super) etags: Vec<Tag>,
     /// Global element IDs
-    pub global_elem_ids: Vec<Idx>,
+    pub(super) global_elem_ids: Vec<Idx>,
     /// Faces shared by the cavity with the rest of the mesh.
     /// The faces lying on the mesh boundary are not included.
     /// The tag of the cavity element that contains the face is stored
-    pub faces: Vec<(E::Face, Tag)>,
+    pub(super) faces: Vec<(E::Face, Tag)>,
     /// Tagged faces
-    pub tagged_faces: Vec<(E::Face, Tag)>,
+    pub(super) tagged_faces: Vec<(E::Face, Tag)>,
     /// Tagged faces faces
-    pub tagged_bdys: Vec<(<E::Face as Elem>::Face, Tag)>,
+    pub(super) tagged_bdys: Vec<(<E::Face as Elem>::Face, Tag)>,
     /// Tagged faces faces flag (for 2d)
-    pub tagged_bdys_flg: Vec<bool>,
+    pub(super) tagged_bdys_flg: Vec<bool>,
     /// From what the cavity was created (vertex, edge or face)
-    pub seed: Seed,
+    pub(super) seed: Seed,
     /// Minimum element quality in the cavity
-    pub q_min: f64,
+    pub(super) q_min: f64,
     /// Minimum edge length
-    pub l_min: f64,
+    pub(super) l_min: f64,
     /// Maximum edge length
-    pub l_max: f64,
+    pub(super) l_max: f64,
 }
 
 impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
