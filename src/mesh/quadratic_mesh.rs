@@ -185,7 +185,10 @@ impl QuadraticMesh<QuadraticTriangle> {
 #[cfg(test)]
 mod tests {
     use crate::mesh::test_meshes::test_mesh_2d_quadratic;
-    use crate::mesh::{Point, QuadraticEdge, QuadraticTriangle};
+    use crate::mesh::{
+        Point, QuadraticEdge, QuadraticMesh, QuadraticTriangle, SimplexMesh, Triangle,
+    };
+
     #[test]
     fn test_2d_quadratic() {
         let mesh = test_mesh_2d_quadratic();
@@ -197,5 +200,55 @@ mod tests {
         assert_eq!(mesh.vert(0), Point::<3>::new(0., 0., 0.));
         assert_eq!(mesh.tri(0), QuadraticTriangle::new(0, 1, 2, 3, 4, 5));
         assert_eq!(mesh.edge(0), QuadraticEdge::new(0, 1, 3));
+    }
+
+    #[test]
+    fn test_from_simplex_mesh() {
+        // Create a SimplexMesh with a single triangle
+        let verts = vec![
+            Point::<3>::new(0.0, 0.0, 0.0),
+            Point::<3>::new(1.0, 0.0, 0.0),
+            Point::<3>::new(0.0, 1.0, 0.0),
+        ];
+        let tris = vec![Triangle::new(0, 1, 2)];
+        let tri_tags = vec![1];
+        let simplex_mesh =
+            SimplexMesh::<3, Triangle>::new(verts.clone(), tris, tri_tags, vec![], vec![]);
+
+        // Convert to QuadraticMesh
+        let quadratic_mesh = QuadraticMesh::<QuadraticTriangle>::from_simplex_mesh(&simplex_mesh);
+        // Check vertices
+        assert_eq!(quadratic_mesh.n_verts(), 6);
+        assert_eq!(quadratic_mesh.vert(0), verts[0]);
+        assert_eq!(quadratic_mesh.vert(1), verts[1]);
+        assert_eq!(quadratic_mesh.vert(2), verts[2]);
+
+        assert_eq!(
+            quadratic_mesh.vert(3),
+            Point::<3>::new(0.5, 0.0, 0.0) // Midpoint of edge (0, 1)
+        );
+
+        assert_eq!(
+            quadratic_mesh.vert(4),
+            Point::<3>::new(0.5, 0.5, 0.0) // Midpoint of edge (1, 2)
+        );
+
+        assert_eq!(
+            quadratic_mesh.vert(5),
+            Point::<3>::new(0.0, 0.5, 0.0) // Midpoint of edge (2, 0)
+        );
+
+        // Check triangles
+        assert_eq!(quadratic_mesh.n_tris(), 1);
+        assert_eq!(
+            quadratic_mesh.tri(0),
+            QuadraticTriangle::new(0, 1, 2, 3, 4, 5)
+        );
+
+        // Check edges
+        assert_eq!(quadratic_mesh.n_edges(), 3);
+        assert_eq!(quadratic_mesh.edge(0), QuadraticEdge::new(0, 1, 3));
+        assert_eq!(quadratic_mesh.edge(1), QuadraticEdge::new(1, 2, 4));
+        assert_eq!(quadratic_mesh.edge(2), QuadraticEdge::new(0, 2, 5));
     }
 }
