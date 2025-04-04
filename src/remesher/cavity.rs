@@ -17,11 +17,12 @@ pub enum Seed {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum CavityCheckStatus {
-    LongEdge,
-    ShortEdge,
+    LongEdge(f64),
+    ShortEdge(f64),
     Invalid,
-    LowQuality,
+    LowQuality(f64),
     Ok(f64),
 }
 
@@ -335,17 +336,17 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
     }
 
     /// Return an iterator through the cavity faces
-    pub fn faces(&self) -> impl Iterator<Item = (E::Face, Tag)> + '_ {
+    pub fn faces(&self) -> impl ExactSizeIterator<Item = (E::Face, Tag)> + '_ {
         self.faces.iter().copied()
     }
 
     /// Return an iterator through the cavity tagged faces (local indices)
-    pub fn tagged_faces(&self) -> impl Iterator<Item = (E::Face, Tag)> + '_ {
+    pub fn tagged_faces(&self) -> impl ExactSizeIterator<Item = (E::Face, Tag)> + '_ {
         self.tagged_faces.iter().copied()
     }
 
     /// Return an iterator through the cavity tagged faces (global indices)
-    pub fn global_tagged_faces(&self) -> impl Iterator<Item = (E::Face, Tag)> + '_ {
+    pub fn global_tagged_faces(&self) -> impl ExactSizeIterator<Item = (E::Face, Tag)> + '_ {
         self.tagged_faces().map(|(f, t)| (self.global_elem(&f), t))
     }
 
@@ -545,11 +546,11 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
                 let l = M::edge_length(&p0, &m0, pi, mi);
                 if l < l_min {
                     trace!("cavity check failed: short edge");
-                    return CavityCheckStatus::ShortEdge;
+                    return CavityCheckStatus::ShortEdge(l);
                 }
                 if l > l_max {
                     trace!("cavity check failed: long edge");
-                    return CavityCheckStatus::LongEdge;
+                    return CavityCheckStatus::LongEdge(l);
                 }
             }
 
@@ -562,7 +563,7 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
                 return CavityCheckStatus::Invalid;
             } else if q <= q_min {
                 trace!("cavity check failed: low quality ({q} < {q_min})");
-                return CavityCheckStatus::LowQuality;
+                return CavityCheckStatus::LowQuality(q);
             }
             min_quality = f64::min(min_quality, q);
         }
