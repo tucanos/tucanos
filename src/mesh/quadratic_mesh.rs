@@ -1,5 +1,7 @@
 use super::vector::VectorQuadratic;
-use crate::mesh::topo_elems_quadratic::QuadraticElem; // Adjusted the path to `crate::mesh`
+use crate::mesh::topo_elems::Triangle;
+use crate::mesh::topo_elems_quadratic::{QuadraticEdge, QuadraticElem, QuadraticTriangle}; // Adjusted the path to `crate::mesh`
+use crate::mesh::SimplexMesh;
 use crate::{mesh::Point, Idx, Tag};
 use log::debug;
 
@@ -135,19 +137,20 @@ impl<QE: QuadraticElem> QuadraticMesh<QE> {
 
 impl QuadraticMesh<QuadraticTriangle> {
     /// Create a QuadraticMesh from a SimplexMesh by adding midpoints on each edge
-    pub fn from_simplex_mesh(mesh: &SimplexMesh<2, Triangle>) -> Self {
-        let mut verts = mesh.verts().collect::<Vec<_>>();
+    #[must_use]
+    pub fn from_simplex_mesh(mesh: &SimplexMesh<3, Triangle>) -> Self {
+        let mut verts: Vec<Point<3>> = mesh.verts().collect::<Vec<_>>();
         let mut tris = Vec::new();
-        let mut tri_tags = Vec::new();
-        let mut edgs = Vec::new();
-        let mut edg_tags = Vec::new();
+        let mut tri_tags: Vec<Tag> = Vec::new();
+        let mut edgs: Vec<QuadraticEdge> = Vec::new();
+        let mut edg_tags: Vec<Tag> = Vec::new();
 
         let mut edge_to_midpoint = std::collections::HashMap::new();
 
         for (tri, tag) in mesh.elems().zip(mesh.etags()) {
-            let mut quad_tri = [0; 6];
-            for (i, &v) in tri.iter().enumerate() {
-                quad_tri[i] = v;
+            let mut quadratic_tri = [0; 6];
+            for i in 0..3 {
+                quadratic_tri[i] = tri[i];
             }
 
             for i in 0..3 {
@@ -163,10 +166,10 @@ impl QuadraticMesh<QuadraticTriangle> {
                     (verts.len() - 1) as Idx
                 });
 
-                quad_tri[3 + i] = midpoint_idx;
+                quadratic_tri[3 + i] = midpoint_idx;
             }
 
-            tris.push(QuadraticTriangle::from_slice(&quad_tri));
+            tris.push(QuadraticTriangle::from_slice(&quadratic_tri));
             tri_tags.push(tag);
         }
 
