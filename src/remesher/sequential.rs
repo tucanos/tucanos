@@ -866,7 +866,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 }
             }
 
-            debug!("Iteration {n_iter}: {n_splits} edges split ({n_fails} failed - {n_removed} elements removed)");
+            debug!(
+                "Iteration {n_iter}: {n_splits} edges split ({n_fails} failed - {n_removed} elements removed)"
+            );
             self.stats
                 .push(StepStats::Split(SplitStats::new(n_splits, n_fails, self)));
 
@@ -1814,7 +1816,7 @@ mod tests {
     use super::RemesherParams;
     use crate::{
         Result,
-        geometry::NoGeometry,
+        geometry::{LinearGeometry, NoGeometry},
         mesh::{
             Edge, Elem, GElem, Point, SimplexMesh, Tetrahedron, Triangle,
             test_meshes::{
@@ -2742,6 +2744,85 @@ mod tests {
         remesher.check()?;
 
         let _mesh = remesher.to_mesh(true);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_iso3d() -> Result<()> {
+        // test used in tucanos-ffi-test
+        let verts = [0., 0., 0., 1., 0., 0., 0., 1., 0., 0., 0., 1.];
+        let elems = [0, 1, 2, 3];
+        let faces = [0, 2, 1, 0, 1, 3, 1, 2, 3, 2, 0, 3];
+        let metric = [0.1; 4];
+
+        let verts = verts
+            .chunks(3)
+            .map(Point::<3>::from_column_slice)
+            .collect::<Vec<_>>();
+        let elems = elems
+            .chunks(Tetrahedron::N_VERTS as usize)
+            .map(Tetrahedron::from_slice)
+            .collect::<Vec<_>>();
+        let etags = vec![1; elems.len()];
+        let faces = faces
+            .chunks(Triangle::N_VERTS as usize)
+            .map(Triangle::from_slice)
+            .collect::<Vec<_>>();
+        let ftags = vec![1, 2, 3, 4];
+        let metric = metric
+            .iter()
+            .map(|&x| IsoMetric::<3>::from(x))
+            .collect::<Vec<_>>();
+        let mut mesh = SimplexMesh::<3, Tetrahedron>::new(verts, elems, etags, faces, ftags);
+        mesh.compute_topology();
+        let bdy = mesh.boundary().0;
+        let geom = LinearGeometry::new(&mesh, bdy)?;
+        let mut remesher = Remesher::new(&mesh, &metric, &geom)?;
+        remesher.remesh(&RemesherParams::default(), &geom)?;
+        let mesh = remesher.to_mesh(false);
+        // mesh.write_meshb("iso3d.meshb")?;
+        assert_eq!(mesh.n_verts(), 386);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_aniso3d() -> Result<()> {
+        // test used in tucanos-ffi-test
+        let verts = [0., 0., 0., 1., 0., 0., 0., 1., 0., 0., 0., 1.];
+        let elems = [0, 1, 2, 3];
+        let faces = [0, 2, 1, 0, 1, 3, 1, 2, 3, 2, 0, 3];
+        let metric = [[10., 20., 15., 0., 0., 0.]; 4];
+
+        let verts = verts
+            .chunks(3)
+            .map(Point::<3>::from_column_slice)
+            .collect::<Vec<_>>();
+        let elems = elems
+            .chunks(Tetrahedron::N_VERTS as usize)
+            .map(Tetrahedron::from_slice)
+            .collect::<Vec<_>>();
+        let etags = vec![1; elems.len()];
+        let faces = faces
+            .chunks(Triangle::N_VERTS as usize)
+            .map(Triangle::from_slice)
+            .collect::<Vec<_>>();
+        let ftags = vec![1, 2, 3, 4];
+        let metric = metric
+            .iter()
+            .map(|x| AnisoMetric3d::from_slice(x))
+            .collect::<Vec<_>>();
+
+        let mut mesh = SimplexMesh::<3, Tetrahedron>::new(verts, elems, etags, faces, ftags);
+        mesh.compute_topology();
+        let bdy = mesh.boundary().0;
+        let geom = LinearGeometry::new(&mesh, bdy)?;
+        let mut remesher = Remesher::new(&mesh, &metric, &geom)?;
+        remesher.remesh(&RemesherParams::default(), &geom)?;
+        let mesh = remesher.to_mesh(false);
+        // mesh.write_meshb("aniso3d.meshb")?;
+        assert_eq!(mesh.n_verts(), 56);
 
         Ok(())
     }
