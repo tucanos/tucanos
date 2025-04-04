@@ -1,5 +1,6 @@
 use super::Remesher;
 use crate::{
+    Dim, Idx, Result,
     geometry::Geometry,
     mesh::Elem,
     metric::Metric,
@@ -7,7 +8,6 @@ use crate::{
         cavity::{Cavity, CavityCheckStatus, FilledCavity, FilledCavityType, Seed},
         stats::{StepStats, SwapStats},
     },
-    Dim, Idx, Result,
 };
 use log::{debug, trace};
 

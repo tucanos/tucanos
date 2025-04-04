@@ -1,5 +1,6 @@
 use super::Remesher;
 use crate::{
+    Result,
     geometry::Geometry,
     mesh::Elem,
     metric::Metric,
@@ -8,7 +9,6 @@ use crate::{
         sequential::argsort_edges_increasing_length,
         stats::{CollapseStats, StepStats},
     },
-    Result,
 };
 use log::{debug, trace};
 

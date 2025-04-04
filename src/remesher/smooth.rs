@@ -1,5 +1,6 @@
 use super::Remesher;
 use crate::{
+    Dim, Idx, Result,
     geometry::Geometry,
     mesh::{AsSliceF64, Elem, GElem, Point},
     metric::Metric,
@@ -8,7 +9,6 @@ use crate::{
         cavity::{Cavity, CavityCheckStatus, FilledCavity, FilledCavityType, Seed},
         stats::{SmoothStats, StepStats},
     },
-    Dim, Idx, Result,
 };
 use log::{debug, trace};
 #[cfg(feature = "nlopt")]

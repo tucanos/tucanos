@@ -1,5 +1,6 @@
 use super::Remesher;
 use crate::{
+    Dim, Idx, Result,
     geometry::Geometry,
     mesh::Elem,
     metric::Metric,
@@ -8,7 +9,6 @@ use crate::{
         sequential::argsort_edges_decreasing_length,
         stats::{SplitStats, StepStats},
     },
-    Dim, Idx, Result,
 };
 use log::{debug, trace};
 
@@ -190,7 +190,9 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 }
             }
 
-            debug!("Iteration {n_iter}: {n_splits} edges split ({n_fails} failed - {n_removed} elements removed)");
+            debug!(
+                "Iteration {n_iter}: {n_splits} edges split ({n_fails} failed - {n_removed} elements removed)"
+            );
             self.stats
                 .push(StepStats::Split(SplitStats::new(n_splits, n_fails, self)));
 
