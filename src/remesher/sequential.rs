@@ -140,6 +140,8 @@ pub struct RemesherParams {
     pub split_min_l_abs: f64,
     /// Constraint the quality of the newly created elements to be > split_min_q_rel * min(q) during split
     pub split_min_q_rel: f64,
+    /// Constraint the quality of the newly created elements to be > split_min_q_rel * min(q) during split for boundary vertices
+    pub split_min_q_rel_bdy: f64,
     /// Constraint the quality of the newly created elements to be > split_min_q_abs during split
     pub split_min_q_abs: f64,
     /// Max. number of loops through the mesh edges during the collapse step
@@ -185,6 +187,7 @@ impl Default for RemesherParams {
             split_min_l_rel: 1.0,
             split_min_l_abs: 0.75 / f64::sqrt(2.0),
             split_min_q_rel: 1.0,
+            split_min_q_rel_bdy: 0.0,
             split_min_q_abs: 0.5,
             collapse_max_iter: 1,
             collapse_max_l_rel: 1.0,
@@ -726,6 +729,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     ///   max(params.collapse_min_q_abs, params.collapse_min_q_rel * min(q)))
     ///
     /// where min(l) and min(q) as the max edge length and min quality over the entire mesh
+    #[allow(clippy::too_many_lines)]
     pub fn split<G: Geometry<D>>(
         &mut self,
         l_0: f64,
@@ -755,6 +759,7 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
             let mut n_splits = 0;
             let mut n_fails = 0;
+            let mut n_removed = 0;
             for i_edge in indices {
                 let edg = edges[i_edge];
                 let length = dims_and_lengths[i_edge].1;
@@ -788,9 +793,14 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     let filled_cavity = FilledCavity::new(&cavity, ftype);
 
                     // lower the min quality threshold if the min quality in the cavity increases
-                    let q_min = q_min.min(cavity.q_min * params.split_min_q_rel);
+                    let q_min = if tag.0 == E::DIM as Dim {
+                        q_min.min(cavity.q_min * params.split_min_q_rel)
+                    } else {
+                        q_min.min(cavity.q_min * params.split_min_q_rel_bdy)
+                    };
                     let l_min = l_min.min(cavity.l_min * params.split_min_l_rel);
-                    if let CavityCheckStatus::Ok(_) = filled_cavity.check(l_min, f64::MAX, q_min) {
+                    let status = filled_cavity.check(l_min, f64::MAX, q_min);
+                    if let CavityCheckStatus::Ok(_) = status {
                         trace!("Edge split");
                         for i in &cavity.global_elem_ids {
                             self.remove_elem(*i)?;
@@ -810,13 +820,53 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                             self.add_tagged_face(E::Face::from_vertex_and_face(ip, &b), t)?;
                         }
                         n_splits += 1;
+                    } else if matches!(status, CavityCheckStatus::Invalid)
+                        && cavity.elems.len() == 1
+                        && tag.0 < E::DIM as Dim
+                    {
+                        // If the cavity contains one element with two (1 in 2D) tagged faces with the same tag
+                        // then we remove the element from the mesh
+
+                        let e = cavity.global_elem(&cavity.elems[0]);
+                        let mut tags = vec![0; E::N_FACES as usize];
+                        let mut face_tag = 0;
+                        let mut n_tagged = 0;
+                        let mut same_tags = true;
+                        for i in 0..E::N_FACES {
+                            let f = e.face(i);
+                            let f = f.sorted();
+                            let tag = self.tagged_faces.get(&f);
+                            if let Some(tag) = tag {
+                                tags[i as usize] = *tag;
+                                n_tagged += 1;
+                                if face_tag == 0 {
+                                    face_tag = *tag;
+                                } else if *tag != face_tag {
+                                    same_tags = false;
+                                }
+                            }
+                        }
+
+                        if n_tagged == E::Face::DIM && same_tags {
+                            // remove the element
+                            self.remove_elem(cavity.global_elem_ids[0])?;
+                            for (i, &t) in tags.iter().enumerate() {
+                                let f = e.face(i as Idx);
+                                if t == face_tag {
+                                    self.remove_tagged_face(f)?;
+                                } else {
+                                    self.add_tagged_face(f, face_tag)?;
+                                }
+                            }
+                            n_removed += 1;
+                        }
                     } else {
                         n_fails += 1;
                     }
                 }
             }
 
-            debug!("Iteration {n_iter}: {n_splits} edges split ({n_fails} failed)");
+            debug!("Iteration {n_iter}: {n_splits} edges split ({n_fails} failed - {n_removed} elements removed)");
             self.stats
                 .push(StepStats::Split(SplitStats::new(n_splits, n_fails, self)));
 
