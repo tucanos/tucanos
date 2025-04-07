@@ -8,7 +8,7 @@ use tucanos::{
     geometry::LinearGeometry,
     mesh::{SimplexMesh, Tetrahedron, Triangle},
     metric::{AnisoMetric3d, IsoMetric, Metric},
-    remesher::{self, Remesher},
+    remesher::{Remesher, RemesherParams},
 };
 
 pub struct tucanos_remesher3diso_t {
@@ -37,108 +37,6 @@ pub type tucanos_tag_t = i64;
 pub type tucanos_tag_t = i32;
 #[cfg(not(any(feature = "32bit-tags", feature = "64bit-tags")))]
 pub type tucanos_tag_t = i16;
-
-#[repr(C)]
-pub struct tucanos_params_t {
-    /// Number of collapse - split - swap - smooth loops
-    pub num_iter: u32,
-    /// Perform a first loop targetting only the longest edges
-    pub two_steps: bool,
-    /// Max. number of loops through the mesh edges during the split step
-    pub split_max_iter: u32,
-    /// Constraint the length of the newly created edges to be > split_min_l_rel * min(l) during split
-    pub split_min_l_rel: f64,
-    /// Constraint the length of the newly created edges to be > split_min_l_abs during split
-    pub split_min_l_abs: f64,
-    /// Constraint the quality of the newly created elements to be > split_min_q_rel * min(q) during split
-    pub split_min_q_rel: f64,
-    /// Constraint the quality of the newly created elements to be > split_min_q_abs during split
-    pub split_min_q_abs: f64,
-    /// Max. number of loops through the mesh edges during the collapse step
-    pub collapse_max_iter: u32,
-    /// Constraint the length of the newly created edges to be < collapse_max_l_rel * max(l) during collapse
-    pub collapse_max_l_rel: f64,
-    /// Constraint the length of the newly created edges to be < collapse_max_l_abs during collapse
-    pub collapse_max_l_abs: f64,
-    /// Constraint the quality of the newly created elements to be > collapse_min_q_rel * min(q) during collapse
-    pub collapse_min_q_rel: f64,
-    /// Constraint the quality of the newly created elements to be > collapse_min_q_abs during collapse
-    pub collapse_min_q_abs: f64,
-    /// Max. number of loops through the mesh edges during the swap step
-    pub swap_max_iter: u32,
-    /// Constraint the length of the newly created edges to be < swap_max_l_rel * max(l) during swap
-    pub swap_max_l_rel: f64,
-    /// Constraint the length of the newly created edges to be < swap_max_l_abs during swap
-    pub swap_max_l_abs: f64,
-    /// Constraint the length of the newly created edges to be > swap_min_l_rel * min(l) during swap
-    pub swap_min_l_rel: f64,
-    /// Constraint the length of the newly created edges to be > swap_min_l_abs during swap
-    pub swap_min_l_abs: f64,
-    /// Number of smoothing steps
-    pub smooth_iter: u32,
-    /// Don't smooth vertices that are a local metric minimum
-    pub smooth_keep_local_minima: bool,
-    /// Max angle between the normals of the new faces and the geometry (in degrees)
-    pub max_angle: f64,
-    /// Debug mode
-    pub debug: bool,
-}
-
-impl From<&tucanos_params_t> for remesher::RemesherParams {
-    #[allow(clippy::field_reassign_with_default)]
-    fn from(params: &tucanos_params_t) -> Self {
-        let mut rparams = Self::default();
-        rparams.num_iter = params.num_iter;
-        rparams.two_steps = params.two_steps;
-        rparams.split_max_iter = params.split_max_iter;
-        rparams.split_min_l_rel = params.split_min_l_rel;
-        rparams.split_min_l_abs = params.split_min_l_abs;
-        rparams.split_min_q_rel = params.split_min_q_rel;
-        rparams.split_min_q_abs = params.split_min_q_abs;
-        rparams.collapse_max_iter = params.collapse_max_iter;
-        rparams.collapse_max_l_rel = params.collapse_max_l_rel;
-        rparams.collapse_max_l_abs = params.collapse_max_l_abs;
-        rparams.collapse_min_q_rel = params.collapse_min_q_rel;
-        rparams.collapse_min_q_abs = params.collapse_min_q_abs;
-        rparams.swap_max_iter = params.swap_max_iter;
-        rparams.swap_max_l_rel = params.swap_max_l_rel;
-        rparams.swap_max_l_abs = params.swap_max_l_abs;
-        rparams.swap_min_l_rel = params.swap_min_l_rel;
-        rparams.swap_min_l_abs = params.swap_min_l_abs;
-        rparams.smooth_iter = params.smooth_iter;
-        rparams.smooth_keep_local_minima = params.smooth_keep_local_minima;
-        rparams.max_angle = params.max_angle;
-        rparams.debug = params.debug;
-        rparams
-    }
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn tucanos_params_init(params: *mut tucanos_params_t) {
-    let params = &mut *params;
-    let default = remesher::RemesherParams::default();
-    params.num_iter = default.num_iter;
-    params.two_steps = default.two_steps;
-    params.split_max_iter = default.split_max_iter;
-    params.split_min_l_rel = default.split_min_l_rel;
-    params.split_min_l_abs = default.split_min_l_abs;
-    params.split_min_q_rel = default.split_min_q_rel;
-    params.split_min_q_abs = default.split_min_q_abs;
-    params.collapse_max_iter = default.collapse_max_iter;
-    params.collapse_max_l_rel = default.collapse_max_l_rel;
-    params.collapse_max_l_abs = default.collapse_max_l_abs;
-    params.collapse_min_q_rel = default.collapse_min_q_rel;
-    params.collapse_min_q_abs = default.collapse_min_q_abs;
-    params.swap_max_iter = default.swap_max_iter;
-    params.swap_max_l_rel = default.swap_max_l_rel;
-    params.swap_max_l_abs = default.swap_max_l_abs;
-    params.swap_min_l_rel = default.swap_min_l_rel;
-    params.swap_min_l_abs = default.swap_min_l_abs;
-    params.smooth_iter = default.smooth_iter;
-    params.smooth_keep_local_minima = default.smooth_keep_local_minima;
-    params.max_angle = default.max_angle;
-    params.debug = default.debug;
-}
 
 /// @brief Create a geometry for a tucanos_mesh33_t
 ///
@@ -230,31 +128,25 @@ pub unsafe extern "C" fn tucanos_remesher3daniso_delete(remesher: *mut tucanos_r
 #[no_mangle]
 pub unsafe extern "C" fn tucanos_remesher3diso_remesh(
     remesher: *mut tucanos_remesher3diso_t,
-    params: *const tucanos_params_t,
     geom: *const tucanos_geom3d_t,
 ) -> bool {
     assert!(!remesher.is_null());
     assert!(!geom.is_null());
-    assert!(!params.is_null());
     let remesher = &mut (*remesher).implem;
     let geom = &(*geom).implem;
-    let params = &*params;
-    remesher.remesh(&(params.into()), geom).is_ok()
+    remesher.remesh(&RemesherParams::default(), geom).is_ok()
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn tucanos_remesher3daniso_remesh(
     remesher: *mut tucanos_remesher3daniso_t,
-    params: *const tucanos_params_t,
     geom: *const tucanos_geom3d_t,
 ) -> bool {
     assert!(!remesher.is_null());
     assert!(!geom.is_null());
-    assert!(!params.is_null());
     let remesher = &mut (*remesher).implem;
     let geom = &(*geom).implem;
-    let params = &*params;
-    remesher.remesh(&(params.into()), geom).is_ok()
+    remesher.remesh(&RemesherParams::default(), geom).is_ok()
 }
 
 #[no_mangle]

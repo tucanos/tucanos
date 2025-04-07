@@ -7,7 +7,7 @@ use crate::{
     mesh::{Point, SimplexMesh},
     spatialindex::{DefaultObjectIndex, ObjectIndex},
 };
-use log::debug;
+use log::{debug, warn};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::HashMap;
 
@@ -207,7 +207,8 @@ impl<const D: usize, E: Elem> LinearGeometry<D, E>
 where
     SimplexMesh<D, E>: HasCurvature<D>,
 {
-    /// Create a `LinearGeometry` from a `SimplexMesh`
+    /// Create a `LinearGeometry` for the boundary of `mesh` (with positive tags) from a
+    /// `SimplexMesh` representation of the boundary
     pub fn new<E2: Elem>(mesh: &SimplexMesh<D, E2>, mut bdy: SimplexMesh<D, E>) -> Result<Self> {
         assert!(E2::DIM >= E::DIM);
 
@@ -215,12 +216,13 @@ where
 
         // Faces
         let mesh_face_tags = mesh_topo.tags(E::DIM as Dim);
-        let face_tags: FxHashSet<Tag> = bdy.etags().collect();
-        if face_tags.len() != mesh_face_tags.len() {
-            return Err(Error::from(&format!(
-                "LinearGeometry: invalid # of tags (mesh: {mesh_face_tags:?}, bdy: {face_tags:?})"
-            )));
-        }
+        let face_tags: FxHashSet<Tag> = if E2::DIM == E::DIM + 1 {
+            mesh.ftags().filter(|&t| t > 0).collect()
+        } else if E2::DIM == E::DIM {
+            mesh.etags().filter(|&t| t > 0).collect()
+        } else {
+            unimplemented!("mesh dimension {}, bdy dimension {}", E::DIM, E2::DIM);
+        };
 
         let mut patches = FxHashMap::default();
         for tag in face_tags.iter().copied() {
@@ -231,6 +233,7 @@ where
                 )));
             }
             let submesh = bdy.extract_tag(tag).mesh;
+            assert_ne!(submesh.n_verts(), 0, "Geometry mesh empty for tag {tag}");
             patches.insert(tag, LinearPatchGeometryWithCurvature::new(submesh));
         }
 
@@ -241,7 +244,7 @@ where
             let bdy_topo = bdy.compute_topology().clone();
             let (bdy_edges, _) = bdy.boundary();
 
-            let edge_tags: FxHashSet<Tag> = bdy_edges.etags().collect();
+            let edge_tags: FxHashSet<Tag> = bdy_edges.etags().filter(|&t| t > 0).collect();
 
             for tag in edge_tags {
                 debug!("Create LinearPatchGeometry for edge {tag}");
@@ -249,14 +252,24 @@ where
                 let bdy_topo_node = bdy_topo.get((E::Face::DIM as Dim, tag)).unwrap();
                 let bdy_parents = &bdy_topo_node.parents;
                 let mesh_topo_node = mesh_topo
-                    .get_from_parents_iter(E::Face::DIM as Dim, bdy_parents.iter().copied())
-                    .unwrap();
+                    .get_from_parents_iter(E::Face::DIM as Dim, bdy_parents.iter().copied());
 
-                let submesh = bdy_edges.extract_tag(tag).mesh;
-                edges.insert(mesh_topo_node.tag.1, LinearPatchGeometry::new(&submesh));
+                if let Some(mesh_topo_node) = mesh_topo_node {
+                    let submesh = bdy_edges.extract_tag(tag).mesh;
+                    edges.insert(mesh_topo_node.tag.1, LinearPatchGeometry::new(&submesh));
+                }
             }
         }
-        Ok(Self { patches, edges })
+
+        let geom = Self { patches, edges };
+
+        let max_angle = geom.max_normal_angle(mesh);
+        if max_angle > 45.0 {
+            warn!(
+                "Max normal angle between the mesh boundary and the geometry is {max_angle} degrees"
+            );
+        }
+        Ok(geom)
     }
 
     pub fn compute_curvature(&mut self) {
@@ -291,14 +304,22 @@ where
     fn project(&self, pt: &mut Point<D>, tag: &TopoTag) -> f64 {
         assert!(tag.0 < D as Dim);
 
-        let (dist, p) = if tag.0 == E::DIM as Dim {
-            let patch = self.patches.get(&tag.1).unwrap();
+        let (dist, p) = if tag.1 < 0 {
+            (0.0, *pt)
+        } else if tag.0 == E::DIM as Dim {
+            let patch = self
+                .patches
+                .get(&tag.1)
+                .unwrap_or_else(|| panic!("Invalid face tag {tag:?}"));
             patch.project(pt)
         } else if tag.0 == 0 {
             (0.0, *pt)
         } else if tag.0 == E::DIM as Dim - 1 {
             // after 0 to make sure that if is used only for E=Triangle
-            let edge = self.edges.get(&tag.1).unwrap();
+            let edge = self
+                .edges
+                .get(&tag.1)
+                .unwrap_or_else(|| panic!("Invalid edge tag {tag:?}"));
             edge.project(pt)
         } else {
             unreachable!("{:?}", tag)

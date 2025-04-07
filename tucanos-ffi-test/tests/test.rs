@@ -15,19 +15,17 @@ fn iso3d() {
             [1].as_ptr(),
             4,
             faces.as_ptr(),
-            [1; 4].as_ptr(),
+            [1, 2, 3, 4].as_ptr(),
         );
         let boundary = tucanos_mesh33_boundary(mesh);
         let geom = tucanos_geom3d_new(mesh, boundary);
         assert!(!geom.is_null());
         let remesher = tucanos_remesher3diso_new(mesh, metric.as_ptr(), geom);
-        let mut params: tucanos_params_t = std::mem::zeroed();
-        tucanos_params_init(&mut params);
-        tucanos_remesher3diso_remesh(remesher, &params, geom);
+        tucanos_remesher3diso_remesh(remesher, geom);
         tucanos_mesh33_delete(mesh);
         let mesh = tucanos_remesher3diso_tomesh(remesher, false);
         let num_verts = tucanos_mesh33_num_verts(mesh);
-        assert_eq!(num_verts, 52);
+        assert_eq!(num_verts, 424);
         tucanos_mesh33_delete(mesh);
     }
 }
@@ -49,19 +47,17 @@ fn aniso3d() {
             [1].as_ptr(),
             4,
             faces.as_ptr(),
-            [1; 4].as_ptr(),
+            [1, 2, 3, 4].as_ptr(),
         );
         let boundary = tucanos_mesh33_boundary(mesh);
         let geom = tucanos_geom3d_new(mesh, boundary);
         assert!(!geom.is_null());
         let remesher = tucanos_remesher3daniso_new(mesh, metric.as_ptr(), geom);
-        let mut params: tucanos_params_t = std::mem::zeroed();
-        tucanos_params_init(&mut params);
-        tucanos_remesher3daniso_remesh(remesher, &params, geom);
+        tucanos_remesher3daniso_remesh(remesher, geom);
         tucanos_mesh33_delete(mesh);
         let mesh = tucanos_remesher3daniso_tomesh(remesher, false);
         let num_verts = tucanos_mesh33_num_verts(mesh);
-        assert_eq!(num_verts, 30);
+        assert_eq!(num_verts, 60);
         tucanos_mesh33_delete(mesh);
     }
 }

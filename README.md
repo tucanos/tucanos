@@ -12,40 +12,22 @@ A Python wrapper can be found [here](https://github.com/tucanos/pytucanos).
 
 They are all optional.
 
-* [libOL](https://github.com/LoicMarechal/libOL) may be used to replace
-  [parry](https://github.com/dimforge/parry)) for spatial indexing and
-  projection. It can be installed with:
-```
-cmake .. -DCMAKE_INSTALL_PREFIX=$PREFIX -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON
-make -j install
-```
-* [libMeshb](https://github.com/LoicMarechal/libMeshb) may be used to replace [minimeshb](https://github.com/tucanos/minimeshb). It can be installed with:
-```
-cmake .. -DCMAKE_INSTALL_PREFIX=$PREFIX -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON
-make -j install
-```
 * [NLOpt](https://github.com/stevengj/nlopt) can be used for smoothing, but the current implementation is quite inefficient
 * Different LAPACK versions (Accelerate, MKL) may be used if available
 
 # Building
 
-* `libOL`, `libMeshb`, `metis` and `scotch` locations may need to be declared using environment variables. This can be done in `.cargo/config.toml`, for example:
+* `metis` and `scotch` locations may need to be declared using environment variables. This can be done in `.cargo/config.toml`, for example:
 ```toml
 [env]
-LIBOL_DIR="/path/to/libOL_prefix"
-LIBMESHB_DIR="/path/to/libMeshb_prefix"
+METISDIR="/path/to/metis_prefix"
+SCOTCHDIR="/path/to/scotch_prefix"
 ```
-See <https://github.com/xgarnaud/libmeshb-sys> and <https://github.com/jeromerobert/marechal-libol-sys.git> for other possible environment variables.
 
 * Optional [cargo features](https://doc.rust-lang.org/cargo/reference/features.html) are:
-    - `parry` (enabled by default)
     - `nlopt` to enable smoothing with NLOpt
-    - `libmeshb`
-    - `libol`
     - `metis`
     - `scotch`
-
-Exactly one of `libol` or `parry` must be enabled.
 
 ## Render doc
 
@@ -92,9 +74,7 @@ int main(void) {
   tucanos_geom3d_t *geom = tucanos_geom3d_new(mesh, boundary);
   assert(geom != NULL);
   tucanos_remesher3diso_t *remesher = tucanos_remesher3diso_new(mesh, metric, geom);
-  struct tucanos_params_t params;
-  tucanos_params_init(&params);
-  tucanos_remesher3diso_remesh(remesher, &params, geom);
+  tucanos_remesher3diso_remesh(remesher, geom);
   tucanos_mesh33_delete(mesh);
   tucanos_geom3d_delete(geom);
   tucanos_mesh33_t *new_mesh = tucanos_remesher3diso_tomesh(remesher, false);

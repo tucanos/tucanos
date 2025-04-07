@@ -11,14 +11,15 @@ use rustc_hash::FxHashSet;
 use serde::Serialize;
 use std::{sync::Mutex, time::Instant};
 
-pub struct ParallelRemeshingParams {
-    n_layers: Idx,
-    level: Idx,
-    max_levels: Idx,
-    min_verts: Idx,
+#[derive(Clone, Debug)]
+pub struct ParallelRemesherParams {
+    pub n_layers: Idx,
+    pub level: Idx,
+    pub max_levels: Idx,
+    pub min_verts: Idx,
 }
 
-impl ParallelRemeshingParams {
+impl ParallelRemesherParams {
     #[must_use]
     pub const fn new(n_layers: Idx, max_levels: Idx, min_verts: Idx) -> Self {
         Self {
@@ -56,6 +57,12 @@ impl ParallelRemeshingParams {
                 }
             }
         }
+    }
+}
+
+impl Default for ParallelRemesherParams {
+    fn default() -> Self {
+        Self::new(2, 1, 10000)
     }
 }
 
@@ -271,7 +278,7 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
         m: &[M],
         geom: &G,
         params: RemesherParams,
-        dd_params: &ParallelRemeshingParams,
+        dd_params: &ParallelRemesherParams,
     ) -> Result<(SimplexMesh<D, E>, ParallelRemeshingInfo, Vec<M>)> {
         let res = Mutex::new(SimplexMesh::empty());
         let res_m = Mutex::new(Vec::new());
@@ -481,7 +488,7 @@ mod tests {
         },
         metric::IsoMetric,
         remesher::RemesherParams,
-        remesher::{ParallelRemesher, ParallelRemeshingParams},
+        remesher::{ParallelRemesher, ParallelRemesherParams},
     };
 
     fn test_domain_decomposition_2d(debug: bool, ptype: PartitionType) -> Result<()> {
@@ -507,7 +514,7 @@ mod tests {
             .map(|i| IsoMetric::<2>::from(h(dd.mesh.vert(i))))
             .collect();
 
-        let dd_params = ParallelRemeshingParams::new(2, 1, 0);
+        let dd_params = ParallelRemesherParams::new(2, 1, 0);
         let (mut mesh, _, _) =
             dd.remesh(&m, &NoGeometry(), RemesherParams::default(), &dd_params)?;
 
@@ -647,7 +654,7 @@ mod tests {
             .map(|i| IsoMetric::<3>::from(h(dd.mesh.vert(i))))
             .collect();
 
-        let dd_params = ParallelRemeshingParams::new(2, 2, 0);
+        let dd_params = ParallelRemesherParams::new(2, 2, 0);
         let (mut mesh, _, _) =
             dd.remesh(&m, &NoGeometry(), RemesherParams::default(), &dd_params)?;
 
