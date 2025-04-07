@@ -37,9 +37,9 @@ impl Default for SplitParams {
             max_iter: 1,
             min_l_rel: 1.0,
             min_l_abs: 0.75 / f64::sqrt(2.0),
-            min_q_rel: 1.0,
+            min_q_rel: 0.8,
             min_q_rel_bdy: 0.5,
-            min_q_abs: 0.5,
+            min_q_abs: 0.3,
         }
     }
 }

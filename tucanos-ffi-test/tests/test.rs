@@ -25,7 +25,7 @@ fn iso3d() {
         tucanos_mesh33_delete(mesh);
         let mesh = tucanos_remesher3diso_tomesh(remesher, false);
         let num_verts = tucanos_mesh33_num_verts(mesh);
-        assert_eq!(num_verts, 354);
+        assert_eq!(num_verts, 424);
         tucanos_mesh33_delete(mesh);
     }
 }
@@ -57,7 +57,7 @@ fn aniso3d() {
         tucanos_mesh33_delete(mesh);
         let mesh = tucanos_remesher3daniso_tomesh(remesher, false);
         let num_verts = tucanos_mesh33_num_verts(mesh);
-        assert_eq!(num_verts, 57);
+        assert_eq!(num_verts, 60);
         tucanos_mesh33_delete(mesh);
     }
 }
