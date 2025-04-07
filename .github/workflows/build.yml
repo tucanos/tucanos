@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - run: sudo apt-get install -y libmetis-dev libscotch-dev
+    - run: sudo apt-get install -y libmetis-dev libscotch-dev liblapack-dev
     - name: Install Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
@@ -49,7 +49,6 @@ jobs:
       run: |
         pip install .
         cd
-        python -c "import pytucanos; assert not pytucanos.HAVE_LIBMESHB"
         python -c "import pytucanos; assert not pytucanos.HAVE_METIS"
         python -c "import pytucanos; assert not pytucanos.HAVE_SCOTCH"
         python -m unittest discover pytucanos -v
@@ -57,7 +56,6 @@ jobs:
       run: |
         pip install -C metis=true .
         cd
-        python -c "import pytucanos; assert not pytucanos.HAVE_LIBMESHB"
         python -c "import pytucanos; assert pytucanos.HAVE_METIS"
         python -c "import pytucanos; assert not pytucanos.HAVE_SCOTCH"
         python -m unittest discover pytucanos -v
@@ -65,7 +63,6 @@ jobs:
       run: |
         pip install -C scotch=true .
         cd
-        python -c "import pytucanos; assert not pytucanos.HAVE_LIBMESHB"
         python -c "import pytucanos; assert not pytucanos.HAVE_METIS"
         python -c "import pytucanos; assert pytucanos.HAVE_SCOTCH"
         python -m unittest discover pytucanos -v
@@ -73,7 +70,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - run: sudo apt-get install -y libmetis-dev libscotch-dev
+    - run: sudo apt-get install -y libmetis-dev libscotch-dev liblapack-dev
     - name: Install Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
@@ -100,7 +97,6 @@ jobs:
       run: |
         pip install .
         cd
-        python -c "import pytucanos; assert not pytucanos.HAVE_LIBMESHB"
         python -c "import pytucanos; assert not pytucanos.HAVE_METIS"
         python -c "import pytucanos; assert not pytucanos.HAVE_SCOTCH"
         python -m unittest discover pytucanos -v
@@ -108,7 +104,6 @@ jobs:
       run: |
         pip install -C metis=true .
         cd
-        python -c "import pytucanos; assert not pytucanos.HAVE_LIBMESHB"
         python -c "import pytucanos; assert pytucanos.HAVE_METIS"
         python -c "import pytucanos; assert not pytucanos.HAVE_SCOTCH"
         python -m unittest discover pytucanos -v
@@ -116,7 +111,6 @@ jobs:
       run: |
         pip install -C scotch=true .
         cd
-        python -c "import pytucanos; assert not pytucanos.HAVE_LIBMESHB"
         python -c "import pytucanos; assert not pytucanos.HAVE_METIS"
         python -c "import pytucanos; assert pytucanos.HAVE_SCOTCH"
         python -m unittest discover pytucanos -v
