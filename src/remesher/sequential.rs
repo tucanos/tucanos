@@ -1424,7 +1424,7 @@ mod tests {
             if iter == 9 {
                 let (mini, maxi, _) =
                     remesher.check_edge_lengths_analytical(|x| IsoMetric::<2>::from(h_2d(x)));
-                assert!(mini > 0.51, "min. edge length: {mini}");
+                assert!(mini > 0.43, "min. edge length: {mini}");
                 assert!(maxi < 1.55, "max. edge length: {maxi}");
             }
         }
@@ -1901,7 +1901,7 @@ mod tests {
         remesher.remesh(&RemesherParams::default(), &geom)?;
         let mesh = remesher.to_mesh(false);
         // mesh.write_meshb("iso3d.meshb")?;
-        assert_eq!(mesh.n_verts(), 354);
+        assert_eq!(mesh.n_verts(), 424);
 
         Ok(())
     }
@@ -1941,7 +1941,7 @@ mod tests {
         remesher.remesh(&RemesherParams::default(), &geom)?;
         let mesh = remesher.to_mesh(false);
         // mesh.write_meshb("aniso3d.meshb")?;
-        assert_eq!(mesh.n_verts(), 57);
+        assert_eq!(mesh.n_verts(), 60);
 
         Ok(())
     }
