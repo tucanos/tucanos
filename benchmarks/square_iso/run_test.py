@@ -92,6 +92,12 @@ def run():
 
 if __name__ == "__main__":
 
+    import logging
+
+    FORMAT = "%(levelname)s %(name)s %(message)s"
+    logging.basicConfig(format=FORMAT)
+    logging.getLogger().setLevel(logging.INFO)
+
     run()
 
     plt.show()

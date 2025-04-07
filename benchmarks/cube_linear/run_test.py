@@ -98,11 +98,11 @@ def run(cases):
 
 if __name__ == "__main__":
 
-    # import logging
+    import logging
 
-    # FORMAT = "%(levelname)s %(name)s %(message)s"
-    # logging.basicConfig(format=FORMAT)
-    # logging.getLogger().setLevel(logging.DEBUG)
+    FORMAT = "%(levelname)s %(name)s %(message)s"
+    logging.basicConfig(format=FORMAT)
+    logging.getLogger().setLevel(logging.INFO)
 
     cases_tucanos = {
         "Laplacian": lambda mesh, h: remesh(

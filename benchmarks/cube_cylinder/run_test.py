@@ -131,44 +131,11 @@ def run(cases):
 
 if __name__ == "__main__":
 
-    # import logging
+    import logging
 
-    # FORMAT = "%(levelname)s %(name)s %(message)s"
-    # logging.basicConfig(format=FORMAT)
-    # logging.getLogger().setLevel(logging.DEBUG)
-
-    cases_tucanos = {
-        "Laplacian": (
-            True,
-            lambda mesh, h, bdy: remesh(
-                mesh,
-                h,
-                bdy=bdy,
-                two_steps=True,
-                smooth_type="laplacian",
-            ),
-        ),
-        "Laplacian2": (
-            True,
-            lambda mesh, h, bdy: remesh(
-                mesh,
-                h,
-                bdy=bdy,
-                two_steps=True,
-                smooth_type="laplacian2",
-            ),
-        ),
-        "Avro": (
-            True,
-            lambda mesh, h, bdy: remesh(
-                mesh,
-                h,
-                bdy=bdy,
-                two_steps=True,
-                smooth_type="avro",
-            ),
-        ),
-    }
+    FORMAT = "%(levelname)s %(name)s %(message)s"
+    logging.basicConfig(format=FORMAT)
+    logging.getLogger().setLevel(logging.INFO)
 
     pth = os.path.dirname(__file__)
     bdy = Mesh32.from_meshb(os.path.join(pth, "cube-cylinder-boundary.mesh"))

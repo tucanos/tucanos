@@ -3,6 +3,7 @@ import json
 import subprocess
 import numpy as np
 import matplotlib.pyplot as plt
+import logging
 from ._pytucanos import (
     PySplitParams,
     PyCollapseParams,
@@ -249,21 +250,22 @@ def remesh_mmg(msh, h, hgrad=10.0, hausd=10.0):
         dim = 3
         exe = os.getenv("MMG3D_EXE", "mmg3d_O3")
 
+    cmd = use_podman() + [
+        exe,
+        "-in",
+        "tmp.meshb",
+        "-sol",
+        "tmp.solb",
+        "-out",
+        "tmp.meshb",
+        "-hgrad",
+        repr(hgrad),
+        "-hausd",
+        repr(hausd),
+    ]
+    logging.info(f"Running {' '.join(cmd)}")
     subprocess.check_output(
-        use_podman()
-        + [
-            exe,
-            "-in",
-            "tmp.meshb",
-            "-sol",
-            "tmp.solb",
-            "-out",
-            "tmp.meshb",
-            "-hgrad",
-            repr(hgrad),
-            "-hausd",
-            repr(hausd),
-        ],
+        cmd,
         stderr=subprocess.STDOUT,
     )
 
@@ -283,19 +285,20 @@ def remesh_omega_h(msh, h):
     __write_tmp_meshb(msh, h)
 
     exe = os.getenv("OSH_EXE", "osh_adapt")
+    cmd = use_podman() + [
+        exe,
+        "--mesh-in",
+        "tmp.meshb",
+        "--metric-in",
+        "tmp.solb",
+        "--mesh-out",
+        "tmp.meshb",
+        "--metric-out",
+        "tmp.solb",
+    ]
+    logging.info(f"Running {' '.join(cmd)}")
     subprocess.check_output(
-        use_podman()
-        + [
-            "osh_adapt",
-            "--mesh-in",
-            "tmp.meshb",
-            "--metric-in",
-            "tmp.solb",
-            "--mesh-out",
-            "tmp.meshb",
-            "--metric-out",
-            "tmp.solb",
-        ],
+        cmd,
         stderr=subprocess.STDOUT,
     )
 
@@ -316,20 +319,21 @@ def remesh_refine(msh, h, geom=None):
 
     exe = os.getenv("REF_EXE", "ref")
 
-    args = [
+    cmd = use_podman() + [
         exe,
         "adapt",
-        "tmp.meshb",
+        fname,
         "--metric",
         "tmp.solb",
         "-x",
         "tmp.meshb",
     ]
     if geom is not None:
-        args += ["-g", geom]
+        cmd += ["--egads", geom]
 
+    logging.info(f"Running {' '.join(cmd)}")
     subprocess.check_output(
-        use_podman() + args,
+        cmd,
         stderr=subprocess.STDOUT,
     )
 
@@ -349,20 +353,20 @@ def remesh_avro(msh, h, geom, limit=False):
     __write_tmp_meshb(msh, h)
 
     exe = os.getenv("AVRO_EXE", "avro")
+    cmd = use_podman() + [
+        exe,
+        "-adapt",
+        fname,
+        geom,
+        "tmp.solb",
+        "tmp.mesh",
+        "limit=%s" % ("true" if limit else "false"),
+    ]
+    logging.info(f"Running {' '.join(cmd)}")
     subprocess.check_output(
-        use_podman()
-        + [
-            exe,
-            "-adapt",
-            "tmp.meshb",
-            geom,
-            "tmp.solb",
-            "tmp.mesh",
-            "limit=%s" % ("true" if limit else "false"),
-        ],
+        cmd,
         stderr=subprocess.STDOUT,
     )
-
     os.remove("tmp.solb")
     os.remove("tmp_0.sol")
 

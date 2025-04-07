@@ -91,38 +91,14 @@ def run(cases):
 
 if __name__ == "__main__":
 
-    # import logging
+    import logging
 
-    # FORMAT = "%(levelname)s %(name)s %(message)s"
-    # logging.basicConfig(format=FORMAT)
-    # logging.getLogger().setLevel(logging.INFO)
-
-    cases_tucanos = {
-        "Laplacian": lambda mesh, h: remesh(
-            mesh,
-            h,
-            two_steps=True,
-            smooth_type="laplacian",
-        ),
-        "Laplacian2": lambda mesh, h: remesh(
-            mesh,
-            h,
-            two_steps=True,
-            smooth_type="laplacian2",
-        ),
-        "Avro": lambda mesh, h: remesh(
-            mesh,
-            h,
-            two_steps=True,
-            smooth_type="avro",
-        ),
-    }
+    FORMAT = "%(levelname)s %(name)s %(message)s"
+    logging.basicConfig(format=FORMAT)
+    logging.getLogger().setLevel(logging.INFO)
 
     cases_benchmark = {
-        "tucanos": lambda mesh, h: remesh(
-            mesh,
-            h,
-        ),
+        "tucanos": lambda mesh, h: remesh(mesh, h),
         "MMG": remesh_mmg,
         "refine": remesh_refine,
         "avro": lambda mesh, h: remesh_avro(mesh, h, "box"),
