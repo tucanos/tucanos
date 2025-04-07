@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import numpy as np
 import matplotlib.pyplot as plt
@@ -110,7 +111,7 @@ def run(cases):
             )
             axs_q[1].set_xlim([0.0, 2.0])
         except subprocess.CalledProcessError as e:
-            print("%s failed: %s" % (name, e.output))
+            print("%s failed: %s" % (name, e.output.decode()))
 
     axs_q[0].set_xlabel("quality")
     axs_q[0].legend()
@@ -140,11 +141,21 @@ if __name__ == "__main__":
     pth = os.path.dirname(__file__)
     bdy = Mesh32.from_meshb(os.path.join(pth, "cube-cylinder-boundary.mesh"))
 
+    shutil.copy("cube-cylinder.meshb", "refine.meshb")
+
+    def remesh_refine_egads(mesh, h):
+        mesh, fname = remesh_refine(
+            mesh, h, "cube-cylinder.egads", fname="refine.meshb"
+        )
+        shutil.move(fname, "refine.meshb")
+        return mesh
+
     cases_benchmark = {
-        "tucanos": lambda mesh, h: remesh(mesh, h, bdy),
+        "tucanos": lambda mesh, h: remesh(mesh, h, bdy, step=4.0),
         "MMG": remesh_mmg,
-        "refine": lambda mesh, h: remesh_refine(mesh, h, "cube-cylinder.egads"),
-        "avro": lambda mesh, h: remesh_avro(mesh, h, "cube-cylinder.egads", limit=True),
+        "refine": remesh_refine_egads,
+        # "avro": lambda mesh, h: remesh_avro(mesh, h, "cube-cylinder.egads", limit=True),
+        # "Omega_h": remesh_omega_h,
     }
 
     run(cases_benchmark)

@@ -154,24 +154,22 @@ def plot_stats(remesher):
 
 def __write_tmp_meshb(msh, h):
 
-    if isinstance(msh, Mesh22):
-        msh.write_meshb("tmp.meshb")
-        msh.write_solb("tmp.solb", h)
-    elif isinstance(msh, Mesh33):
+    if isinstance(msh, (Mesh22, Mesh33)):
         msh.write_meshb("tmp.meshb")
         msh.write_solb("tmp.solb", h)
     else:
         raise NotImplementedError()
 
 
-def __read_tmp_meshb(dim, fname="tmp.meshb"):
+def __read_tmp_meshb(dim, fname="tmp.meshb", remove=True):
 
     if dim == 2:
         msh = Mesh22.from_meshb(fname)
     elif dim == 3:
         msh = Mesh33.from_meshb(fname)
 
-    os.remove(fname)
+    if remove:
+        os.remove(fname)
 
     return msh
 
@@ -204,7 +202,7 @@ def remesh(msh, h, bdy=None, step=None, params=None):
     geom = LinearGeometry(msh, bdy)
 
     if step is not None:
-        # limit the metric sizes to 1/step -> 4 times the those given by the element implied
+        # limit the metric sizes to 1/step -> step times those given by the element implied
         # metric
         msh.compute_vertex_to_elems()
         msh.compute_volumes()
@@ -214,6 +212,7 @@ def remesh(msh, h, bdy=None, step=None, params=None):
     remesher = Remesher(msh, geom, h)
     if params is None:
         params = PyRemesherParams.default()
+
     remesher.remesh(geom, params)
 
     return remesher.to_mesh()
@@ -307,7 +306,7 @@ def remesh_omega_h(msh, h):
     return __read_tmp_meshb(3)
 
 
-def remesh_refine(msh, h, geom=None):
+def remesh_refine(msh, h, geom=None, fname=None):
     """
     Remesh using refine.
     The path to the ref executable is given by environment variable REF_EXE
@@ -317,6 +316,10 @@ def remesh_refine(msh, h, geom=None):
 
     __write_tmp_meshb(msh, h)
 
+    use_meshb_files = fname is not None
+
+    if not use_meshb_files:
+        fname = "tmp.meshb"
     exe = os.getenv("REF_EXE", "ref")
 
     cmd = use_podman() + [
@@ -339,7 +342,10 @@ def remesh_refine(msh, h, geom=None):
 
     os.remove("tmp.solb")
 
-    return __read_tmp_meshb(3)
+    if not use_meshb_files:
+        return __read_tmp_meshb(3)
+    else:
+        return __read_tmp_meshb(3, remove=False), "tmp.meshb"
 
 
 def remesh_avro(msh, h, geom, limit=False):
@@ -356,7 +362,7 @@ def remesh_avro(msh, h, geom, limit=False):
     cmd = use_podman() + [
         exe,
         "-adapt",
-        fname,
+        "tmp.meshb",
         geom,
         "tmp.solb",
         "tmp.mesh",
