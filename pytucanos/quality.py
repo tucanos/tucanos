@@ -5,7 +5,7 @@ from .metric import sym2mat
 
 def qualities_and_lengths(mesh, m):
 
-    coords = mesh.get_coords()
+    coords = mesh.get_verts()
     els = mesh.get_elems()
 
     return qualities(coords, els, m), lengths(coords, els, m)

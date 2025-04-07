@@ -37,7 +37,7 @@ class TestMeshes(unittest.TestCase):
         self.assertEqual(msh.n_elems(), elems.shape[0])
         self.assertEqual(msh.n_faces(), faces.shape[0])
         self.assertTrue(np.allclose(msh.vol(), 1.0))
-        self.assertTrue(np.allclose(msh.get_coords(), coords))
+        self.assertTrue(np.allclose(msh.get_verts(), coords))
         self.assertTrue(np.allclose(msh.get_elems(), elems))
         self.assertTrue(np.allclose(msh.get_etags(), etags))
         self.assertTrue(np.allclose(msh.get_faces(), faces))
@@ -52,7 +52,7 @@ class TestMeshes(unittest.TestCase):
         msh2 = Mesh22.from_meshb("tmp.meshb")
 
         self.assertEqual(msh.n_verts(), msh2.n_verts())
-        self.assertTrue(np.allclose(msh.get_coords(), msh2.get_coords()))
+        self.assertTrue(np.allclose(msh.get_verts(), msh2.get_verts()))
 
         self.assertEqual(msh.n_elems(), msh2.n_elems())
         self.assertTrue(np.allclose(msh.get_elems(), msh2.get_elems()))
@@ -72,7 +72,7 @@ class TestMeshes(unittest.TestCase):
         self.assertEqual(msh.n_elems(), elems.shape[0])
         self.assertEqual(msh.n_faces(), faces.shape[0])
         self.assertTrue(np.allclose(msh.vol(), 1.0))
-        self.assertTrue(np.allclose(msh.get_coords(), coords))
+        self.assertTrue(np.allclose(msh.get_verts(), coords))
         self.assertTrue(np.allclose(msh.get_elems(), elems))
         self.assertTrue(np.allclose(msh.get_etags(), etags))
         self.assertTrue(np.allclose(msh.get_faces(), faces))
@@ -271,7 +271,7 @@ class TestMeshes(unittest.TestCase):
         msh = Mesh22(coords, elems, etags, faces, ftags)
         msh = msh.split().split().split()
 
-        x, y = msh.get_coords().T
+        x, y = msh.get_verts().T
         f = (x + y).reshape((-1, 1))
         g = (x - y).reshape((-1, 1))
 
@@ -304,7 +304,7 @@ class TestMeshes(unittest.TestCase):
         msh2 = Mesh33.from_meshb("tmp.meshb")
 
         self.assertEqual(msh.n_verts(), msh2.n_verts())
-        self.assertTrue(np.allclose(msh.get_coords(), msh2.get_coords()))
+        self.assertTrue(np.allclose(msh.get_verts(), msh2.get_verts()))
 
         self.assertEqual(msh.n_elems(), msh2.n_elems())
         self.assertTrue(np.allclose(msh.get_elems(), msh2.get_elems()))

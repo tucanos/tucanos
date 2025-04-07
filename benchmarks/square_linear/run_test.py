@@ -15,7 +15,7 @@ def get_mesh():
 
 def get_metric(msh):
 
-    x, y = msh.get_coords().T
+    x, y = msh.get_verts().T
 
     hx = 0.1
     h0 = 0.001

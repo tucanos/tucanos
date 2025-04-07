@@ -18,7 +18,7 @@ from time import time
 
 def get_metric(msh):
 
-    x, y, z = msh.get_coords().T
+    x, y, z = msh.get_verts().T
 
     h_x = 0.1
     h_y = 0.1

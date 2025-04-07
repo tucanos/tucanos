@@ -303,7 +303,7 @@ macro_rules! create_mesh {
             #[doc = concat!(
                 "Get a copy of the mesh coordinates as a numpy array of shape (# of vertices, ",
                 stringify!($dim), ")")]
-            pub fn get_coords<'py>(&mut self, py: Python<'py>) -> Bound<'py, PyArray2<f64>> {
+            pub fn get_verts<'py>(&mut self, py: Python<'py>) -> Bound<'py, PyArray2<f64>> {
                 let mut coords = Vec::with_capacity(self.mesh.n_verts() as usize * $dim);
                 for v in self.mesh.verts() {
                     coords.extend(v.iter().copied());

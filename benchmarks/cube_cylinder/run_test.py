@@ -18,7 +18,7 @@ from time import time
 
 def get_metric(msh):
 
-    x, y, z = msh.get_coords().T
+    x, y, z = msh.get_verts().T
 
     r = (x**2 + y**2) ** 0.5
     t = np.arctan2(y, x)

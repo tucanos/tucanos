@@ -16,7 +16,7 @@ from pytucanos.quality import qualities_and_lengths
 
 def get_metric(msh):
 
-    x, y, z = msh.get_coords().T
+    x, y, z = msh.get_verts().T
 
     hmin = 0.01
     hmax = 0.3
