@@ -21,7 +21,7 @@ gmsh cube-cylinder-boundary.geo -2 -o cube-cylinder-boundary.mesh
 
 ## Results after 5 iterations
 
-(NB: metric limiting applied to avro only)
+<!-- (NB: metric limiting applied to avro) -->
 
 ![quality](quality.png)
 ![perfo](perfo.png)
