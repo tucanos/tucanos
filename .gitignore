@@ -6,3 +6,5 @@ Cargo.lock
 *.solb
 *.vtu
 *.geo
+*.pyc
+*.pyd
