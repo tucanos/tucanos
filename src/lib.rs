@@ -3,12 +3,17 @@ use core::fmt;
 use nalgebra::SVector;
 
 pub mod boundary_mesh_2d;
+pub mod boundary_mesh_3d;
 pub mod dual_mesh;
 pub mod dual_mesh_2d;
 pub mod graph;
 mod least_squares;
 pub mod mesh;
 pub mod mesh_2d;
+pub mod mesh_3d;
+mod simplices;
+mod to_simplices;
+mod vtu_output;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -39,7 +44,11 @@ pub type Vert3d = Vertex<3>;
 pub type Cell<const C: usize> = [usize; C];
 pub type Face<const F: usize> = Cell<F>;
 
+pub type Hexahedron = Cell<8>;
+pub type Prism = Cell<6>;
+pub type Pyramid = Cell<5>;
 pub type Tetrahedron = Cell<4>;
+pub type Quadrangle = Cell<4>;
 pub type Triangle = Cell<3>;
 pub type Edge = Cell<2>;
 pub type Node = Cell<1>;

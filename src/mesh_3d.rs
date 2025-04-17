@@ -1,77 +1,145 @@
-use crate::{mesh::Mesh, Edge, Tag, Triangle, Vert2d};
+use crate::{mesh::Mesh, Tag, Tetrahedron, Triangle, Vert3d};
 
-pub fn rectangle_mesh<M: Mesh<2, 3, 2>>(lx: f64, nx: usize, ly: f64, ny: usize) -> M {
+pub fn box_mesh<M: Mesh<3, 4, 3>>(lx: f64, nx: usize, ly: f64, ny: usize, lz: f64, nz: usize) -> M {
     let dx = lx / (nx as f64 - 1.);
     let x_1d = (0..nx).map(|i| i as f64 * dx).collect::<Vec<_>>();
 
     let dy = ly / (ny as f64 - 1.);
     let y_1d = (0..ny).map(|i| i as f64 * dy).collect::<Vec<_>>();
 
-    nonuniform_rectangle_mesh(&x_1d, &y_1d)
+    let dz = lz / (nz as f64 - 1.);
+    let z_1d = (0..nz).map(|i| i as f64 * dz).collect::<Vec<_>>();
+
+    nonuniform_box_mesh(&x_1d, &y_1d, &z_1d)
 }
 
-pub fn nonuniform_rectangle_mesh<M: Mesh<2, 3, 2>>(x: &[f64], y: &[f64]) -> M {
+pub fn nonuniform_box_mesh<M: Mesh<3, 4, 3>>(x: &[f64], y: &[f64], z: &[f64]) -> M {
     let nx = x.len();
     let ny = y.len();
+    let nz = z.len();
 
-    let idx = |i, j| i + j * nx;
+    let idx = |i, j, k| i + j * nx + k * nx * ny;
 
-    let mut verts = vec![Vert2d::zeros(); nx * ny];
+    let mut verts = vec![Vert3d::zeros(); nx * ny * nz];
     for (i, &x) in x.iter().enumerate() {
         for (j, &y) in y.iter().enumerate() {
-            verts[idx(i, j)] = Vert2d::new(x, y);
+            for (k, &z) in z.iter().enumerate() {
+                verts[idx(i, j, k)] = Vert3d::new(x, y, z);
+            }
         }
     }
 
-    let mut quads = Vec::with_capacity((nx - 1) * (ny - 1));
-    let mut etags = Vec::with_capacity((nx - 1) * (ny - 1));
+    let mut hexas = Vec::with_capacity((nx - 1) * (ny - 1) * (nz - 1));
+    let mut etags = Vec::with_capacity(hexas.capacity());
     for i in 0..nx - 1 {
         for j in 0..ny - 1 {
-            quads.push([idx(i, j), idx(i + 1, j), idx(i + 1, j + 1), idx(i, j + 1)]);
-            etags.push(1);
+            for k in 0..nz - 1 {
+                hexas.push([
+                    idx(i, j, k),
+                    idx(i + 1, j, k),
+                    idx(i + 1, j + 1, k),
+                    idx(i, j + 1, k),
+                    idx(i, j, k + 1),
+                    idx(i + 1, j, k + 1),
+                    idx(i + 1, j + 1, k + 1),
+                    idx(i, j + 1, k + 1),
+                ]);
+                etags.push(1);
+            }
         }
     }
 
-    let mut faces = Vec::with_capacity(2 * (nx - 1 + ny - 1));
-    let mut ftags = Vec::with_capacity(2 * (nx - 1 + ny - 1));
+    let mut quads = Vec::with_capacity(
+        2 * (nx - 1) * (ny - 1) + 2 * (nx - 1) * (nz - 1) + 2 * (nz - 1) * (ny - 1),
+    );
+    let mut ftags = Vec::with_capacity(quads.capacity());
 
     for i in 0..nx - 1 {
-        faces.push([idx(i, 0), idx(i + 1, 0)]);
-        ftags.push(1);
-        faces.push([idx(i + 1, ny - 1), idx(i, ny - 1)]);
-        ftags.push(3);
+        for j in 0..ny - 1 {
+            let k = 0;
+            quads.push([
+                idx(i, j, k),
+                idx(i, j + 1, k),
+                idx(i + 1, j + 1, k),
+                idx(i + 1, j, k),
+            ]);
+            ftags.push(1);
+            let k = nz - 1;
+            quads.push([
+                idx(i, j, k),
+                idx(i + 1, j, k),
+                idx(i + 1, j + 1, k),
+                idx(i, j + 1, k),
+            ]);
+            ftags.push(2);
+        }
+    }
+
+    for i in 0..nx - 1 {
+        for k in 0..nz - 1 {
+            let j = 0;
+            quads.push([
+                idx(i, j, k),
+                idx(i + 1, j, k),
+                idx(i + 1, j, k + 1),
+                idx(i, j, k + 1),
+            ]);
+            ftags.push(3);
+            let j = ny - 1;
+            quads.push([
+                idx(i, j, k),
+                idx(i, j, k + 1),
+                idx(i + 1, j, k + 1),
+                idx(i + 1, j, k),
+            ]);
+            ftags.push(4);
+        }
     }
 
     for j in 0..ny - 1 {
-        faces.push([idx(nx - 1, j), idx(nx - 1, j + 1)]);
-        ftags.push(2);
-        faces.push([idx(0, j + 1), idx(0, j)]);
-        ftags.push(4);
+        for k in 0..nz - 1 {
+            let i = 0;
+            quads.push([
+                idx(i, j, k),
+                idx(i, j, k + 1),
+                idx(i, j + 1, k + 1),
+                idx(i, j + 1, k),
+            ]);
+            ftags.push(5);
+            let i = nx - 1;
+            quads.push([
+                idx(i, j, k),
+                idx(i, j + 1, k),
+                idx(i, j + 1, k + 1),
+                idx(i, j, k + 1),
+            ]);
+            ftags.push(6);
+        }
     }
 
     let mut res = M::empty();
     res.add_verts(verts.iter().cloned());
-    res.add_quadrangles(quads.iter().cloned(), etags.iter().cloned());
-    res.add_faces(faces.iter().cloned(), ftags.iter().cloned());
-    let faces = res.compute_faces();
-    res.fix_orientation(&faces);
+    res.add_hexahedra(hexas.iter().cloned(), etags.iter().cloned());
+    res.add_quadrangles(quads.iter().cloned(), ftags.iter().cloned());
+    // let faces = res.compute_faces();
+    // res.fix_orientation(&faces);
     res
 }
 
-pub struct Mesh2d {
-    verts: Vec<Vert2d>,
-    elems: Vec<Triangle>,
+pub struct Mesh3d {
+    verts: Vec<Vert3d>,
+    elems: Vec<Tetrahedron>,
     etags: Vec<Tag>,
-    faces: Vec<Edge>,
+    faces: Vec<Triangle>,
     ftags: Vec<Tag>,
 }
 
-impl Mesh2d {
+impl Mesh3d {
     pub fn new(
-        verts: Vec<Vert2d>,
-        elems: Vec<Triangle>,
+        verts: Vec<Vert3d>,
+        elems: Vec<Tetrahedron>,
         etags: Vec<Tag>,
-        faces: Vec<Edge>,
+        faces: Vec<Triangle>,
         ftags: Vec<Tag>,
     ) -> Self {
         Self {
@@ -84,7 +152,7 @@ impl Mesh2d {
     }
 }
 
-impl Mesh<2, 3, 2> for Mesh2d {
+impl Mesh<3, 4, 3> for Mesh3d {
     fn empty() -> Self {
         Self {
             verts: Vec::new(),
@@ -99,11 +167,11 @@ impl Mesh<2, 3, 2> for Mesh2d {
         self.verts.len()
     }
 
-    fn vert(&self, i: usize) -> &Vert2d {
+    fn vert(&self, i: usize) -> &Vert3d {
         &self.verts[i]
     }
 
-    fn add_verts<I: ExactSizeIterator<Item = Vert2d>>(&mut self, v: I) {
+    fn add_verts<I: ExactSizeIterator<Item = Vert3d>>(&mut self, v: I) {
         self.verts.extend(v);
     }
 
@@ -111,7 +179,7 @@ impl Mesh<2, 3, 2> for Mesh2d {
         self.elems.len()
     }
 
-    fn elem(&self, i: usize) -> &Triangle {
+    fn elem(&self, i: usize) -> &Tetrahedron {
         &self.elems[i]
     }
 
@@ -119,7 +187,7 @@ impl Mesh<2, 3, 2> for Mesh2d {
         self.etags[i]
     }
 
-    fn add_elems<I1: ExactSizeIterator<Item = Triangle>, I2: ExactSizeIterator<Item = Tag>>(
+    fn add_elems<I1: ExactSizeIterator<Item = Tetrahedron>, I2: ExactSizeIterator<Item = Tag>>(
         &mut self,
         elems: I1,
         etags: I2,
@@ -133,7 +201,7 @@ impl Mesh<2, 3, 2> for Mesh2d {
         self.etags.clear();
     }
 
-    fn add_elems_and_tags<I: ExactSizeIterator<Item = (Triangle, Tag)>>(
+    fn add_elems_and_tags<I: ExactSizeIterator<Item = (Tetrahedron, Tag)>>(
         &mut self,
         elems_and_tags: I,
     ) {
@@ -147,14 +215,14 @@ impl Mesh<2, 3, 2> for Mesh2d {
 
     fn invert_elem(&mut self, i: usize) {
         let e = self.elems[i];
-        self.elems[i] = [e[1], e[0], e[2]];
+        self.elems[i] = [e[1], e[0], e[2], e[3]];
     }
 
     fn n_faces(&self) -> usize {
         self.faces.len()
     }
 
-    fn face(&self, i: usize) -> &Edge {
+    fn face(&self, i: usize) -> &Triangle {
         &self.faces[i]
     }
 
@@ -162,7 +230,7 @@ impl Mesh<2, 3, 2> for Mesh2d {
         self.ftags[i]
     }
 
-    fn add_faces<I1: ExactSizeIterator<Item = Edge>, I2: ExactSizeIterator<Item = Tag>>(
+    fn add_faces<I1: ExactSizeIterator<Item = Triangle>, I2: ExactSizeIterator<Item = Tag>>(
         &mut self,
         faces: I1,
         ftags: I2,
@@ -176,7 +244,10 @@ impl Mesh<2, 3, 2> for Mesh2d {
         self.ftags.clear();
     }
 
-    fn add_faces_and_tags<I: ExactSizeIterator<Item = (Edge, Tag)>>(&mut self, faces_and_tags: I) {
+    fn add_faces_and_tags<I: ExactSizeIterator<Item = (Triangle, Tag)>>(
+        &mut self,
+        faces_and_tags: I,
+    ) {
         self.faces.reserve(faces_and_tags.len());
         self.ftags.reserve(faces_and_tags.len());
         for (e, t) in faces_and_tags {
@@ -187,7 +258,7 @@ impl Mesh<2, 3, 2> for Mesh2d {
 
     fn invert_face(&mut self, i: usize) {
         let f = self.faces[i];
-        self.faces[i] = [f[1], f[0]];
+        self.faces[i] = [f[1], f[0], f[2]];
     }
 }
 
@@ -196,77 +267,30 @@ mod tests {
     use crate::{
         assert_delta,
         mesh::{bandwidth, cell_center, Mesh},
-        mesh_2d::{rectangle_mesh, Mesh2d},
+        mesh_3d::{box_mesh, Mesh3d},
         simplices::Simplex,
-        Triangle, Vert2d,
+        Tetrahedron, Vert3d,
     };
     use rayon::iter::ParallelIterator;
 
     #[test]
-    fn test_2d_simple_1() {
-        let msh = rectangle_mesh::<Mesh2d>(1.0, 2, 1.0, 2);
+    fn test_box() {
+        let msh = box_mesh::<Mesh3d>(1.0, 2, 1.0, 2, 1.0, 2);
 
         let faces = msh.compute_faces();
         msh.check(&faces).unwrap();
 
-        let edgs = msh.compute_edges();
-        assert_eq!(edgs.len(), 5, "{edgs:?}");
-        assert!(edgs.contains_key(&[0, 1]));
-        assert!(edgs.contains_key(&[2, 3]));
-        assert!(edgs.contains_key(&[0, 2]));
-        assert!(edgs.contains_key(&[1, 3]));
-        assert!(edgs.contains_key(&[0, 3]));
-
-        let faces = msh.compute_faces();
-        assert_eq!(faces.len(), 5);
-        assert!(faces.contains_key(&[0, 1]));
-        assert!(faces.contains_key(&[2, 3]));
-        assert!(faces.contains_key(&[0, 2]));
-        assert!(faces.contains_key(&[1, 3]));
-        assert!(faces.contains_key(&[0, 3]));
-    }
-
-    #[test]
-    fn test_2d_simple_2() {
-        let msh = rectangle_mesh::<Mesh2d>(1.0, 3, 1.0, 2);
-
-        let faces = msh.compute_faces();
-        msh.check(&faces).unwrap();
-
-        let edgs = msh.compute_edges();
-        assert_eq!(edgs.len(), 9);
-        assert!(edgs.contains_key(&[0, 1]));
-        assert!(edgs.contains_key(&[1, 2]));
-        assert!(edgs.contains_key(&[3, 4]));
-        assert!(edgs.contains_key(&[4, 5]));
-        assert!(edgs.contains_key(&[0, 3]));
-        assert!(edgs.contains_key(&[1, 4]));
-        assert!(edgs.contains_key(&[2, 5]));
-        assert!(edgs.contains_key(&[0, 4]));
-        assert!(edgs.contains_key(&[1, 5]));
-    }
-
-    #[test]
-    fn test_2d_rect() {
-        let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 2.0, 15);
-
-        let faces = msh.compute_faces();
-        msh.check(&faces).unwrap();
-
-        let edgs = msh.compute_edges();
-        assert_eq!(edgs.len(), 9 * 15 + 10 * 14 + 9 * 14);
-
-        let vol = msh.seq_gelems().map(Triangle::vol).sum::<f64>();
-        assert!((vol - 2.0).abs() < 1e-10);
+        let vol = msh.seq_gelems().map(Tetrahedron::vol).sum::<f64>();
+        assert_delta!(vol, 1.0, 1e-12);
     }
 
     #[test]
     fn test_gradient() {
-        let grad = Vert2d::new(9.8, 7.6);
-        let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 1.0, 10);
+        let grad = Vert3d::new(9.8, 7.6, 5.4);
+        let msh = box_mesh::<Mesh3d>(1.0, 10, 1.0, 15, 1.0, 20);
         let f = msh
             .verts()
-            .map(|v| grad[0] * v[0] + grad[1] * v[1])
+            .map(|v| grad[0] * v[0] + grad[1] * v[1] + grad[2] * v[2])
             .collect::<Vec<_>>();
         let v2v = msh.compute_vertex_to_vertices();
         let gradient = msh.gradient(&v2v, 1, &f).collect::<Vec<_>>();
@@ -279,17 +303,18 @@ mod tests {
 
     #[test]
     fn test_integrate() {
-        let v0 = Vert2d::new(0.0, 0.0);
-        let v1 = Vert2d::new(1.0, 0.0);
-        let v2 = Vert2d::new(0.0, 1.0);
-        let ge = [&v0, &v1, &v2];
-        assert_delta!(Triangle::vol(ge), 0.5, 1e-12);
-        let ge = [&v0, &v2, &v1];
-        assert_delta!(Triangle::vol(ge), -0.5, 1e-12);
+        let v0 = Vert3d::new(0.0, 0.0, 0.0);
+        let v1 = Vert3d::new(1.0, 0.0, 0.0);
+        let v2 = Vert3d::new(0.0, 1.0, 0.0);
+        let v3 = Vert3d::new(0.0, 0.0, 1.0);
+        let ge = [&v0, &v1, &v2, &v3];
+        assert_delta!(Tetrahedron::vol(ge), 1.0 / 6.0, 1e-12);
+        let ge = [&v0, &v2, &v1, &v3];
+        assert_delta!(Tetrahedron::vol(ge), -1.0 / 6.0, 1e-12);
 
-        let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 2.0, 15);
+        let msh = box_mesh::<Mesh3d>(1.0, 10, 2.0, 15, 1.0, 20);
 
-        let vol = msh.gelems().map(Triangle::vol).sum::<f64>();
+        let vol = msh.gelems().map(Tetrahedron::vol).sum::<f64>();
         assert_delta!(vol, 2.0, 1e-12);
 
         let f = msh.verts().map(|v| v[0]).collect::<Vec<_>>();
@@ -307,10 +332,10 @@ mod tests {
 
     #[test]
     fn test_meshb() {
-        let msh: Mesh2d = rectangle_mesh::<Mesh2d>(1.0, 100, 1.0, 100);
-        let fname = "rect2d.meshb";
+        let msh = box_mesh::<Mesh3d>(1.0, 10, 1.0, 10, 1.0, 10);
+        let fname = "box3d.meshb";
         msh.write_meshb(fname).unwrap();
-        let new_msh = Mesh2d::from_meshb(fname).unwrap();
+        let new_msh = Mesh3d::from_meshb(fname).unwrap();
 
         for (v0, v1) in msh.seq_verts().zip(new_msh.seq_verts()) {
             assert!((v0 - v1).norm() < 1e-12);
@@ -337,7 +362,7 @@ mod tests {
 
     #[test]
     fn test_rcm() {
-        let msh: Mesh2d = rectangle_mesh::<Mesh2d>(1.0, 100, 1.0, 100);
+        let msh = box_mesh::<Mesh3d>(1.0, 10, 1.0, 10, 1.0, 10);
         let avg_bandwidth = bandwidth(msh.seq_elems().cloned()).1;
 
         let (msh_rcm, vert_ids, elem_ids, face_ids) = msh.reorder_rcm();

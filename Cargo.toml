@@ -4,14 +4,16 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+base64 = "0.22.1"
 log = "0.4.27"
 minimeshb = { git = "https://github.com/tucanos/minimeshb.git", version = "0.1.0" }
 nalgebra = { version = "0.33.2"}
+quick-xml = { version = "0.37.4", features = ["serialize"] }
 rand = "0.9.0"
 rayon = "1.10.0"
 rustc-hash = "2.1.1"
+serde = { version = "1.0.219", features = ["derive"]}
 tempfile = "3.19.1"
-vtkio = "0.6.3"
 
 [workspace]
 members=[".", "examples/dual_mesh_2d"]

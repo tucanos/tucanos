@@ -1,18 +1,14 @@
 use crate::least_squares::LeastSquaresGradient;
+use crate::simplices::{Simplex, EDGE_FACES, TETRA_FACES, TRIANGLE_FACES};
+use crate::to_simplices::{hex2tets, pri2tets, pyr2tets, qua2tris};
+use crate::vtu_output::{Encoding, VTUFile};
 use crate::{graph::CSRGraph, Cell, Edge, Error, Face, Result, Tag, Vertex};
+use crate::{Hexahedron, Quadrangle};
 use log::debug;
 use minimeshb::reader::MeshbReader;
 use minimeshb::writer::MeshbWriter;
 use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
-use rustc_hash::{FxBuildHasher, FxHashMap};
-use std::collections::HashMap;
-use vtkio::{
-    model::{
-        Attribute, Attributes, ByteOrder, CellType, Cells, DataArrayBase, DataSet, ElementType,
-        UnstructuredGridPiece, Version, VertexNumbers,
-    },
-    IOBuffer, Vtk,
-};
+use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
 pub(crate) fn cell_center<const D: usize, const N: usize>(v: [&Vertex<D>; N]) -> Vertex<D> {
     let res = v.iter().cloned().sum::<Vertex<D>>();
@@ -53,16 +49,28 @@ pub fn bandwidth<const C: usize, I: ExactSizeIterator<Item = [usize; C]>>(
     (bmax, bmean)
 }
 
-pub trait Mesh<const D: usize, const C: usize, const F: usize>: Sync + Sized {
-    fn elem_to_faces() -> Vec<Face<F>>;
-
-    fn elem_to_edges() -> Vec<Edge>;
-
-    fn vol(v: [&Vertex<D>; C]) -> f64;
-
-    fn normal(v: [&Vertex<D>; F]) -> Vertex<D>;
-
-    fn radius(v: [&Vertex<D>; C]) -> f64;
+pub trait Mesh<const D: usize, const C: usize, const F: usize>: Sync + Sized
+where
+    Cell<C>: Simplex<C>,
+    Cell<F>: Simplex<F>,
+{
+    fn elem_to_faces() -> Vec<Face<F>> {
+        match C {
+            4 => TETRA_FACES
+                .iter()
+                .map(|x| x.as_slice().try_into().unwrap())
+                .collect(),
+            3 => TRIANGLE_FACES
+                .iter()
+                .map(|x| x.as_slice().try_into().unwrap())
+                .collect(),
+            2 => EDGE_FACES
+                .iter()
+                .map(|x| x.as_slice().try_into().unwrap())
+                .collect(),
+            _ => unreachable!(),
+        }
+    }
 
     fn empty() -> Self;
     fn n_verts(&self) -> usize;
@@ -154,8 +162,8 @@ pub trait Mesh<const D: usize, const C: usize, const F: usize>: Sync + Sized {
         self.seq_faces().map(|f| self.gface(f))
     }
 
-    fn compute_edges(&self) -> FxHashMap<[usize; 2], usize> {
-        let elem_to_edges = Self::elem_to_edges();
+    fn compute_edges(&self) -> FxHashMap<Edge, usize> {
+        let elem_to_edges = Cell::<C>::edges();
 
         let mut res = FxHashMap::with_hasher(FxBuildHasher);
 
@@ -183,6 +191,10 @@ pub trait Mesh<const D: usize, const C: usize, const F: usize>: Sync + Sized {
         CSRGraph::from_edges(edges.keys())
     }
 
+    fn faces_are_oriented() -> bool {
+        F == D
+    }
+
     fn compute_faces(&self) -> FxHashMap<Face<F>, [usize; 3]> {
         let mut res: FxHashMap<Face<F>, [usize; 3]> = FxHashMap::with_hasher(FxBuildHasher);
         let mut idx = 0;
@@ -194,25 +206,36 @@ pub trait Mesh<const D: usize, const C: usize, const F: usize>: Sync + Sized {
                 for (i, &j) in face.iter().enumerate() {
                     tmp[i] = e[j];
                 }
-                let n = Self::normal(self.gface(&tmp));
-                tmp.sort();
-                let n_ref = Self::normal(self.gface(&tmp));
-                let is_dot_pos = n.dot(&n_ref) > 0.0;
+                if Self::faces_are_oriented() {
+                    let n = Face::<F>::normal(self.gface(&tmp));
+                    tmp.sort();
+                    let n_ref = Face::<F>::normal(self.gface(&tmp));
+                    let is_dot_pos = n.dot(&n_ref) > 0.0;
 
-                if let Some(arr) = res.get_mut(&tmp) {
-                    if is_dot_pos {
-                        arr[1] = i_elem;
+                    if let Some(arr) = res.get_mut(&tmp) {
+                        if is_dot_pos {
+                            arr[1] = i_elem;
+                        } else {
+                            assert_eq!(arr[2], usize::MAX);
+                            arr[2] = i_elem;
+                        }
                     } else {
-                        assert_eq!(arr[2], usize::MAX);
-                        arr[2] = i_elem;
+                        if is_dot_pos {
+                            res.insert(tmp, [idx, i_elem, usize::MAX]);
+                        } else {
+                            res.insert(tmp, [idx, usize::MAX, i_elem]);
+                        }
+                        idx += 1;
                     }
                 } else {
-                    if is_dot_pos {
-                        res.insert(tmp, [idx, i_elem, usize::MAX]);
+                    tmp.sort();
+                    if let Some(arr) = res.get_mut(&tmp) {
+                        assert_eq!(arr[2], usize::MAX);
+                        arr[2] = i_elem;
                     } else {
-                        res.insert(tmp, [idx, usize::MAX, i_elem]);
+                        res.insert(tmp, [idx, i_elem, usize::MAX]);
+                        idx += 1;
                     }
-                    idx += 1;
                 }
             }
         }
@@ -222,41 +245,101 @@ pub trait Mesh<const D: usize, const C: usize, const F: usize>: Sync + Sized {
     fn fix_orientation(&mut self, all_faces: &FxHashMap<Face<F>, [usize; 3]>) {
         let flg: Vec<_> = self
             .elems()
-            .map(|e| Self::vol(self.gelem(e)) < 0.0)
+            .map(|e| Cell::<C>::vol(self.gelem(e)) < 0.0)
             .collect();
         flg.iter()
             .enumerate()
             .filter(|(_, &f)| f)
             .for_each(|(i, _)| self.invert_elem(i));
 
-        let flg: Vec<_> = self
-            .faces()
-            .map(|f| {
-                let gf = self.gface(f);
-                let fc = cell_center(gf);
-                let n = Self::normal(gf);
+        if Self::faces_are_oriented() {
+            let flg: Vec<_> = self
+                .faces()
+                .map(|f| {
+                    let gf = self.gface(f);
+                    let fc = cell_center(gf);
+                    let n = Face::<F>::normal(gf);
 
+                    let mut f = *f;
+                    f.sort();
+                    let [_, i0, i1] = all_faces.get(&f).unwrap();
+                    assert!(*i0 == usize::MAX || *i1 == usize::MAX);
+                    let i = if *i1 == usize::MAX { *i0 } else { *i1 };
+                    let ge = self.gelem(self.elem(i));
+                    let ec = cell_center(ge);
+
+                    n.dot(&(fc - ec)) < 0.0
+                })
+                .collect();
+            let n = flg
+                .iter()
+                .enumerate()
+                .filter(|(_, &f)| f)
+                .map(|(i, _)| {
+                    self.invert_face(i);
+                })
+                .count();
+            debug!("{n} faces reoriented");
+        }
+    }
+
+    fn tag_internal_faces(
+        &mut self,
+        all_faces: &FxHashMap<Face<F>, [usize; 3]>,
+    ) -> FxHashMap<[Tag; 2], Tag> {
+        let mut res = FxHashMap::with_hasher(FxBuildHasher);
+
+        let tagged_faces = self
+            .faces()
+            .zip(self.ftags())
+            .map(|(f, t)| {
                 let mut f = *f;
                 f.sort();
-                let [_, i0, i1] = all_faces.get(&f).unwrap();
-                assert!(*i0 == usize::MAX || *i1 == usize::MAX);
-                let i = if *i1 == usize::MAX { *i0 } else { *i1 };
-                let ge = self.gelem(self.elem(i));
-                let ec = cell_center(ge);
+                (f, t)
+            })
+            .collect::<FxHashMap<_, _>>();
 
-                n.dot(&(fc - ec)) < 0.0
-            })
-            .collect();
-        let n = flg
-            .iter()
-            .enumerate()
-            .filter(|(_, &f)| f)
-            .map(|(i, _)| {
-                self.invert_face(i);
-            })
-            .count();
-        debug!("{n} faces reoriented");
+        let mut next_tag = self.ftags().max().unwrap_or(0) + 1;
+
+        // check tagged internal faces
+        for (f, [_, i0, i1]) in all_faces {
+            if *i0 != usize::MAX || *i1 != usize::MAX {
+                let t0 = self.etag(*i0);
+                let t1 = self.etag(*i1);
+                if t0 != t1 {
+                    if let Some(tag) = tagged_faces.get(f) {
+                        let tags = if t0 < t1 { [t0, t1] } else { [t1, t0] };
+                        if let Some(tmp) = res.get(&tags) {
+                            assert_eq!(tag, tmp);
+                        }
+                    }
+                }
+            }
+        }
+
+        // add untagged internal faces
+        for (f, [_, i0, i1]) in all_faces {
+            if *i0 != usize::MAX || *i1 != usize::MAX {
+                let t0 = self.etag(*i0);
+                let t1 = self.etag(*i1);
+                if t0 != t1 {
+                    if tagged_faces.get(f).is_none() {
+                        let tags = if t0 < t1 { [t0, t1] } else { [t1, t0] };
+                        if let Some(&tmp) = res.get(&tags) {
+                            self.add_faces(std::iter::once(f).cloned(), std::iter::once(tmp));
+                        } else {
+                            res.insert(tags, next_tag);
+                            self.add_faces(std::iter::once(f).cloned(), std::iter::once(next_tag));
+                            next_tag += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        res
     }
+
     fn check(&self, all_faces: &FxHashMap<Face<F>, [usize; 3]>) -> Result<()> {
         // lengths
         if self.elems().len() != self.etags().len() {
@@ -272,7 +355,7 @@ pub trait Mesh<const D: usize, const C: usize, const F: usize>: Sync + Sized {
                 return Err(Error::from("Invalid index in elems"));
             }
             let ge = self.gelem(e);
-            if Self::vol(ge) < 0.0 {
+            if Cell::<C>::vol(ge) < 0.0 {
                 return Err(Error::from("Elem has a <0 volume"));
             }
         }
@@ -283,41 +366,70 @@ pub trait Mesh<const D: usize, const C: usize, const F: usize>: Sync + Sized {
         }
 
         // tagged faces
-        let n_bdy_1 = all_faces
-            .iter()
-            .filter(|(_, [_, i0, i1])| *i0 == usize::MAX || *i1 == usize::MAX)
-            .count();
-        if n_bdy_1 != self.n_faces() {
-            return Err(Error::from("Not all boundary faces are tagged"));
+        let tagged_faces = self
+            .faces()
+            .map(|f| {
+                let mut f = *f;
+                f.sort();
+                f
+            })
+            .collect::<FxHashSet<_>>();
+
+        for (f, [_, i0, i1]) in all_faces {
+            if *i0 == usize::MAX || *i1 == usize::MAX {
+                if !tagged_faces.contains(f) {
+                    return Err(Error::from(&format!("Boundary face {f:?} not tagged")));
+                }
+            } else {
+                let t0 = self.etag(*i0);
+                let t1 = self.etag(*i1);
+                if t0 != t1 {
+                    if !tagged_faces.contains(f) {
+                        return Err(Error::from(&format!(
+                            "Internal boundary face {f:?} not tagged ({t0} / {t1})"
+                        )));
+                    }
+                }
+            }
         }
-        assert_eq!(n_bdy_1, self.n_faces());
+
         for f in self.seq_faces() {
+            let gf = self.gface(f);
+            let fc = cell_center(gf);
             let mut tmp = *f;
             tmp.sort();
             let [_, i0, i1] = all_faces.get(&tmp).unwrap();
             if *i0 != usize::MAX && *i1 != usize::MAX {
-                return Err(Error::from("Tagged face inside the domain"));
+                if self.etag(*i0) == self.etag(*i1) {
+                    return Err(Error::from(&format!(
+                        "Tagged face inside the domain: center = {fc:?}",
+                    )));
+                }
             }
             let i = if *i1 == usize::MAX { *i0 } else { *i1 };
             let ge = self.gelem(self.elem(i));
-            let gf = self.gface(f);
             let ec = cell_center(ge);
-            let fc = cell_center(gf);
-            let n = Self::normal(gf);
-            if n.dot(&(fc - ec)) < 0.0 {
-                return Err(Error::from("Invalid face orientation"));
+            if Self::faces_are_oriented() {
+                let n = Face::<F>::normal(gf);
+                if n.dot(&(fc - ec)) < 0.0 {
+                    return Err(Error::from(&format!(
+                        "Invalid face orientation: center = {fc:?}"
+                    )));
+                }
             }
         }
 
         // volumes
-        let vol = self.gelems().map(|ge| Self::vol(ge)).sum::<f64>();
-        let vol2 = self
-            .gfaces()
-            .map(|gf| cell_center(gf).dot(&Self::normal(gf)))
-            .sum::<f64>()
-            / D as f64;
-        if (vol - vol2).abs() > 1e-10 * vol {
-            return Err(Error::from("Invalid volume"));
+        if Self::faces_are_oriented() {
+            let vol = self.gelems().map(|ge| Cell::<C>::vol(ge)).sum::<f64>();
+            let vol2 = self
+                .gfaces()
+                .map(|gf| cell_center(gf).dot(&Face::<F>::normal(gf)))
+                .sum::<f64>()
+                / D as f64;
+            if (vol - vol2).abs() > 1e-10 * vol {
+                return Err(Error::from("Invalid volume"));
+            }
         }
         Ok(())
     }
@@ -341,10 +453,8 @@ pub trait Mesh<const D: usize, const C: usize, const F: usize>: Sync + Sized {
         })
     }
 
-    fn quadrature(&self) -> (Vec<f64>, Vec<Vec<f64>>);
-
     fn integrate<G: Fn(f64) -> f64 + Send + Sync>(&self, f: &[f64], op: G) -> f64 {
-        let (qw, qp) = self.quadrature();
+        let (qw, qp) = Cell::<C>::quadrature();
         debug_assert!(qp.iter().all(|x| x.len() == C - 1));
 
         self.elems()
@@ -363,7 +473,7 @@ pub trait Mesh<const D: usize, const C: usize, const F: usize>: Sync + Sized {
                         *w * op(x_pt)
                     })
                     .sum::<f64>();
-                Self::vol(self.gelem(e)) * res
+                Cell::<C>::vol(self.gelem(e)) * res
             })
             .sum::<f64>()
     }
@@ -555,89 +665,10 @@ pub trait Mesh<const D: usize, const C: usize, const F: usize>: Sync + Sized {
         Ok(())
     }
 
-    fn write_vtk(
-        &self,
-        file_name: &str,
-        vertex_data: Option<HashMap<String, Vec<f64>>>,
-        elem_data: Option<HashMap<String, Vec<f64>>>,
-    ) -> Result<()> {
-        let connectivity = self.elems().flatten().map(|&x| x as u64).collect();
-        let offsets = (0..self.n_elems()).map(|i| (C * (i + 1)) as u64).collect();
-        let cell_type = match C {
-            4 => CellType::Tetra,
-            3 => CellType::Triangle,
-            2 => CellType::PolyLine,
-            _ => unreachable!(),
-        };
-        let mut point_data = Vec::new();
-        if let Some(vertex_data) = vertex_data {
-            for (name, arr) in &vertex_data {
-                let num_comp = arr.len() / self.n_verts();
-                point_data.push(Attribute::DataArray(DataArrayBase {
-                    name: name.to_string(),
-                    elem: ElementType::Scalars {
-                        num_comp: num_comp as u32,
-                        lookup_table: None,
-                    },
-                    data: IOBuffer::F64(arr.clone()),
-                }));
-            }
-        }
+    fn write_vtk(&self, file_name: &str) -> Result<()> {
+        let vtu = VTUFile::from_mesh(self, Encoding::Binary);
 
-        let mut cell_data = Vec::new();
-        cell_data.push(Attribute::DataArray(DataArrayBase {
-            name: String::from("tag"),
-            elem: ElementType::Scalars {
-                num_comp: 1,
-                lookup_table: None,
-            },
-            data: IOBuffer::I16(self.etags().collect()),
-        }));
-
-        if let Some(elem_data) = elem_data {
-            for (name, arr) in &elem_data {
-                let num_comp = arr.len() / self.n_elems();
-                cell_data.push(Attribute::DataArray(DataArrayBase {
-                    name: name.to_string(),
-                    elem: ElementType::Scalars {
-                        num_comp: num_comp as u32,
-                        lookup_table: None,
-                    },
-                    data: IOBuffer::F64(arr.clone()),
-                }));
-            }
-        }
-
-        let mut coords = Vec::with_capacity(3 * self.n_verts());
-        self.seq_verts().for_each(|p| {
-            coords.extend_from_slice(p.as_slice());
-            if D < 3 {
-                coords.resize(coords.len() + 3 - D, 0.0);
-            }
-        });
-
-        let vtk = Vtk {
-            version: Version { major: 1, minor: 0 },
-            title: String::new(),
-            byte_order: ByteOrder::LittleEndian,
-            file_path: None,
-            data: DataSet::inline(UnstructuredGridPiece {
-                points: IOBuffer::F64(coords),
-                cells: Cells {
-                    cell_verts: VertexNumbers::XML {
-                        connectivity,
-                        offsets,
-                    },
-                    types: vec![cell_type; self.n_elems()],
-                },
-                data: Attributes {
-                    point: point_data,
-                    cell: cell_data,
-                },
-            }),
-        };
-
-        vtk.export(file_name)?;
+        vtu.export(file_name)?;
 
         Ok(())
     }
@@ -705,7 +736,11 @@ pub trait Mesh<const D: usize, const C: usize, const F: usize>: Sync + Sized {
     fn extract_faces<const C2: usize, const F2: usize, M: Mesh<D, C2, F2>, G: Fn(Tag) -> bool>(
         &self,
         filter: G,
-    ) -> (M, Vec<usize>) {
+    ) -> (M, Vec<usize>)
+    where
+        Cell<C2>: Simplex<C2>,
+        Cell<F2>: Simplex<F2>,
+    {
         assert_eq!(C2, C - 1);
         assert_eq!(F2, F - 1);
         let mut new_ids = vec![usize::MAX; self.n_verts()];
@@ -752,7 +787,121 @@ pub trait Mesh<const D: usize, const C: usize, const F: usize>: Sync + Sized {
         (res, vert_ids)
     }
 
-    fn boundary<const C2: usize, const F2: usize, M: Mesh<D, C2, F2>>(&self) -> (M, Vec<usize>) {
+    fn boundary<const C2: usize, const F2: usize, M: Mesh<D, C2, F2>>(&self) -> (M, Vec<usize>)
+    where
+        Cell<C2>: Simplex<C2>,
+        Cell<F2>: Simplex<F2>,
+    {
         self.extract_faces(|_| true)
+    }
+
+    fn add_quadrangles<
+        I1: ExactSizeIterator<Item = Quadrangle>,
+        I2: ExactSizeIterator<Item = Tag>,
+    >(
+        &mut self,
+        quads: I1,
+        tags: I2,
+    ) {
+        if C == 3 {
+            let mut tmp = Vec::with_capacity(2 * quads.len());
+            quads.zip(tags).for_each(|(q, t)| {
+                let tris = qua2tris(&q);
+                for tri in tris {
+                    let mut tmp_tri = [0; C];
+                    tmp_tri.copy_from_slice(&tri);
+                    tmp.push((tmp_tri, t));
+                }
+            });
+            self.add_elems_and_tags(tmp.iter().cloned());
+        } else if F == 3 {
+            let mut tmp = Vec::with_capacity(2 * quads.len());
+            quads.zip(tags).for_each(|(q, t)| {
+                let tris = qua2tris(&q);
+                for tri in tris {
+                    let mut tmp_tri = [0; F];
+                    tmp_tri.copy_from_slice(&tri);
+                    tmp.push((tmp_tri, t));
+                }
+            });
+            self.add_faces_and_tags(tmp.iter().cloned());
+        } else {
+            unreachable!()
+        }
+    }
+
+    fn add_hexahedra<
+        I1: ExactSizeIterator<Item = Hexahedron>,
+        I2: ExactSizeIterator<Item = Tag>,
+    >(
+        &mut self,
+        hexs: I1,
+        tags: I2,
+    ) -> Vec<usize> {
+        if C == 4 {
+            let mut tmp = Vec::with_capacity(6 * hexs.len());
+            let mut ids = Vec::with_capacity(6 * hexs.len());
+            hexs.zip(tags).enumerate().for_each(|(i, (q, t))| {
+                let (tets, last_tet) = hex2tets(&q);
+                for tet in tets {
+                    let mut tmp_tet = [0; C];
+                    tmp_tet.copy_from_slice(&tet);
+                    tmp.push((tmp_tet, t));
+                    ids.push(i);
+                }
+                if let Some(last_tet) = last_tet {
+                    let mut tmp_tet = [0; C];
+                    tmp_tet.copy_from_slice(&last_tet);
+                    tmp.push((tmp_tet, t));
+                    ids.push(i);
+                }
+            });
+            self.add_elems_and_tags(tmp.iter().cloned());
+            return ids;
+        } else {
+            unreachable!()
+        }
+    }
+
+    fn add_prisms<I1: ExactSizeIterator<Item = Hexahedron>, I2: ExactSizeIterator<Item = Tag>>(
+        &mut self,
+        pris: I1,
+        tags: I2,
+    ) {
+        if C == 4 {
+            let mut tmp = Vec::with_capacity(3 * pris.len());
+            pris.zip(tags).for_each(|(q, t)| {
+                let tets = pri2tets(&q);
+                for tet in tets {
+                    let mut tmp_tet = [0; C];
+                    tmp_tet.copy_from_slice(&tet);
+                    tmp.push((tmp_tet, t));
+                }
+            });
+            self.add_elems_and_tags(tmp.iter().cloned());
+        } else {
+            unreachable!()
+        }
+    }
+
+    fn add_pyramids<I1: ExactSizeIterator<Item = Hexahedron>, I2: ExactSizeIterator<Item = Tag>>(
+        &mut self,
+        pyrs: I1,
+        tags: I2,
+    ) {
+        if C == 4 {
+            let mut tmp = Vec::with_capacity(3 * pyrs.len());
+            pyrs.zip(tags).for_each(|(q, t)| {
+                let tets = pyr2tets(&q);
+                for tet in tets {
+                    let mut tmp_tet = [0; C];
+                    tmp_tet.copy_from_slice(&tet);
+                    tmp.push((tmp_tet, t));
+                }
+            });
+            self.add_elems_and_tags(tmp.iter().cloned());
+        } else {
+            unreachable!()
+        }
     }
 }
