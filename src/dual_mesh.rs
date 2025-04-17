@@ -1,6 +1,8 @@
 use crate::{
     mesh::{cell_center, Mesh},
-    Tag, Vertex,
+    poly_mesh::PolyMesh,
+    simplices::Simplex,
+    Cell, Error, Face, Result, Tag, Vertex,
 };
 use nalgebra::{DMatrix, DVector};
 use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
@@ -11,16 +13,13 @@ pub enum DualType {
     Barth,
 }
 
-pub trait DualMesh<const D: usize, const C: usize, const F: usize>: Sync {
+pub trait DualMesh<const D: usize, const C: usize, const F: usize>: PolyMesh<D>
+where
+    Cell<C>: Simplex<C>,
+    Cell<F>: Simplex<F>,
+{
     fn new<M: Mesh<D, C, F>>(msh: &M, t: DualType) -> Self;
-    fn normal(v: [&Vertex<D>; F]) -> Vertex<D>;
-    fn n_verts(&self) -> usize;
-    fn vert(&self, i: usize) -> &Vertex<D>;
-    fn verts(&self) -> impl IndexedParallelIterator<Item = &Vertex<D>> + '_ {
-        (0..self.n_verts()).into_par_iter().map(|i| self.vert(i))
-    }
-    fn n_elems(&self) -> usize;
-    fn elem(&self, i: usize) -> &[(usize, bool)];
+
     fn print_elem_info(&self, i: usize) {
         println!("Dual element {i}");
         self.edges_and_normals()
@@ -46,24 +45,6 @@ pub trait DualMesh<const D: usize, const C: usize, const F: usize>: Sync {
             });
         println!("  vol: {:.2e}", self.vol(i));
     }
-    fn elems(&self) -> impl IndexedParallelIterator<Item = &[(usize, bool)]> + '_ {
-        (0..self.n_elems()).into_par_iter().map(|i| self.elem(i))
-    }
-    fn n_faces(&self) -> usize;
-    fn face(&self, i: usize) -> [usize; F];
-    fn faces(&self) -> impl IndexedParallelIterator<Item = [usize; F]> + '_ {
-        (0..self.n_faces()).into_par_iter().map(|i| self.face(i))
-    }
-    fn seq_faces(&self) -> impl ExactSizeIterator<Item = [usize; F]> + '_ {
-        (0..self.n_faces()).map(|i| self.face(i))
-    }
-    fn ftag(&self, i: usize) -> Tag;
-    fn ftags(&self) -> impl IndexedParallelIterator<Item = Tag> + '_ {
-        (0..self.n_faces()).into_par_iter().map(|i| self.ftag(i))
-    }
-    fn seq_ftags(&self) -> impl ExactSizeIterator<Item = Tag> + '_ {
-        (0..self.n_faces()).map(|i| self.ftag(i))
-    }
     fn gface(&self, f: &[usize; F]) -> [&Vertex<D>; F] {
         let mut res = [self.vert(0); F];
         for (j, &k) in f.iter().enumerate() {
@@ -72,7 +53,16 @@ pub trait DualMesh<const D: usize, const C: usize, const F: usize>: Sync {
         res
     }
     fn gfaces(&self) -> impl IndexedParallelIterator<Item = [&Vertex<D>; F]> + '_ {
-        self.faces().into_par_iter().map(|f| self.gface(&f))
+        self.faces().map(|f| {
+            let f = f.try_into().unwrap();
+            self.gface(&f)
+        })
+    }
+    fn seq_gfaces(&self) -> impl ExactSizeIterator<Item = [&Vertex<D>; F]> + '_ {
+        self.seq_faces().map(|f| {
+            let f = f.try_into().unwrap();
+            self.gface(&f)
+        })
     }
     fn n_edges(&self) -> usize;
     fn edge(&self, i: usize) -> [usize; 2];
@@ -99,73 +89,80 @@ pub trait DualMesh<const D: usize, const C: usize, const F: usize>: Sync {
     fn vol(&self, i: usize) -> f64 {
         self.elem(i)
             .iter()
-            .map(|(i, orient)| {
-                let mut f = self.face(*i);
-                if !*orient {
+            .map(|&(i, orient)| {
+                let mut f: [usize; F] = self.face(i).try_into().unwrap();
+                if !orient {
                     f.swap(0, 1);
                 }
                 self.gface(&f)
             })
-            .map(|gf| cell_center(gf).dot(&Self::normal(gf)))
+            .map(|gf| cell_center(gf).dot(&Face::<F>::normal(gf)))
             .sum::<f64>()
             / D as f64
     }
     fn vols(&self) -> impl IndexedParallelIterator<Item = f64> + '_ {
         (0..self.n_elems()).into_par_iter().map(|i| self.vol(i))
     }
+    fn seq_vols(&self) -> impl ExactSizeIterator<Item = f64> + '_ {
+        (0..self.n_elems()).map(|i| self.vol(i))
+    }
     fn is_closed(&self, e: &[(usize, bool)]) -> bool {
         let mut res = [0.0; D];
 
         e.iter()
-            .map(|(i, orient)| {
-                let mut f = self.face(*i);
-                if !*orient {
+            .map(|&(i, orient)| {
+                let mut f: [usize; F] = self.face(i).try_into().unwrap();
+                if !orient {
                     f.swap(0, 1);
                 }
                 self.gface(&f)
             })
             .for_each(|gf| {
-                let n = Self::normal(gf);
+                let n = Face::<F>::normal(gf);
                 res.iter_mut().zip(n.iter()).for_each(|(x, y)| *x += y)
             });
         res.iter().map(|x| x.abs()).sum::<f64>() < 1e-10
     }
-    fn is_ok(&self) -> bool {
+    fn check(&self) -> Result<()> {
         // lengths
         if self.faces().len() != self.ftags().len() {
-            return false;
+            return Err(Error::from("Inconsistent sizes (faces)"));
         }
 
         // indices
-        if self.faces().any(|f| f.iter().all(|&i| i >= self.n_verts())) {
-            return false;
+        if self.faces().any(|f| f.iter().any(|&i| i >= self.n_verts())) {
+            return Err(Error::from("Inconsistent indices (faces)"));
         }
 
         // faces
         if self
             .elems()
-            .any(|e| e.iter().all(|&x| x.0 >= self.n_faces()))
+            .any(|e| e.iter().any(|&x| x.0 >= self.n_faces()))
         {
-            return false;
+            return Err(Error::from("Inconsistent indices (elems)"));
         }
 
         // closed elements
-        if self.elems().any(|e| !self.is_closed(e)) {
-            return false;
+        for (e, v) in self.seq_elems().zip(self.seq_vols()) {
+            if v < 0.0 {
+                return Err(Error::from(&format!("Volume of {e:?} = {v} < 0")));
+            }
+            if !self.is_closed(e) {
+                return Err(Error::from(&format!("Element {e:?} not closed")));
+            }
         }
 
-        // volumes
-        if self.vols().any(|v| v < 0.0) {
-            return false;
-        }
-
-        true
+        Ok(())
     }
 
     fn extract_faces<const C2: usize, const F2: usize, M: Mesh<D, C2, F2>, G: Fn(Tag) -> bool>(
         &self,
         filter: G,
-    ) -> (M, Vec<usize>) {
+    ) -> (M, Vec<usize>)
+    where
+        Cell<C2>: Simplex<C2>,
+        Cell<F2>: Simplex<F2>,
+    {
         assert_eq!(C2, C - 1);
         assert_eq!(F2, F - 1);
         let mut new_ids = vec![usize::MAX; self.n_verts()];
@@ -212,7 +209,11 @@ pub trait DualMesh<const D: usize, const C: usize, const F: usize>: Sync {
         (res, vert_ids)
     }
 
-    fn boundary<const C2: usize, const F2: usize, M: Mesh<D, C2, F2>>(&self) -> (M, Vec<usize>) {
+    fn boundary<const C2: usize, const F2: usize, M: Mesh<D, C2, F2>>(&self) -> (M, Vec<usize>)
+    where
+        Cell<C2>: Simplex<C2>,
+        Cell<F2>: Simplex<F2>,
+    {
         self.extract_faces(|t| t > 0)
     }
 }
