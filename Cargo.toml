@@ -1,5 +1,5 @@
 [package]
-name = "simplex_mesh"
+name = "smesh"
 version = "0.1.0"
 edition = "2021"
 
