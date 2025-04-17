@@ -1,6 +1,6 @@
 use std::{path::Path, process::Command};
 
-use smesh::{
+use tmesh::{
     boundary_mesh_2d::BoundaryMesh2d,
     dual_mesh::{DualMesh, DualType},
     dual_mesh_2d::DualMesh2d,

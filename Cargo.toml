@@ -1,5 +1,5 @@
 [package]
-name = "smesh"
+name = "tmesh"
 version = "0.1.0"
 edition = "2021"
 
@@ -16,4 +16,4 @@ serde = { version = "1.0.219", features = ["derive"]}
 tempfile = "3.19.1"
 
 [workspace]
-members=[".", "examples/dual_mesh_2d", "pysmesh"]
+members=[".", "examples/dual_mesh_2d", "pytmesh"]
