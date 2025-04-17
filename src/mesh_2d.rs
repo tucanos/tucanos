@@ -248,7 +248,7 @@ mod tests {
 
     #[test]
     fn test_2d_rect() {
-        let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 2.0, 15);
+        let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 2.0, 15).random_shuffle();
 
         let faces = msh.compute_faces();
         msh.check(&faces).unwrap();
@@ -263,7 +263,7 @@ mod tests {
     #[test]
     fn test_gradient() {
         let grad = Vert2d::new(9.8, 7.6);
-        let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 1.0, 10);
+        let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 1.0, 10).random_shuffle();
         let f = msh
             .verts()
             .map(|v| grad[0] * v[0] + grad[1] * v[1])
@@ -287,7 +287,7 @@ mod tests {
         let ge = [&v0, &v2, &v1];
         assert_delta!(Triangle::vol(ge), -0.5, 1e-12);
 
-        let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 2.0, 15);
+        let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 2.0, 15).random_shuffle();
 
         let vol = msh.gelems().map(Triangle::vol).sum::<f64>();
         assert_delta!(vol, 2.0, 1e-12);
@@ -337,13 +337,14 @@ mod tests {
 
     #[test]
     fn test_rcm() {
-        let msh: Mesh2d = rectangle_mesh::<Mesh2d>(1.0, 100, 1.0, 100);
+        let msh = rectangle_mesh::<Mesh2d>(1.0, 100, 1.0, 100).random_shuffle();
         let avg_bandwidth = bandwidth(msh.seq_elems().cloned()).1;
+        assert!(avg_bandwidth > 1000.0);
 
         let (msh_rcm, vert_ids, elem_ids, face_ids) = msh.reorder_rcm();
         let avg_bandwidth_rcm = bandwidth(msh_rcm.seq_elems().cloned()).1;
 
-        assert!(avg_bandwidth_rcm < avg_bandwidth);
+        assert!(avg_bandwidth_rcm < 80.0);
 
         for (i, v) in msh_rcm.seq_verts().enumerate() {
             let other = msh.vert(vert_ids[i]);

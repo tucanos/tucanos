@@ -7,6 +7,9 @@ use crate::{Hexahedron, Quadrangle};
 use log::debug;
 use minimeshb::reader::MeshbReader;
 use minimeshb::writer::MeshbWriter;
+use rand::rngs::StdRng;
+use rand::seq::SliceRandom;
+use rand::SeedableRng;
 use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
@@ -541,7 +544,6 @@ where
     fn reorder_rcm(&self) -> (Self, Vec<usize>, Vec<usize>, Vec<usize>) {
         let graph = self.compute_vertex_to_vertices();
         let vert_ids = graph.reverse_cuthill_mckee();
-
         let mut res = self.reorder_vertices(&vert_ids);
 
         let elem_ids = sort_elem_min_ids(res.seq_elems().cloned());
@@ -551,6 +553,25 @@ where
         res.reorder_faces(&face_ids);
 
         (res, vert_ids, elem_ids, face_ids)
+    }
+
+    fn random_shuffle(&self) -> Self {
+        let mut rng = StdRng::seed_from_u64(1234);
+
+        let mut vert_ids = (0..self.n_verts()).collect::<Vec<_>>();
+        vert_ids.shuffle(&mut rng);
+
+        let mut res = self.reorder_vertices(&vert_ids);
+
+        let mut elem_ids = (0..self.n_elems()).collect::<Vec<_>>();
+        elem_ids.shuffle(&mut rng);
+        res.reorder_elems(&elem_ids);
+
+        let mut face_ids = (0..self.n_faces()).collect::<Vec<_>>();
+        face_ids.shuffle(&mut rng);
+        res.reorder_faces(&face_ids);
+
+        res
     }
 
     fn from_meshb(file_name: &str) -> Result<Self> {
