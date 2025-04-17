@@ -1,5 +1,8 @@
 /target
 Cargo.lock
+*.mesh
 *.meshb
+*.sol
 *.solb
 *.vtu
+*.geo
