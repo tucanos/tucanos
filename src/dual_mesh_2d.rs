@@ -29,7 +29,7 @@ impl DualMesh2d {
             DualType::Barth => {
                 let bcoords = circumcenter_bcoords(v);
                 if bcoords.iter().all(|&x| x >= 0.0) {
-                    cell_vertex(v, &bcoords)
+                    cell_vertex(v, bcoords)
                 } else {
                     let l0 = (v[2] - v[1]).norm();
                     let l1 = (v[2] - v[0]).norm();
@@ -306,7 +306,7 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::{
-        dual_mesh::{circumcenter_bcoords, DualMesh, DualType},
+        dual_mesh::{DualMesh, DualType},
         dual_mesh_2d::DualMesh2d,
         mesh_2d::rectangle_mesh,
         mesh_2d::Mesh2d,
@@ -334,21 +334,6 @@ mod tests {
             .filter(|&gf| Edge::normal(gf).norm() < 1e-12)
             .count();
         assert_eq!(n_empty_faces, 0);
-    }
-
-    #[test]
-    fn test_circumcenter() {
-        let p0 = Vert2d::new(0.0, 0.0);
-        let p1 = Vert2d::new(4.0, 0.0);
-        let bcoords = circumcenter_bcoords([&p0, &p1]);
-        assert!((bcoords[0] - 0.5).abs() < 1e-10);
-        assert!((bcoords[1] - 0.5).abs() < 1e-10);
-
-        let p2 = Vert2d::new(0.0, 4.0);
-        let bcoords = circumcenter_bcoords([&p0, &p1, &p2]);
-        assert!((bcoords[0] - 0.0).abs() < 1e-10);
-        assert!((bcoords[1] - 0.5).abs() < 1e-10);
-        assert!((bcoords[2] - 0.5).abs() < 1e-10);
     }
 
     #[test]

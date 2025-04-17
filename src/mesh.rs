@@ -17,9 +17,8 @@ pub(crate) fn cell_center<const D: usize, const N: usize>(v: [&Vertex<D>; N]) ->
 
 pub(crate) fn cell_vertex<const D: usize, const N: usize>(
     v: [&Vertex<D>; N],
-    bcoords: &[f64],
+    bcoords: [f64; N],
 ) -> Vertex<D> {
-    debug_assert_eq!(bcoords.len(), N);
     bcoords.iter().zip(v.iter()).map(|(&w, &&v)| w * v).sum()
 }
 

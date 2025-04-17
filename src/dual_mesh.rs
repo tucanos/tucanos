@@ -246,3 +246,87 @@ pub fn circumcenter_bcoords<const D: usize, const C: usize>(v: [&Vertex<D>; C]) 
     }
     res
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{assert_delta, dual_mesh::circumcenter_bcoords, mesh::cell_vertex, Vert2d, Vert3d};
+    use rand::{rngs::StdRng, Rng, SeedableRng};
+
+    #[test]
+    fn test_circumcenter_2d() {
+        let mut rng = StdRng::seed_from_u64(1234);
+
+        for _ in 0..100 {
+            let p0 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let p1 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let p2 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let ge = [&p0, &p1, &p2];
+            let bcoords = circumcenter_bcoords(ge);
+            let p = cell_vertex(ge, bcoords);
+            let l0 = (p0 - p).norm();
+            let l1 = (p1 - p).norm();
+            let l2 = (p2 - p).norm();
+            assert_delta!(l0, l1, 1e-12);
+            assert_delta!(l0, l2, 1e-12);
+        }
+    }
+
+    #[test]
+    fn test_circumcenter_2d_edg() {
+        let mut rng = StdRng::seed_from_u64(1234);
+
+        for _ in 0..100 {
+            let p0 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let p1 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let ge = [&p0, &p1];
+            let bcoords = circumcenter_bcoords(ge);
+            let p = cell_vertex(ge, bcoords);
+            let l0 = (p0 - p).norm();
+            let l1 = (p1 - p).norm();
+            assert_delta!(l0, l1, 1e-12);
+            assert_delta!(bcoords[0], 0.5, 1e-12);
+            assert_delta!(bcoords[1], 0.5, 1e-12);
+        }
+    }
+
+    #[test]
+    fn test_circumcenter_3d() {
+        let mut rng = StdRng::seed_from_u64(1234);
+
+        for _ in 0..100 {
+            let p0 = Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let p1 = Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let p2 = Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let p3 = Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let ge = [&p0, &p1, &p2, &p3];
+            let bcoords = circumcenter_bcoords(ge);
+            let p = cell_vertex(ge, bcoords);
+            let l0 = (p0 - p).norm();
+            let l1 = (p1 - p).norm();
+            let l2 = (p2 - p).norm();
+            let l3 = (p3 - p).norm();
+            assert_delta!(l0, l1, 1e-12);
+            assert_delta!(l0, l2, 1e-12);
+            assert_delta!(l0, l3, 1e-12);
+        }
+    }
+
+    #[test]
+    fn test_circumcenter_3d_tri() {
+        let mut rng = StdRng::seed_from_u64(1234);
+
+        for _ in 0..100 {
+            let p0 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let p1 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let p2 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let ge = [&p0, &p1, &p2];
+            let bcoords = circumcenter_bcoords(ge);
+            let p = cell_vertex(ge, bcoords);
+            let l0 = (p0 - p).norm();
+            let l1 = (p1 - p).norm();
+            let l2 = (p2 - p).norm();
+            assert_delta!(l0, l1, 1e-12);
+            assert_delta!(l0, l2, 1e-12);
+        }
+    }
+}
