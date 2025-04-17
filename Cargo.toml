@@ -16,4 +16,4 @@ serde = { version = "1.0.219", features = ["derive"]}
 tempfile = "3.19.1"
 
 [workspace]
-members=[".", "examples/dual_mesh_2d"]
+members=[".", "examples/dual_mesh_2d", "pysmesh"]
