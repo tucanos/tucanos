@@ -92,7 +92,7 @@ class TestMeshes(unittest.TestCase):
         ny = 6
         nz = 7
         msh = Mesh3d.box_mesh(np.linspace(0, 1, nx), np.linspace(0, 2, ny), np.linspace(0, 3, nz))
-        dual = DualMesh3d(msh, DualType.Median)
+        dual = DualMesh3d(msh, DualType.Barth)
         
         dual.write_vtk("dual_3d.vtu")
 
@@ -104,6 +104,7 @@ class TestMeshes(unittest.TestCase):
         self.assertEqual(dual.n_verts(), data.GetNumberOfPoints())
         self.assertEqual(dual.n_elems(), data.GetNumberOfCells())
         
+        # Warning: only works for convex cells -> ok with Barth
         alg = vtk.vtkCellSizeFilter()
         alg.SetInputDataObject(data)
         alg.Update()
