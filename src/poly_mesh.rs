@@ -1,6 +1,8 @@
 use crate::{
+    mesh::Mesh,
+    simplices::Simplex,
     vtu_output::{Encoding, VTUFile},
-    Error, Result, Tag, Vertex,
+    Cell, Error, Face, Result, Tag, Vertex,
 };
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -53,7 +55,7 @@ pub trait PolyMesh<const D: usize>: Sync + Sized {
         (0..self.n_faces()).map(|i| self.ftag(i))
     }
     fn write_vtk(&self, file_name: &str) -> Result<()> {
-        let vtu = VTUFile::from_poly_mesh(self, Encoding::Binary);
+        let vtu = VTUFile::from_poly_mesh(self, Encoding::Ascii);
 
         vtu.export(file_name)?;
 
@@ -73,7 +75,7 @@ pub struct SimplePolyMesh<const D: usize> {
 }
 
 impl<const D: usize> SimplePolyMesh<D> {
-    pub fn from<T: PolyMesh<D>>(mesh: &T, simplify: bool) -> Self {
+    pub fn simplify<T: PolyMesh<D>>(mesh: &T, simplify: bool) -> Self {
         let poly_type = mesh.poly_type();
 
         // simplify faces
@@ -225,6 +227,85 @@ impl<const D: usize> SimplePolyMesh<D> {
         res.verts = new_verts;
 
         res
+    }
+
+    pub fn from_mesh<const C: usize, const F: usize, M: Mesh<D, C, F>>(mesh: &M) -> Self
+    where
+        Cell<C>: Simplex<C>,
+        Face<F>: Simplex<F>,
+    {
+        let poly_type = match C {
+            4 => PolyMeshType::Polyhedra,
+            3 => PolyMeshType::Polygons,
+            2 => PolyMeshType::Polylines,
+            _ => unimplemented!(),
+        };
+        let all_faces = mesh.compute_faces();
+        let tagged_faces = mesh
+            .faces()
+            .zip(mesh.ftags())
+            .map(|(f, t)| {
+                let mut f = *f;
+                f.sort();
+                (f, t)
+            })
+            .collect::<FxHashMap<_, _>>();
+
+        let mut elem_to_face_ptr = vec![0; mesh.n_elems() + 1];
+        let mut elem_to_face = vec![(usize::MAX, true); mesh.n_elems() * C];
+        let mut face_to_node_ptr = vec![0; all_faces.len() + 1];
+        let mut face_to_node = vec![0; all_faces.len() * F];
+        let mut ftags = vec![0; all_faces.len()];
+
+        for i_elem in 0..mesh.n_elems() {
+            elem_to_face_ptr[i_elem + 1] = C * (i_elem + 1);
+        }
+        for (f, &[i_face, i0, i1]) in &all_faces {
+            face_to_node_ptr[i_face + 1] = F * (i_face + 1);
+            for k in 0..F {
+                face_to_node[F * i_face + k] = f[k];
+            }
+            if i0 != usize::MAX {
+                let mut ok = false;
+                for k in elem_to_face_ptr[i0]..elem_to_face_ptr[i0 + 1] {
+                    if elem_to_face[k].0 == usize::MAX {
+                        elem_to_face[k] = (i_face, true);
+                        ok = true;
+                        break;
+                    }
+                }
+                assert!(ok);
+            }
+            if i1 != usize::MAX {
+                let mut ok = false;
+                for k in elem_to_face_ptr[i1]..elem_to_face_ptr[i1 + 1] {
+                    if elem_to_face[k].0 == usize::MAX {
+                        elem_to_face[k] = (i_face, false);
+                        ok = true;
+                        break;
+                    }
+                }
+                assert!(ok);
+            }
+            if i0 == usize::MAX && i1 == usize::MAX {
+                let mut f = *f;
+                f.sort();
+                ftags[i_face] = *tagged_faces.get(&f).unwrap();
+            } else {
+                ftags[i_face] = 0;
+            }
+        }
+
+        Self {
+            poly_type,
+            verts: mesh.verts().cloned().collect(),
+            face_to_node_ptr,
+            face_to_node,
+            ftags,
+            elem_to_face_ptr,
+            elem_to_face,
+            etags: mesh.etags().collect(),
+        }
     }
 }
 
@@ -427,9 +508,12 @@ fn try_merge_polygons<'a>(polygons: &[&'a [usize]]) -> (Vec<usize>, Vec<&'a [usi
 
 #[cfg(test)]
 mod tests {
-    use crate::poly_mesh::merge_polygons;
+    use crate::{
+        mesh_3d::{box_mesh, Mesh3d},
+        poly_mesh::merge_polygons,
+    };
 
-    use super::merge_polylines;
+    use super::{merge_polylines, PolyMesh, SimplePolyMesh};
 
     #[test]
     fn test_merge_polylines() {
@@ -519,5 +603,12 @@ mod tests {
         let res = merge_polygons(&polygons);
         assert_eq!(res.len(), 1);
         assert_eq!(res[0], [5, 2, 1, 0, 9, 10, 8]);
+    }
+
+    #[test]
+    fn test_vtk_polyhedra() {
+        let msh: Mesh3d = box_mesh(1.0, 2, 2.0, 2, 3.0, 2);
+        let poly = SimplePolyMesh::from_mesh(&msh);
+        poly.write_vtk("poly3d.vtu").unwrap();
     }
 }

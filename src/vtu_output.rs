@@ -1,5 +1,3 @@
-use std::io::BufWriter;
-
 use crate::{
     mesh::Mesh,
     poly_mesh::{merge_polylines, PolyMesh, PolyMeshType},
@@ -8,7 +6,9 @@ use crate::{
 };
 use base64::Engine as _;
 use quick_xml::se::to_utf8_io_writer;
+use rustc_hash::{FxBuildHasher, FxHashSet};
 use serde::Serialize;
+use std::io::{BufWriter, Write};
 
 #[derive(Clone, Copy)]
 #[allow(dead_code)]
@@ -18,7 +18,7 @@ pub(crate) enum Encoding {
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "PascalCase")]
+#[serde(rename = "VTKFile", rename_all = "PascalCase")]
 pub(crate) struct VTUFile {
     #[serde(rename = "@type")]
     grid_type: String,
@@ -68,7 +68,7 @@ impl VTUFile {
                     number_of_points: mesh.n_verts(),
                     number_of_cells: mesh.n_elems(),
                     points: Points::from_verts(mesh.seq_verts(), encoding),
-                    cells: Cells::from_poly(mesh, encoding),
+                    cells: Cells::from_poly(mesh, encoding, 0.1),
                     cell_data: CellData::from_etags(mesh.seq_etags(), encoding),
                 },
             },
@@ -78,6 +78,7 @@ impl VTUFile {
     pub fn export(&self, file_name: &str) -> Result<()> {
         let f = std::fs::File::create(file_name)?;
         let mut writer = BufWriter::new(f);
+        writeln!(writer, "<?xml version=\"1.0\"?>")?;
         to_utf8_io_writer(&mut writer, self)?;
         Ok(())
     }
@@ -295,7 +296,11 @@ impl Cells {
         }
     }
 
-    fn from_poly<const D: usize, M: PolyMesh<D>>(mesh: &M, encoding: Encoding) -> Self {
+    fn from_poly<const D: usize, M: PolyMesh<D>>(
+        mesh: &M,
+        encoding: Encoding,
+        version: f64,
+    ) -> Self {
         let n = mesh.n_elems();
 
         let mut connectivity = Vec::new();
@@ -329,12 +334,14 @@ impl Cells {
                     connectivity.extend_from_slice(&polygons[0]);
                 }
                 PolyMeshType::Polyhedra => {
-                    connectivity.push(e.len());
+                    let mut tmp = FxHashSet::with_hasher(FxBuildHasher);
                     for &(i_face, _) in e {
                         let face = mesh.face(i_face);
-                        connectivity.push(face.len());
-                        connectivity.extend_from_slice(face);
+                        for &i_vert in face {
+                            tmp.insert(i_vert);
+                        }
                     }
+                    connectivity.extend(tmp.iter().cloned());
                 }
             }
             offsets.push(connectivity.len());
@@ -361,55 +368,93 @@ impl Cells {
         let mut data_array = vec![connectivity, offsets, types];
 
         if matches!(mesh.poly_type(), PolyMeshType::Polyhedra) {
-            let mut polyhedron_offsets = Vec::with_capacity(n);
-            let mut offset = 0;
-            for e in mesh.seq_elems() {
-                offset += e.len();
-                polyhedron_offsets.push(offset);
+            if version == 0.1 {
+                let mut faces = Vec::new();
+                let mut faceoffsets = Vec::new();
+
+                for e in mesh.seq_elems() {
+                    faces.push(e.len());
+                    for &(i_face, orient) in e {
+                        let mut f = mesh.face(i_face).to_vec();
+                        if !orient {
+                            f.reverse();
+                        }
+                        faces.push(f.len());
+                        faces.extend_from_slice(&f);
+                    }
+                    faceoffsets.push(faces.len());
+                }
+
+                let faces = DataArray::new_i64(
+                    "faces",
+                    1,
+                    faces.len(),
+                    faces.iter().map(|&i| i as i64),
+                    encoding,
+                );
+
+                let faceoffsets = DataArray::new_i64(
+                    "faceoffsets",
+                    1,
+                    n,
+                    faceoffsets.iter().map(|&i| i as i64),
+                    encoding,
+                );
+                data_array.push(faces);
+                data_array.push(faceoffsets);
+            } else if version == 2.3 {
+                let mut polyhedron_offsets = Vec::with_capacity(n);
+                let mut offset = 0;
+                for e in mesh.seq_elems() {
+                    offset += e.len();
+                    polyhedron_offsets.push(offset);
+                }
+                let polyhedron_to_faces = DataArray::new_i64(
+                    "polyhedron_to_faces",
+                    1,
+                    *polyhedron_offsets.last().unwrap(),
+                    mesh.seq_elems()
+                        .flat_map(|x| x.iter().map(|&(x, _)| x as i64)),
+                    encoding,
+                );
+
+                let polyhedron_offsets = DataArray::new_i64(
+                    "polyhedron_offsets",
+                    1,
+                    n,
+                    polyhedron_offsets.iter().map(|&i| i as i64),
+                    encoding,
+                );
+
+                let n = mesh.n_faces();
+                let mut face_offsets = Vec::with_capacity(n);
+                let mut offset = 0;
+                for e in mesh.seq_faces() {
+                    offset += e.len();
+                    face_offsets.push(offset);
+                }
+                let face_connectivity = DataArray::new_i64(
+                    "face_connectivity",
+                    1,
+                    *face_offsets.last().unwrap(),
+                    mesh.seq_faces().flat_map(|x| x.iter().map(|&x| x as i64)),
+                    encoding,
+                );
+
+                let face_offsets = DataArray::new_i64(
+                    "face_offsets",
+                    1,
+                    n,
+                    face_offsets.iter().map(|&i| i as i64),
+                    encoding,
+                );
+                data_array.push(face_connectivity);
+                data_array.push(face_offsets);
+                data_array.push(polyhedron_to_faces);
+                data_array.push(polyhedron_offsets);
+            } else {
+                unimplemented!();
             }
-            let polyhedron_to_faces = DataArray::new_i64(
-                "polyhedron_to_faces",
-                1,
-                *polyhedron_offsets.last().unwrap(),
-                mesh.seq_elems()
-                    .flat_map(|x| x.iter().map(|&(x, _)| x as i64)),
-                encoding,
-            );
-
-            let polyhedron_offsets = DataArray::new_i64(
-                "polyhedron_offsets",
-                1,
-                n,
-                polyhedron_offsets.iter().map(|&i| i as i64),
-                encoding,
-            );
-
-            let n = mesh.n_faces();
-            let mut face_offsets = Vec::with_capacity(n);
-            let mut offset = 0;
-            for e in mesh.seq_faces() {
-                offset += e.len();
-                face_offsets.push(offset);
-            }
-            let face_connectivity = DataArray::new_i64(
-                "face_connectivity",
-                1,
-                *face_offsets.last().unwrap(),
-                mesh.seq_faces().flat_map(|x| x.iter().map(|&x| x as i64)),
-                encoding,
-            );
-
-            let face_offsets = DataArray::new_i64(
-                "face_offsets",
-                1,
-                n,
-                face_offsets.iter().map(|&i| i as i64),
-                encoding,
-            );
-            data_array.push(polyhedron_to_faces);
-            data_array.push(polyhedron_offsets);
-            data_array.push(face_connectivity);
-            data_array.push(face_offsets);
         }
 
         Self { data_array }
