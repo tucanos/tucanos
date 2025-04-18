@@ -23,20 +23,22 @@ pub struct DualMesh2d {
 }
 
 impl DualMesh2d {
-    fn get_center(v: [&Vert2d; 3], t: DualType) -> Vert2d {
+    fn get_tri_center(v: [&Vert2d; 3], t: DualType) -> Vert2d {
         match t {
             DualType::Median => cell_center(v),
-            DualType::Barth => {
+            DualType::Barth | DualType::ThresholdBarth(_) => {
+                let f = match t {
+                    DualType::Barth => 0.0,
+                    DualType::ThresholdBarth(l) => l,
+                    _ => unreachable!(),
+                };
                 let bcoords = circumcenter_bcoords(v);
-                if bcoords.iter().all(|&x| x >= 0.0) {
+                if bcoords.iter().all(|&x| x >= f) {
                     cell_vertex(v, bcoords)
                 } else {
-                    let l0 = (v[2] - v[1]).norm();
-                    let l1 = (v[2] - v[0]).norm();
-                    let l2 = (v[0] - v[1]).norm();
-                    if l0 > l1 && l0 > l2 {
+                    if bcoords[0] < f {
                         cell_center([v[1], v[2]])
-                    } else if l1 > l0 && l1 > l2 {
+                    } else if bcoords[1] < f {
                         cell_center([v[2], v[0]])
                     } else {
                         cell_center([v[1], v[0]])
@@ -119,7 +121,7 @@ impl DualMesh<2, 3, 2> for DualMesh2d {
         }
 
         for (i_elem, ge) in msh.seq_gelems().enumerate() {
-            verts[vert_idx_elem(i_elem)] = Self::get_center(ge, t);
+            verts[vert_idx_elem(i_elem)] = Self::get_tri_center(ge, t);
         }
 
         // faces and polyhedra
@@ -308,8 +310,8 @@ mod tests {
     use crate::{
         dual_mesh::{DualMesh, DualType},
         dual_mesh_2d::DualMesh2d,
-        mesh_2d::rectangle_mesh,
-        mesh_2d::Mesh2d,
+        mesh::Mesh,
+        mesh_2d::{rectangle_mesh, Mesh2d},
         poly_mesh::PolyMesh,
         simplices::Simplex,
         Edge, Vert2d,
@@ -404,5 +406,14 @@ mod tests {
             let n_res = *res.get(&e).unwrap();
             assert!((n - n_res).norm() < 1e-10);
         });
+    }
+
+    #[test]
+    fn test_dual_mesh_2d_simple_barth_2() {
+        let msh = rectangle_mesh::<Mesh2d>(2.0, 30, 1.0, 20).random_shuffle();
+        let dual = DualMesh2d::new(&msh, DualType::Barth);
+        dual.check().unwrap();
+
+        assert!((dual.vols().sum::<f64>() - 2.0) < 1e-10);
     }
 }

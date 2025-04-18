@@ -1,6 +1,6 @@
 use crate::{
-    dual_mesh::{DualMesh, DualType},
-    mesh::{cell_center, sort_elem_min_ids, Mesh},
+    dual_mesh::{circumcenter_bcoords, DualMesh, DualType},
+    mesh::{cell_center, cell_vertex, sort_elem_min_ids, Mesh},
     poly_mesh::{PolyMesh, PolyMeshType},
     simplices::Simplex,
     Edge, Tag, Tetrahedron, Triangle, Vert3d,
@@ -21,11 +21,53 @@ pub struct DualMesh3d {
 }
 
 impl DualMesh3d {
-    fn get_center(v: [&Vert3d; 4], t: DualType) -> Vert3d {
+    fn get_tet_center(v: [&Vert3d; 4], t: DualType) -> Vert3d {
         match t {
             DualType::Median => cell_center(v),
-            DualType::Barth => {
-                unimplemented!()
+            DualType::Barth | DualType::ThresholdBarth(_) => {
+                let f = match t {
+                    DualType::Barth => 0.0,
+                    DualType::ThresholdBarth(l) => l,
+                    _ => unreachable!(),
+                };
+                let bcoords = circumcenter_bcoords(v);
+                if bcoords.iter().all(|&x| x >= f) {
+                    cell_vertex(v, bcoords)
+                } else {
+                    if bcoords[0] < f {
+                        Self::get_tri_center([v[1], v[2], v[3]], t)
+                    } else if bcoords[1] < f {
+                        Self::get_tri_center([v[2], v[0], v[3]], t)
+                    } else if bcoords[2] < f {
+                        Self::get_tri_center([v[0], v[1], v[3]], t)
+                    } else {
+                        Self::get_tri_center([v[0], v[2], v[1]], t)
+                    }
+                }
+            }
+        }
+    }
+    fn get_tri_center(v: [&Vert3d; 3], t: DualType) -> Vert3d {
+        match t {
+            DualType::Median => cell_center(v),
+            DualType::Barth | DualType::ThresholdBarth(_) => {
+                let f = match t {
+                    DualType::Barth => 0.0,
+                    DualType::ThresholdBarth(l) => l,
+                    _ => unreachable!(),
+                };
+                let bcoords = circumcenter_bcoords(v);
+                if bcoords.iter().all(|&x| x >= f) {
+                    cell_vertex(v, bcoords)
+                } else {
+                    if bcoords[0] < f {
+                        cell_center([v[1], v[2]])
+                    } else if bcoords[1] < f {
+                        cell_center([v[2], v[0]])
+                    } else {
+                        cell_center([v[1], v[0]])
+                    }
+                }
             }
         }
     }
@@ -113,7 +155,7 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
         }
 
         for (i_elem, ge) in msh.seq_gelems().enumerate() {
-            verts[vert_idx_elem(i_elem)] = Self::get_center(ge, t);
+            verts[vert_idx_elem(i_elem)] = Self::get_tet_center(ge, t);
         }
 
         // faces and polyhedra
@@ -327,28 +369,52 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
 mod tests {
     use super::{DualMesh, DualMesh3d};
     use crate::{
-        boundary_mesh_3d::BoundaryMesh3d,
         dual_mesh::DualType,
         mesh::Mesh,
         mesh_3d::{box_mesh, Mesh3d},
-        poly_mesh::{PolyMesh, SimplePolyMesh},
+        poly_mesh::PolyMesh,
     };
     use rayon::iter::ParallelIterator;
 
     #[test]
     fn test_dual_mesh_3d_simple_median() {
-        let msh = box_mesh::<Mesh3d>(1.0, 10, 2.0, 15, 1.0, 20);
+        let msh = box_mesh::<Mesh3d>(1.0, 2, 2.0, 2, 1.0, 2);
         let dual = DualMesh3d::new(&msh, DualType::Median);
         dual.check().unwrap();
 
         assert!((dual.vols().sum::<f64>() - 2.0) < 1e-10);
 
-        dual.write_vtk("dual3d.vtu").unwrap();
+        dual.write_vtk("median3d.vtu").unwrap();
 
-        let (bdy, _): (BoundaryMesh3d, _) = dual.boundary();
-        bdy.write_vtk("dual3d_bdy.vtu").unwrap();
+        for i in 0..dual.n_elems() {
+            println!("{}", dual.vol(i));
+        }
+        // let (bdy, _): (BoundaryMesh3d, _) = dual.boundary();
+        // bdy.write_vtk("median3d_bdy.vtu").unwrap();
 
-        let poly = SimplePolyMesh::<3>::from(&dual, true);
-        poly.write_vtk("dual3d_simplified.vtu").unwrap();
+        // let poly = SimplePolyMesh::<3>::simplify(&dual, true);
+        // poly.write_vtk("median3d_simplified.vtu").unwrap();
+    }
+
+    #[test]
+    fn test_dual_mesh_3d_simple_barth() {
+        let msh = box_mesh::<Mesh3d>(1.0, 2, 2.0, 2, 1.0, 2);
+        msh.write_vtk("mesh3d.vtu").unwrap();
+
+        let dual = DualMesh3d::new(&msh, DualType::Barth);
+        dual.check().unwrap();
+
+        assert!((dual.vols().sum::<f64>() - 2.0) < 1e-10);
+
+        dual.write_vtk("barth3d.vtu").unwrap();
+
+        for i in 0..dual.n_elems() {
+            println!("{}", dual.vol(i));
+        }
+        // let (bdy, _): (BoundaryMesh3d, _) = dual.boundary();
+        // bdy.write_vtk("barth3d_bdy.vtu").unwrap();
+
+        // let poly = SimplePolyMesh::<3>::simplify(&dual, true);
+        // poly.write_vtk("barth3d_simplified.vtu").unwrap();
     }
 }

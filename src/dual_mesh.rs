@@ -11,6 +11,7 @@ use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIter
 pub enum DualType {
     Median,
     Barth,
+    ThresholdBarth(f64),
 }
 
 pub trait DualMesh<const D: usize, const C: usize, const F: usize>: PolyMesh<D>
