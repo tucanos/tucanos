@@ -6,4 +6,5 @@ build-backend = "maturin"
 name = "pytmesh"
 dependencies = [
   "numpy",
+  "vtk==9.3"
 ]
