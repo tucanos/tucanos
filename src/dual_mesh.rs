@@ -14,6 +14,12 @@ pub enum DualType {
     ThresholdBarth(f64),
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum DualCellCenter<const D: usize, const F: usize> {
+    Vertex(Vertex<D>),
+    Face(Face<F>),
+}
+
 pub trait DualMesh<const D: usize, const C: usize, const F: usize>: PolyMesh<D>
 where
     Cell<C>: Simplex<C>,

@@ -1,5 +1,5 @@
 use crate::{
-    dual_mesh::{circumcenter_bcoords, DualMesh, DualType},
+    dual_mesh::{circumcenter_bcoords, DualCellCenter, DualMesh, DualType},
     mesh::{cell_center, cell_vertex, sort_elem_min_ids, Mesh},
     poly_mesh::{PolyMesh, PolyMeshType},
     simplices::Simplex,
@@ -21,35 +21,36 @@ pub struct DualMesh3d {
 }
 
 impl DualMesh3d {
-    fn get_tet_center(v: [&Vert3d; 4], t: DualType) -> Vert3d {
+    fn get_tet_center(v: [&Vert3d; 4], t: DualType) -> DualCellCenter<3, 3> {
         match t {
-            DualType::Median => cell_center(v),
+            DualType::Median => DualCellCenter::Vertex(cell_center(v)),
             DualType::Barth | DualType::ThresholdBarth(_) => {
                 let f = match t {
                     DualType::Barth => 0.0,
                     DualType::ThresholdBarth(l) => l,
                     _ => unreachable!(),
                 };
+                let f = f.max(1e-6);
                 let bcoords = circumcenter_bcoords(v);
-                if bcoords.iter().all(|&x| x >= f) {
-                    cell_vertex(v, bcoords)
+                if bcoords.iter().all(|&x| x > f) {
+                    DualCellCenter::Vertex(cell_vertex(v, bcoords))
                 } else {
-                    if bcoords[0] < f {
-                        Self::get_tri_center([v[1], v[2], v[3]], t)
-                    } else if bcoords[1] < f {
-                        Self::get_tri_center([v[2], v[0], v[3]], t)
-                    } else if bcoords[2] < f {
-                        Self::get_tri_center([v[0], v[1], v[3]], t)
+                    if bcoords[0] <= f {
+                        DualCellCenter::Face([1, 2, 3])
+                    } else if bcoords[1] <= f {
+                        DualCellCenter::Face([2, 0, 3])
+                    } else if bcoords[2] <= f {
+                        DualCellCenter::Face([0, 1, 3])
                     } else {
-                        Self::get_tri_center([v[0], v[2], v[1]], t)
+                        DualCellCenter::Face([0, 2, 1])
                     }
                 }
             }
         }
     }
-    fn get_tri_center(v: [&Vert3d; 3], t: DualType) -> Vert3d {
+    fn get_tri_center(v: [&Vert3d; 3], t: DualType) -> DualCellCenter<3, 2> {
         match t {
-            DualType::Median => cell_center(v),
+            DualType::Median => DualCellCenter::Vertex(cell_center(v)),
             DualType::Barth | DualType::ThresholdBarth(_) => {
                 let f = match t {
                     DualType::Barth => 0.0,
@@ -58,14 +59,14 @@ impl DualMesh3d {
                 };
                 let bcoords = circumcenter_bcoords(v);
                 if bcoords.iter().all(|&x| x >= f) {
-                    cell_vertex(v, bcoords)
+                    DualCellCenter::Vertex(cell_vertex(v, bcoords))
                 } else {
                     if bcoords[0] < f {
-                        cell_center([v[1], v[2]])
+                        DualCellCenter::Face([1, 2])
                     } else if bcoords[1] < f {
-                        cell_center([v[2], v[0]])
+                        DualCellCenter::Face([2, 0])
                     } else {
-                        cell_center([v[1], v[0]])
+                        DualCellCenter::Face([1, 0])
                     }
                 }
             }
@@ -115,15 +116,6 @@ impl PolyMesh<3> for DualMesh3d {
 
 impl DualMesh<3, 4, 3> for DualMesh3d {
     fn new<M: Mesh<3, 4, 3>>(msh: &M, t: DualType) -> Self {
-        // boundary vertices
-        let mut bdy_verts: FxHashMap<usize, usize> =
-            msh.seq_faces().flatten().map(|&i| (i, 0)).collect();
-        bdy_verts
-            .iter_mut()
-            .enumerate()
-            .for_each(|(i, (_, i_new))| *i_new = i);
-        let n_bdy_verts = bdy_verts.len();
-
         // edges
         let all_edges = msh.compute_edges();
         let n_edges = all_edges.len();
@@ -134,28 +126,65 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
 
         let n_elems = msh.n_elems();
 
-        let vert_ids_bdy = |i: usize| *bdy_verts.get(&i).unwrap();
-        let vert_idx_edge = |i: usize| i + n_bdy_verts;
-        let vert_idx_face = |i: usize| i + n_bdy_verts + n_edges;
-        let vert_idx_elem = |i: usize| i + n_bdy_verts + n_edges + n_faces;
+        // vertices: boundary
+        let mut bdy_verts: FxHashMap<usize, usize> =
+            msh.seq_faces().flatten().map(|&i| (i, 0)).collect();
+        bdy_verts
+            .iter_mut()
+            .enumerate()
+            .for_each(|(i, (_, i_new))| *i_new = i);
+        let n_bdy_verts = bdy_verts.len();
 
-        // vertices
-        let mut verts = vec![Vert3d::zeros(); n_bdy_verts + n_edges + n_faces + n_elems];
-        for (&i_old, &i_new) in bdy_verts.iter() {
-            verts[i_new] = *msh.vert(i_old);
+        let mut verts = Vec::with_capacity(n_bdy_verts + n_edges + n_faces + n_elems);
+        for (&i_old, i_new) in bdy_verts.iter_mut() {
+            *i_new = verts.len();
+            verts.push(*msh.vert(i_old));
         }
+        let vert_ids_bdy = |i: usize| *bdy_verts.get(&i).unwrap();
 
-        for (&edge, &i_edge) in all_edges.iter() {
+        // vertices: edge centers
+        verts.resize(verts.len() + n_edges, Vert3d::zeros());
+        let vert_idx_edge = |i: usize| i + n_bdy_verts;
+        for (&edge, &i_edge) in &all_edges {
             verts[vert_idx_edge(i_edge)] = cell_center([msh.vert(edge[0]), msh.vert(edge[1])]);
         }
 
-        for (&face, &[i_face, _, _]) in all_faces.iter() {
-            verts[vert_idx_face(i_face)] =
-                cell_center([msh.vert(face[0]), msh.vert(face[1]), msh.vert(face[2])]);
+        // vertices: triangle centers
+        let mut vert_idx_face = vec![usize::MAX; n_faces];
+        for (f, &[i_face, _, _]) in &all_faces {
+            let gf = msh.gface(f);
+            let center = Self::get_tri_center(gf, t);
+            match center {
+                DualCellCenter::Vertex(center) => {
+                    vert_idx_face[i_face] = verts.len();
+                    verts.push(center);
+                }
+                DualCellCenter::Face([i0, i1]) => {
+                    let mut edge = [f[i0], f[i1]];
+                    edge.sort();
+                    let i_edge = *all_edges.get(&edge).unwrap();
+                    vert_idx_face[i_face] = vert_idx_edge(i_edge);
+                }
+            }
         }
 
-        for (i_elem, ge) in msh.seq_gelems().enumerate() {
-            verts[vert_idx_elem(i_elem)] = Self::get_tet_center(ge, t);
+        // vertices: tet centers
+        let mut vert_idx_elem = vec![usize::MAX; n_elems];
+        for (i_elem, e) in msh.seq_elems().enumerate() {
+            let ge = msh.gelem(e);
+            let center = Self::get_tet_center(ge, t);
+            match center {
+                DualCellCenter::Vertex(center) => {
+                    vert_idx_elem[i_elem] = verts.len();
+                    verts.push(center);
+                }
+                DualCellCenter::Face([i0, i1, i2]) => {
+                    let mut face = [e[i0], e[i1], e[i2]];
+                    face.sort();
+                    let i_face = all_faces.get(&face).unwrap()[0];
+                    vert_idx_elem[i_elem] = vert_idx_face[i_face];
+                }
+            }
         }
 
         // faces and polyhedra
@@ -192,6 +221,7 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
             vec![(usize::MAX, true); poly_to_face_ptr[poly_to_face_ptr.len() - 1]];
         let mut edge_normals = vec![Vert3d::zeros(); n_edges];
 
+        let mut n_empty_faces = 0;
         // build internal faces
         for (i_elem, e) in msh.seq_elems().enumerate() {
             for f in &elem_to_faces {
@@ -209,39 +239,43 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
                     };
                     let face = [
                         vert_idx_edge(i_edge),
-                        vert_idx_elem(i_elem),
-                        vert_idx_face(i_face),
+                        vert_idx_elem[i_elem],
+                        vert_idx_face[i_face],
                     ];
-                    let gf = [&verts[face[0]], &verts[face[1]], &verts[face[2]]];
-                    edge_normals[i_edge] += sgn * Triangle::normal(gf);
+                    if face[0] != face[1] && face[0] != face[2] && face[1] != face[2] {
+                        let gf = [&verts[face[0]], &verts[face[1]], &verts[face[2]]];
+                        edge_normals[i_edge] += sgn * Triangle::normal(gf);
 
-                    let i_new_face = faces.len();
-                    faces.push(face);
-                    ftags.push(0);
+                        let i_new_face = faces.len();
+                        faces.push(face);
+                        ftags.push(0);
 
-                    let mut ok = false;
-                    let slice =
-                        &mut poly_to_face[poly_to_face_ptr[edg[0]]..poly_to_face_ptr[edg[0] + 1]];
-                    for j in slice {
-                        if j.0 == usize::MAX {
-                            *j = (i_new_face, true);
-                            ok = true;
-                            break;
+                        let mut ok = false;
+                        let slice = &mut poly_to_face
+                            [poly_to_face_ptr[edg[0]]..poly_to_face_ptr[edg[0] + 1]];
+                        for j in slice {
+                            if j.0 == usize::MAX {
+                                *j = (i_new_face, true);
+                                ok = true;
+                                break;
+                            }
                         }
-                    }
-                    assert!(ok);
+                        assert!(ok);
 
-                    let mut ok = false;
-                    let slice =
-                        &mut poly_to_face[poly_to_face_ptr[edg[1]]..poly_to_face_ptr[edg[1] + 1]];
-                    for j in slice {
-                        if j.0 == usize::MAX {
-                            *j = (i_new_face, false);
-                            ok = true;
-                            break;
+                        let mut ok = false;
+                        let slice = &mut poly_to_face
+                            [poly_to_face_ptr[edg[1]]..poly_to_face_ptr[edg[1] + 1]];
+                        for j in slice {
+                            if j.0 == usize::MAX {
+                                *j = (i_new_face, false);
+                                ok = true;
+                                break;
+                            }
                         }
+                        assert!(ok);
+                    } else {
+                        n_empty_faces += 1;
                     }
-                    assert!(ok);
                 }
             }
         }
@@ -257,61 +291,84 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
                 let edg = [f[edg[0]], f[edg[1]]];
                 let mut tmp = edg;
                 tmp.sort();
-                let i_edge = all_edges.get(&tmp).unwrap();
+                let i_edge = *all_edges.get(&tmp).unwrap();
 
                 let face = [
                     vert_ids_bdy(edg[0]),
-                    vert_idx_edge(*i_edge),
-                    vert_idx_face(i_face),
+                    vert_idx_edge(i_edge),
+                    vert_idx_face[i_face],
                 ];
-                let gf = [&verts[face[0]], &verts[face[1]], &verts[face[2]]];
-                bdy_faces.push((edg[0], tag, Triangle::normal(gf)));
+                if face[0] != face[1] && face[0] != face[2] && face[1] != face[2] {
+                    let gf = [&verts[face[0]], &verts[face[1]], &verts[face[2]]];
+                    bdy_faces.push((edg[0], tag, Triangle::normal(gf)));
 
-                let i_new_face = faces.len();
-                faces.push(face);
-                ftags.push(tag);
+                    let i_new_face = faces.len();
+                    faces.push(face);
+                    ftags.push(tag);
 
-                let mut ok = false;
-                let slice =
-                    &mut poly_to_face[poly_to_face_ptr[edg[0]]..poly_to_face_ptr[edg[0] + 1]];
-                for j in slice {
-                    if j.0 == usize::MAX {
-                        *j = (i_new_face, true);
-                        ok = true;
-                        break;
+                    let mut ok = false;
+                    let slice =
+                        &mut poly_to_face[poly_to_face_ptr[edg[0]]..poly_to_face_ptr[edg[0] + 1]];
+                    for j in slice {
+                        if j.0 == usize::MAX {
+                            *j = (i_new_face, true);
+                            ok = true;
+                            break;
+                        }
                     }
+                    assert!(ok);
+                } else {
+                    n_empty_faces += 1;
                 }
-                assert!(ok);
 
                 let face = [
                     vert_ids_bdy(edg[1]),
-                    vert_idx_face(i_face),
-                    vert_idx_edge(*i_edge),
+                    vert_idx_face[i_face],
+                    vert_idx_edge(i_edge),
                 ];
-                let gf = [&verts[face[0]], &verts[face[1]], &verts[face[2]]];
-                bdy_faces.push((edg[0], tag, Triangle::normal(gf)));
+                if face[0] != face[1] && face[0] != face[2] && face[1] != face[2] {
+                    let gf = [&verts[face[0]], &verts[face[1]], &verts[face[2]]];
+                    bdy_faces.push((edg[0], tag, Triangle::normal(gf)));
 
-                let i_new_face = faces.len();
-                faces.push(face);
-                ftags.push(tag);
+                    let i_new_face = faces.len();
+                    faces.push(face);
+                    ftags.push(tag);
 
-                let mut ok = false;
-                let slice =
-                    &mut poly_to_face[poly_to_face_ptr[edg[1]]..poly_to_face_ptr[edg[1] + 1]];
-                for j in slice {
-                    if j.0 == usize::MAX {
-                        *j = (i_new_face, true);
-                        ok = true;
-                        break;
+                    let mut ok = false;
+                    let slice =
+                        &mut poly_to_face[poly_to_face_ptr[edg[1]]..poly_to_face_ptr[edg[1] + 1]];
+                    for j in slice {
+                        if j.0 == usize::MAX {
+                            *j = (i_new_face, true);
+                            ok = true;
+                            break;
+                        }
                     }
+                    assert!(ok);
+                } else {
+                    n_empty_faces += 1;
                 }
-                assert!(ok);
             }
         }
-        assert_eq!(faces.len(), n_poly_faces);
-        assert_eq!(ftags.len(), n_poly_faces);
+        assert_eq!(faces.len(), n_poly_faces - n_empty_faces);
+        assert_eq!(ftags.len(), n_poly_faces - n_empty_faces);
 
-        assert!(!poly_to_face.iter().any(|&i| i.0 == usize::MAX));
+        // remove unused
+        let n = poly_to_face.iter().filter(|&i| i.0 != usize::MAX).count();
+
+        let mut new_poly_to_face_ptr = Vec::with_capacity(poly_to_face_ptr.len());
+        new_poly_to_face_ptr.push(0);
+        let mut new_poly_to_face = Vec::with_capacity(n);
+        for i_elem in 0..msh.n_verts() {
+            for j in poly_to_face_ptr[i_elem]..poly_to_face_ptr[i_elem + 1] {
+                if poly_to_face[j].0 != usize::MAX {
+                    new_poly_to_face.push(poly_to_face[j]);
+                }
+            }
+            new_poly_to_face_ptr.push(new_poly_to_face.len());
+        }
+
+        assert!(!new_poly_to_face.iter().any(|&i| i.0 == usize::MAX));
 
         let mut edges = vec![[0; 2]; n_edges];
         for (&edg, &i_edg) in all_edges.iter() {
@@ -333,8 +390,8 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
             verts,
             faces,
             ftags,
-            elem_to_face_ptr: poly_to_face_ptr,
-            elem_to_face: poly_to_face,
+            elem_to_face_ptr: new_poly_to_face_ptr,
+            elem_to_face: new_poly_to_face,
             etags: vec![1; msh.n_verts()],
             edges,
             edge_normals,
