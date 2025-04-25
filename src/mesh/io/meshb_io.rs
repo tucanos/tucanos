@@ -341,7 +341,7 @@ impl<QE: QuadraticElem> QuadraticMesh<QE> {
     }
 
     pub fn read_solb(file_name: &str) -> Result<(Vec<f64>, usize)> {
-        let mut reader = Reader::new(file_name)?;
+        let mut reader = Reader::newquadratic(file_name)?;
         let d = reader.dimension();
         assert_eq!(d, 3);
         let m = reader.get_solution_size()?;
@@ -602,6 +602,33 @@ mod tests {
         assert_eq!(mesh.n_verts(), 108);
         assert_eq!(mesh.n_tris(), 45);
         println!("Number of edges : {}", mesh.n_edges());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_solution_mesh_quadratic() -> Result<()> {
+        let mesh = QuadraticMesh::<QuadraticTriangle>::read_meshb("data/TriangleP2.mesh")?;
+
+        assert_eq!(mesh.n_verts(), 6);
+
+        let v0 = Point::<3>::new(0.5, 0., 0.0);
+        let v1 = Point::<3>::new(0., 0.01, 0.0);
+        let v2 = Point::<3>::new(0., 0., 0.1);
+        let m = AnisoMetric3d::from_sizes(&v0, &v1, &v2);
+        let m = vec![m; mesh.n_verts() as usize];
+        let m_vec = m.iter().copied().flatten().collect::<Vec<_>>();
+
+        let file = NamedTempFile::new().unwrap();
+        let fname = file.path().to_str().unwrap().to_owned() + ".sol";
+
+        mesh.write_solb(&m_vec, &fname)?;
+
+        let (_m2, n) = QuadraticMesh::<QuadraticTriangle>::read_solb(&fname)?;
+        assert_eq!(n, 6);
+
+        let (_m3, n2) = QuadraticMesh::<QuadraticTriangle>::read_solb("data/P1SolAtVertices.sol")?;
+        assert_eq!(n2, 1);
 
         Ok(())
     }
