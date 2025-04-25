@@ -1,5 +1,5 @@
 use crate::{
-    mesh::{Elem, Point, SimplexMesh},
+    mesh::{Elem, Point, QuadraticElem, QuadraticMesh, SimplexMesh},
     Idx, Result, Tag,
 };
 #[cfg(not(feature = "libmeshb"))]
@@ -213,13 +213,166 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 }
 
+impl<QE: QuadraticElem> QuadraticMesh<QE> {
+    pub fn write_meshb(&self, file_name: &str) -> Result<()> {
+        let mut writer = Writer::new(file_name, 2, 3)?;
+
+        writer.write_vertices(self.verts().map(Into::into), (0..self.n_verts()).map(|_| 1))?;
+
+        match QE::N_VERTS {
+            6 => {
+                writer.write_triangles_p2(
+                    self.tris().map(|v| {
+                        [
+                            v[0].try_into().unwrap(),
+                            v[1].try_into().unwrap(),
+                            v[2].try_into().unwrap(),
+                            v[3].try_into().unwrap(),
+                            v[4].try_into().unwrap(),
+                            v[5].try_into().unwrap(),
+                        ]
+                    }),
+                    #[allow(clippy::unnecessary_fallible_conversions)]
+                    self.tritags().map(|t| t.try_into().unwrap()),
+                )?;
+                writer.write_edges_p2(
+                    self.edges().map(|v| {
+                        [
+                            v[0].try_into().unwrap(),
+                            v[1].try_into().unwrap(),
+                            v[2].try_into().unwrap(),
+                        ]
+                    }),
+                    #[allow(clippy::unnecessary_fallible_conversions)]
+                    self.edgtags().map(|t| t.try_into().unwrap()),
+                )?;
+            }
+            _ => unreachable!(),
+        }
+        writer.close();
+
+        Ok(())
+    }
+
+    fn write_solb_it<const N: usize, F: FnMut(&[f64]) -> [f64; N]>(
+        &self,
+        arr: &[f64],
+        file_name: &str,
+        f: F,
+    ) -> Result<()> {
+        assert_eq!(arr.len(), N * self.n_verts() as usize);
+
+        let mut writer = Writer::new(file_name, 2, 3)?;
+        writer.write_solution(arr.chunks(N).map(f))?;
+        writer.close();
+
+        Ok(())
+    }
+
+    pub fn write_solb(&self, arr: &[f64], file_name: &str) -> Result<()> {
+        let n_comp = arr.len() / self.n_verts() as usize;
+        match 3 {
+            2 => match n_comp {
+                1 => self.write_solb_it::<1, _>(arr, file_name, |x| [x[0]])?,
+                2 => self.write_solb_it::<2, _>(arr, file_name, |x| [x[0], x[1]])?,
+                3 => self.write_solb_it::<3, _>(arr, file_name, |x| [x[0], x[2], x[1]])?,
+                _ => unreachable!(),
+            },
+            3 => match n_comp {
+                1 => self.write_solb_it::<1, _>(arr, file_name, |x| [x[0]])?,
+                3 => self.write_solb_it::<3, _>(arr, file_name, |x| [x[0], x[1], x[2]])?,
+                6 => self.write_solb_it::<6, _>(arr, file_name, |x| {
+                    [x[0], x[3], x[1], x[5], x[4], x[2]]
+                })?, // [0, 2, 5, 1, 4, 3]
+                _ => unreachable!(),
+            },
+            _ => unreachable!(),
+        }
+
+        Ok(())
+    }
+
+    pub fn read_meshb(file_name: &str) -> Result<Self> {
+        let mut reader = Reader::newquadratic(file_name)?;
+        assert_eq!(reader.dimension(), 3);
+
+        let it = reader.read_vertices::<3>()?;
+        let mut verts = Vec::with_capacity(it.len());
+        for (v, _) in it {
+            verts.push(Point::<3>::from_iterator(v.iter().copied()));
+        }
+
+        let mut elems = Vec::new();
+        let mut etags = Vec::new();
+        let mut faces = Vec::new();
+        let mut ftags = Vec::new();
+
+        match QE::N_VERTS {
+            6 => {
+                let it = reader.read_triangles_p2()?;
+                elems.reserve(it.len());
+                etags.reserve(it.len());
+                faces.reserve(it.len() * 3);
+                for (e, t) in it {
+                    let tri = QE::from_iter(e.iter().map(|&i| i as Idx));
+                    elems.push(QE::from_iter(e.iter().map(|&i| i as Idx)));
+                    etags.push(t as Tag);
+                    faces.push(tri.face(0));
+                    ftags.push(3 * t as Tag);
+                    faces.push(tri.face(1));
+                    ftags.push((3 * t as i16 + 1) as Tag);
+                    faces.push(tri.face(2));
+                    ftags.push((3 * t as i16 + 2) as Tag);
+                }
+            }
+            _ => unreachable!(),
+        }
+
+        Ok(Self::new(verts, elems, etags, faces, ftags))
+    }
+
+    fn read_solb_it<const N: usize, F: FnMut([f64; N]) -> [f64; N]>(
+        #[cfg(feature = "libmeshb")] reader: Reader,
+        #[cfg(not(feature = "libmeshb"))] mut reader: Reader,
+        f: F,
+    ) -> Result<Vec<f64>> {
+        let sol = reader.read_solution::<N>()?;
+        Ok(sol.flat_map(f).collect())
+    }
+
+    pub fn read_solb(file_name: &str) -> Result<(Vec<f64>, usize)> {
+        let mut reader = Reader::new(file_name)?;
+        let d = reader.dimension();
+        assert_eq!(d, 3);
+        let m = reader.get_solution_size()?;
+
+        let res = match d {
+            2 => match m {
+                1 => Self::read_solb_it::<1, _>(reader, |x| [x[0]])?,
+                2 => Self::read_solb_it::<2, _>(reader, |x| [x[0], x[1]])?,
+                3 => Self::read_solb_it::<3, _>(reader, |x| [x[0], x[2], x[1]])?,
+                _ => unreachable!(),
+            },
+            3 => match m {
+                1 => Self::read_solb_it::<1, _>(reader, |x| [x[0]])?,
+                3 => Self::read_solb_it::<3, _>(reader, |x| [x[0], x[1], x[2]])?,
+                6 => Self::read_solb_it::<6, _>(reader, |x| [x[0], x[2], x[5], x[1], x[4], x[3]])?,
+                _ => unreachable!(),
+            },
+            _ => unreachable!(),
+        };
+
+        Ok((res, m))
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
     use crate::{
         mesh::{
             test_meshes::{test_mesh_2d, test_mesh_3d},
-            Point, SimplexMesh, Tetrahedron, Triangle,
+            Point, QuadraticMesh, QuadraticTriangle, SimplexMesh, Tetrahedron, Triangle,
         },
         metric::{AnisoMetric2d, AnisoMetric3d, Metric},
         Result,
@@ -436,6 +589,19 @@ mod tests {
         assert_eq!(mesh.n_verts(), 242118);
         assert_eq!(mesh.n_faces(), 44830);
         assert_eq!(mesh.n_elems(), 1380547);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_3d_quadratic() -> Result<()> {
+        let mesh = QuadraticMesh::<QuadraticTriangle>::read_meshb(
+            "data/1triangle_2nd_order_ansa_bezier_control_pts_over_geom.mesh",
+        )?;
+
+        assert_eq!(mesh.n_verts(), 108);
+        assert_eq!(mesh.n_tris(), 45);
+        println!("Number of edges : {}", mesh.n_edges());
 
         Ok(())
     }

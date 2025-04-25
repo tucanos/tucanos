@@ -46,7 +46,6 @@ pub trait GQuadElem<M: Metric<3>>: Clone + Copy + Debug + Send {
     /// Create a `GQuadElem` from its vertices and the metric at each vertex
     fn from_verts<I: Iterator<Item = (Point<3>, M)>>(points_n_metrics: I) -> Self;
 
-    #[allow(dead_code)]
     fn center(&self) -> Point<3>;
 
     #[allow(dead_code)]
@@ -60,6 +59,16 @@ pub trait GQuadElem<M: Metric<3>>: Clone + Copy + Debug + Send {
     #[allow(dead_code)]
     /// Get the i-th geometric face
     fn gface(&self, i: Idx) -> Self::Face;
+
+    /// Get the element normal
+    fn scaled_normal(&self) -> Point<3>;
+
+    /// Get the element normal
+    fn normal(&self) -> Point<3> {
+        let mut n = self.scaled_normal();
+        n.normalize_mut();
+        n
+    }
 }
 
 /// GQuadraticTriangle
@@ -203,6 +212,12 @@ impl<M: Metric<3>> GQuadElem<M> for GQuadraticTriangle<M> {
             _ => unreachable!(),
         }
     }
+
+    fn scaled_normal(&self) -> Point<3> {
+        let e0 = self.points[1] - self.points[0];
+        let e1 = self.points[2] - self.points[0];
+        0.5 * e0.cross(&e1)
+    }
 }
 
 /// GQuadraticEdge
@@ -270,6 +285,12 @@ impl<M: Metric<3>> GQuadElem<M> for GQuadraticEdge<M> {
             _ => unreachable!(),
         }
     }
+
+    fn scaled_normal(&self) -> Point<3> {
+        let e0 = self.points[1] - self.points[0];
+        let e1 = self.points[2] - self.points[0];
+        0.5 * e0.cross(&e1)
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -311,6 +332,10 @@ impl<M: Metric<3>> GQuadElem<M> for GVertex<M> {
     }
 
     fn gface(&self, _i: Idx) -> Self::Face {
+        unreachable!();
+    }
+
+    fn scaled_normal(&self) -> Point<3> {
         unreachable!();
     }
 }

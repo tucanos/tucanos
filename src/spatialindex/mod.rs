@@ -1,5 +1,5 @@
 use crate::{
-    mesh::{Elem, Point, SimplexMesh},
+    mesh::{Elem, Point, QuadraticElem, QuadraticMesh, SimplexMesh},
     Idx,
 };
 
@@ -24,11 +24,13 @@ pub type DefaultObjectIndex<const D: usize> = parry::ObjectIndex<D>;
 
 pub trait PointIndex<const D: usize> {
     fn new<E: Elem>(mesh: &SimplexMesh<D, E>) -> Self;
+    fn newquadratic<QE: QuadraticElem>(mesh: &QuadraticMesh<QE>) -> Self;
     fn nearest_vert(&self, pt: &Point<D>) -> (Idx, f64);
 }
 
 pub trait ObjectIndex<const D: usize> {
     fn new<E: Elem>(mesh: &SimplexMesh<D, E>) -> Self;
+    fn newquadratic<QE: QuadraticElem>(mesh: &QuadraticMesh<QE>) -> Self;
     fn nearest_elem(&self, pt: &Point<D>) -> Idx;
     fn project(&self, pt: &Point<D>) -> (f64, Point<D>);
 }
@@ -43,6 +45,15 @@ impl<const D: usize> PointIndex<D> for KdTreePointIndex<D> {
     fn new<E: Elem>(mesh: &SimplexMesh<D, E>) -> Self {
         assert!(mesh.n_verts() > 0);
         let mut tree = kdtree::KdTree::new(D);
+        for (i, pt) in mesh.verts().enumerate() {
+            tree.add(pt.as_slice().try_into().unwrap(), i).unwrap();
+        }
+        Self { tree }
+    }
+
+    fn newquadratic<QE: QuadraticElem>(mesh: &QuadraticMesh<QE>) -> Self {
+        assert!(mesh.n_verts() > 0);
+        let mut tree = kdtree::KdTree::new(3);
         for (i, pt) in mesh.verts().enumerate() {
             tree.add(pt.as_slice().try_into().unwrap(), i).unwrap();
         }

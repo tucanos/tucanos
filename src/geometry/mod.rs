@@ -1,8 +1,7 @@
 mod curvature;
 use crate::{
     geometry::curvature::HasCurvature,
-    mesh::{Elem, GElem, Topology},
-    mesh::{Point, SimplexMesh},
+    mesh::{Elem, GElem, GQuadElem, Point, QuadraticElem, QuadraticMesh, SimplexMesh, Topology},
     spatialindex::{DefaultObjectIndex, ObjectIndex},
     Dim, Error, Result, Tag, TopoTag,
 };
@@ -63,6 +62,59 @@ pub trait Geometry<const D: usize>: Send + Sync {
     }
 }
 
+/// Representation of a D-dimensional geometry
+pub trait QuadraticGeometry: Send + Sync {
+    /// Check that the geometry is consistent with a Topology
+    fn check(&self, topo: &Topology) -> Result<()>;
+
+    /// Project a vertex, associated with a given `TopoTag`, onto the geometry
+    /// The distance between the original vertex and its projection if returned
+    fn project(&self, pt: &mut Point<3>, tag: &TopoTag) -> f64;
+
+    /// Compute the angle between a vector n and the normal at the projection of pt onto the geometry
+    fn angle(&self, pt: &Point<3>, n: &Point<3>, tag: &TopoTag) -> f64;
+
+    /// Compute the max distance between the face centers and the geometry normals
+    fn project_vertices<QE: QuadraticElem>(&self, mesh: &mut QuadraticMesh<QE>) -> f64 {
+        let vtags = mesh.get_vertex_tags().unwrap().to_vec();
+
+        let mut d_max = 0.0;
+        for (p, tag) in mesh.mut_verts().zip(vtags.iter()) {
+            if tag.0 < QE::DIM as Dim {
+                let d = self.project(p, tag);
+                d_max = f64::max(d_max, d);
+            }
+        }
+
+        d_max
+    }
+
+    /// Compute the max distance between the face centers and the geometry normals
+    fn max_distance<QE2: QuadraticElem>(&self, mesh: &QuadraticMesh<QE2>) -> f64 {
+        let mut d_max = 0.0;
+        for (gf, tag) in mesh.gfaces().zip(mesh.edgtags()) {
+            let mut c = gf.center();
+            let d = self.project(&mut c, &(QE2::Face::DIM as Dim, tag));
+            d_max = f64::max(d_max, d);
+        }
+        d_max
+    }
+
+    /// Compute the max angle between the face normals and the geometry normals
+    fn max_normal_angle<QE2: QuadraticElem>(&self, mesh: &QuadraticMesh<QE2>) -> f64 {
+        let mut a_max = 0.0;
+        for (gf, tag) in mesh.gfaces().zip(mesh.edgtags()) {
+            if tag > 0 {
+                let c = gf.center();
+                let n = gf.normal();
+                let a = self.angle(&c, &n, &(QE2::Face::DIM as Dim, tag));
+                a_max = f64::max(a_max, a);
+            }
+        }
+        a_max
+    }
+}
+
 /// No geometric model
 pub struct NoGeometry<const D: usize>();
 
@@ -78,6 +130,24 @@ impl<const D: usize> Geometry<D> for NoGeometry<D> {
 
     fn angle(&self, _pt: &Point<D>, _n: &Point<D>, tag: &TopoTag) -> f64 {
         assert_eq!(tag.0, D as Dim - 1);
+        0.
+    }
+}
+
+pub struct NoQuadraticGeometry();
+
+impl QuadraticGeometry for NoQuadraticGeometry {
+    fn check(&self, _topo: &Topology) -> Result<()> {
+        Ok(())
+    }
+
+    fn project(&self, _pt: &mut Point<3>, tag: &TopoTag) -> f64 {
+        assert!(tag.0 < 3 as Dim);
+        0.
+    }
+
+    fn angle(&self, _pt: &Point<3>, _n: &Point<3>, tag: &TopoTag) -> f64 {
+        assert_eq!(tag.0, 3 as Dim - 1);
         0.
     }
 }
@@ -98,6 +168,26 @@ impl<const D: usize> LinearPatchGeometry<D> {
 
     // Perform projection
     fn project(&self, pt: &Point<D>) -> (f64, Point<D>) {
+        self.tree.project(pt)
+    }
+}
+
+/// Geometry for a patch of faces with a constant tag
+struct QuadraticPatchGeometry {
+    /// The ObjectIndex
+    tree: DefaultObjectIndex<3>,
+}
+
+impl QuadraticPatchGeometry {
+    /// Create a `QuadraticPatchGeometry` from a `QuadraticMesh`
+    pub fn new<QE: QuadraticElem>(mesh: &QuadraticMesh<QE>) -> Self {
+        let tree = mesh.compute_elem_tree();
+
+        Self { tree }
+    }
+
+    // Perform projection
+    fn project(&self, pt: &Point<3>) -> (f64, Point<3>) {
         self.tree.project(pt)
     }
 }
@@ -152,6 +242,96 @@ where
     fn curvature(&self, pt: &Point<D>) -> Result<(Point<D>, Option<Point<D>>)> {
         if self.u.is_none() {
             return Err(Error::from("LinearGeometry: compute_curvature not called"));
+        }
+
+        let i_elem = self.tree.nearest_elem(pt) as usize;
+        let u = self.u.as_ref().unwrap();
+        self.v.as_ref().map_or_else(
+            || Ok((u[i_elem], None)),
+            |v| Ok((u[i_elem], Some(v[i_elem]))),
+        )
+    }
+
+    pub fn write_curvature(&self, fname: &str) -> Result<()> {
+        // Export the curvature
+        let u1 = self
+            .u
+            .as_ref()
+            .unwrap()
+            .iter()
+            .flatten()
+            .copied()
+            .collect::<Vec<_>>();
+        let v1 = self
+            .v
+            .as_ref()
+            .unwrap()
+            .iter()
+            .flatten()
+            .copied()
+            .collect::<Vec<_>>();
+        let mut data = HashMap::new();
+        data.insert(String::from("u"), u1.as_slice());
+        data.insert(String::from("v"), v1.as_slice());
+
+        self.mesh.write_vtk(fname, None, Some(data))?;
+
+        Ok(())
+    }
+}
+
+/// Geometry for a quadratic patch of faces with a constant tag, with curvature information
+struct QuadraticPatchGeometryWithCurvature<QE: QuadraticElem> {
+    /// The face mesh
+    mesh: QuadraticMesh<QE>,
+    /// The ObjectIndex
+    tree: DefaultObjectIndex<3>,
+    /// Optionally, the first principal curvature direction
+    u: Option<Vec<Point<3>>>,
+    /// Optionally, the second principal curvature direction (3D only)
+    v: Option<Vec<Point<3>>>,
+}
+
+impl<QE: QuadraticElem> QuadraticPatchGeometryWithCurvature<QE>
+where
+    QuadraticMesh<QE>: HasCurvature<3>,
+{
+    /// Create a `QuadraticPatchGeometry` from a `QuadraticMesh`
+    pub fn new(mut mesh: QuadraticMesh<QE>) -> Self {
+        let tree = mesh.compute_elem_tree();
+        mesh.compute_face_to_elems();
+        mesh.add_boundary_faces();
+        mesh.clear_face_to_elems();
+
+        Self {
+            mesh,
+            tree,
+            u: None,
+            v: None,
+        }
+    }
+
+    // Perform projection
+    fn project(&self, pt: &Point<3>) -> (f64, Point<3>) {
+        self.tree.project(pt)
+    }
+
+    fn compute_curvature(&mut self) {
+        self.mesh.add_boundary_faces();
+        self.mesh.compute_elem_to_elems();
+
+        let (u, v) = self.mesh.compute_curvature();
+
+        self.mesh.clear_elem_to_elems();
+        self.u = Some(u);
+        self.v = v;
+    }
+
+    fn curvature(&self, pt: &Point<3>) -> Result<(Point<3>, Option<Point<3>>)> {
+        if self.u.is_none() {
+            return Err(Error::from(
+                "QuadraticGeometry: compute_curvature not called",
+            ));
         }
 
         let i_elem = self.tree.nearest_elem(pt) as usize;
@@ -311,6 +491,133 @@ where
         let patch = self.patches.get(&tag.1).unwrap();
         let idx = patch.tree.nearest_elem(pt);
         let n_ref = patch.mesh.gelem(patch.mesh.elem(idx)).normal();
+        let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
+        f64::acos(cos_a).to_degrees()
+    }
+}
+
+pub struct QuadGeometry<QE: QuadraticElem>
+where
+    QuadraticMesh<QE>: HasCurvature<3>,
+{
+    /// The surface patches
+    patches: FxHashMap<Tag, QuadraticPatchGeometryWithCurvature<QE>>,
+    /// The edges
+    edges: FxHashMap<Tag, QuadraticPatchGeometry>,
+}
+
+impl<QE: QuadraticElem> QuadGeometry<QE>
+where
+    QuadraticMesh<QE>: HasCurvature<3>,
+{
+    /// Create a `LinearGeometry` from a `SimplexMesh`
+    pub fn new<QE2: QuadraticElem>(
+        mesh: &QuadraticMesh<QE2>,
+        mut bdy: QuadraticMesh<QE>,
+    ) -> Result<Self> {
+        assert!(QE2::DIM >= QE::DIM);
+
+        let mesh_topo = mesh.get_topology()?;
+
+        // Faces
+        let mesh_face_tags = mesh_topo.tags(QE::DIM as Dim);
+        let face_tags: FxHashSet<Tag> = bdy.tritags().collect();
+        if face_tags.len() != mesh_face_tags.len() {
+            return Err(Error::from(&format!(
+                "QuadraticGeometry: invalid # of tags (mesh: {mesh_face_tags:?}, bdy: {face_tags:?})"
+            )));
+        }
+
+        let mut patches = FxHashMap::default();
+        for tag in face_tags.iter().copied() {
+            debug!("Create LinearPatchGeometryWithCurvature for patch {tag}");
+            if mesh_topo.get((QE::DIM as Dim, tag)).is_none() {
+                return Err(Error::from(&format!("LinearGeometry: face tag {tag:?} not found in topo (mesh: {mesh_face_tags:?}, bdy: {face_tags:?})")));
+            }
+            let submesh = bdy.extract_tag(tag).mesh;
+            patches.insert(tag, QuadraticPatchGeometryWithCurvature::new(submesh));
+        }
+
+        // Edges
+        let mut edges = FxHashMap::default();
+        if QE::DIM == 2 {
+            bdy.add_boundary_faces();
+            let bdy_topo = bdy.compute_topology().clone();
+            let (bdy_edges, _) = bdy.boundary();
+
+            let edge_tags: FxHashSet<Tag> = bdy_edges.edgtags().collect();
+
+            for tag in edge_tags {
+                debug!("Create LinearPatchGeometry for edge {tag}");
+                // find the edge tag in mesh_topo
+                let bdy_topo_node = bdy_topo.get((QE::Face::DIM as Dim, tag)).unwrap();
+                let bdy_parents = &bdy_topo_node.parents;
+                let mesh_topo_node = mesh_topo
+                    .get_from_parents_iter(QE::Face::DIM as Dim, bdy_parents.iter().copied())
+                    .unwrap();
+
+                let submesh = bdy_edges.extract_tag(tag).mesh;
+                edges.insert(mesh_topo_node.tag.1, QuadraticPatchGeometry::new(&submesh));
+            }
+        }
+        Ok(Self { patches, edges })
+    }
+
+    pub fn compute_curvature(&mut self) {
+        for (&i, patch) in &mut self.patches {
+            debug!("Compute curvature for patch {i}");
+            patch.compute_curvature();
+        }
+    }
+
+    pub fn curvature(&self, pt: &Point<3>, tag: Tag) -> Result<(Point<3>, Option<Point<3>>)> {
+        self.patches.get(&tag).unwrap().curvature(pt)
+    }
+
+    pub fn write_curvature(&self, fname: &str) -> Result<()> {
+        for (tag, patch) in &self.patches {
+            patch.write_curvature(&String::from(fname).replace(".vtu", &format!("_{tag}.vtu")))?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<QE: QuadraticElem> Geometry<3> for QuadGeometry<QE>
+where
+    QuadraticMesh<QE>: HasCurvature<3>,
+{
+    fn check(&self, _topo: &Topology) -> Result<()> {
+        // The check is performed during creation
+        Ok(())
+    }
+
+    fn project(&self, pt: &mut Point<3>, tag: &TopoTag) -> f64 {
+        assert!(tag.0 < 3 as Dim);
+
+        let (dist, p) = if tag.0 == QE::DIM as Dim {
+            let patch = self.patches.get(&tag.1).unwrap();
+            patch.project(pt)
+        } else if tag.0 == 0 {
+            (0.0, *pt)
+        } else if tag.0 == QE::DIM as Dim - 1 {
+            // after 0 to make sure that if is used only for E=Triangle
+            let edge = self.edges.get(&tag.1).unwrap();
+            edge.project(pt)
+        } else {
+            unreachable!("{:?}", tag)
+        };
+
+        *pt = p;
+        dist
+    }
+
+    fn angle(&self, pt: &Point<3>, n: &Point<3>, tag: &TopoTag) -> f64 {
+        assert_eq!(tag.0, 3 as Dim - 1);
+
+        let patch = self.patches.get(&tag.1).unwrap();
+        let idx = patch.tree.nearest_elem(pt);
+        let n_ref = patch.mesh.gelem(patch.mesh.tri(idx)).normal();
         let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
         f64::acos(cos_a).to_degrees()
     }

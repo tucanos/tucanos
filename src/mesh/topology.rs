@@ -9,6 +9,8 @@ use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use std::fmt;
 use std::{collections::HashSet, fs::File, io::Write};
 
+use super::{get_face_to_elem_quadratic, vector::VectorQuadratic, QuadraticElem};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TopoNode {
     pub tag: TopoTag,
@@ -238,6 +240,28 @@ impl Topology {
         });
     }
 
+    fn update_from_elems_quadratic<QE: QuadraticElem>(
+        &mut self,
+        elems: &VectorQuadratic<QE>,
+        etags: &VectorQuadratic<Tag>,
+        vtags: &mut [TopoTag],
+    ) {
+        elems.iter().zip(etags.iter()).for_each(|(e, t)| {
+            e.iter().for_each(|&i| {
+                let i = i as usize;
+                if vtags[i].1 != 0 && vtags[i].1 != t {
+                    vtags[i] = (QE::DIM as Dim, 0);
+                } else {
+                    let tag = (QE::DIM as Dim, t);
+                    if self.get(tag).is_none() {
+                        self.insert(tag, &[]);
+                    }
+                    vtags[i] = tag;
+                }
+            });
+        });
+    }
+
     fn update_from_faces<E: Elem>(
         &mut self,
         elems: &Vector<E>,
@@ -275,6 +299,43 @@ impl Topology {
         });
     }
 
+    fn update_from_faces_quadratic<QE: QuadraticElem>(
+        &mut self,
+        elems: &VectorQuadratic<QE>,
+        etags: &VectorQuadratic<Tag>,
+        faces: &VectorQuadratic<QE::Face>,
+        ftags: &VectorQuadratic<Tag>,
+        vtags: &mut [TopoTag],
+    ) {
+        let face2elem = get_face_to_elem_quadratic(elems.iter());
+        faces.iter().zip(ftags.iter()).for_each(|(f, t)| {
+            let tag = (QE::Face::DIM as Dim, t);
+            let parents = face2elem
+                .get(&f.sorted())
+                .unwrap()
+                .iter()
+                .map(|&i| etags.index(i))
+                .collect::<Vec<_>>();
+            assert!(!parents.is_empty());
+            if let Some(node) = self.get(tag) {
+                assert_eq!(parents.len(), node.parents.len());
+                parents
+                    .iter()
+                    .for_each(|x| assert!(node.parents.contains(x)));
+            } else {
+                self.insert(tag, &parents);
+            }
+            f.iter().for_each(|&i| {
+                let i = i as usize;
+                if vtags[i].0 == QE::Face::DIM as Dim && (vtags[i].1 == 0 || vtags[i].1 != t) {
+                    vtags[i] = (QE::Face::DIM as Dim, 0);
+                } else {
+                    vtags[i] = (QE::Face::DIM as Dim, t);
+                }
+            });
+        });
+    }
+
     fn max_tag(&self, dim: Dim) -> Tag {
         self.entities[dim as usize]
             .iter()
@@ -303,6 +364,30 @@ impl Topology {
         true
     }
 
+    fn check_untagged_quadratic<QE: QuadraticElem>(
+        &self,
+        elems: &VectorQuadratic<QE>,
+        etags: &VectorQuadratic<Tag>,
+    ) -> bool {
+        let dim = QE::Face::DIM as Dim;
+        let edg2face = get_face_to_elem_quadratic(elems.iter());
+        for e2f in edg2face.values() {
+            let ftags = e2f
+                .iter()
+                .map(|&i_face| etags.index(i_face))
+                .collect::<FxHashSet<_>>();
+            let should_be_tagged = e2f.len() != 2 || ftags.len() != 1;
+            if should_be_tagged
+                && self
+                    .get_from_parents_iter(dim, ftags.iter().copied())
+                    .is_none()
+            {
+                return false;
+            }
+        }
+        true
+    }
+
     fn update_and_get_children<E: Elem>(
         &mut self,
         faces: &Vector<E>,
@@ -311,6 +396,52 @@ impl Topology {
     ) -> (Vec<E::Face>, Vec<Tag>, Tag) {
         let dim = E::Face::DIM as Dim;
         let edg2face = get_face_to_elem(faces.iter());
+        let mut next_tag = self.max_tag(dim);
+        let mut edgs = Vec::new();
+        let mut etags = Vec::new();
+        for (e, e2f) in &edg2face {
+            let ftags = e2f
+                .iter()
+                .map(|&i_face| ftags.index(i_face))
+                .collect::<FxHashSet<_>>();
+            let should_be_tagged = e2f.len() != 2 || ftags.len() != 1;
+            if should_be_tagged {
+                #[allow(clippy::option_if_let_else)]
+                let t = if let Some(node) = self.get_from_parents_iter(dim, ftags.iter().copied()) {
+                    node.tag.1
+                } else {
+                    next_tag += 1;
+                    let flg = if ftags.iter().copied().any(|t| t < 0) {
+                        -1
+                    } else {
+                        1
+                    };
+                    self.insert_iter((dim, flg * next_tag), ftags.iter().copied());
+                    flg * next_tag
+                };
+                e.iter().for_each(|&i| {
+                    let i = i as usize;
+                    if vtags[i].0 == dim && (vtags[i].1 == 0 || vtags[i].1 != t) {
+                        vtags[i] = (dim, 0);
+                    } else {
+                        vtags[i] = (dim, t);
+                    }
+                });
+                edgs.push(*e);
+                etags.push(t);
+            }
+        }
+        (edgs, etags, next_tag)
+    }
+
+    fn update_and_get_children_quadratic<QE: QuadraticElem>(
+        &mut self,
+        faces: &VectorQuadratic<QE>,
+        ftags: &VectorQuadratic<Tag>,
+        vtags: &mut [TopoTag],
+    ) -> (Vec<QE::Face>, Vec<Tag>, Tag) {
+        let dim = QE::Face::DIM as Dim;
+        let edg2face = get_face_to_elem_quadratic(faces.iter());
         let mut next_tag = self.max_tag(dim);
         let mut edgs = Vec::new();
         let mut etags = Vec::new();
@@ -422,6 +553,79 @@ impl Topology {
         }
     }
 
+    fn check_and_fix_quadratic<QE: QuadraticElem>(
+        &mut self,
+        elems: &VectorQuadratic<QE>,
+        etags: &VectorQuadratic<Tag>,
+        vtags: &mut [TopoTag],
+    ) {
+        let vert2elems = CSRGraph::transpose_quadratic(elems, Some(vtags.len()));
+        for (i_vert, vtag) in vtags.iter_mut().enumerate() {
+            let ids = vert2elems.row(i_vert as Idx);
+            let mut tags = ids
+                .iter()
+                .map(|&i| etags.index(i))
+                .collect::<FxHashSet<_>>();
+            if vtag.0 > QE::DIM as Dim {
+                assert!(vtag.1 != 0);
+            }
+            if tags.len() > 1 {
+                if vtag.0 == QE::DIM as Dim {
+                    if vtag.1 != 0 {
+                        tags.insert(vtag.1);
+                    }
+                    let dim = QE::Face::DIM as Dim;
+                    if let Some(node) = self.get_from_parents_iter(dim + 1, tags.iter().copied()) {
+                        *vtag = node.tag;
+                    } else {
+                        let tag = self.max_tag(dim) + 1;
+                        let flg = if tags.iter().copied().any(|t| t < 0) {
+                            -1
+                        } else {
+                            1
+                        };
+                        self.insert_iter((dim, flg * tag), tags.iter().copied());
+                        *vtag = (dim, flg * tag);
+                    }
+                }
+
+                if tags
+                    .iter()
+                    .copied()
+                    .any(|t| !self.is_child((QE::DIM as Dim, t), *vtag))
+                {
+                    // assert_eq!(
+                    //     vtag.1,
+                    //     0,
+                    //     "Cannot fix tag {vtag:?}: parents dim = {}, tags = {tags:?}\n{self}",
+                    //     E::DIM
+                    // );
+                    let dim = QE::Face::DIM as Dim;
+                    if let Some(node) = self.get_from_parents_iter(dim + 1, tags.iter().copied()) {
+                        *vtag = node.tag;
+                    } else {
+                        let tag = self.max_tag(dim) + 1;
+                        let flg = if tags.iter().copied().any(|t| t < 0) {
+                            -1
+                        } else {
+                            1
+                        };
+                        self.insert_iter((dim, flg * tag), tags.iter().copied());
+                        *vtag = (dim, flg * tag);
+                    }
+                }
+
+                for &t in &tags {
+                    assert!(
+                        self.is_child((QE::DIM as Dim, t), *vtag),
+                        "{vtag:?} is not a children of {:?}\n{self}",
+                        (QE::DIM as Dim, t)
+                    );
+                }
+            }
+        }
+    }
+
     pub fn update_from_elems_and_faces<E: Elem>(
         &mut self,
         elems: &Vector<E>,
@@ -476,6 +680,67 @@ impl Topology {
             self.check_and_fix(elems, etags, &mut vtags);
             self.check_and_fix(faces, ftags, &mut vtags);
             self.check_and_fix(&verts.into(), &verttags.into(), &mut vtags);
+        }
+
+        self.compute_parents();
+
+        vtags
+    }
+
+    pub fn update_from_elems_and_faces_quadratic<QE: QuadraticElem>(
+        &mut self,
+        elems: &VectorQuadratic<QE>,
+        etags: &VectorQuadratic<Tag>,
+        faces: &VectorQuadratic<QE::Face>,
+        ftags: &VectorQuadratic<Tag>,
+    ) -> Vec<TopoTag> {
+        assert!(
+            QE::DIM == 2 || QE::DIM == 3,
+            "Invalid element dimension {}",
+            QE::DIM
+        );
+        assert!(!etags.iter().any(|t| t == 0));
+        assert!(!ftags.iter().any(|t| t == 0));
+
+        let n_verts = elems.iter().flatten().max().unwrap() + 1;
+
+        let mut vtags = vec![(QE::DIM as Dim, 0); n_verts as usize];
+
+        // Tag vertices based on element tags
+        // (will not be valid if the vertex belongs to elements with different tags)
+        self.update_from_elems_quadratic(elems, etags, &mut vtags);
+
+        // Tag vertices based on face tags
+        // (will not be valid if the vertex belongs to faces with different tags)
+        self.update_from_faces_quadratic(elems, etags, faces, ftags, &mut vtags);
+
+        // Check that all faces are tagged
+        assert!(
+            self.check_untagged_quadratic(elems, etags),
+            "All the faces were not properly tagged"
+        );
+
+        if QE::DIM == 3 {
+            let (edgs, edgtags, _next_edg_tag) =
+                self.update_and_get_children_quadratic(faces, ftags, &mut vtags);
+            let edgs = edgs.into();
+            let edgtags = edgtags.into();
+            let (verts, verttags, _next_edg_tag) =
+                self.update_and_get_children_quadratic(&edgs, &edgtags, &mut vtags);
+
+            // Check
+            self.check_and_fix_quadratic(elems, etags, &mut vtags);
+            self.check_and_fix_quadratic(faces, ftags, &mut vtags);
+            self.check_and_fix_quadratic(&edgs, &edgtags, &mut vtags);
+            self.check_and_fix_quadratic(&verts.into(), &verttags.into(), &mut vtags);
+        } else {
+            let (verts, verttags, _next_edg_tag) =
+                self.update_and_get_children_quadratic(faces, ftags, &mut vtags);
+
+            // Check
+            self.check_and_fix_quadratic(elems, etags, &mut vtags);
+            self.check_and_fix_quadratic(faces, ftags, &mut vtags);
+            self.check_and_fix_quadratic(&verts.into(), &verttags.into(), &mut vtags);
         }
 
         self.compute_parents();

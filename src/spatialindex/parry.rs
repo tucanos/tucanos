@@ -2,8 +2,7 @@ use parry2d_f64::query::{PointQuery as _, PointQueryWithLocation as _};
 use parry3d_f64::query::{PointQuery as _, PointQueryWithLocation as _};
 
 use crate::{
-    mesh::Point,
-    mesh::{Elem, SimplexMesh},
+    mesh::{Elem, Point, QuadraticElem, QuadraticMesh, SimplexMesh},
     Idx,
 };
 
@@ -467,6 +466,27 @@ impl<const D: usize> super::ObjectIndex<D> for ObjectIndex<D> {
             }
         } else {
             unimplemented!("D={D} E::N_VERTS={}", E::N_VERTS);
+        }
+    }
+
+    fn newquadratic<QE: QuadraticElem>(mesh: &QuadraticMesh<QE>) -> Self {
+        if QE::N_VERTS == 6 {
+            let mut coords = Vec::with_capacity(3 * mesh.n_verts() as usize);
+            for p in mesh.verts() {
+                coords.push(nalgebra::Point3::new(p[0], p[1], p[2]));
+            }
+            let elems: Vec<_> = mesh
+                .tris()
+                .map(|e| {
+                    let mut i = e.iter();
+                    std::array::from_fn(|_| *i.next().unwrap())
+                })
+                .collect();
+            Self {
+                inner: ParryImpl::Tria3D(parry3d_f64::shape::TriMesh::new(coords, elems).unwrap()),
+            }
+        } else {
+            unimplemented!("D={D} E::N_VERTS={}", QE::N_VERTS);
         }
     }
 

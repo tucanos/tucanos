@@ -242,9 +242,9 @@ impl<QE: QuadraticElem> FromNativePointerQuadratic for QE {
     }
 }
 
-impl<const D: usize> FromNativePointerQuadratic for crate::mesh::Point<D> {
+impl FromNativePointerQuadratic for crate::mesh::Point<3> {
     type PointerType = f64;
-    const SIZE: usize = D;
+    const SIZE: usize = 3;
 
     fn from_ptr(ptr: *const Self::PointerType) -> Self {
         let s = unsafe { std::slice::from_raw_parts(ptr, 3) };
@@ -370,6 +370,7 @@ impl<T: Copy + FromNativePointerQuadratic> VectorQuadratic<T> {
             }),
         }
     }
+
     pub fn is_empty(&self) -> bool {
         self.data.len() == 0
     }

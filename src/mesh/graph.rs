@@ -1,5 +1,5 @@
 use crate::{
-    mesh::{vector, Elem},
+    mesh::{vector, Elem, QuadraticElem},
     Error, Idx, Result,
 };
 use num::PrimInt;
@@ -26,6 +26,27 @@ pub fn reindex<E: Elem>(elems: &vector::Vector<E>) -> (Vec<E>, FxHashMap<Idx, Id
     (new_elems, map)
 }
 
+/// Renumber the vertices in order to have contininuous indices, and return he map from old to nex indices
+#[must_use]
+pub fn reindexq<QE: QuadraticElem>(
+    elems: &vector::VectorQuadratic<QE>,
+) -> (Vec<QE>, FxHashMap<Idx, Idx>) {
+    let mut map = FxHashMap::default();
+    let mut next = 0 as Idx;
+    for i in elems.iter().flatten() {
+        if let Entry::Vacant(e) = map.entry(i) {
+            e.insert(next);
+            next += 1;
+        }
+    }
+
+    let new_elems = elems
+        .iter()
+        .map(|e| QE::from_iter(e.iter().map(|&i| *map.get(&i).unwrap())))
+        .collect();
+
+    (new_elems, map)
+}
 #[derive(Debug, Default, Clone)]
 pub struct CSRGraph {
     pub ptr: Vec<Idx>,
@@ -57,6 +78,31 @@ impl CSRGraph {
     }
 
     fn from_elems<E: Elem>(elems: &vector::Vector<E>, nv: Option<usize>) -> Self {
+        let nv = nv.unwrap_or_else(|| elems.iter().flatten().max().unwrap_or(0) as usize + 1);
+
+        let n = elems.iter().flatten().count();
+
+        let mut res = Self {
+            ptr: vec![0; nv + 1],
+            indices: vec![Idx::MAX; n],
+            m: 0,
+        };
+
+        for i in elems.iter().flatten() {
+            res.ptr[i as usize + 1] += 1;
+        }
+
+        for i in 0..nv {
+            res.ptr[i + 1] += res.ptr[i];
+        }
+
+        res
+    }
+
+    fn from_elems_quadratic<QE: QuadraticElem>(
+        elems: &vector::VectorQuadratic<QE>,
+        nv: Option<usize>,
+    ) -> Self {
         let nv = nv.unwrap_or_else(|| elems.iter().flatten().max().unwrap_or(0) as usize + 1);
 
         let n = elems.iter().flatten().count();
@@ -121,6 +167,33 @@ impl CSRGraph {
     #[must_use]
     pub fn transpose<E: Elem>(elems: &vector::Vector<E>, nv: Option<usize>) -> Self {
         let mut res = Self::from_elems(elems, nv);
+        res.m = elems.len() as Idx;
+
+        for (i, e) in elems.iter().enumerate() {
+            for i_vert in e.iter().copied() {
+                let start = res.ptr[i_vert as usize];
+                let end = res.ptr[i_vert as usize + 1];
+                let mut ok = false;
+                for j in start..end {
+                    if res.indices[j as usize] == Idx::MAX {
+                        res.indices[j as usize] = i as Idx;
+                        ok = true;
+                        break;
+                    }
+                }
+                assert!(ok);
+            }
+        }
+        res.sort();
+        res
+    }
+
+    #[must_use]
+    pub fn transpose_quadratic<QE: QuadraticElem>(
+        elems: &vector::VectorQuadratic<QE>,
+        nv: Option<usize>,
+    ) -> Self {
+        let mut res = Self::from_elems_quadratic(elems, nv);
         res.m = elems.len() as Idx;
 
         for (i, e) in elems.iter().enumerate() {
