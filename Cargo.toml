@@ -23,7 +23,7 @@ lindel = "0.1.1"
 vtkio = {version = "0.6.3"}
 kdtree = { version = "0.7", optional = true }
 parry3d-f64 = { version = "0.18", optional = true }
-parry2d-f64 = { version = "0.18", optional = true }
+parry2d-f64 = { version = "0.20", optional = true }
 rayon = "1.10"
 typenum = { version ="1.17", features = ["const-generics"] }
 num = "0.4.3"
