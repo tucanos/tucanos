@@ -86,7 +86,7 @@ macro_rules! create_mesh {
                 self.0.n_verts()
             }
 
-            fn verts<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<f64>>> {
+            fn get_verts<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<f64>>> {
                 PyArray::from_vec(py, self.0.seq_verts().flatten().cloned().collect())
                     .reshape([self.0.n_verts(), $dim])
             }
@@ -95,12 +95,12 @@ macro_rules! create_mesh {
                 self.0.n_elems()
             }
 
-            fn elems<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<usize>>> {
+            fn get_elems<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<usize>>> {
                 PyArray::from_vec(py, self.0.seq_elems().flatten().cloned().collect())
                     .reshape([self.0.n_elems(), $cell_dim])
             }
 
-            fn etags<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<Tag>>> {
+            fn get_etags<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<Tag>>> {
                 Ok(PyArray::from_vec(py, self.0.seq_etags().collect()))
             }
 
@@ -108,12 +108,12 @@ macro_rules! create_mesh {
                 self.0.n_faces()
             }
 
-            fn faces<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<usize>>> {
+            fn get_faces<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<usize>>> {
                 PyArray::from_vec(py, self.0.seq_faces().flatten().cloned().collect())
                     .reshape([self.0.n_faces(), $face_dim])
             }
 
-            fn ftags<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<Tag>>> {
+            fn get_ftags<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<Tag>>> {
                 Ok(PyArray::from_vec(py, self.0.seq_ftags().collect()))
             }
 
