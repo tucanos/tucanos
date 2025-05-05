@@ -290,8 +290,8 @@ impl<const D: usize> SimplePolyMesh<D> {
                 let mut ok = false;
                 for v in elem_to_face
                     .iter_mut()
-                    .take(elem_to_face_ptr[i0 + 1])
-                    .skip(elem_to_face_ptr[i0])
+                    .take(elem_to_face_ptr[i1 + 1])
+                    .skip(elem_to_face_ptr[i1])
                 {
                     if v.0 == usize::MAX {
                         *v = (i_face, false);
