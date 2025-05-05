@@ -97,12 +97,10 @@ impl<const D: usize> SimplePolyMesh<D> {
         for (i_face, elems) in face2elems.iter().enumerate() {
             if let Some(x) = face_groups.get_mut(elems) {
                 x.push((i_face, true));
+            } else if let Some(x) = face_groups.get_mut(&[elems[1], elems[0]]) {
+                x.push((i_face, false));
             } else {
-                if let Some(x) = face_groups.get_mut(&[elems[1], elems[0]]) {
-                    x.push((i_face, false));
-                } else {
-                    face_groups.insert(*elems, vec![(i_face, true)]);
-                }
+                face_groups.insert(*elems, vec![(i_face, true)]);
             }
         }
 
@@ -178,9 +176,13 @@ impl<const D: usize> SimplePolyMesh<D> {
         let mut new_elems = vec![(usize::MAX, false); *new_elems_ptr.last().unwrap()];
         for (i_face, &[i0, i1]) in new_faces_elems.iter().enumerate() {
             let mut ok = false;
-            for j in new_elems_ptr[i0]..new_elems_ptr[i0 + 1] {
-                if new_elems[j].0 == usize::MAX {
-                    new_elems[j] = (i_face, true);
+            for v in new_elems
+                .iter_mut()
+                .take(new_elems_ptr[i0 + 1])
+                .skip(new_elems_ptr[i0])
+            {
+                if v.0 == usize::MAX {
+                    *v = (i_face, true);
                     ok = true;
                     break;
                 }
@@ -188,9 +190,13 @@ impl<const D: usize> SimplePolyMesh<D> {
             assert!(ok);
             if i1 != usize::MAX {
                 let mut ok = false;
-                for j in new_elems_ptr[i1]..new_elems_ptr[i1 + 1] {
-                    if new_elems[j].0 == usize::MAX {
-                        new_elems[j] = (i_face, false);
+                for v in new_elems
+                    .iter_mut()
+                    .take(new_elems_ptr[i1 + 1])
+                    .skip(new_elems_ptr[i1])
+                {
+                    if v.0 == usize::MAX {
+                        *v = (i_face, false);
                         ok = true;
                         break;
                     }
@@ -267,9 +273,13 @@ impl<const D: usize> SimplePolyMesh<D> {
             }
             if i0 != usize::MAX {
                 let mut ok = false;
-                for k in elem_to_face_ptr[i0]..elem_to_face_ptr[i0 + 1] {
-                    if elem_to_face[k].0 == usize::MAX {
-                        elem_to_face[k] = (i_face, true);
+                for v in elem_to_face
+                    .iter_mut()
+                    .take(elem_to_face_ptr[i0 + 1])
+                    .skip(elem_to_face_ptr[i0])
+                {
+                    if v.0 == usize::MAX {
+                        *v = (i_face, true);
                         ok = true;
                         break;
                     }
@@ -278,9 +288,13 @@ impl<const D: usize> SimplePolyMesh<D> {
             }
             if i1 != usize::MAX {
                 let mut ok = false;
-                for k in elem_to_face_ptr[i1]..elem_to_face_ptr[i1 + 1] {
-                    if elem_to_face[k].0 == usize::MAX {
-                        elem_to_face[k] = (i_face, false);
+                for v in elem_to_face
+                    .iter_mut()
+                    .take(elem_to_face_ptr[i0 + 1])
+                    .skip(elem_to_face_ptr[i0])
+                {
+                    if v.0 == usize::MAX {
+                        *v = (i_face, false);
                         ok = true;
                         break;
                     }

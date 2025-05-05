@@ -36,14 +36,12 @@ impl DualMesh2d {
                 let bcoords = circumcenter_bcoords(v);
                 if bcoords.iter().all(|&x| x > f) {
                     DualCellCenter::Vertex(cell_vertex(v, bcoords))
+                } else if bcoords[0] <= f {
+                    DualCellCenter::Face([1, 2])
+                } else if bcoords[1] <= f {
+                    DualCellCenter::Face([2, 0])
                 } else {
-                    if bcoords[0] <= f {
-                        DualCellCenter::Face([1, 2])
-                    } else if bcoords[1] <= f {
-                        DualCellCenter::Face([2, 0])
-                    } else {
-                        DualCellCenter::Face([1, 0])
-                    }
+                    DualCellCenter::Face([1, 0])
                 }
             }
         }
@@ -277,9 +275,13 @@ impl DualMesh<2, 3, 2> for DualMesh2d {
         new_poly_to_face_ptr.push(0);
         let mut new_poly_to_face = Vec::with_capacity(n);
         for i_elem in 0..msh.n_verts() {
-            for j in poly_to_face_ptr[i_elem]..poly_to_face_ptr[i_elem + 1] {
-                if poly_to_face[j].0 != usize::MAX {
-                    new_poly_to_face.push(poly_to_face[j]);
+            for v in poly_to_face
+                .iter()
+                .take(poly_to_face_ptr[i_elem + 1])
+                .skip(poly_to_face_ptr[i_elem])
+            {
+                if v.0 != usize::MAX {
+                    new_poly_to_face.push(*v);
                 }
             }
             new_poly_to_face_ptr.push(new_poly_to_face.len());

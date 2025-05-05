@@ -324,16 +324,14 @@ where
             if *i0 != usize::MAX || *i1 != usize::MAX {
                 let t0 = self.etag(*i0);
                 let t1 = self.etag(*i1);
-                if t0 != t1 {
-                    if tagged_faces.get(f).is_none() {
-                        let tags = if t0 < t1 { [t0, t1] } else { [t1, t0] };
-                        if let Some(&tmp) = res.get(&tags) {
-                            self.add_faces(std::iter::once(f).cloned(), std::iter::once(tmp));
-                        } else {
-                            res.insert(tags, next_tag);
-                            self.add_faces(std::iter::once(f).cloned(), std::iter::once(next_tag));
-                            next_tag += 1;
-                        }
+                if t0 != t1 && !tagged_faces.contains_key(f) {
+                    let tags = if t0 < t1 { [t0, t1] } else { [t1, t0] };
+                    if let Some(&tmp) = res.get(&tags) {
+                        self.add_faces(std::iter::once(f).cloned(), std::iter::once(tmp));
+                    } else {
+                        res.insert(tags, next_tag);
+                        self.add_faces(std::iter::once(f).cloned(), std::iter::once(next_tag));
+                        next_tag += 1;
                     }
                 }
             }
@@ -385,12 +383,10 @@ where
             } else {
                 let t0 = self.etag(*i0);
                 let t1 = self.etag(*i1);
-                if t0 != t1 {
-                    if !tagged_faces.contains(f) {
-                        return Err(Error::from(&format!(
-                            "Internal boundary face {f:?} not tagged ({t0} / {t1})"
-                        )));
-                    }
+                if t0 != t1 && !tagged_faces.contains(f) {
+                    return Err(Error::from(&format!(
+                        "Internal boundary face {f:?} not tagged ({t0} / {t1})"
+                    )));
                 }
             }
         }
@@ -401,12 +397,10 @@ where
             let mut tmp = *f;
             tmp.sort();
             let [_, i0, i1] = all_faces.get(&tmp).unwrap();
-            if *i0 != usize::MAX && *i1 != usize::MAX {
-                if self.etag(*i0) == self.etag(*i1) {
-                    return Err(Error::from(&format!(
-                        "Tagged face inside the domain: center = {fc:?}",
-                    )));
-                }
+            if *i0 != usize::MAX && *i1 != usize::MAX && self.etag(*i0) == self.etag(*i1) {
+                return Err(Error::from(&format!(
+                    "Tagged face inside the domain: center = {fc:?}",
+                )));
             }
             let i = if *i1 == usize::MAX { *i0 } else { *i1 };
             let ge = self.gelem(self.elem(i));
@@ -423,7 +417,7 @@ where
 
         // volumes
         if Self::faces_are_oriented() {
-            let vol = self.gelems().map(|ge| Cell::<C>::vol(ge)).sum::<f64>();
+            let vol = self.gelems().map(Cell::<C>::vol).sum::<f64>();
             let vol2 = self
                 .gfaces()
                 .map(|gf| cell_center(gf).dot(&Face::<F>::normal(gf)))
@@ -877,7 +871,7 @@ where
                 }
             });
             self.add_elems_and_tags(tmp.iter().cloned());
-            return ids;
+            ids
         } else {
             unreachable!()
         }

@@ -163,8 +163,15 @@ impl DataArray {
         data: I,
         encoding: Encoding,
     ) -> Self {
+        use std::fmt::Write;
         let (format, data) = match encoding {
-            Encoding::Ascii => ("ascii".to_string(), data.map(|x| format!("{x} ")).collect()),
+            Encoding::Ascii => (
+                "ascii".to_string(),
+                data.fold(String::new(), |mut output, b| {
+                    let _ = write!(output, "{b} ");
+                    output
+                }),
+            ),
             Encoding::Binary => (
                 "binary".to_string(),
                 encode::<f64, _>(len, data.flat_map(|x| x.to_le_bytes())),
@@ -187,8 +194,15 @@ impl DataArray {
         data: I,
         encoding: Encoding,
     ) -> Self {
+        use std::fmt::Write;
         let (format, data) = match encoding {
-            Encoding::Ascii => ("ascii".to_string(), data.map(|x| format!("{x} ")).collect()),
+            Encoding::Ascii => (
+                "ascii".to_string(),
+                data.fold(String::new(), |mut output, b| {
+                    let _ = write!(output, "{b} ");
+                    output
+                }),
+            ),
             Encoding::Binary => (
                 "binary".to_string(),
                 encode::<i64, _>(len, data.flat_map(|x| x.to_le_bytes())),
@@ -211,8 +225,15 @@ impl DataArray {
         data: I,
         encoding: Encoding,
     ) -> Self {
+        use std::fmt::Write;
         let (format, data) = match encoding {
-            Encoding::Ascii => ("ascii".to_string(), data.map(|x| format!("{x} ")).collect()),
+            Encoding::Ascii => (
+                "ascii".to_string(),
+                data.fold(String::new(), |mut output, b| {
+                    let _ = write!(output, "{b} ");
+                    output
+                }),
+            ),
             Encoding::Binary => (
                 "binary".to_string(),
                 encode::<i16, _>(len, data.flat_map(|x| x.to_le_bytes())),
@@ -235,8 +256,15 @@ impl DataArray {
         data: I,
         encoding: Encoding,
     ) -> Self {
+        use std::fmt::Write;
         let (format, data) = match encoding {
-            Encoding::Ascii => ("ascii".to_string(), data.map(|x| format!("{x} ")).collect()),
+            Encoding::Ascii => (
+                "ascii".to_string(),
+                data.fold(String::new(), |mut output, b| {
+                    let _ = write!(output, "{b} ");
+                    output
+                }),
+            ),
             Encoding::Binary => (
                 "binary".to_string(),
                 encode::<u8, _>(len, data.flat_map(|x| x.to_le_bytes())),
