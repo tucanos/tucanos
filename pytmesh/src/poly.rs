@@ -140,6 +140,8 @@ macro_rules! create_poly_mesh {
                 let mut ptr = Vec::with_capacity(n + 1);
                 let mut f2n = Vec::with_capacity(m);
 
+                ptr.push(0);
+
                 for f in self.0.seq_faces() {
                     for &i in f {
                         f2n.push(i);

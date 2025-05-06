@@ -137,7 +137,7 @@ impl PyExtrudedMesh2d {
 
     fn get_quads<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<usize>>> {
         PyArray::from_vec(py, self.0.quads().flatten().cloned().collect())
-            .reshape([self.0.n_quads(), 3])
+            .reshape([self.0.n_quads(), 4])
     }
 
     fn get_quad_tags<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<Tag>>> {

@@ -59,8 +59,8 @@ impl ExtrudedMesh2d {
             msh.seq_elems()
                 .map(|tri| [tri[0] + n, tri[2] + n, tri[1] + n]),
         );
-        let mut tri_tags = vec![Tag::MIN; msh.n_elems()];
-        tri_tags.resize(2 * msh.n_elems(), Tag::MIN + 1);
+        let mut tri_tags = vec![Tag::MAX; msh.n_elems()];
+        tri_tags.resize(2 * msh.n_elems(), Tag::MAX - 1);
 
         let quads = msh
             .seq_faces()
@@ -204,9 +204,9 @@ impl DualMesh2d {
             assert_eq!(polygons.len(), 1);
 
             let polygon = &polygons[0];
-            let i0 = res.insert_face(polygon, Tag::MIN);
+            let i0 = res.insert_face(polygon, Tag::MAX);
             let new_polygon = polygon.iter().rev().map(|&i| i + n).collect::<Vec<_>>();
-            let i1 = res.insert_face(&new_polygon, Tag::MIN + 1);
+            let i1 = res.insert_face(&new_polygon, Tag::MAX - 1);
 
             let mut new_e = e.to_vec();
             new_e.push((i0, true));
