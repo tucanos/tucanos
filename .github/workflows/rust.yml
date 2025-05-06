@@ -36,4 +36,4 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Python bindings
-      run: cd pytmesh; pip install -e .; python -m unittest discover
+      run: cd pytmesh; pip install vtk=9.3; pip install -e .; python -m unittest discover
