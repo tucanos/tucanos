@@ -8,3 +8,8 @@ Cargo.lock
 *.geo
 *.pyc
 *.pyd
+build/
+*.h5
+*.so
+.cargo/
+*.code-workspace
