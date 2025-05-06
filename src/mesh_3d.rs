@@ -337,25 +337,7 @@ mod tests {
         msh.write_meshb(fname).unwrap();
         let new_msh = Mesh3d::from_meshb(fname).unwrap();
 
-        for (v0, v1) in msh.seq_verts().zip(new_msh.seq_verts()) {
-            assert!((v0 - v1).norm() < 1e-12);
-        }
-
-        for (e0, e1) in msh.seq_elems().zip(new_msh.seq_elems()) {
-            assert_eq!(e0, e1);
-        }
-
-        for (t0, t1) in msh.seq_etags().zip(new_msh.seq_etags()) {
-            assert_eq!(t0, t1);
-        }
-
-        for (e0, e1) in msh.seq_faces().zip(new_msh.seq_faces()) {
-            assert_eq!(e0, e1);
-        }
-
-        for (t0, t1) in msh.seq_ftags().zip(new_msh.seq_ftags()) {
-            assert_eq!(t0, t1);
-        }
+        msh.check_equals(&new_msh, 1e-12).unwrap();
 
         std::fs::remove_file(fname).unwrap();
     }

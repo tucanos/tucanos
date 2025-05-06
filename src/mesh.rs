@@ -918,4 +918,38 @@ where
             unreachable!()
         }
     }
+
+    fn check_equals<M: Mesh<D, C, F>>(&self, other: &M, tol: f64) -> Result<()> {
+        for (i, (v0, v1)) in self.seq_verts().zip(other.seq_verts()).enumerate() {
+            if (v0 - v1).norm() > tol {
+                return Err(Error::from(&format!("Vertex {i}: {v0:?} != {v1:?}")));
+            }
+        }
+
+        for (i, (e0, e1)) in self.seq_elems().zip(other.seq_elems()).enumerate() {
+            if e0 != e1 {
+                return Err(Error::from(&format!("Element {i}: {e0:?} != {e1:?}")));
+            }
+        }
+
+        for (i, (t0, t1)) in self.seq_etags().zip(other.seq_etags()).enumerate() {
+            if t0 != t1 {
+                return Err(Error::from(&format!("Element tag {i}: {t0:?} != {t1:?}")));
+            }
+        }
+
+        for (i, (e0, e1)) in self.seq_faces().zip(other.seq_faces()).enumerate() {
+            if e0 != e1 {
+                return Err(Error::from(&format!("Face {i}: {e0:?} != {e1:?}")));
+            }
+        }
+
+        for (i, (t0, t1)) in self.seq_ftags().zip(other.seq_ftags()).enumerate() {
+            if t0 != t1 {
+                return Err(Error::from(&format!("Face tag {i}: {t0:?} != {t1:?}")));
+            }
+        }
+
+        Ok(())
+    }
 }

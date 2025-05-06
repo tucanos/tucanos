@@ -248,6 +248,12 @@ macro_rules! create_mesh {
                     PyArray1::from_vec(py, elem_ids),
                 )
             }
+
+            fn check_equals(&self, other: &Self, tol: f64) -> PyResult<()> {
+                self.0
+                    .check_equals(&other.0, tol)
+                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+            }
         }
     };
 }
