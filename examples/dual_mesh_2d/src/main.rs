@@ -42,7 +42,7 @@ fn main() -> Result<()> {
     let fname = Path::new(fname);
 
     if !fname.exists() {
-        std::fs::write("quarter_disk.geo", &GEO_FILE)?;
+        std::fs::write("quarter_disk.geo", GEO_FILE)?;
 
         let output = Command::new("gmsh")
             .arg("quarter_disk.geo")
