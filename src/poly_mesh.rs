@@ -75,6 +75,61 @@ pub struct SimplePolyMesh<const D: usize> {
 }
 
 impl<const D: usize> SimplePolyMesh<D> {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        poly_type: PolyMeshType,
+        verts: Vec<Vertex<D>>,
+        face_to_node_ptr: Vec<usize>,
+        face_to_node: Vec<usize>,
+        ftags: Vec<Tag>,
+        elem_to_face_ptr: Vec<usize>,
+        elem_to_face: Vec<(usize, bool)>,
+        etags: Vec<Tag>,
+    ) -> Self {
+        Self {
+            poly_type,
+            verts,
+            face_to_node_ptr,
+            face_to_node,
+            ftags,
+            elem_to_face_ptr,
+            elem_to_face,
+            etags,
+        }
+    }
+
+    pub fn empty(poly_type: PolyMeshType) -> Self {
+        Self {
+            poly_type,
+            verts: Vec::new(),
+            face_to_node_ptr: vec![0],
+            face_to_node: Vec::new(),
+            ftags: Vec::new(),
+            elem_to_face_ptr: vec![0],
+            elem_to_face: Vec::new(),
+            etags: Vec::new(),
+        }
+    }
+
+    pub fn insert_vert(&mut self, v: Vertex<D>) -> usize {
+        self.verts.push(v);
+        self.verts.len() - 1
+    }
+
+    pub fn insert_face(&mut self, f: &[usize], t: Tag) -> usize {
+        self.face_to_node.extend(f);
+        self.face_to_node_ptr.push(self.face_to_node.len());
+        self.ftags.push(t);
+        self.ftags.len() - 1
+    }
+
+    pub fn insert_elem(&mut self, e: &[(usize, bool)], t: Tag) -> usize {
+        self.elem_to_face.extend(e);
+        self.elem_to_face_ptr.push(self.elem_to_face.len());
+        self.etags.push(t);
+        self.etags.len() - 1
+    }
+
     pub fn simplify<T: PolyMesh<D>>(mesh: &T, simplify: bool) -> Self {
         let poly_type = mesh.poly_type();
 
