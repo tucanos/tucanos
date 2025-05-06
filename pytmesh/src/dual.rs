@@ -61,6 +61,7 @@ macro_rules! create_dual_mesh {
                 let mut e2f = Vec::with_capacity(m);
                 let mut e2f_orient = Vec::with_capacity(m);
 
+                ptr.push(0);
                 for e in self.0.seq_elems() {
                     for &(f, o) in e {
                         e2f.push(f);
