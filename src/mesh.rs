@@ -305,7 +305,7 @@ where
 
         // check tagged internal faces
         for (f, [_, i0, i1]) in all_faces {
-            if *i0 != usize::MAX || *i1 != usize::MAX {
+            if *i0 != usize::MAX && *i1 != usize::MAX {
                 let t0 = self.etag(*i0);
                 let t1 = self.etag(*i1);
                 if t0 != t1 {
@@ -321,7 +321,7 @@ where
 
         // add untagged internal faces
         for (f, [_, i0, i1]) in all_faces {
-            if *i0 != usize::MAX || *i1 != usize::MAX {
+            if *i0 != usize::MAX && *i1 != usize::MAX {
                 let t0 = self.etag(*i0);
                 let t1 = self.etag(*i1);
                 if t0 != t1 && !tagged_faces.contains_key(f) {
