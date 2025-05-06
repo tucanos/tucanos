@@ -5,3 +5,7 @@ from .pytmesh import PyBoundaryMesh3d as PyBoundaryMesh3d
 from .pytmesh import PyDualType as DualType
 from .pytmesh import PyDualMesh2d as DualMesh2d
 from .pytmesh import PyDualMesh3d as DualMesh3d
+from .pytmesh import PyPolyMeshType as PolyMeshType
+from .pytmesh import PyPolyMesh2d as PolyMesh2d
+from .pytmesh import PyPolyMesh3d as PolyMesh3d
+from .pytmesh import PyExtrudedMesh2d as ExtrudedMesh2d

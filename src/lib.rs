@@ -7,6 +7,7 @@ pub mod boundary_mesh_3d;
 pub mod dual_mesh;
 pub mod dual_mesh_2d;
 pub mod dual_mesh_3d;
+pub mod extruded;
 pub mod graph;
 mod least_squares;
 pub mod mesh;

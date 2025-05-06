@@ -1,8 +1,9 @@
 use crate::{
+    extruded::ExtrudedMesh2d,
     mesh::Mesh,
     poly_mesh::{merge_polylines, PolyMesh, PolyMeshType},
     simplices::Simplex,
-    Cell, Face, Result, Tag, Vertex,
+    Cell, Face, Prism, Result, Tag, Vertex,
 };
 use base64::Engine as _;
 use quick_xml::se::to_utf8_io_writer;
@@ -52,6 +53,24 @@ impl VTUFile {
                     points: Points::from_verts(mesh.seq_verts(), encoding),
                     cells: Cells::from_elems(mesh, encoding),
                     cell_data: CellData::from_etags(mesh.seq_etags(), encoding),
+                },
+            },
+        }
+    }
+
+    pub fn from_extruded_mesh(mesh: &ExtrudedMesh2d, encoding: Encoding) -> Self {
+        Self {
+            grid_type: "UnstructuredGrid".to_string(),
+            version: 0.1,
+            header_type: "UInt32".to_string(),
+            byte_order: "LittleEndian".to_string(),
+            unstructured_grid: UnstructuredGrid {
+                piece: Piece {
+                    number_of_points: mesh.n_verts(),
+                    number_of_cells: mesh.n_prisms(),
+                    points: Points::from_verts(mesh.verts(), encoding),
+                    cells: Cells::from_prisms(mesh.prisms(), encoding),
+                    cell_data: CellData::from_etags(mesh.prism_tags(), encoding),
                 },
             },
         }
@@ -315,6 +334,33 @@ impl Cells {
             2 => 4,
             _ => unreachable!(),
         };
+
+        let data = (0..n).map(|_i| cell_type);
+        let types = DataArray::new_u8("types", 1, data.len(), data, encoding);
+
+        Self {
+            data_array: vec![connectivity, offsets, types],
+        }
+    }
+
+    fn from_prisms<'a, I: ExactSizeIterator<Item = &'a Prism>>(
+        prisms: I,
+        encoding: Encoding,
+    ) -> Self {
+        let n = prisms.len();
+
+        let connectivity = DataArray::new_i64(
+            "connectivity",
+            1,
+            6 * n,
+            prisms.flatten().map(|&x| x as i64),
+            encoding,
+        );
+
+        let data = (0..n).map(|i| (6 * (i + 1)) as i64);
+        let offsets = DataArray::new_i64("offsets", 1, data.len(), data, encoding);
+
+        let cell_type = 13_u8;
 
         let data = (0..n).map(|_i| cell_type);
         let types = DataArray::new_u8("types", 1, data.len(), data, encoding);
