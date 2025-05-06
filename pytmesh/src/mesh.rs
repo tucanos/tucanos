@@ -53,7 +53,7 @@ macro_rules! create_mesh {
 
                 let coords = coords.as_slice()?;
                 let coords = coords
-                    .chunks(2)
+                    .chunks($dim)
                     .map(|p| {
                         let mut vx = Vertex::<$dim>::zeros();
                         vx.copy_from_slice(p);
