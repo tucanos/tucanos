@@ -6,6 +6,7 @@ use crate::{
 };
 use nalgebra::{DMatrix, DVector};
 use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
+use rustc_hash::{FxBuildHasher, FxHashMap};
 
 #[derive(Clone, Copy, Debug)]
 pub enum DualType {
@@ -150,12 +151,32 @@ where
         }
 
         // closed elements
-        for (e, v) in self.seq_elems().zip(self.seq_vols()) {
+        for (i, (e, v)) in self.seq_elems().zip(self.seq_vols()).enumerate() {
             if v < 0.0 {
-                return Err(Error::from(&format!("Volume of {e:?} = {v} < 0")));
+                return Err(Error::from(&format!(
+                    "Element {i} invalid: vol={v} < 0  ({e:?})"
+                )));
             }
             if !self.is_closed(e) {
-                return Err(Error::from(&format!("Element {e:?} not closed")));
+                return Err(Error::from(&format!("Element {i} not closed ({e:?})")));
+            }
+        }
+
+        // all faces appear only once
+        let mut faces = FxHashMap::with_hasher(FxBuildHasher);
+        for (i, f) in self.seq_faces().enumerate() {
+            assert_eq!(f.len(), F);
+            let mut res = [0; F];
+            res.iter_mut().zip(f.iter()).for_each(|(x, y)| *x = *y);
+            res.sort();
+            if let std::collections::hash_map::Entry::Vacant(e) = faces.entry(res) {
+                e.insert(i);
+            } else {
+                let j = *faces.get(&res).unwrap();
+                return Err(Error::from(&format!(
+                    "Face {i} ({f:?}) = face {j} ({:?})",
+                    self.face(j)
+                )));
             }
         }
 
