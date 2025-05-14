@@ -156,8 +156,7 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
                     verts.push(center);
                 }
                 DualCellCenter::Face([i0, i1]) => {
-                    let mut edge = [f[i0], f[i1]];
-                    edge.sort();
+                    let edge = [f[i0], f[i1]].sorted();
                     let i_edge = *all_edges.get(&edge).unwrap();
                     vert_idx_face[i_face] = vert_idx_edge(i_edge);
                 }
@@ -175,8 +174,7 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
                     verts.push(center);
                 }
                 DualCellCenter::Face([i0, i1, i2]) => {
-                    let mut face = [e[i0], e[i1], e[i2]];
-                    face.sort();
+                    let face = [e[i0], e[i1], e[i2]].sorted();
                     let i_face = all_faces.get(&face).unwrap()[0];
                     vert_idx_elem[i_elem] = vert_idx_face[i_face];
                 }
@@ -222,8 +220,7 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
         for (i_elem, e) in msh.seq_elems().enumerate() {
             for f in &elem_to_faces {
                 let f = [e[f[0]], e[f[1]], e[f[2]]];
-                let mut tmp = f;
-                tmp.sort();
+                let tmp = f.sorted();
                 let i_face = all_faces.get(&tmp).unwrap()[0];
                 for edg in &face_to_edges {
                     let edg = [f[edg[0]], f[edg[1]]];
@@ -280,8 +277,7 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
         let mut bdy_faces = Vec::with_capacity(msh.n_faces() * 6);
 
         for (f, tag) in msh.seq_faces().zip(msh.seq_ftags()) {
-            let mut tmp = *f;
-            tmp.sort();
+            let tmp = f.sorted();
             let i_face = all_faces.get(&tmp).unwrap()[0];
             for edg in &face_to_edges {
                 let edg = [f[edg[0]], f[edg[1]]];

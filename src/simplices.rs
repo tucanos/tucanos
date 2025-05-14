@@ -1,5 +1,4 @@
 use crate::{Edge, Node, Tetrahedron, Triangle, Vertex};
-
 pub trait Simplex<const C: usize>: Sized {
     fn edges() -> Vec<Edge>;
 
@@ -13,6 +12,23 @@ pub trait Simplex<const C: usize>: Sized {
     fn radius<const D: usize>(v: [&Vertex<D>; C]) -> f64;
 
     fn quadrature() -> (Vec<f64>, Vec<Vec<f64>>);
+
+    fn sorted(&self) -> Self;
+
+    fn is_same(&self, other: &Self) -> bool;
+}
+
+fn is_circ_perm<const N: usize>(a: &[usize; N], b: &[usize; N]) -> bool {
+    let mut tmp = *b;
+    for i in 0..N {
+        if tmp == *a {
+            return true;
+        }
+        if i != N - 1 {
+            tmp.rotate_right(1);
+        }
+    }
+    false
 }
 
 impl Simplex<1> for Node {
@@ -34,6 +50,14 @@ impl Simplex<1> for Node {
 
     fn quadrature() -> (Vec<f64>, Vec<Vec<f64>>) {
         unreachable!()
+    }
+
+    fn sorted(&self) -> Self {
+        *self
+    }
+
+    fn is_same(&self, other: &Self) -> bool {
+        self[0] == other[0]
     }
 }
 
@@ -68,6 +92,16 @@ impl Simplex<2> for Edge {
             vec![0.5 + 0.5 * (3.0_f64 / 5.0).sqrt()],
         ];
         (weights, pts)
+    }
+
+    fn sorted(&self) -> Self {
+        let mut tmp = *self;
+        tmp.sort();
+        tmp
+    }
+
+    fn is_same(&self, other: &Self) -> bool {
+        is_circ_perm(self, other)
     }
 }
 
@@ -117,6 +151,16 @@ impl Simplex<3> for Triangle {
         ];
         (weights, pts)
     }
+
+    fn sorted(&self) -> Self {
+        let mut tmp = *self;
+        tmp.sort();
+        tmp
+    }
+
+    fn is_same(&self, other: &Self) -> bool {
+        is_circ_perm(self, other)
+    }
 }
 
 pub(crate) const TETRA_FACES: [Triangle; 4] = [[1, 2, 3], [2, 0, 3], [0, 1, 3], [0, 2, 1]];
@@ -150,5 +194,15 @@ impl Simplex<4> for Tetrahedron {
             vec![0.1381966011250105, 0.1381966011250105, 0.5854101966249685],
         ];
         (weights, pts)
+    }
+
+    fn sorted(&self) -> Self {
+        let mut tmp = *self;
+        tmp.sort();
+        tmp
+    }
+
+    fn is_same(&self, other: &Self) -> bool {
+        is_circ_perm(self, other)
     }
 }

@@ -305,11 +305,7 @@ impl<const D: usize> SimplePolyMesh<D> {
         let tagged_faces = mesh
             .faces()
             .zip(mesh.ftags())
-            .map(|(f, t)| {
-                let mut f = *f;
-                f.sort();
-                (f, t)
-            })
+            .map(|(f, t)| (f.sorted(), t))
             .collect::<FxHashMap<_, _>>();
 
         let mut elem_to_face_ptr = vec![0; mesh.n_elems() + 1];
@@ -357,8 +353,7 @@ impl<const D: usize> SimplePolyMesh<D> {
                 assert!(ok);
             }
             if i0 == usize::MAX && i1 == usize::MAX {
-                let mut f = *f;
-                f.sort();
+                let f = f.sorted();
                 ftags[i_face] = *tagged_faces.get(&f).unwrap();
             } else {
                 ftags[i_face] = 0;

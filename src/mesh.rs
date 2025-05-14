@@ -169,13 +169,10 @@ where
 
         let mut res = FxHashMap::with_hasher(FxBuildHasher);
 
-        for edg in self.seq_elems().flat_map(|e| {
-            elem_to_edges.iter().map(|&[i, j]| {
-                let mut edg = [e[i], e[j]];
-                edg.sort();
-                edg
-            })
-        }) {
+        for edg in self
+            .seq_elems()
+            .flat_map(|e| elem_to_edges.iter().map(|&[i, j]| [e[i], e[j]].sorted()))
+        {
             if !res.contains_key(&edg) {
                 res.insert(edg, res.len());
             }
@@ -262,8 +259,7 @@ where
                     let fc = cell_center(gf);
                     let n = Face::<F>::normal(gf);
 
-                    let mut f = *f;
-                    f.sort();
+                    let f = f.sorted();
                     let [_, i0, i1] = all_faces.get(&f).unwrap();
                     assert!(*i0 == usize::MAX || *i1 == usize::MAX);
                     let i = if *i1 == usize::MAX { *i0 } else { *i1 };
@@ -294,11 +290,7 @@ where
         let tagged_faces = self
             .faces()
             .zip(self.ftags())
-            .map(|(f, t)| {
-                let mut f = *f;
-                f.sort();
-                (f, t)
-            })
+            .map(|(f, t)| (f.sorted(), t))
             .collect::<FxHashMap<_, _>>();
 
         let mut next_tag = self.ftags().max().unwrap_or(0) + 1;
@@ -366,14 +358,7 @@ where
         }
 
         // tagged faces
-        let tagged_faces = self
-            .faces()
-            .map(|f| {
-                let mut f = *f;
-                f.sort();
-                f
-            })
-            .collect::<FxHashSet<_>>();
+        let tagged_faces = self.faces().map(|f| f.sorted()).collect::<FxHashSet<_>>();
 
         for (f, [_, i0, i1]) in all_faces {
             if *i0 == usize::MAX || *i1 == usize::MAX {
@@ -394,8 +379,7 @@ where
         for f in self.seq_faces() {
             let gf = self.gface(f);
             let fc = cell_center(gf);
-            let mut tmp = *f;
-            tmp.sort();
+            let tmp = f.sorted();
             let [_, i0, i1] = all_faces.get(&tmp).unwrap();
             if *i0 != usize::MAX && *i1 != usize::MAX && self.etag(*i0) == self.etag(*i1) {
                 return Err(Error::from(&format!(
