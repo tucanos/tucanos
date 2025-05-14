@@ -5,7 +5,7 @@ use crate::{
     Cell, Error, Face, Result, Tag, Vertex,
 };
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
 #[derive(Debug, Clone, Copy)]
 pub enum PolyMeshType {
@@ -26,6 +26,15 @@ pub trait PolyMesh<const D: usize>: Sync + Sized {
     }
     fn n_elems(&self) -> usize;
     fn elem(&self, i: usize) -> &[(usize, bool)];
+    fn elem_n_verts(&self, i: usize) -> usize {
+        let mut verts = FxHashSet::with_hasher(FxBuildHasher);
+        for &(j, _) in self.elem(i) {
+            for k in self.face(j) {
+                verts.insert(k);
+            }
+        }
+        verts.len()
+    }
     fn elems(&self) -> impl IndexedParallelIterator<Item = &[(usize, bool)]> + Clone + '_ {
         (0..self.n_elems()).into_par_iter().map(|i| self.elem(i))
     }

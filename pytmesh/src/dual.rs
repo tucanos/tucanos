@@ -94,10 +94,39 @@ macro_rules! create_dual_mesh {
                 Ok(PyArray::from_vec(py, self.0.seq_ftags().collect()))
             }
 
+            fn elem_n_verts<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<usize>> {
+                let res = (0..self.0.n_elems())
+                    .map(|i| self.0.elem_n_verts(i))
+                    .collect::<Vec<_>>();
+                PyArray::from_vec(py, res)
+            }
+
             fn write_vtk(&self, file_name: &str) -> PyResult<()> {
                 self.0
                     .write_vtk(file_name)
                     .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+            }
+
+            fn check(&self) -> PyResult<()> {
+                self.0
+                    .check()
+                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+            }
+
+            fn elem<'py>(
+                &self,
+                py: Python<'py>,
+                i: usize,
+            ) -> (Bound<'py, PyArray1<usize>>, Bound<'py, PyArray1<bool>>) {
+                let e = self.0.elem(i);
+                let faces = e.iter().map(|&(i, _)| i).collect::<Vec<_>>();
+                let orient = e.iter().map(|&(_, o)| o).collect::<Vec<_>>();
+                (PyArray::from_vec(py, faces), PyArray::from_vec(py, orient))
+            }
+
+            fn face<'py>(&self, py: Python<'py>, i: usize) -> Bound<'py, PyArray1<usize>> {
+                let f = self.0.face(i);
+                PyArray::from_vec(py, f.to_vec())
             }
         }
     };
