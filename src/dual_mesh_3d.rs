@@ -6,7 +6,7 @@ use crate::{
     Edge, Tag, Tetrahedron, Triangle, Vert3d,
 };
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxBuildHasher, FxHashMap};
 
 pub struct DualMesh3d {
     verts: Vec<Vert3d>,
@@ -141,6 +141,7 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
         // vertices: edge centers
         verts.resize(verts.len() + n_edges, Vert3d::zeros());
         let vert_idx_edge = |i: usize| i + n_bdy_verts;
+
         for (&edge, &i_edge) in &all_edges {
             verts[vert_idx_edge(i_edge)] = cell_center([msh.vert(edge[0]), msh.vert(edge[1])]);
         }
@@ -187,8 +188,9 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
         let elem_to_faces = M::elem_to_faces();
 
         let n_poly_faces = 12 * msh.n_elems() + 6 * msh.n_faces();
-        let mut faces = Vec::with_capacity(n_poly_faces);
-        let mut ftags = Vec::with_capacity(n_poly_faces);
+        // for Barth cells we may build the same face from different edge / face / element
+        // combinations, so faces are stored sorted in a hashmap to detect duplicates
+        let mut tmp_faces = FxHashMap::with_capacity_and_hasher(n_poly_faces, FxBuildHasher);
 
         let mut poly_to_face_ptr = vec![0; msh.n_verts() + 1];
         // internal faces
@@ -235,20 +237,33 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
                         vert_idx_elem[i_elem],
                         vert_idx_face[i_face],
                     ];
-                    if face[0] != face[1] && face[0] != face[2] && face[1] != face[2] {
+
+                    let skip = face[0] == face[1] || face[0] == face[2] || face[1] == face[2];
+                    if !skip {
                         let gf = [&verts[face[0]], &verts[face[1]], &verts[face[2]]];
                         edge_normals[i_edge] += sgn * Triangle::normal(gf);
 
-                        let i_new_face = faces.len();
-                        faces.push(face);
-                        ftags.push(0);
+                        let sorted_face = face.sorted();
+                        let is_sorted = face.is_same(&sorted_face);
+                        let i_face = if let Some((i_face, _)) = tmp_faces.get(&sorted_face) {
+                            *i_face
+                        } else {
+                            let i_face = tmp_faces.len();
+                            tmp_faces.insert(sorted_face, (i_face, 0));
+                            i_face
+                        };
 
                         let mut ok = false;
                         let slice = &mut poly_to_face
                             [poly_to_face_ptr[edg[0]]..poly_to_face_ptr[edg[0] + 1]];
                         for j in slice {
-                            if j.0 == usize::MAX {
-                                *j = (i_new_face, true);
+                            if j.0 == i_face {
+                                // face is present twice --> remove it
+                                *j = (usize::MAX, true);
+                                ok = true;
+                                break;
+                            } else if j.0 == usize::MAX {
+                                *j = (i_face, is_sorted);
                                 ok = true;
                                 break;
                             }
@@ -259,8 +274,13 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
                         let slice = &mut poly_to_face
                             [poly_to_face_ptr[edg[1]]..poly_to_face_ptr[edg[1] + 1]];
                         for j in slice {
-                            if j.0 == usize::MAX {
-                                *j = (i_new_face, false);
+                            if j.0 == i_face {
+                                // face is present twice --> remove it
+                                *j = (usize::MAX, true);
+                                ok = true;
+                                break;
+                            } else if j.0 == usize::MAX {
+                                *j = (i_face, !is_sorted);
                                 ok = true;
                                 break;
                             }
@@ -272,7 +292,6 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
                 }
             }
         }
-
         // build boundary faces
         let mut bdy_faces = Vec::with_capacity(msh.n_faces() * 6);
 
@@ -281,8 +300,7 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
             let i_face = all_faces.get(&tmp).unwrap()[0];
             for edg in &face_to_edges {
                 let edg = [f[edg[0]], f[edg[1]]];
-                let mut tmp = edg;
-                tmp.sort();
+                let tmp = edg.sorted();
                 let i_edge = *all_edges.get(&tmp).unwrap();
 
                 let face = [
@@ -290,20 +308,27 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
                     vert_idx_edge(i_edge),
                     vert_idx_face[i_face],
                 ];
-                if face[0] != face[1] && face[0] != face[2] && face[1] != face[2] {
+                let skip = face[0] == face[1] || face[0] == face[2] || face[1] == face[2];
+                if !skip {
                     let gf = [&verts[face[0]], &verts[face[1]], &verts[face[2]]];
                     bdy_faces.push((edg[0], tag, Triangle::normal(gf)));
 
-                    let i_new_face = faces.len();
-                    faces.push(face);
-                    ftags.push(tag);
+                    let sorted_face = face.sorted();
+                    let is_sorted = face.is_same(&sorted_face);
+                    let i_face = if let Some((i_face, _)) = tmp_faces.get(&sorted_face) {
+                        *i_face
+                    } else {
+                        let i_face = tmp_faces.len();
+                        tmp_faces.insert(sorted_face, (i_face, tag));
+                        i_face
+                    };
 
                     let mut ok = false;
                     let slice =
                         &mut poly_to_face[poly_to_face_ptr[edg[0]]..poly_to_face_ptr[edg[0] + 1]];
                     for j in slice {
                         if j.0 == usize::MAX {
-                            *j = (i_new_face, true);
+                            *j = (i_face, is_sorted);
                             ok = true;
                             break;
                         }
@@ -318,20 +343,27 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
                     vert_idx_face[i_face],
                     vert_idx_edge(i_edge),
                 ];
-                if face[0] != face[1] && face[0] != face[2] && face[1] != face[2] {
+                let skip = face[0] == face[1] || face[0] == face[2] || face[1] == face[2];
+                if !skip {
                     let gf = [&verts[face[0]], &verts[face[1]], &verts[face[2]]];
                     bdy_faces.push((edg[0], tag, Triangle::normal(gf)));
 
-                    let i_new_face = faces.len();
-                    faces.push(face);
-                    ftags.push(tag);
+                    let sorted_face = face.sorted();
+                    let is_sorted = face.is_same(&sorted_face);
+                    let i_face = if let Some((i_face, _)) = tmp_faces.get(&sorted_face) {
+                        *i_face
+                    } else {
+                        let i_face = tmp_faces.len();
+                        tmp_faces.insert(sorted_face, (i_face, tag));
+                        i_face
+                    };
 
                     let mut ok = false;
                     let slice =
                         &mut poly_to_face[poly_to_face_ptr[edg[1]]..poly_to_face_ptr[edg[1] + 1]];
                     for j in slice {
                         if j.0 == usize::MAX {
-                            *j = (i_new_face, true);
+                            *j = (i_face, is_sorted);
                             ok = true;
                             break;
                         }
@@ -342,8 +374,39 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
                 }
             }
         }
-        assert_eq!(faces.len(), n_poly_faces - n_empty_faces);
-        assert_eq!(ftags.len(), n_poly_faces - n_empty_faces);
+        assert!(tmp_faces.len() <= n_poly_faces - n_empty_faces);
+        if matches!(t, DualType::Median) {
+            assert_eq!(tmp_faces.len(), n_poly_faces - n_empty_faces);
+        }
+        let n = tmp_faces.len();
+        let mut new_face_idx = vec![0; n];
+        poly_to_face
+            .iter()
+            .filter(|&i| i.0 != usize::MAX)
+            .for_each(|&i| new_face_idx[i.0] += 1);
+        let mut count = 0;
+        new_face_idx.iter_mut().for_each(|i| {
+            if *i != 0 {
+                assert!(*i <= 2);
+                *i = count;
+                count += 1;
+            } else {
+                *i = usize::MAX;
+            }
+        });
+        if matches!(t, DualType::Median) {
+            assert_eq!(count, n);
+        }
+
+        let mut faces = vec![[0; 3]; count];
+        let mut ftags = vec![0; count];
+        for (face, (i_old, tag)) in tmp_faces {
+            let i = new_face_idx[i_old];
+            if i != usize::MAX {
+                faces[i] = face;
+                ftags[i] = tag;
+            }
+        }
 
         // remove unused
         let n = poly_to_face.iter().filter(|&i| i.0 != usize::MAX).count();
@@ -358,7 +421,7 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
                 .skip(poly_to_face_ptr[i_elem])
             {
                 if v.0 != usize::MAX {
-                    new_poly_to_face.push(*v);
+                    new_poly_to_face.push((new_face_idx[v.0], v.1));
                 }
             }
             new_poly_to_face_ptr.push(new_poly_to_face.len());
@@ -439,9 +502,6 @@ mod tests {
 
         dual.write_vtk("median3d.vtu").unwrap();
 
-        for i in 0..dual.n_elems() {
-            println!("{}", dual.vol(i));
-        }
         // let (bdy, _): (BoundaryMesh3d, _) = dual.boundary();
         // bdy.write_vtk("median3d_bdy.vtu").unwrap();
 
@@ -461,9 +521,6 @@ mod tests {
 
         dual.write_vtk("barth3d.vtu").unwrap();
 
-        for i in 0..dual.n_elems() {
-            println!("{}", dual.vol(i));
-        }
         // let (bdy, _): (BoundaryMesh3d, _) = dual.boundary();
         // bdy.write_vtk("barth3d_bdy.vtu").unwrap();
 
