@@ -1,3 +1,4 @@
+//! Python bindings for simplex meshes
 use numpy::{
     PyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2,
     PyUntypedArrayMethods,
@@ -19,11 +20,13 @@ use tmesh::{
 
 macro_rules! create_mesh {
     ($pyname: ident, $name: ident, $dim: expr, $cell_dim: expr, $face_dim: expr) => {
+        #[doc = concat!("Python binding for ", stringify!($name))]
         #[pyclass]
         pub struct $pyname(pub(crate) $name);
 
         #[pymethods]
         impl $pyname {
+            /// Create a new mesh from coordinates, connectivities and tags
             #[new]
             pub fn new(
                 coords: PyReadonlyArray2<f64>,
@@ -82,41 +85,50 @@ macro_rules! create_mesh {
                 )))
             }
 
-            fn n_verts(&self) -> usize {
+            /// Number of vertices
+            pub fn n_verts(&self) -> usize {
                 self.0.n_verts()
             }
 
+            /// Get a copy of the vertices
             fn get_verts<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                PyArray::from_vec(py, self.0.seq_verts().flatten().cloned().collect())
+                PyArray::from_vec(py, self.0.verts().flatten().cloned().collect())
                     .reshape([self.0.n_verts(), $dim])
             }
 
+            /// Number of elements
             fn n_elems(&self) -> usize {
                 self.0.n_elems()
             }
 
+            /// Get a copy of the elements
             fn get_elems<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<usize>>> {
-                PyArray::from_vec(py, self.0.seq_elems().flatten().cloned().collect())
+                PyArray::from_vec(py, self.0.elems().flatten().cloned().collect())
                     .reshape([self.0.n_elems(), $cell_dim])
             }
 
+            /// Get a copy of the element tags
             fn get_etags<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<Tag>>> {
-                Ok(PyArray::from_vec(py, self.0.seq_etags().collect()))
+                Ok(PyArray::from_vec(py, self.0.etags().collect()))
             }
 
+            /// Number of faces
             fn n_faces(&self) -> usize {
                 self.0.n_faces()
             }
 
+            /// Get a copy of the faces
             fn get_faces<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<usize>>> {
-                PyArray::from_vec(py, self.0.seq_faces().flatten().cloned().collect())
+                PyArray::from_vec(py, self.0.faces().flatten().cloned().collect())
                     .reshape([self.0.n_faces(), $face_dim])
             }
 
+            /// Get a copy of the face tags
             fn get_ftags<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<Tag>>> {
-                Ok(PyArray::from_vec(py, self.0.seq_ftags().collect()))
+                Ok(PyArray::from_vec(py, self.0.ftags().collect()))
             }
 
+            /// Fix the element & face orientation (if possible) and tag internal faces (if needed)
             fn fix(&mut self) -> PyResult<()> {
                 let all_faces = self.0.compute_faces();
                 self.0.fix_orientation(&all_faces);
@@ -126,18 +138,21 @@ macro_rules! create_mesh {
                     .map_err(|e| PyRuntimeError::new_err(e.to_string()))
             }
 
+            /// Export the mesh to a `.vtu` file
             fn write_vtk(&self, file_name: &str) -> PyResult<()> {
                 self.0
                     .write_vtk(file_name)
                     .map_err(|e| PyRuntimeError::new_err(e.to_string()))
             }
 
+            /// Export the mesh to a `.meshb` file
             fn write_meshb(&self, file_name: &str) -> PyResult<()> {
                 self.0
                     .write_meshb(file_name)
                     .map_err(|e| PyRuntimeError::new_err(e.to_string()))
             }
 
+            /// Read a `.meshb` file
             #[classmethod]
             fn from_meshb(_cls: &Bound<'_, PyType>, file_name: &str) -> PyResult<Self> {
                 Ok(Self(
@@ -146,6 +161,7 @@ macro_rules! create_mesh {
                 ))
             }
 
+            /// Split and add quandrangles
             fn add_quadrangles(
                 &mut self,
                 elems: PyReadonlyArray2<usize>,
@@ -167,6 +183,7 @@ macro_rules! create_mesh {
                 Ok(())
             }
 
+            /// Split and add pyramids
             fn add_pyramids(
                 &mut self,
                 elems: PyReadonlyArray2<usize>,
@@ -188,6 +205,7 @@ macro_rules! create_mesh {
                 Ok(())
             }
 
+            /// Split and add prisms
             fn add_prisms(
                 &mut self,
                 elems: PyReadonlyArray2<usize>,
@@ -209,6 +227,7 @@ macro_rules! create_mesh {
                 Ok(())
             }
 
+            /// Split and add hexahedra
             fn add_hexahedra<'py>(
                 &mut self,
                 py: Python<'py>,
@@ -231,6 +250,7 @@ macro_rules! create_mesh {
                 Ok(PyArray1::from_vec(py, ids))
             }
 
+            /// Reorder the mesh using RCM
             fn reorder_rcm<'py>(
                 &mut self,
                 py: Python<'py>,
@@ -249,6 +269,7 @@ macro_rules! create_mesh {
                 )
             }
 
+            /// Check that two meshes are equal
             fn check_equals(&self, other: &Self, tol: f64) -> PyResult<()> {
                 self.0
                     .check_equals(&other.0, tol)
@@ -265,6 +286,8 @@ create_mesh!(PyBoundaryMesh3d, BoundaryMesh3d, 3, 3, 2);
 
 #[pymethods]
 impl PyMesh2d {
+    /// Build a nonuniform rectangle mesh by splitting a structured
+    /// mesh
     #[classmethod]
     pub fn rectangle_mesh(
         _cls: &Bound<'_, PyType>,
@@ -276,6 +299,7 @@ impl PyMesh2d {
         Ok(Self(nonuniform_rectangle_mesh(x, y)))
     }
 
+    /// Get the mesh boundary
     pub fn boundary<'py>(
         &self,
         py: Python<'py>,
@@ -287,6 +311,8 @@ impl PyMesh2d {
 
 #[pymethods]
 impl PyMesh3d {
+    /// Build a nonuniform box mesh by splitting a structured
+    /// mesh
     #[classmethod]
     pub fn box_mesh(
         _cls: &Bound<'_, PyType>,
@@ -300,6 +326,7 @@ impl PyMesh3d {
         Ok(Self(nonuniform_box_mesh(x, y, z)))
     }
 
+    /// Get the mesh boundary
     pub fn boundary<'py>(
         &self,
         py: Python<'py>,

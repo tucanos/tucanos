@@ -1,3 +1,5 @@
+//! Python bindings for tmesh
+
 pub mod dual;
 pub mod extruded;
 pub mod mesh;
@@ -8,7 +10,7 @@ use pyo3::{
     types::{PyModule, PyModuleMethods},
 };
 
-/// Python bindings for pytucanos
+/// Python bindings for tmesh
 #[pymodule]
 #[pyo3(name = "pytmesh")]
 pub fn pymeshb(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {

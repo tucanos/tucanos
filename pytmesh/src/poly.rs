@@ -1,3 +1,4 @@
+//! Python bindings for general poly meshes
 use numpy::{
     PyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2,
     PyUntypedArrayMethods,
@@ -12,21 +13,27 @@ use tmesh::{
     poly_mesh::{PolyMesh, PolyMeshType, SimplePolyMesh},
 };
 
+/// Type of poly cells (mapping of `tmesh::PolyMeshType`)
 #[pyclass(eq, eq_int)]
 #[derive(Clone, PartialEq)]
 pub enum PyPolyMeshType {
+    /// Polylines
     Polylines,
+    /// Polygons
     Polygons,
+    /// Polyhedra
     Polyhedra,
 }
 
 macro_rules! create_poly_mesh {
     ($pyname: ident, $dim: expr) => {
+        #[doc = concat!("Python binding for ", stringify!($name))]
         #[pyclass]
         pub struct $pyname(pub(crate) SimplePolyMesh<$dim>);
 
         #[pymethods]
         impl $pyname {
+            /// Create a new mesh from coordinates, connectivities and tags
             #[new]
             #[allow(clippy::too_many_arguments)]
             pub fn new(
@@ -80,19 +87,24 @@ macro_rules! create_poly_mesh {
                 )))
             }
 
+            /// Number of vertices
             pub fn n_verts(&self) -> usize {
                 self.0.n_verts()
             }
 
+            /// Get a copy of the vertices
             pub fn get_verts<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                PyArray::from_vec(py, self.0.seq_verts().flatten().cloned().collect())
+                PyArray::from_vec(py, self.0.verts().flatten().cloned().collect())
                     .reshape([self.0.n_verts(), $dim])
             }
 
+            /// Number of elements
             pub fn n_elems(&self) -> usize {
                 self.0.n_elems()
             }
 
+            /// Get a copy of the elements as 3 arrays:
+            /// `(ptr, face_indices, faces_orientation)`
             pub fn get_elems<'py>(
                 &self,
                 py: Python<'py>,
@@ -102,13 +114,13 @@ macro_rules! create_poly_mesh {
                 Bound<'py, PyArray1<bool>>,
             ) {
                 let n = self.0.n_elems();
-                let m = self.0.seq_elems().map(|x| x.len()).sum::<usize>();
+                let m = self.0.elems().map(|x| x.len()).sum::<usize>();
                 let mut ptr = Vec::with_capacity(n + 1);
                 let mut e2f = Vec::with_capacity(m);
                 let mut e2f_orient = Vec::with_capacity(m);
                 ptr.push(0);
 
-                for e in self.0.seq_elems() {
+                for e in self.0.elems() {
                     for &(f, o) in e {
                         e2f.push(f);
                         e2f_orient.push(o);
@@ -123,26 +135,30 @@ macro_rules! create_poly_mesh {
                 )
             }
 
+            /// Get a copy of the element tags
             pub fn get_etags<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<Tag>>> {
-                Ok(PyArray::from_vec(py, self.0.seq_etags().collect()))
+                Ok(PyArray::from_vec(py, self.0.etags().collect()))
             }
 
+            /// Numver of faces
             pub fn n_faces(&self) -> usize {
                 self.0.n_faces()
             }
 
+            /// Get a copy of the elements as 3 arrays:
+            /// `(ptr, vertex_indices)`
             pub fn get_faces<'py>(
                 &self,
                 py: Python<'py>,
             ) -> (Bound<'py, PyArray1<usize>>, Bound<'py, PyArray1<usize>>) {
                 let n = self.0.n_elems();
-                let m = self.0.seq_faces().map(|x| x.len()).sum::<usize>();
+                let m = self.0.faces().map(|x| x.len()).sum::<usize>();
                 let mut ptr = Vec::with_capacity(n + 1);
                 let mut f2n = Vec::with_capacity(m);
 
                 ptr.push(0);
 
-                for f in self.0.seq_faces() {
+                for f in self.0.faces() {
                     for &i in f {
                         f2n.push(i);
                     }
@@ -152,10 +168,12 @@ macro_rules! create_poly_mesh {
                 (PyArray::from_vec(py, ptr), PyArray::from_vec(py, f2n))
             }
 
+            /// Get a copy of the face tags
             pub fn get_ftags<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<Tag>>> {
-                Ok(PyArray::from_vec(py, self.0.seq_ftags().collect()))
+                Ok(PyArray::from_vec(py, self.0.ftags().collect()))
             }
 
+            /// Export the mesh to a `.vtu` file
             pub fn write_vtk(&self, file_name: &str) -> PyResult<()> {
                 self.0
                     .write_vtk(file_name)

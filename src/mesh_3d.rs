@@ -1,5 +1,8 @@
+//! Tetrahedron meshes in 3d
 use crate::{mesh::Mesh, Tag, Tetrahedron, Triangle, Vert3d};
 
+/// Create a `Mesh<3, 4, 3>` of a `lx` by `ly` by `lz` box by splitting a `nx` by `ny` by `nz`
+/// uniform structured grid
 pub fn box_mesh<M: Mesh<3, 4, 3>>(lx: f64, nx: usize, ly: f64, ny: usize, lz: f64, nz: usize) -> M {
     let dx = lx / (nx as f64 - 1.);
     let x_1d = (0..nx).map(|i| i as f64 * dx).collect::<Vec<_>>();
@@ -13,6 +16,7 @@ pub fn box_mesh<M: Mesh<3, 4, 3>>(lx: f64, nx: usize, ly: f64, ny: usize, lz: f6
     nonuniform_box_mesh(&x_1d, &y_1d, &z_1d)
 }
 
+/// Create a `Mesh<2, 3, 2>` of box by splitting a structured grid`
 pub fn nonuniform_box_mesh<M: Mesh<3, 4, 3>>(x: &[f64], y: &[f64], z: &[f64]) -> M {
     let nx = x.len();
     let ny = y.len();
@@ -126,6 +130,7 @@ pub fn nonuniform_box_mesh<M: Mesh<3, 4, 3>>(x: &[f64], y: &[f64], z: &[f64]) ->
     res
 }
 
+/// Tetrahedron mesh in 3d
 pub struct Mesh3d {
     verts: Vec<Vert3d>,
     elems: Vec<Tetrahedron>,
@@ -135,6 +140,7 @@ pub struct Mesh3d {
 }
 
 impl Mesh3d {
+    /// Create a new mesh from coordinates, connectivities and tags
     pub fn new(
         verts: Vec<Vert3d>,
         elems: Vec<Tetrahedron>,
@@ -280,7 +286,7 @@ mod tests {
         let faces = msh.compute_faces();
         msh.check(&faces).unwrap();
 
-        let vol = msh.seq_gelems().map(Tetrahedron::vol).sum::<f64>();
+        let vol = msh.gelems().map(Tetrahedron::vol).sum::<f64>();
         assert_delta!(vol, 1.0, 1e-12);
     }
 
@@ -289,7 +295,7 @@ mod tests {
         let grad = Vert3d::new(9.8, 7.6, 5.4);
         let msh = box_mesh::<Mesh3d>(1.0, 10, 1.0, 15, 1.0, 20).random_shuffle();
         let f = msh
-            .verts()
+            .par_verts()
             .map(|v| grad[0] * v[0] + grad[1] * v[1] + grad[2] * v[2])
             .collect::<Vec<_>>();
         let v2v = msh.compute_vertex_to_vertices();
@@ -314,10 +320,10 @@ mod tests {
 
         let msh = box_mesh::<Mesh3d>(1.0, 10, 2.0, 15, 1.0, 20).random_shuffle();
 
-        let vol = msh.gelems().map(Tetrahedron::vol).sum::<f64>();
+        let vol = msh.par_gelems().map(Tetrahedron::vol).sum::<f64>();
         assert_delta!(vol, 2.0, 1e-12);
 
-        let f = msh.verts().map(|v| v[0]).collect::<Vec<_>>();
+        let f = msh.par_verts().map(|v| v[0]).collect::<Vec<_>>();
 
         let val = msh.integrate(&f, |_| 1.0);
         assert_delta!(val, 2.0, 1e-12);
@@ -345,39 +351,39 @@ mod tests {
     #[test]
     fn test_rcm() {
         let msh = box_mesh::<Mesh3d>(1.0, 20, 1.0, 20, 1.0, 20).random_shuffle();
-        let avg_bandwidth = bandwidth(msh.seq_elems().cloned()).1;
+        let avg_bandwidth = bandwidth(msh.elems().cloned()).1;
         assert!(avg_bandwidth > 1000.0);
 
         let (msh_rcm, vert_ids, elem_ids, face_ids) = msh.reorder_rcm();
-        let avg_bandwidth_rcm = bandwidth(msh_rcm.seq_elems().cloned()).1;
+        let avg_bandwidth_rcm = bandwidth(msh_rcm.elems().cloned()).1;
 
         assert!(avg_bandwidth_rcm < 320.0);
 
-        for (i, v) in msh_rcm.seq_verts().enumerate() {
+        for (i, v) in msh_rcm.verts().enumerate() {
             let other = msh.vert(vert_ids[i]);
             assert!((v - other).norm() < 1e-12);
         }
 
-        for (i, v) in msh_rcm.seq_gelems().enumerate() {
+        for (i, v) in msh_rcm.gelems().enumerate() {
             let v = cell_center(v);
             let other = msh.gelem(msh.elem(elem_ids[i]));
             let other = cell_center(other);
             assert!((v - other).norm() < 1e-12);
         }
 
-        for (i, tag) in msh_rcm.seq_etags().enumerate() {
+        for (i, tag) in msh_rcm.etags().enumerate() {
             let other = msh.etag(elem_ids[i]);
             assert_eq!(tag, other);
         }
 
-        for (i, v) in msh_rcm.seq_gfaces().enumerate() {
+        for (i, v) in msh_rcm.gfaces().enumerate() {
             let v = cell_center(v);
             let other = msh.gface(msh.face(face_ids[i]));
             let other = cell_center(other);
             assert!((v - other).norm() < 1e-12);
         }
 
-        for (i, tag) in msh_rcm.seq_ftags().enumerate() {
+        for (i, tag) in msh_rcm.ftags().enumerate() {
             let other = msh.ftag(face_ids[i]);
             assert_eq!(tag, other);
         }

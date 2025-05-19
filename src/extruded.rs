@@ -1,3 +1,4 @@
+//! Extrude 2d triangle meshes to 3d as 1 layer of prisms
 use crate::{
     dual_mesh_2d::DualMesh2d,
     mesh::Mesh,
@@ -7,6 +8,7 @@ use crate::{
     Error, Prism, Quadrangle, Result, Tag, Triangle, Vert2d, Vert3d,
 };
 
+/// Extrusion of a `Mesh2d` along `z`
 pub struct ExtrudedMesh2d {
     verts: Vec<Vert3d>,
     prisms: Vec<Prism>,
@@ -18,6 +20,7 @@ pub struct ExtrudedMesh2d {
 }
 
 impl ExtrudedMesh2d {
+    /// Create a new mesh from coordinates, connectivities and tags
     pub fn new(
         verts: Vec<Vert3d>,
         prisms: Vec<Prism>,
@@ -38,35 +41,33 @@ impl ExtrudedMesh2d {
         }
     }
 
+    /// Extrude a `Mesh2d` by a distance `h` along direction `z`
     pub fn from_mesh2d(msh: &Mesh2d, h: f64) -> Self {
         assert!(h > 0.0);
 
         let n = msh.n_verts();
         let mut verts = msh
-            .seq_verts()
+            .verts()
             .map(|v| Vert3d::new(v[0], v[1], 0.0))
             .collect::<Vec<_>>();
-        verts.extend(msh.seq_verts().map(|v| Vert3d::new(v[0], v[1], h)));
+        verts.extend(msh.verts().map(|v| Vert3d::new(v[0], v[1], h)));
 
         let elems = msh
-            .seq_elems()
+            .elems()
             .map(|tri| [tri[0], tri[1], tri[2], tri[0] + n, tri[1] + n, tri[2] + n])
             .collect::<Vec<_>>();
-        let etags = msh.seq_etags().collect::<Vec<_>>();
+        let etags = msh.etags().collect::<Vec<_>>();
 
-        let mut tris = msh.seq_elems().cloned().collect::<Vec<_>>();
-        tris.extend(
-            msh.seq_elems()
-                .map(|tri| [tri[0] + n, tri[2] + n, tri[1] + n]),
-        );
+        let mut tris = msh.elems().cloned().collect::<Vec<_>>();
+        tris.extend(msh.elems().map(|tri| [tri[0] + n, tri[2] + n, tri[1] + n]));
         let mut tri_tags = vec![Tag::MAX; msh.n_elems()];
         tri_tags.resize(2 * msh.n_elems(), Tag::MAX - 1);
 
         let quads = msh
-            .seq_faces()
+            .faces()
             .map(|edg| [edg[0], edg[1], edg[1] + n, edg[0] + n])
             .collect::<Vec<_>>();
-        let quad_tags = msh.seq_ftags().collect::<Vec<_>>();
+        let quad_tags = msh.ftags().collect::<Vec<_>>();
 
         Self {
             verts,
@@ -79,6 +80,7 @@ impl ExtrudedMesh2d {
         }
     }
 
+    /// Get a `Mesh2d` from the z=0 face
     pub fn to_mesh2d(&self) -> Result<Mesh2d> {
         let n = self.verts.len() / 2;
 
@@ -111,50 +113,62 @@ impl ExtrudedMesh2d {
         Ok(Mesh2d::new(verts, elems, etags, faces, ftags))
     }
 
+    /// Number of vertices
     pub fn n_verts(&self) -> usize {
         self.verts.len()
     }
 
+    /// Sequential iterator over the vertices
     pub fn verts(&self) -> impl ExactSizeIterator<Item = &Vert3d> + '_ {
         self.verts.iter()
     }
 
+    /// Number of prisms
     pub fn n_prisms(&self) -> usize {
         self.prisms.len()
     }
 
+    /// Sequential iterator over the prisms
     pub fn prisms(&self) -> impl ExactSizeIterator<Item = &Prism> + '_ {
         self.prisms.iter()
     }
 
+    /// Sequential iterator over the prism tags
     pub fn prism_tags(&self) -> impl ExactSizeIterator<Item = Tag> + '_ {
         self.prism_tags.iter().cloned()
     }
 
+    /// Number of triangles
     pub fn n_tris(&self) -> usize {
         self.tris.len()
     }
 
+    /// Sequential iterator over the triangles
     pub fn tris(&self) -> impl ExactSizeIterator<Item = &Triangle> + '_ {
         self.tris.iter()
     }
 
+    /// Sequential iterator over the triangle tags
     pub fn tri_tags(&self) -> impl ExactSizeIterator<Item = Tag> + '_ {
         self.tri_tags.iter().cloned()
     }
 
+    /// Number of quadrangles
     pub fn n_quads(&self) -> usize {
         self.quads.len()
     }
 
+    /// Sequential iterator over the quadrangles
     pub fn quads(&self) -> impl ExactSizeIterator<Item = &Quadrangle> + '_ {
         self.quads.iter()
     }
 
+    /// Sequential iterator over the quandrangle tags
     pub fn quad_tags(&self) -> impl ExactSizeIterator<Item = Tag> + '_ {
         self.quad_tags.iter().cloned()
     }
 
+    /// Write the mesh in a `.vtu` file
     pub fn write_vtk(&self, file_name: &str) -> Result<()> {
         let vtu = VTUFile::from_extruded_mesh(self, Encoding::Binary);
 
@@ -165,28 +179,30 @@ impl ExtrudedMesh2d {
 }
 
 impl Mesh2d {
+    /// Extrude the mesh by a distance `h` along direction `z`
     pub fn extrude(&self, h: f64) -> ExtrudedMesh2d {
         ExtrudedMesh2d::from_mesh2d(self, h)
     }
 }
 
 impl DualMesh2d {
+    /// Extrude the mesh by a distance `h` along direction `z`
     pub fn extrude(&self, h: f64) -> SimplePolyMesh<3> {
         let mut res = SimplePolyMesh::<3>::empty(PolyMeshType::Polyhedra);
 
         let n = self.n_verts();
-        for v in self.seq_verts() {
+        for v in self.verts() {
             res.insert_vert(Vert3d::new(v[0], v[1], 0.0));
         }
-        for v in self.seq_verts() {
+        for v in self.verts() {
             res.insert_vert(Vert3d::new(v[0], v[1], h));
         }
-        for (f, t) in self.seq_faces().zip(self.seq_ftags()) {
+        for (f, t) in self.faces().zip(self.ftags()) {
             assert_eq!(f.len(), 2);
             res.insert_face(&[f[0], f[1], f[1] + n, f[0] + n], t);
         }
 
-        for (e, t) in self.seq_elems().zip(self.seq_etags()) {
+        for (e, t) in self.elems().zip(self.etags()) {
             let tmp = e
                 .iter()
                 .map(|&(i, orient)| {

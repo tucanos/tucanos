@@ -1,5 +1,7 @@
+//! Boundary of `Mesh2d`
 use crate::{mesh::Mesh, Edge, Node, Tag, Vert2d};
 
+/// Edge mesh in 2d
 pub struct BoundaryMesh2d {
     verts: Vec<Vert2d>,
     elems: Vec<Edge>,
@@ -9,6 +11,7 @@ pub struct BoundaryMesh2d {
 }
 
 impl BoundaryMesh2d {
+    /// Create a new mesh from coordinates, connectivities and tags
     pub fn new(
         verts: Vec<Vert2d>,
         elems: Vec<Edge>,
@@ -175,7 +178,7 @@ mod tests {
 
         let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 2.0, 15);
 
-        let f = msh.verts().map(|v| v[0]).collect::<Vec<_>>();
+        let f = msh.par_verts().map(|v| v[0]).collect::<Vec<_>>();
 
         let tag = 1;
         let (bdy, ids): (BoundaryMesh2d, _) = msh.extract_faces(|t| t == tag);

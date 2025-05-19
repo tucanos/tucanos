@@ -1,5 +1,8 @@
+//! Triangle meshes in 2d
 use crate::{mesh::Mesh, Edge, Tag, Triangle, Vert2d};
 
+/// Create a `Mesh<2, 3, 2>` of a `lx` by `ly` rectangle by splitting a `nx` by `ny`
+/// uniform structured grid
 pub fn rectangle_mesh<M: Mesh<2, 3, 2>>(lx: f64, nx: usize, ly: f64, ny: usize) -> M {
     let dx = lx / (nx as f64 - 1.);
     let x_1d = (0..nx).map(|i| i as f64 * dx).collect::<Vec<_>>();
@@ -10,6 +13,7 @@ pub fn rectangle_mesh<M: Mesh<2, 3, 2>>(lx: f64, nx: usize, ly: f64, ny: usize) 
     nonuniform_rectangle_mesh(&x_1d, &y_1d)
 }
 
+/// Create a `Mesh<2, 3, 2>` of rectangle by splitting a structured grid
 pub fn nonuniform_rectangle_mesh<M: Mesh<2, 3, 2>>(x: &[f64], y: &[f64]) -> M {
     let nx = x.len();
     let ny = y.len();
@@ -58,6 +62,7 @@ pub fn nonuniform_rectangle_mesh<M: Mesh<2, 3, 2>>(x: &[f64], y: &[f64]) -> M {
     res
 }
 
+/// Triangle mesh in 2d
 pub struct Mesh2d {
     verts: Vec<Vert2d>,
     elems: Vec<Triangle>,
@@ -67,6 +72,7 @@ pub struct Mesh2d {
 }
 
 impl Mesh2d {
+    /// Create a new mesh from coordinates, connectivities and tags
     pub fn new(
         verts: Vec<Vert2d>,
         elems: Vec<Triangle>,
@@ -256,7 +262,7 @@ mod tests {
         let edgs = msh.compute_edges();
         assert_eq!(edgs.len(), 9 * 15 + 10 * 14 + 9 * 14);
 
-        let vol = msh.seq_gelems().map(Triangle::vol).sum::<f64>();
+        let vol = msh.gelems().map(Triangle::vol).sum::<f64>();
         assert!((vol - 2.0).abs() < 1e-10);
     }
 
@@ -265,7 +271,7 @@ mod tests {
         let grad = Vert2d::new(9.8, 7.6);
         let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 1.0, 10).random_shuffle();
         let f = msh
-            .verts()
+            .par_verts()
             .map(|v| grad[0] * v[0] + grad[1] * v[1])
             .collect::<Vec<_>>();
         let v2v = msh.compute_vertex_to_vertices();
@@ -289,10 +295,10 @@ mod tests {
 
         let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 2.0, 15).random_shuffle();
 
-        let vol = msh.gelems().map(Triangle::vol).sum::<f64>();
+        let vol = msh.par_gelems().map(Triangle::vol).sum::<f64>();
         assert_delta!(vol, 2.0, 1e-12);
 
-        let f = msh.verts().map(|v| v[0]).collect::<Vec<_>>();
+        let f = msh.par_verts().map(|v| v[0]).collect::<Vec<_>>();
 
         let val = msh.integrate(&f, |_| 1.0);
         assert_delta!(val, 2.0, 1e-12);
@@ -320,39 +326,39 @@ mod tests {
     #[test]
     fn test_rcm() {
         let msh = rectangle_mesh::<Mesh2d>(1.0, 100, 1.0, 100).random_shuffle();
-        let avg_bandwidth = bandwidth(msh.seq_elems().cloned()).1;
+        let avg_bandwidth = bandwidth(msh.elems().cloned()).1;
         assert!(avg_bandwidth > 1000.0);
 
         let (msh_rcm, vert_ids, elem_ids, face_ids) = msh.reorder_rcm();
-        let avg_bandwidth_rcm = bandwidth(msh_rcm.seq_elems().cloned()).1;
+        let avg_bandwidth_rcm = bandwidth(msh_rcm.elems().cloned()).1;
 
         assert!(avg_bandwidth_rcm < 80.0);
 
-        for (i, v) in msh_rcm.seq_verts().enumerate() {
+        for (i, v) in msh_rcm.verts().enumerate() {
             let other = msh.vert(vert_ids[i]);
             assert!((v - other).norm() < 1e-12);
         }
 
-        for (i, v) in msh_rcm.seq_gelems().enumerate() {
+        for (i, v) in msh_rcm.gelems().enumerate() {
             let v = cell_center(v);
             let other = msh.gelem(msh.elem(elem_ids[i]));
             let other = cell_center(other);
             assert!((v - other).norm() < 1e-12);
         }
 
-        for (i, tag) in msh_rcm.seq_etags().enumerate() {
+        for (i, tag) in msh_rcm.etags().enumerate() {
             let other = msh.etag(elem_ids[i]);
             assert_eq!(tag, other);
         }
 
-        for (i, v) in msh_rcm.seq_gfaces().enumerate() {
+        for (i, v) in msh_rcm.gfaces().enumerate() {
             let v = cell_center(v);
             let other = msh.gface(msh.face(face_ids[i]));
             let other = cell_center(other);
             assert!((v - other).norm() < 1e-12);
         }
 
-        for (i, tag) in msh_rcm.seq_ftags().enumerate() {
+        for (i, tag) in msh_rcm.ftags().enumerate() {
             let other = msh.ftag(face_ids[i]);
             assert_eq!(tag, other);
         }

@@ -1,3 +1,4 @@
+//! Python bindings for dual meshes
 use numpy::{PyArray, PyArray1, PyArray2, PyArrayMethods};
 use pyo3::{Bound, PyResult, Python, exceptions::PyRuntimeError, pyclass, pymethods};
 use tmesh::{
@@ -10,20 +11,25 @@ use tmesh::{
 
 use crate::mesh::{PyBoundaryMesh2d, PyBoundaryMesh3d, PyMesh2d, PyMesh3d};
 
+/// Type of dual cells (mapping of `tmesh::DualType`)
 #[pyclass(eq, eq_int)]
 #[derive(Clone, PartialEq)]
 pub enum PyDualType {
+    /// Medial cells
     Median,
+    /// Barth cells
     Barth,
 }
 
 macro_rules! create_dual_mesh {
     ($pyname: ident, $name: ident, $mesh: ident, $dim: expr, $cell_dim: expr, $face_dim: expr) => {
+        #[doc = concat!("Python binding for ", stringify!($name))]
         #[pyclass]
         pub struct $pyname(pub(crate) $name);
 
         #[pymethods]
         impl $pyname {
+            /// Compute the dual of `mesh`
             #[new]
             pub fn new(mesh: &$mesh, t: PyDualType) -> PyResult<Self> {
                 let t = match t {
@@ -34,20 +40,25 @@ macro_rules! create_dual_mesh {
                 Ok(Self($name::new(&mesh.0, t)))
             }
 
-            fn n_verts(&self) -> usize {
+            /// Number of vertices
+            pub fn n_verts(&self) -> usize {
                 self.0.n_verts()
             }
 
-            fn get_verts<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                PyArray::from_vec(py, self.0.seq_verts().flatten().cloned().collect())
+            /// Get a copy of the vertices
+            pub fn get_verts<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<f64>>> {
+                PyArray::from_vec(py, self.0.verts().flatten().cloned().collect())
                     .reshape([self.0.n_verts(), $dim])
             }
 
-            fn n_elems(&self) -> usize {
+            /// Number of elements
+            pub fn n_elems(&self) -> usize {
                 self.0.n_elems()
             }
 
-            fn get_elems<'py>(
+            /// Get a copy of the elements as 3 arrays:
+            /// `(ptr, face_indices, faces_orientation)`
+            pub fn get_elems<'py>(
                 &self,
                 py: Python<'py>,
             ) -> (
@@ -56,13 +67,13 @@ macro_rules! create_dual_mesh {
                 Bound<'py, PyArray1<bool>>,
             ) {
                 let n = self.0.n_elems();
-                let m = self.0.seq_elems().map(|x| x.len()).sum::<usize>();
+                let m = self.0.elems().map(|x| x.len()).sum::<usize>();
                 let mut ptr = Vec::with_capacity(n + 1);
                 let mut e2f = Vec::with_capacity(m);
                 let mut e2f_orient = Vec::with_capacity(m);
 
                 ptr.push(0);
-                for e in self.0.seq_elems() {
+                for e in self.0.elems() {
                     for &(f, o) in e {
                         e2f.push(f);
                         e2f_orient.push(o);
@@ -77,43 +88,51 @@ macro_rules! create_dual_mesh {
                 )
             }
 
-            fn get_etags<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<Tag>>> {
-                Ok(PyArray::from_vec(py, self.0.seq_etags().collect()))
+            /// Get a copy of the element tags
+            pub fn get_etags<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<Tag>>> {
+                Ok(PyArray::from_vec(py, self.0.etags().collect()))
             }
 
-            fn n_faces(&self) -> usize {
+            /// Number of faces
+            pub fn n_faces(&self) -> usize {
                 self.0.n_faces()
             }
 
-            fn get_faces<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<usize>>> {
-                PyArray::from_vec(py, self.0.seq_faces().flatten().cloned().collect())
+            /// Get a copy of the faces
+            pub fn get_faces<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<usize>>> {
+                PyArray::from_vec(py, self.0.faces().flatten().cloned().collect())
                     .reshape([self.0.n_faces(), $face_dim])
             }
 
-            fn get_ftags<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<Tag>>> {
-                Ok(PyArray::from_vec(py, self.0.seq_ftags().collect()))
+            /// Get the copy of the face tags
+            pub fn get_ftags<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<Tag>>> {
+                Ok(PyArray::from_vec(py, self.0.ftags().collect()))
             }
 
-            fn elem_n_verts<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<usize>> {
+            /// Get the number of vertices per element for all elements in the mesh
+            pub fn elem_n_verts<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<usize>> {
                 let res = (0..self.0.n_elems())
                     .map(|i| self.0.elem_n_verts(i))
                     .collect::<Vec<_>>();
                 PyArray::from_vec(py, res)
             }
 
-            fn write_vtk(&self, file_name: &str) -> PyResult<()> {
+            /// Export the mesh to a `.vtu` file
+            pub fn write_vtk(&self, file_name: &str) -> PyResult<()> {
                 self.0
                     .write_vtk(file_name)
                     .map_err(|e| PyRuntimeError::new_err(e.to_string()))
             }
 
-            fn check(&self) -> PyResult<()> {
+            /// Check the mesh consistency
+            pub fn check(&self) -> PyResult<()> {
                 self.0
                     .check()
                     .map_err(|e| PyRuntimeError::new_err(e.to_string()))
             }
 
-            fn elem<'py>(
+            /// Get the `i`the element
+            pub fn elem<'py>(
                 &self,
                 py: Python<'py>,
                 i: usize,
@@ -124,7 +143,8 @@ macro_rules! create_dual_mesh {
                 (PyArray::from_vec(py, faces), PyArray::from_vec(py, orient))
             }
 
-            fn face<'py>(&self, py: Python<'py>, i: usize) -> Bound<'py, PyArray1<usize>> {
+            /// Get the `i`th face
+            pub fn face<'py>(&self, py: Python<'py>, i: usize) -> Bound<'py, PyArray1<usize>> {
                 let f = self.0.face(i);
                 PyArray::from_vec(py, f.to_vec())
             }
@@ -137,6 +157,7 @@ create_dual_mesh!(PyDualMesh3d, DualMesh3d, PyMesh3d, 3, 4, 3);
 
 #[pymethods]
 impl PyDualMesh2d {
+    /// Get the mesh boundary
     pub fn boundary<'py>(
         &self,
         py: Python<'py>,
@@ -148,6 +169,7 @@ impl PyDualMesh2d {
 
 #[pymethods]
 impl PyDualMesh3d {
+    /// Get the mesh boundary
     pub fn boundary<'py>(
         &self,
         py: Python<'py>,

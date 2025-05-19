@@ -50,9 +50,9 @@ impl VTUFile {
                 piece: Piece {
                     number_of_points: mesh.n_verts(),
                     number_of_cells: mesh.n_elems(),
-                    points: Points::from_verts(mesh.seq_verts(), encoding),
+                    points: Points::from_verts(mesh.verts(), encoding),
                     cells: Cells::from_elems(mesh, encoding),
-                    cell_data: CellData::from_etags(mesh.seq_etags(), encoding),
+                    cell_data: CellData::from_etags(mesh.etags(), encoding),
                 },
             },
         }
@@ -86,9 +86,9 @@ impl VTUFile {
                 piece: Piece {
                     number_of_points: mesh.n_verts(),
                     number_of_cells: mesh.n_elems(),
-                    points: Points::from_verts(mesh.seq_verts(), encoding),
+                    points: Points::from_verts(mesh.verts(), encoding),
                     cells: Cells::from_poly(mesh, encoding, 0.1),
-                    cell_data: CellData::from_etags(mesh.seq_etags(), encoding),
+                    cell_data: CellData::from_etags(mesh.etags(), encoding),
                 },
             },
         }
@@ -321,7 +321,7 @@ impl Cells {
             "connectivity",
             1,
             C * n,
-            mesh.seq_elems().flatten().map(|&x| x as i64),
+            mesh.elems().flatten().map(|&x| x as i64),
             encoding,
         );
 
@@ -379,7 +379,7 @@ impl Cells {
 
         let mut connectivity = Vec::new();
         let mut offsets = Vec::new();
-        for e in mesh.seq_elems() {
+        for e in mesh.elems() {
             match mesh.poly_type() {
                 PolyMeshType::Polylines => todo!(),
                 PolyMeshType::Polygons => {
@@ -446,7 +446,7 @@ impl Cells {
                 let mut faces = Vec::new();
                 let mut faceoffsets = Vec::new();
 
-                for e in mesh.seq_elems() {
+                for e in mesh.elems() {
                     faces.push(e.len());
                     for &(i_face, orient) in e {
                         let mut f = mesh.face(i_face).to_vec();
@@ -479,7 +479,7 @@ impl Cells {
             } else if version == 2.3 {
                 let mut polyhedron_offsets = Vec::with_capacity(n);
                 let mut offset = 0;
-                for e in mesh.seq_elems() {
+                for e in mesh.elems() {
                     offset += e.len();
                     polyhedron_offsets.push(offset);
                 }
@@ -487,8 +487,7 @@ impl Cells {
                     "polyhedron_to_faces",
                     1,
                     *polyhedron_offsets.last().unwrap(),
-                    mesh.seq_elems()
-                        .flat_map(|x| x.iter().map(|&(x, _)| x as i64)),
+                    mesh.elems().flat_map(|x| x.iter().map(|&(x, _)| x as i64)),
                     encoding,
                 );
 
@@ -503,7 +502,7 @@ impl Cells {
                 let n = mesh.n_faces();
                 let mut face_offsets = Vec::with_capacity(n);
                 let mut offset = 0;
-                for e in mesh.seq_faces() {
+                for e in mesh.faces() {
                     offset += e.len();
                     face_offsets.push(offset);
                 }
@@ -511,7 +510,7 @@ impl Cells {
                     "face_connectivity",
                     1,
                     *face_offsets.last().unwrap(),
-                    mesh.seq_faces().flat_map(|x| x.iter().map(|&x| x as i64)),
+                    mesh.faces().flat_map(|x| x.iter().map(|&x| x as i64)),
                     encoding,
                 );
 

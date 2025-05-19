@@ -1,5 +1,7 @@
+//! Boundary of `Mesh3d`
 use crate::{mesh::Mesh, Edge, Tag, Triangle, Vert3d};
 
+/// Triangle mesh in 3d
 pub struct BoundaryMesh3d {
     verts: Vec<Vert3d>,
     elems: Vec<Triangle>,
@@ -9,6 +11,7 @@ pub struct BoundaryMesh3d {
 }
 
 impl BoundaryMesh3d {
+    /// Create a new mesh from coordinates, connectivities and tags
     pub fn new(
         verts: Vec<Vert3d>,
         elems: Vec<Triangle>,
@@ -155,7 +158,7 @@ mod tests {
         assert_eq!(tags.len(), 12);
         bdy.check(&faces).unwrap();
 
-        let vol = bdy.seq_gelems().map(Triangle::vol).sum::<f64>();
+        let vol = bdy.gelems().map(Triangle::vol).sum::<f64>();
         assert_delta!(vol, 10.0, 1e-12);
     }
 
@@ -171,7 +174,7 @@ mod tests {
 
         let msh = box_mesh::<Mesh3d>(1.0, 10, 2.0, 15, 1.0, 20);
 
-        let f = msh.verts().map(|v| v[0]).collect::<Vec<_>>();
+        let f = msh.par_verts().map(|v| v[0]).collect::<Vec<_>>();
 
         let tag = 3;
         let (bdy, ids): (BoundaryMesh3d, _) = msh.extract_faces(|t| t == tag);

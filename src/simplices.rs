@@ -1,20 +1,32 @@
+//! Simplex elements
 use crate::{Edge, Node, Tetrahedron, Triangle, Vertex};
+
+/// Simplex elements
 pub trait Simplex<const C: usize>: Sized {
+    /// Get the edges for the simplex `(0, .., C-1)`
     fn edges() -> Vec<Edge>;
 
+    /// Get the volume of a simplex
     fn vol<const D: usize>(v: [&Vertex<D>; C]) -> f64;
 
+    /// Check if a normal can be computed in D dimensions
     fn has_normal<const D: usize>() -> bool {
         D == C
     }
+
+    /// Normal to the vertex
     fn normal<const D: usize>(v: [&Vertex<D>; C]) -> Vertex<D>;
 
+    /// Radius (=diameter of the inner circle / sphere)
     fn radius<const D: usize>(v: [&Vertex<D>; C]) -> f64;
 
+    /// Get a quadrature (weights and points)
     fn quadrature() -> (Vec<f64>, Vec<Vec<f64>>);
 
+    /// Sort the vertex indices
     fn sorted(&self) -> Self;
 
+    /// Check of two elements are the same (allowing circular permutation)
     fn is_same(&self, other: &Self) -> bool;
 }
 

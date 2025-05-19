@@ -1,3 +1,4 @@
+//! Computation of the dual for `Mesh<3, 4, 3>`
 use crate::{
     dual_mesh::{circumcenter_bcoords, DualCellCenter, DualMesh, DualType},
     mesh::{cell_center, cell_vertex, sort_elem_min_ids, Mesh},
@@ -8,6 +9,7 @@ use crate::{
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rustc_hash::{FxBuildHasher, FxHashMap};
 
+/// Dual of a Tetrahedron mesh in 3d
 pub struct DualMesh3d {
     verts: Vec<Vert3d>,
     faces: Vec<Triangle>,
@@ -124,7 +126,7 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
 
         // vertices: boundary
         let mut bdy_verts: FxHashMap<usize, usize> =
-            msh.seq_faces().flatten().map(|&i| (i, 0)).collect();
+            msh.faces().flatten().map(|&i| (i, 0)).collect();
         bdy_verts
             .iter_mut()
             .enumerate()
@@ -166,7 +168,7 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
 
         // vertices: tet centers
         let mut vert_idx_elem = vec![usize::MAX; n_elems];
-        for (i_elem, e) in msh.seq_elems().enumerate() {
+        for (i_elem, e) in msh.elems().enumerate() {
             let ge = msh.gelem(e);
             let center = Self::get_tet_center(ge, t);
             match center {
@@ -194,7 +196,7 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
 
         let mut poly_to_face_ptr = vec![0; msh.n_verts() + 1];
         // internal faces
-        for e in msh.seq_elems() {
+        for e in msh.elems() {
             for edg in &elem_to_edges {
                 poly_to_face_ptr[e[edg[0]] + 1] += 2;
                 poly_to_face_ptr[e[edg[1]] + 1] += 2;
@@ -202,7 +204,7 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
         }
 
         // boundary faces
-        for f in msh.seq_faces() {
+        for f in msh.faces() {
             for edg in &face_to_edges {
                 poly_to_face_ptr[f[edg[0]] + 1] += 1;
                 poly_to_face_ptr[f[edg[1]] + 1] += 1;
@@ -219,7 +221,7 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
 
         let mut n_empty_faces = 0;
         // build internal faces
-        for (i_elem, e) in msh.seq_elems().enumerate() {
+        for (i_elem, e) in msh.elems().enumerate() {
             for f in &elem_to_faces {
                 let f = [e[f[0]], e[f[1]], e[f[2]]];
                 let tmp = f.sorted();
@@ -295,7 +297,7 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
         // build boundary faces
         let mut bdy_faces = Vec::with_capacity(msh.n_faces() * 6);
 
-        for (f, tag) in msh.seq_faces().zip(msh.seq_ftags()) {
+        for (f, tag) in msh.faces().zip(msh.ftags()) {
             let tmp = f.sorted();
             let i_face = all_faces.get(&tmp).unwrap()[0];
             for edg in &face_to_edges {
@@ -473,10 +475,10 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
     fn n_boundary_faces(&self) -> usize {
         self.bdy_faces.len()
     }
-    fn boundary_faces(&self) -> impl IndexedParallelIterator<Item = (usize, Tag, Vert3d)> + '_ {
+    fn par_boundary_faces(&self) -> impl IndexedParallelIterator<Item = (usize, Tag, Vert3d)> + '_ {
         self.bdy_faces.par_iter().copied()
     }
-    fn seq_boundary_faces(&self) -> impl ExactSizeIterator<Item = (usize, Tag, Vert3d)> + '_ {
+    fn boundary_faces(&self) -> impl ExactSizeIterator<Item = (usize, Tag, Vert3d)> + '_ {
         self.bdy_faces.iter().copied()
     }
 }
@@ -498,7 +500,7 @@ mod tests {
         let dual = DualMesh3d::new(&msh, DualType::Median);
         dual.check().unwrap();
 
-        assert!((dual.vols().sum::<f64>() - 2.0) < 1e-10);
+        assert!((dual.par_vols().sum::<f64>() - 2.0) < 1e-10);
 
         dual.write_vtk("median3d.vtu").unwrap();
 
@@ -517,7 +519,7 @@ mod tests {
         let dual = DualMesh3d::new(&msh, DualType::Barth);
         dual.check().unwrap();
 
-        assert!((dual.vols().sum::<f64>() - 2.0) < 1e-10);
+        assert!((dual.par_vols().sum::<f64>() - 2.0) < 1e-10);
 
         dual.write_vtk("barth3d.vtu").unwrap();
 

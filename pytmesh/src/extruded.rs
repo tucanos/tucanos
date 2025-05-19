@@ -1,3 +1,4 @@
+//! Python bindings for extruded 2d meshes
 use crate::{dual::PyDualMesh2d, mesh::PyMesh2d, poly::PyPolyMesh3d};
 use numpy::{
     PyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2,
@@ -11,11 +12,13 @@ use pyo3::{
 };
 use tmesh::{Tag, Vert3d, extruded::ExtrudedMesh2d};
 
+/// Extruded 2d mesh
 #[pyclass]
 pub struct PyExtrudedMesh2d(pub(crate) ExtrudedMesh2d);
 
 #[pymethods]
 impl PyExtrudedMesh2d {
+    /// Create a new mesh from coordinates, connectivities and tags
     #[new]
     pub fn new(
         coords: PyReadonlyArray2<f64>,
@@ -83,11 +86,13 @@ impl PyExtrudedMesh2d {
         )))
     }
 
+    /// Extrude a 2d mesh
     #[classmethod]
     pub fn from_mesh2d(_cls: &Bound<'_, PyType>, msh: &PyMesh2d, h: f64) -> Self {
         Self(ExtrudedMesh2d::from_mesh2d(&msh.0, h))
     }
 
+    /// Get the z=0 face as a 2d mesh
     pub fn to_mesh2d(&self) -> PyResult<PyMesh2d> {
         let msh = self
             .0
@@ -96,54 +101,66 @@ impl PyExtrudedMesh2d {
         Ok(PyMesh2d(msh))
     }
 
-    fn n_verts(&self) -> usize {
+    /// Number of vertices
+    pub fn n_verts(&self) -> usize {
         self.0.n_verts()
     }
 
+    /// Get a copy of the vertices
     fn get_verts<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<f64>>> {
         PyArray::from_vec(py, self.0.verts().flatten().cloned().collect())
             .reshape([self.0.n_verts(), 3])
     }
 
+    /// Number of prisms
     fn n_prisms(&self) -> usize {
         self.0.n_prisms()
     }
 
+    /// Get a copy of the prisms
     fn get_prisms<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<usize>>> {
         PyArray::from_vec(py, self.0.prisms().flatten().cloned().collect())
             .reshape([self.0.n_prisms(), 6])
     }
 
+    /// Get a copy of the prism tags
     fn get_prism_tags<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<Tag>>> {
         Ok(PyArray::from_vec(py, self.0.prism_tags().collect()))
     }
 
+    /// Number of triangles
     fn n_tris(&self) -> usize {
         self.0.n_tris()
     }
 
+    /// Get a copy of the triangles
     fn get_tris<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<usize>>> {
         PyArray::from_vec(py, self.0.tris().flatten().cloned().collect())
             .reshape([self.0.n_tris(), 3])
     }
 
+    /// Get a copy of the triangle tags
     fn get_tri_tags<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<Tag>>> {
         Ok(PyArray::from_vec(py, self.0.tri_tags().collect()))
     }
 
+    /// Number of quandrangles
     fn n_quads(&self) -> usize {
         self.0.n_quads()
     }
 
+    /// Get a copy of the quandrangles
     fn get_quads<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<usize>>> {
         PyArray::from_vec(py, self.0.quads().flatten().cloned().collect())
             .reshape([self.0.n_quads(), 4])
     }
 
+    /// Get a copy of the quandrangle tags
     fn get_quad_tags<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<Tag>>> {
         Ok(PyArray::from_vec(py, self.0.quad_tags().collect()))
     }
 
+    /// Export to a `.vtu` file
     fn write_vtk(&self, file_name: &str) -> PyResult<()> {
         self.0
             .write_vtk(file_name)
@@ -153,6 +170,7 @@ impl PyExtrudedMesh2d {
 
 #[pymethods]
 impl PyMesh2d {
+    /// Extrude to 3d using 1 layer of prisms
     pub fn extrude(&self, h: f64) -> PyExtrudedMesh2d {
         let res = self.0.extrude(h);
         PyExtrudedMesh2d(res)
@@ -161,6 +179,7 @@ impl PyMesh2d {
 
 #[pymethods]
 impl PyDualMesh2d {
+    /// Extrude to 3d using 1 layer of prisms
     pub fn extrude(&self, h: f64) -> PyPolyMesh3d {
         let res = self.0.extrude(h);
         PyPolyMesh3d(res)

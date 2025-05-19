@@ -1,6 +1,9 @@
+//! Basic graphs to compute and store connectivities that can not be stored in
+//! simple 2d arrays
 use rustc_hash::{FxBuildHasher, FxHashMap};
 
-pub fn argsort(data: &[usize]) -> Vec<usize> {
+/// Compute the indices that would sort `data`
+fn argsort(data: &[usize]) -> Vec<usize> {
     let mut indices = (0..data.len()).collect::<Vec<_>>();
     indices.sort_by_key(|&i| &data[i]);
     indices
@@ -30,6 +33,7 @@ pub fn reindex<const N: usize>(elems: &[[usize; N]]) -> (Vec<[usize; N]>, FxHash
     (new_elems, map)
 }
 
+/// CSR representation of a graph
 #[derive(Debug, Default, Clone)]
 pub struct CSRGraph {
     ptr: Vec<usize>,
@@ -79,6 +83,7 @@ impl CSRGraph {
         res
     }
 
+    /// Sort the indices for every vertex in the graph
     pub fn sort(&mut self) {
         let n = self.ptr.len() - 1;
         for i in 0..n {
@@ -91,6 +96,7 @@ impl CSRGraph {
         }
     }
 
+    /// Create a new graph explicitely
     pub fn new(ptr: Vec<usize>, indices: Vec<usize>) -> Self {
         let m = indices.iter().copied().max().unwrap();
         let mut res = Self {
@@ -103,6 +109,7 @@ impl CSRGraph {
         res
     }
 
+    /// Create a graph from edges
     pub fn from_edges<'a, I: ExactSizeIterator<Item = &'a [usize; 2]> + Clone>(edgs: I) -> Self {
         let mut res = Self::set_ptr(edgs.clone());
         res.m = res.n();
@@ -135,6 +142,7 @@ impl CSRGraph {
         res
     }
 
+    /// Compute the vertex to element connectivity from an element to vertex connectivity
     pub fn transpose<'a, const N: usize, I: ExactSizeIterator<Item = &'a [usize; N]> + Clone>(
         elems: I,
     ) -> Self {
@@ -164,21 +172,25 @@ impl CSRGraph {
         res
     }
 
+    /// Number of vertices
     #[must_use]
     pub fn n(&self) -> usize {
         self.ptr.len() - 1
     }
 
+    /// Number of columns
     #[must_use]
     pub fn m(&self) -> usize {
         self.m
     }
 
+    /// Number of edges
     #[must_use]
     pub fn n_edges(&self) -> usize {
         self.indices.len()
     }
 
+    /// Get the neighbors of the `i`th vertex
     #[must_use]
     pub fn row(&self, i: usize) -> &[usize] {
         let start = self.ptr[i];
@@ -186,6 +198,7 @@ impl CSRGraph {
         &self.indices[start..end]
     }
 
+    /// Get the indices corresponding to the `i`th vertex
     #[must_use]
     pub fn row_ptr(&self, i: usize) -> impl ExactSizeIterator<Item = usize> {
         let start = self.ptr[i];
@@ -193,11 +206,13 @@ impl CSRGraph {
         start..end
     }
 
+    /// Sequential iterator over the rows
     #[must_use]
     pub fn rows(&self) -> impl ExactSizeIterator<Item = &[usize]> {
         (0..self.n()).map(|i| self.row(i))
     }
 
+    /// Sequential iterator over the rows and values
     #[must_use]
     pub fn row_and_values(&self, i: usize) -> (&[usize], &[usize]) {
         let start = self.ptr[i];
@@ -221,6 +236,7 @@ impl CSRGraph {
         res
     }
 
+    /// Compute the Reverse Cuthill McKee ordering
     pub fn reverse_cuthill_mckee(self) -> Vec<usize> {
         // strongly inspired from scipy
         let mut order = vec![0; self.n()];

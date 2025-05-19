@@ -1,3 +1,4 @@
+//! Computation of the dual for `Mesh<2, 3, 2>`
 use crate::dual_mesh::{circumcenter_bcoords, DualCellCenter};
 use crate::mesh::cell_vertex;
 use crate::poly_mesh::{PolyMesh, PolyMeshType};
@@ -10,6 +11,7 @@ use crate::{
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rustc_hash::FxHashMap;
 
+/// Dual of a Triangle mesh in 2d
 pub struct DualMesh2d {
     verts: Vec<Vert2d>,
     faces: Vec<Edge>,
@@ -98,7 +100,7 @@ impl DualMesh<2, 3, 2> for DualMesh2d {
 
         // vertices: boundary
         let mut bdy_verts: FxHashMap<usize, usize> =
-            msh.seq_faces().flatten().map(|&i| (i, 0)).collect();
+            msh.faces().flatten().map(|&i| (i, 0)).collect();
         let n_bdy_verts = bdy_verts.len();
 
         let mut verts = Vec::with_capacity(n_bdy_verts + n_edges + n_elems);
@@ -117,7 +119,7 @@ impl DualMesh<2, 3, 2> for DualMesh2d {
 
         // vertices: triangle centers
         let mut vert_idx_elem = vec![usize::MAX; n_elems];
-        for (i_elem, e) in msh.seq_elems().enumerate() {
+        for (i_elem, e) in msh.elems().enumerate() {
             let ge = msh.gelem(e);
             let center = Self::get_tri_center(ge, t);
             match center {
@@ -143,7 +145,7 @@ impl DualMesh<2, 3, 2> for DualMesh2d {
         let mut poly_to_face_ptr = vec![0; msh.n_verts() + 1];
 
         // internal faces
-        for e in msh.seq_elems() {
+        for e in msh.elems() {
             for edg in &elem_to_edges {
                 poly_to_face_ptr[e[edg[0]] + 1] += 1;
                 poly_to_face_ptr[e[edg[1]] + 1] += 1;
@@ -151,7 +153,7 @@ impl DualMesh<2, 3, 2> for DualMesh2d {
         }
 
         // boundary faces
-        for f in msh.seq_faces() {
+        for f in msh.faces() {
             for v in f {
                 poly_to_face_ptr[v + 1] += 1;
             }
@@ -166,7 +168,7 @@ impl DualMesh<2, 3, 2> for DualMesh2d {
 
         let mut n_empty_faces = 0;
         // build internal faces
-        for (i_elem, e) in msh.seq_elems().enumerate() {
+        for (i_elem, e) in msh.elems().enumerate() {
             for edg in &elem_to_edges {
                 let edg = [e[edg[0]], e[edg[1]]];
                 let (i_edge, sgn) = if edg[0] < edg[1] {
@@ -216,7 +218,7 @@ impl DualMesh<2, 3, 2> for DualMesh2d {
         // build boundary faces
         let mut bdy_faces = Vec::with_capacity(msh.n_faces() * 3);
 
-        for (f, tag) in msh.seq_faces().zip(msh.seq_ftags()) {
+        for (f, tag) in msh.faces().zip(msh.ftags()) {
             let tmp = f.sorted();
             let i_edge = *all_edges.get(&tmp).unwrap();
 
@@ -331,10 +333,10 @@ impl DualMesh<2, 3, 2> for DualMesh2d {
     fn n_boundary_faces(&self) -> usize {
         self.bdy_faces.len()
     }
-    fn boundary_faces(&self) -> impl IndexedParallelIterator<Item = (usize, Tag, Vert2d)> + '_ {
+    fn par_boundary_faces(&self) -> impl IndexedParallelIterator<Item = (usize, Tag, Vert2d)> + '_ {
         self.bdy_faces.par_iter().copied()
     }
-    fn seq_boundary_faces(&self) -> impl ExactSizeIterator<Item = (usize, Tag, Vert2d)> + '_ {
+    fn boundary_faces(&self) -> impl ExactSizeIterator<Item = (usize, Tag, Vert2d)> + '_ {
         self.bdy_faces.iter().copied()
     }
 }
@@ -365,10 +367,10 @@ mod tests {
         assert_eq!(dual.n_faces(), 14);
         assert_eq!(dual.n_edges(), 5);
 
-        assert!((dual.vols().sum::<f64>() - 1.0) < 1e-10);
+        assert!((dual.par_vols().sum::<f64>() - 1.0) < 1e-10);
 
         let n_empty_faces = dual
-            .gfaces()
+            .par_gfaces()
             .filter(|&gf| Edge::normal(gf).norm() < 1e-12)
             .count();
         assert_eq!(n_empty_faces, 0);
@@ -384,10 +386,10 @@ mod tests {
         assert_eq!(dual.n_elems(), 6);
         assert_eq!(dual.n_faces(), 3 * 4 + 2 * 6);
 
-        assert!((dual.vols().sum::<f64>() - 2.0) < 1e-10);
+        assert!((dual.par_vols().sum::<f64>() - 2.0) < 1e-10);
 
         let n_empty_faces = dual
-            .gfaces()
+            .par_gfaces()
             .filter(|&gf| Edge::normal(gf).norm() < 1e-10)
             .count();
         assert_eq!(n_empty_faces, 0);
@@ -403,7 +405,7 @@ mod tests {
         res.insert([4, 5], Vert2d::new(1. / 3., -1. / 6.));
         res.insert([2, 5], Vert2d::new(-1. / 6., 1. / 3.));
 
-        dual.edges_and_normals().for_each(|(e, n)| {
+        dual.par_edges_and_normals().for_each(|(e, n)| {
             let n_res = *res.get(&e).unwrap();
             assert!((n - n_res).norm() < 1e-10);
         });
@@ -416,7 +418,7 @@ mod tests {
         dual.check().unwrap();
 
         let n_empty_faces = dual
-            .gfaces()
+            .par_gfaces()
             .filter(|&gf| Edge::normal(gf).norm() < 1e-10)
             .count();
         assert_eq!(n_empty_faces, 0);
@@ -426,7 +428,7 @@ mod tests {
         assert_eq!(dual.n_elems(), 6);
         assert_eq!(dual.n_faces(), 3 * 4 + 2 * 6 - n_faces_removed);
 
-        assert!((dual.vols().sum::<f64>() - 2.0) < 1e-10);
+        assert!((dual.par_vols().sum::<f64>() - 2.0) < 1e-10);
 
         let mut res = HashMap::new();
         res.insert([0, 1], Vert2d::new(0.5, 0.0));
@@ -439,7 +441,7 @@ mod tests {
         res.insert([4, 5], Vert2d::new(0.5, 0.0));
         res.insert([2, 5], Vert2d::new(0.0, 0.5));
 
-        dual.edges_and_normals().for_each(|(e, n)| {
+        dual.par_edges_and_normals().for_each(|(e, n)| {
             let n_res = *res.get(&e).unwrap();
             assert!((n - n_res).norm() < 1e-10);
         });
@@ -451,6 +453,6 @@ mod tests {
         let dual = DualMesh2d::new(&msh, DualType::Barth);
         dual.check().unwrap();
 
-        assert!((dual.vols().sum::<f64>() - 2.0) < 1e-10);
+        assert!((dual.par_vols().sum::<f64>() - 2.0) < 1e-10);
     }
 }
