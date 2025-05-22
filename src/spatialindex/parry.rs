@@ -7,6 +7,15 @@ use crate::{
     mesh::{Elem, SimplexMesh},
 };
 
+// To add new type of elements:
+// - Select a parry Shape which match the element type.
+// - If the Shape does not exists create it with ShapeType::Custom
+// - If you create a new Shape you must also implement PointQueryWithLocation for that Shape
+// - Create a strut MyShapeToShape struct and implement MeshToShape
+// - Declare an associated MeshShape in the ParryImpl enum
+// - Adapt ObjectIndex::new to create the new enum (or create a new constructor)
+// - Fix missing cases in `match` statements
+
 mod parry2d {
     use crate::{
         Idx,
@@ -25,10 +34,27 @@ mod parry2d {
     };
     use std::marker::PhantomData;
 
-    /// Create a parry Shape from a tucanos Elem
     pub trait MeshToShape {
         type Shape: Shape + PointQueryWithLocation<Location = Self::Location> + Copy + Clone;
         type Location: Clone + Copy;
+        /// Creates a Parry `Shape` from a single element (`Elem`) of a Tucanos mesh.
+        ///
+        /// This method takes the necessary mesh data to construct a geometric shape
+        /// corresponding to a specific element within the mesh.
+        ///
+        /// # Arguments
+        ///
+        /// * `id` - The identifier of the element within the `elems` array.
+        /// * `verts` - A slice containing the coordinates of all vertices in the mesh.
+        ///   The layout is expected to be an interleaved array where the size is
+        ///   `number_of_vertices * dimension` (e.g., 2 for 2D, 3 for 3D).
+        /// * `elems` - A slice containing the indices of all elements in the mesh.
+        ///   The layout is expected to be an interleaved array where the size is
+        ///   `number_of_elements * vertices_per_element`.
+        ///
+        /// # Returns
+        ///
+        /// A `Self::Shape` representing the converted geometric shape of the specified element.
         fn shape(id: u32, verts: &[f64], elems: &[Idx]) -> Self::Shape;
     }
 
