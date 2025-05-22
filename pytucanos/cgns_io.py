@@ -50,13 +50,13 @@ def load_cgns(fname):
                 ids = np.arange(erange[0] - 1, erange[1], dtype=np.uint32)
                 if etype == CGK.TRI_3:
                     tris = np.vstack([tris, econn.reshape((-1, 3)) - 1])
-                    if cell_dim == 3:
+                    if phys_dim == 3:
                         bdy_ids = np.append(bdy_ids, ids)
                 elif etype == CGK.TETRA_4:
                     tets = np.vstack([tets, econn.reshape((-1, 4)) - 1])
                 elif etype == CGK.BAR_2:
                     edgs = np.vstack([edgs, econn.reshape((-1, 2)) - 1])
-                    if cell_dim == 2:
+                    if phys_dim == 2:
                         bdy_ids = np.append(bdy_ids, ids)
                 else:
                     raise NotImplementedError()
@@ -72,7 +72,7 @@ def load_cgns(fname):
                 else:
                     range = CGU.getValue(CGU.getChildByName(bc, "PointRange")).squeeze()
                     ids = np.arange(range[0] - 1, range[1])
-                ids = np.searchsorted(bdy_ids, ids) - 1
+                ids = np.searchsorted(bdy_ids, ids)
                 bdy_tags[ids] = i_bc + 1
                 tags[bc[0]] = i_bc + 1
 
