@@ -22,10 +22,12 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             .fold(
                 || (f64::MAX, 0.0, 0.0),
                 |(a, b, c), d| {
+                    let dmin = d[0];
+                    let dmax = *d.last().unwrap();
                     (
-                        f64::min(a, d[0]),
-                        f64::max(b, d[2]),
-                        f64::max(c, d[2] / d[0]),
+                        f64::min(a, dmin),
+                        f64::max(b, dmax),
+                        f64::max(c, dmax / dmin),
                     )
                 },
             )
