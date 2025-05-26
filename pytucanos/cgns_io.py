@@ -130,7 +130,7 @@ def write_cgns(
     s = np.array([[mesh.n_verts(), mesh.n_elems(), 0]], dtype=np.int32)
     zone = CGL.newZone(base, "Zone", s, CGK.Unstructured_s)
 
-    coords = mesh.get_coords()
+    coords = mesh.get_verts()
     gc = CGL.newGridCoordinates(zone, CGK.GridCoordinates_s)
     CGL.newDataArray(gc, CGK.CoordinateX_s, coords[:, 0].copy())
     CGL.newDataArray(gc, CGK.CoordinateY_s, coords[:, 1].copy())

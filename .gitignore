@@ -4,3 +4,4 @@ build/
 *.egg-info/
 *.pyc 
 *.so
+.cargo/config.toml

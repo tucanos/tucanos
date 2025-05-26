@@ -6,7 +6,7 @@ from pytucanos.remesh import Remesher2dAniso, PyRemesherParams
 
 
 def get_m(msh):
-    x, y = msh.get_coords().T
+    x, y = msh.get_verts().T
 
     hx = 0.1
     h0 = 0.001

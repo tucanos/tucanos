@@ -22,7 +22,7 @@ def create_mesh(coords, elems, etags, faces, ftags):
 
 def __plot_boundary(ax, bdy, normals):
 
-    xy = bdy.get_coords()
+    xy = bdy.get_verts()
     edgs = bdy.get_elems()
     etags = bdy.get_etags()
 
@@ -56,7 +56,7 @@ def plot_mesh(ax, msh, etag=True, boundary=True, normals=False):
 
     if isinstance(msh, Mesh22):
 
-        xy = msh.get_coords()
+        xy = msh.get_verts()
 
         tris = msh.get_elems()
 
@@ -78,7 +78,7 @@ def plot_field(ax, msh, arr, loc="vertex"):
 
     assert isinstance(msh, Mesh22)
 
-    xy = msh.get_coords()
+    xy = msh.get_verts()
     tris = msh.get_elems()
 
     if loc == "vertex":
@@ -97,7 +97,7 @@ def plot_metric(ax, msh, m, loc="vertex"):
 
     assert isinstance(msh, Mesh22)
 
-    xy = msh.get_coords()
+    xy = msh.get_verts()
     tris = msh.get_elems()
 
     m = sym2mat(m)

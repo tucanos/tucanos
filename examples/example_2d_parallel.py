@@ -11,7 +11,7 @@ from pytucanos.remesh import (
 
 
 def get_h(msh):
-    x, y = msh.get_coords().T
+    x, y = msh.get_verts().T
     hmin = 0.001
     hmax = 0.05
     return hmin + (hmax - hmin) * (

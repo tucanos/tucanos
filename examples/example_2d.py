@@ -6,7 +6,7 @@ from pytucanos.remesh import Remesher2dIso, PyRemesherParams
 
 
 def get_h(msh):
-    x, y = msh.get_coords().T
+    x, y = msh.get_verts().T
     hmin = 0.01
     hmax = 0.3
     return hmin + (hmax - hmin) * (
@@ -42,7 +42,7 @@ if __name__ == "__main__":
 
     fig, ax = plt.subplots()
     plot_mesh(ax, msh, etag=True)
-    xy = msh.get_coords()
+    xy = msh.get_verts()
     ax.plot(np.stack([xy[:-1, 0], xy[1:, 0]]), np.stack([xy[:-1, 1], xy[1:, 1]]), "k")
     ax.set_title("Reorder the nodes")
 

@@ -7,7 +7,7 @@ from pytucanos.remesh import Remesher2dAniso, PyRemesherParams
 
 
 def get_f(msh):
-    x, y = msh.get_coords().T
+    x, y = msh.get_verts().T
     f = np.tanh((x + y - 1.0) / 0.01)
     return f.reshape((-1, 1))
 
