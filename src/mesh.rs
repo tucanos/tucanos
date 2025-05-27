@@ -628,6 +628,16 @@ macro_rules! create_mesh {
                 let res = self.mesh.elem_gammas().collect::<Vec<_>>();
                 to_numpy_1d(py, res)
             }
+
+            /// Extract elements by tag
+            /// Returns the portion of the mesh containing only the element tags in `tags` as well 
+            /// as the vertices, elements and face indices in the original mesh
+            pub fn extract_tags<'py>(&self, py: Python<'py>, tags: PyReadonlyArray1<Tag>) -> PyResult<(Self, Bound<'py, PyArray1<Idx>>,Bound<'py, PyArray1<Idx>>,Bound<'py, PyArray1<Idx>>)> {
+                let tags = tags.as_slice()?;
+
+                let sub_mesh = self.mesh.extract(|t| tags.iter().any(|&x| x == t));
+                Ok((Self{mesh:sub_mesh.mesh}, to_numpy_1d(py, sub_mesh.parent_vert_ids), to_numpy_1d(py, sub_mesh.parent_elem_ids), to_numpy_1d(py, sub_mesh.parent_face_ids)))
+            }
         }
     };
 }
