@@ -72,7 +72,7 @@ def bound_anisotropy(m, aniso_max):
     eigvals, eigvecs = np.linalg.eigh(m)
     sizes = 1.0 / np.sqrt(eigvals)
     min_sizes = sizes.min(axis=1)
-    for i in range(3):
+    for i in range(eigvals.shape[1]):
         sizes[:, i] = np.minimum(sizes[:, i], aniso_max * min_sizes)
     eigvals = 1.0 / sizes**2
     res = np.einsum("ijk,ik,ilk->ijl", eigvecs, eigvals, eigvecs)
