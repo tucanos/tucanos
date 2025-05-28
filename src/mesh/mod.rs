@@ -1,6 +1,6 @@
 mod autotag;
 mod geom_elems;
-mod geom_quad_elems;
+mod geom_quadratic_elems;
 mod gradient_l2proj;
 mod gradient_ls;
 mod graph;
@@ -23,7 +23,7 @@ pub mod io;
 pub mod test_meshes;
 
 pub use geom_elems::{AsSliceF64, GEdge, GElem, GTetrahedron, GTriangle};
-pub use geom_quad_elems::{GQuadElem, GQuadraticEdge, GQuadraticTriangle};
+pub use geom_quadratic_elems::{GQuadraticElem, GQuadraticEdge, GQuadraticTriangle};
 pub use partition::PartitionType;
 pub use quadratic_mesh::QuadraticMesh;
 pub use simplex_mesh::{Point, SimplexMesh, SubSimplexMesh};

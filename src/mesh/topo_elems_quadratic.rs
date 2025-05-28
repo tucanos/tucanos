@@ -1,4 +1,4 @@
-use super::geom_quad_elems::{GQuadElem, GQuadraticEdge, GQuadraticTriangle, GVertex};
+use super::geom_quadratic_elems::{GQuadraticElem, GQuadraticEdge, GQuadraticTriangle, GVertex};
 use super::twovec;
 use crate::metric::Metric;
 use crate::Idx;
@@ -35,7 +35,7 @@ pub trait QuadraticElem:
     /// Type for the element faces
     type Face: QuadraticElem;
     /// Type for the element geometry
-    type GeomQuad<M: Metric<3>>: GQuadElem<M>;
+    type GeomQuadratic<M: Metric<3>>: GQuadraticElem<M>;
     /// Iterate through the element's vertices
     fn iter(&self) -> Iter<Idx>;
     /// Create from a slice containing the element connectivity
@@ -77,7 +77,7 @@ impl QuadraticElem for QuadraticTriangle {
     const DIM: Idx = 3;
     const NAME: &'static str = "QuadraticTriangle";
     type Face = QuadraticEdge;
-    type GeomQuad<M: Metric<3>> = GQuadraticTriangle<M>;
+    type GeomQuadratic<M: Metric<3>> = GQuadraticTriangle<M>;
 
     fn iter(&self) -> Iter<Idx> {
         self.0.iter()
@@ -154,7 +154,7 @@ impl QuadraticElem for QuadraticEdge {
     const DIM: Idx = 3;
     const NAME: &'static str = "QuadraticPolyline";
     type Face = Vertex;
-    type GeomQuad<M: Metric<3>> = GQuadraticEdge<M>;
+    type GeomQuadratic<M: Metric<3>> = GQuadraticEdge<M>;
 
     fn iter(&self) -> Iter<Idx> {
         self.0.iter()
@@ -224,7 +224,7 @@ impl QuadraticElem for Vertex {
     const DIM: Idx = 0;
     const NAME: &'static str = "Polyvertex";
     type Face = Self;
-    type GeomQuad<M: Metric<3>> = GVertex<M>;
+    type GeomQuadratic<M: Metric<3>> = GVertex<M>;
 
     fn iter(&self) -> Iter<Idx> {
         self.0.iter()

@@ -1,4 +1,4 @@
-use super::geom_quad_elems::GQuadElem;
+use super::geom_quadratic_elems::GQuadraticElem;
 use super::graph::{reindexq, CSRGraph};
 use super::topology::Topology;
 use super::twovec;
@@ -190,8 +190,8 @@ impl<QE: QuadraticElem> QuadraticMesh<QE> {
         self.edg_tags.iter()
     }
 
-    pub fn gelem(&self, e: QE) -> QE::GeomQuad<IsoMetric<3>> {
-        QE::GeomQuad::from_verts(
+    pub fn gelem(&self, e: QE) -> QE::GeomQuadratic<IsoMetric<3>> {
+        QE::GeomQuadratic::from_verts(
             e.iter()
                 .map(|&i| (self.verts.index(i), IsoMetric::<3>::from(1.0))),
         )
@@ -199,12 +199,12 @@ impl<QE: QuadraticElem> QuadraticMesh<QE> {
 
     /// Get an iterator through the geometric elements
     #[must_use]
-    pub fn gelems(&self) -> impl ExactSizeIterator<Item = QE::GeomQuad<IsoMetric<3>>> + '_ {
+    pub fn gelems(&self) -> impl ExactSizeIterator<Item = QE::GeomQuadratic<IsoMetric<3>>> + '_ {
         self.tris().map(|e| self.gelem(e))
     }
 
-    pub fn gface(&self, f: QE::Face) -> <QE::Face as QuadraticElem>::GeomQuad<IsoMetric<3>> {
-        <QE::Face as QuadraticElem>::GeomQuad::from_verts(
+    pub fn gface(&self, f: QE::Face) -> <QE::Face as QuadraticElem>::GeomQuadratic<IsoMetric<3>> {
+        <QE::Face as QuadraticElem>::GeomQuadratic::from_verts(
             f.iter()
                 .map(|&i| (self.verts.index(i), IsoMetric::<3>::from(1.0))),
         )
@@ -213,7 +213,7 @@ impl<QE: QuadraticElem> QuadraticMesh<QE> {
     /// Get an iterator through the geometric faces
     pub fn gfaces(
         &self,
-    ) -> impl Iterator<Item = <QE::Face as QuadraticElem>::GeomQuad<IsoMetric<3>>> + '_ {
+    ) -> impl Iterator<Item = <QE::Face as QuadraticElem>::GeomQuadratic<IsoMetric<3>>> + '_ {
         self.edges().map(|f| self.gface(f))
     }
 

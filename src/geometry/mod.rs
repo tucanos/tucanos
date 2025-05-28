@@ -1,7 +1,7 @@
 mod curvature;
 use crate::{
     geometry::curvature::HasCurvature,
-    mesh::{Elem, GElem, GQuadElem, Point, QuadraticElem, QuadraticMesh, SimplexMesh, Topology},
+    mesh::{Elem, GElem, GQuadraticElem, Point, QuadraticElem, QuadraticMesh, SimplexMesh, Topology},
     spatialindex::{DefaultObjectIndex, ObjectIndex},
     Dim, Error, Result, Tag, TopoTag,
 };

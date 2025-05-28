@@ -37,13 +37,13 @@ impl AsSliceF64 for Vector1<f64> {
 
 const SQRT_3: f64 = 1.732_050_807_568_877_2;
 
-pub trait GQuadElem<M: Metric<3>>: Clone + Copy + Debug + Send {
-    type Face: GQuadElem<M>;
+pub trait GQuadraticElem<M: Metric<3>>: Clone + Copy + Debug + Send {
+    type Face: GQuadraticElem<M>;
     type BCoords: AsSliceF64 + Debug;
     const IDEAL_VOL: f64;
 
     #[allow(dead_code)]
-    /// Create a `GQuadElem` from its vertices and the metric at each vertex
+    /// Create a `GQuadraticElem` from its vertices and the metric at each vertex
     fn from_verts<I: Iterator<Item = (Point<3>, M)>>(points_n_metrics: I) -> Self;
 
     fn center(&self) -> Point<3>;
@@ -209,7 +209,7 @@ impl<M: Metric<3>> GQuadraticTriangle<M> {
     }
 }
 
-impl<M: Metric<3>> GQuadElem<M> for GQuadraticTriangle<M> {
+impl<M: Metric<3>> GQuadraticElem<M> for GQuadraticTriangle<M> {
     type Face = GQuadraticEdge<M>;
     type BCoords = Vector3<f64>;
     const IDEAL_VOL: f64 = SQRT_3 / 4.;
@@ -312,7 +312,7 @@ impl<M: Metric<3>> GQuadraticEdge<M> {
     }
 }
 
-impl<M: Metric<3>> GQuadElem<M> for GQuadraticEdge<M> {
+impl<M: Metric<3>> GQuadraticElem<M> for GQuadraticEdge<M> {
     type Face = GVertex<M>;
     type BCoords = Vector2<f64>;
     const IDEAL_VOL: f64 = 1.0;
@@ -386,7 +386,7 @@ impl<M: Metric<3>> GVertex<M> {
     const DIM: f64 = 0.0;
 }
 
-impl<M: Metric<3>> GQuadElem<M> for GVertex<M> {
+impl<M: Metric<3>> GQuadraticElem<M> for GVertex<M> {
     type Face = Self;
     type BCoords = Vector1<f64>;
     const IDEAL_VOL: f64 = 1.0;
