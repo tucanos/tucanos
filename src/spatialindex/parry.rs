@@ -37,6 +37,17 @@ mod parry2d {
             Point2::new(verts[vid * 2], verts[vid * 2 + 1])
         })
     }
+
+    // pub struct QuadTriangle {}
+    // impl MeshToShape for QuadTriangle {
+    //     type Shape = QuadTriangle;
+    //     type Location = QuadTrianglePointLocation;
+    //     fn shape(id: u32, verts: &[f64], elems: &[Idx]) -> Self::Shape {
+    //         // let [v1, v2] = points(id, verts, elems);
+    //         not_implement!();
+    //     }
+    // }
+
     pub struct EdgeToSegment {}
     impl MeshToShape for EdgeToSegment {
         type Shape = Segment;
@@ -486,7 +497,7 @@ impl<const D: usize> super::ObjectIndex<D> for ObjectIndex<D> {
                 inner: ParryImpl::Tria3D(parry3d_f64::shape::TriMesh::new(coords, elems).unwrap()),
             }
         } else {
-            unimplemented!("D={D} E::N_VERTS={}", QE::N_VERTS);
+            unimplemented!("E::N_VERTS={}", QE::N_VERTS);
         }
     }
 

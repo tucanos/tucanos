@@ -6,6 +6,7 @@ use super::{
     topology::Topology,
     twovec,
     vector::Vector,
+    QuadraticMesh, QuadraticTriangle,
 };
 use crate::{
     metric::IsoMetric,
@@ -1340,6 +1341,54 @@ impl SimplexMesh<3, Triangle> {
         let end = self.n_elems();
         ([start, end], indices)
     }
+
+    /// Get a SimplexMesh from a QuadraticMesh
+    #[must_use]
+    pub fn new_from_quadratic_mesh(&mut self, mesh: &QuadraticMesh<QuadraticTriangle>) -> Self {
+        let mut new_verts: Vec<Point<3>> = Vec::new();
+        let mut new_elems: Vec<Triangle> = Vec::new();
+        let mut new_etags: Vec<Tag> = Vec::new(); // Liste des tags pour les triangles
+        let mut new_faces: Vec<Edge> = Vec::new();
+
+        for tri in mesh.tris() {
+            // Extraire les 3 premiers sommets du triangle quadratique
+            let index_point = [
+                tri.index(0), // Premier sommet
+                tri.index(1), // Deuxième sommet
+                tri.index(2), // Troisième sommet
+            ];
+
+            // Ajouter les 3 sommets du triangle dans le maillage simplex
+            new_verts.push(mesh.vert(index_point[0]));
+            new_verts.push(mesh.vert(index_point[1]));
+            new_verts.push(mesh.vert(index_point[2]));
+
+            // Créer un nouvel élément simplex en utilisant les 3 indices de sommets
+            new_elems.push(Triangle::new(
+                index_point[0],
+                index_point[1],
+                index_point[2],
+            ));
+
+            new_faces.push(Edge::new(index_point[0], index_point[1]));
+            new_faces.push(Edge::new(index_point[1], index_point[2]));
+            new_faces.push(Edge::new(index_point[0], index_point[2]));
+        }
+
+        // Ajouter les tags des triangles à partir de l'itérateur `tri_tags`
+        for tag in mesh.tritags() {
+            new_etags.push(tag);
+        }
+
+        // Initialiser le SimplexMesh avec les vecteurs créés
+        Self::new_with_vector(
+            new_verts.into(),  // Sommets du maillage
+            new_elems.into(),  // Éléments du maillage (triangles)
+            new_etags.into(),  // Tags des éléments
+            new_faces.into(),  // Faces du maillage
+            Vec::new().into(), // Tags des faces (vide ici)
+        )
+    }
 }
 
 impl SimplexMesh<3, Tetrahedron> {
@@ -1503,12 +1552,21 @@ mod tests {
 
     use crate::{
         mesh::{
-            test_meshes::{test_mesh_2d, test_mesh_3d},
+            test_meshes::{test_mesh_2d, test_mesh_2d_quadratic, test_mesh_3d},
             Edge, Elem, GElem, SimplexMesh, Tetrahedron, Triangle,
         },
         min_max_iter, Result,
     };
 
+    #[test]
+    fn test_from_quad_to_simplex() {
+        let mesh = test_mesh_2d_quadratic();
+        let mut msh = SimplexMesh::<3, Triangle>::empty();
+        let simplex_mesh = msh.new_from_quadratic_mesh(&mesh);
+
+        println!("nb vertex in P2 = {}", mesh.n_verts());
+        println!("nb vertex in P1 = {}", simplex_mesh.n_verts());
+    }
     #[test]
     fn test_2d() {
         let mesh = test_mesh_2d();
