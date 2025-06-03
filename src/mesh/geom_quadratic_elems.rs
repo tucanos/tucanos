@@ -98,9 +98,10 @@ impl<M: Metric<3>> GQuadraticTriangle<M> {
         let p0 = Vector3::from(self.points[0]);
         let p1 = Vector3::from(self.points[1]);
         let p2 = Vector3::from(self.points[2]);
-        let p3 = Vector3::from(self.points[3]);
-        let p4 = Vector3::from(self.points[4]);
-        let p5 = Vector3::from(self.points[5]);
+        let p3 = Vector3::from(2. * self.points[3] - 0.5 * self.points[0] - 0.5 * self.points[1]);
+        let p4 = Vector3::from(2. * self.points[4] - 0.5 * self.points[1] - 0.5 * self.points[2]);
+        let p5 = Vector3::from(2. * self.points[5] - 0.5 * self.points[2] - 0.5 * self.points[0]);
+
         if x.len() == 2 {
             let u = x[0];
             let v = x[1];
@@ -135,9 +136,9 @@ impl<M: Metric<3>> GQuadraticTriangle<M> {
         let p0 = Vector3::from(self.points[0]);
         let p1 = Vector3::from(self.points[1]);
         let p2 = Vector3::from(self.points[2]);
-        let p3 = Vector3::from(self.points[3]);
-        let p4 = Vector3::from(self.points[4]);
-        let p5 = Vector3::from(self.points[5]);
+        let p3 = Vector3::from(2. * self.points[3] - 0.5 * self.points[0] - 0.5 * self.points[1]);
+        let p4 = Vector3::from(2. * self.points[4] - 0.5 * self.points[1] - 0.5 * self.points[2]);
+        let p5 = Vector3::from(2. * self.points[5] - 0.5 * self.points[2] - 0.5 * self.points[0]);
 
         let du = 2.0 * u * (p0 + p2 - 2.0 * p5) + 2.0 * (p5 - p2) + 2.0 * v * (p2 + p3 - p4 - p5);
 
@@ -151,9 +152,9 @@ impl<M: Metric<3>> GQuadraticTriangle<M> {
         let p0 = Vector3::from(self.points[0]);
         let p1 = Vector3::from(self.points[1]);
         let p2 = Vector3::from(self.points[2]);
-        let p3 = Vector3::from(self.points[3]);
-        let p4 = Vector3::from(self.points[4]);
-        let p5 = Vector3::from(self.points[5]);
+        let p3 = Vector3::from(2. * self.points[3] - 0.5 * self.points[0] - 0.5 * self.points[1]);
+        let p4 = Vector3::from(2. * self.points[4] - 0.5 * self.points[1] - 0.5 * self.points[2]);
+        let p5 = Vector3::from(2. * self.points[5] - 0.5 * self.points[2] - 0.5 * self.points[0]);
 
         let du2 = 2.0 * (p0 + p2 - 2.0 * p5);
         let dv2 = 2.0 * (p1 + p2 - 2.0 * p4);
@@ -199,8 +200,6 @@ impl<M: Metric<3>> GQuadraticTriangle<M> {
         max_iter: i32,
         tol: f64,
     ) -> (Point<3>, QuadraticTrianglePointLocation) {
-        // let u = x_init[0];
-        // let v = x_init[1];
         let mut x = [x_init[0], x_init[1]];
         for _i in 0..max_iter {
             let grad_distance = self.gradient_distance_to_minimize_for_projection(&x, p);
@@ -210,38 +209,33 @@ impl<M: Metric<3>> GQuadraticTriangle<M> {
             x[0] -= delta[0];
             x[1] -= delta[1];
 
-            // Calcul de l'erreur
             let err = grad.norm();
             if err < tol {
                 break;
             }
         }
-        // Si on n'a pas convergé dans max_iter, retourne la dernière estimation
-        // self.point(&x);
         let pt = self.point(&x);
-        // Calcul des coordonnées barycentriques linéaires (u, v, w)
         let u = x[0];
         let v = x[1];
         let w = 1.0 - u - v;
         let bary = [u, v, w];
 
-        // Classification
         let eps = 1e-6;
 
-        // OnVertex: une coordonnée vaut ≈ 1
+        // OnVertex: a coordinate is ≈ 1
         for (i, &b) in bary.iter().enumerate() {
             if (b - 1.0).abs() < eps {
                 return (pt, QuadraticTrianglePointLocation::OnVertex(i as u32));
             }
         }
 
-        //OnEdge : une coordonnée vaut ≈ 0
+        //OnEdge : a coordinate is ≈ 0
         for (i, &b) in bary.iter().enumerate() {
             if b.abs() < eps {
                 let (edge_index, edge_coords) = match i {
-                    0 => (1, [v, w]), // sommet 0 nul → arête BC
-                    1 => (2, [u, w]), // sommet 1 nul → arête AC
-                    2 => (0, [u, v]), // sommet 2 nul → arête AB
+                    0 => (1, [v, w]), // vertex 0 nul → edge BC
+                    1 => (2, [u, w]), // vertex 1 nul → edge AC
+                    2 => (0, [u, v]), // vertex 2 nul → edge AB
                     _ => unreachable!(),
                 };
                 return (
@@ -251,7 +245,7 @@ impl<M: Metric<3>> GQuadraticTriangle<M> {
             }
         }
 
-        // Sinon, dans la face
+        // Otherwise, in the face
         (pt, QuadraticTrianglePointLocation::OnFace(0, bary))
     }
 }
@@ -275,30 +269,39 @@ impl<M: Metric<3>> GQuadraticElem<M> for GQuadraticTriangle<M> {
     }
 
     fn center(&self) -> Point<3> {
-        (self.points[0]
-            + self.points[1]
-            + self.points[2]
-            + self.points[3]
-            + self.points[4]
-            + self.points[5])
-            / 6.0
+        let p0 = self.points[0];
+        let p1 = self.points[1];
+        let p2 = self.points[2];
+        let p3 = 2. * self.points[3] - 0.5 * self.points[0] - 0.5 * self.points[1];
+        let p4 = 2. * self.points[4] - 0.5 * self.points[1] - 0.5 * self.points[2];
+        let p5 = 2. * self.points[5] - 0.5 * self.points[2] - 0.5 * self.points[0];
+
+        (p0 + p1 + p2 + p3 + p4 + p5) / 6.0
     }
 
     fn point(&self, x: &[f64]) -> Point<3> {
+        // Converts the points on the geometry to Bezier-compatible control points.
+        let p0 = self.points[0];
+        let p1 = self.points[1];
+        let p2 = self.points[2];
+        let p3 = 2. * self.points[3] - 0.5 * self.points[0] - 0.5 * self.points[1];
+        let p4 = 2. * self.points[4] - 0.5 * self.points[1] - 0.5 * self.points[2];
+        let p5 = 2. * self.points[5] - 0.5 * self.points[2] - 0.5 * self.points[0];
+
         if x.len() == 3 {
-            x[0].powf(2.) * self.points[0]
-                + x[1].powf(2.) * self.points[1]
-                + x[2].powf(2.) * self.points[2]
-                + 2.0 * x[0] * x[1] * self.points[3]
-                + 2.0 * x[0] * x[2] * self.points[5]
-                + 2.0 * x[1] * x[2] * self.points[4]
+            x[0].powf(2.) * p0
+                + x[1].powf(2.) * p1
+                + x[2].powf(2.) * p2
+                + 2.0 * x[0] * x[1] * p3
+                + 2.0 * x[0] * x[2] * p5
+                + 2.0 * x[1] * x[2] * p4
         } else if x.len() == 2 {
-            x[0].powf(2.) * self.points[0]
-                + x[1].powf(2.) * self.points[1]
-                + (1. - x[0] - x[1]).powf(2.) * self.points[2]
-                + 2.0 * x[0] * x[1] * self.points[3]
-                + 2.0 * (1. - x[0] - x[1]) * x[1] * self.points[4]
-                + 2.0 * (1. - x[0] - x[1]) * x[0] * self.points[5]
+            x[0].powf(2.) * p0
+                + x[1].powf(2.) * p1
+                + (1. - x[0] - x[1]).powf(2.) * p2
+                + 2.0 * x[0] * x[1] * p3
+                + 2.0 * (1. - x[0] - x[1]) * x[1] * p4
+                + 2.0 * (1. - x[0] - x[1]) * x[0] * p5
         } else {
             unreachable!();
         }
@@ -324,17 +327,6 @@ impl<M: Metric<3>> GQuadraticElem<M> for GQuadraticTriangle<M> {
 
     fn scaled_normal(&self) -> Point<3> {
         todo!();
-        // let e0 = self.points[1] - self.points[3];
-        // let e1 = self.points[3] - self.points[0];
-        // let e2 = self.points[4] - self.points[5];
-        // let e3 = self.points[2] - self.points[5];
-        // let e4 = self.points[5] - self.points[0];
-        // let e5 = self.points[4] - self.points[3];
-        // let u = (2.0 / 3.0) * (e0 + e1 + e2);
-        // let v = (2.0 / 3.0) * (e3 + e4 + e5);
-        // let w = u.cross(&v);
-        // let norm = w.norm();
-        // w / norm
     }
 }
 
@@ -382,14 +374,14 @@ impl<M: Metric<3>> GQuadraticElem<M> for GQuadraticEdge<M> {
     }
 
     fn point(&self, x: &[f64]) -> Point<3> {
+        let p0 = self.points[0];
+        let p1 = self.points[1];
+        let p2 = 2. * self.points[2] - 0.5 * self.points[0] - 0.5 * self.points[1];
+
         if x.len() == 2 {
-            x[0].powf(2.) * self.points[0]
-                + x[1].powf(2.) * self.points[1]
-                + 2.0 * x[0] * x[1] * self.points[2]
+            x[0].powf(2.) * p0 + x[1].powf(2.) * p1 + 2.0 * x[0] * x[1] * p2
         } else if x.len() == 1 {
-            x[0].powf(2.) * self.points[0]
-                + (1. - x[0]).powf(2.) * self.points[1]
-                + 2.0 * x[0] * (1. - x[0]) * self.points[2]
+            x[0].powf(2.) * p0 + (1. - x[0]).powf(2.) * p1 + 2.0 * x[0] * (1. - x[0]) * p2
         } else {
             unreachable!();
         }
