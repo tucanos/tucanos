@@ -16,7 +16,7 @@ pub type DefaultPointIndex<const D: usize> = libol::Octree;
 pub type DefaultObjectIndex<const D: usize> = libol::Octree;
 
 #[cfg(feature = "parry")]
-mod parry;
+pub mod parry;
 #[cfg(feature = "parry")]
 pub type DefaultPointIndex<const D: usize> = KdTreePointIndex<D>;
 #[cfg(feature = "parry")]

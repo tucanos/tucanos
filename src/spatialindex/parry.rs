@@ -38,16 +38,6 @@ mod parry2d {
         })
     }
 
-    // pub struct QuadTriangle {}
-    // impl MeshToShape for QuadTriangle {
-    //     type Shape = QuadTriangle;
-    //     type Location = QuadTrianglePointLocation;
-    //     fn shape(id: u32, verts: &[f64], elems: &[Idx]) -> Self::Shape {
-    //         // let [v1, v2] = points(id, verts, elems);
-    //         not_implement!();
-    //     }
-    // }
-
     pub struct EdgeToSegment {}
     impl MeshToShape for EdgeToSegment {
         type Shape = Segment;
@@ -155,14 +145,16 @@ mod parry2d {
     }
 }
 
-mod parry3d {
+pub mod parry3d {
     use crate::{
-        mesh::{Elem, SimplexMesh},
+        mesh::{Elem, GQuadraticElem, GQuadraticTriangle, SimplexMesh},
+        metric::{AnisoMetric, AnisoMetric3d},
         Idx,
     };
-    use nalgebra::Point3;
+    use nalgebra::{Matrix3, Point3};
+
     use parry3d_f64::{
-        bounding_volume::{Aabb, BoundingSphere},
+        bounding_volume::{details, Aabb, BoundingSphere},
         mass_properties::MassProperties,
         math::{Isometry, Point, Real},
         partitioning::Qbvh,
@@ -409,6 +401,173 @@ mod parry3d {
             res[i] = p[i];
         }
         ((pt - res).norm(), res)
+    }
+
+    #[derive(Copy, Clone)]
+    pub struct QuadraticTriangle {
+        pub a: Point<Real>,
+        pub b: Point<Real>,
+        pub c: Point<Real>,
+        pub d: Point<Real>,
+        pub e: Point<Real>,
+        pub f: Point<Real>,
+    }
+
+    impl QuadraticTriangle {
+        #[inline]
+        pub fn bounding_sphere(&self) -> parry3d_f64::bounding_volume::BoundingSphere {
+            let pts = [self.a, self.b, self.c, self.d, self.e, self.f];
+            details::point_cloud_bounding_sphere(&pts[..])
+        }
+    }
+
+    #[allow(clippy::enum_variant_names)]
+    #[derive(Debug)]
+    pub enum QuadraticTrianglePointLocation {
+        OnVertex(u32),
+        OnEdge(u32, [Real; 2]),
+        OnFace(u32, [Real; 3]),
+    }
+
+    /// Wrap the Quadratic Triangle to make it parry 3d shape
+    pub struct QuadraticTriangleShape(QuadraticTriangle);
+
+    impl QuadraticTriangleShape {
+        #[allow(dead_code)]
+        pub const fn new(a: &[Point<Real>; 6]) -> Self {
+            Self(QuadraticTriangle {
+                a: a[0],
+                b: a[0],
+                c: a[0],
+                d: a[0],
+                e: a[0],
+                f: a[0],
+            })
+        }
+    }
+
+    impl parry3d_f64::shape::Shape for QuadraticTriangleShape {
+        fn compute_local_aabb(&self) -> Aabb {
+            let mut min = Point::origin();
+            let mut max = Point::origin();
+            let a = self.0.a;
+            let b = self.0.b;
+            let c = self.0.c;
+            let d = self.0.d;
+            let e = self.0.e;
+            let f = self.0.f;
+
+            for i in 0..3 {
+                min.coords[i] = a[i].min(b[i]).min(c[i]).min(d[i]).min(e[i]).min(f[i]);
+                max.coords[i] = a[i].max(b[i]).max(c[i]).max(d[i]).max(e[i]).max(f[i]);
+            }
+
+            Aabb::new(min, max)
+        }
+
+        fn compute_local_bounding_sphere(&self) -> BoundingSphere {
+            self.0.bounding_sphere()
+        }
+
+        fn clone_box(&self) -> Box<dyn parry3d_f64::shape::Shape> {
+            todo!()
+        }
+
+        fn mass_properties(&self, _density: Real) -> MassProperties {
+            todo!()
+        }
+
+        fn shape_type(&self) -> ShapeType {
+            todo!()
+        }
+
+        fn as_typed_shape(&self) -> TypedShape {
+            todo!()
+        }
+
+        fn ccd_thickness(&self) -> Real {
+            todo!()
+        }
+
+        fn ccd_angular_thickness(&self) -> Real {
+            todo!()
+        }
+
+        fn clone_dyn(&self) -> Box<dyn Shape> {
+            todo!()
+        }
+
+        fn scale_dyn(
+            &self,
+            _scale: &parry3d_f64::math::Vector<f64>,
+            _num_subdivisions: u32,
+        ) -> Option<Box<dyn Shape>> {
+            todo!()
+        }
+    }
+
+    impl PointQueryWithLocation for QuadraticTriangleShape {
+        type Location = QuadraticTrianglePointLocation;
+        fn project_local_point_and_get_location(
+            &self,
+            pt: &Point<Real>,
+            _solid: bool,
+        ) -> (PointProjection, Self::Location) {
+            let a = self.0.a.coords;
+            let b = self.0.b.coords;
+            let c = self.0.c.coords;
+            let d = self.0.d.coords;
+            let e = self.0.e.coords;
+            let f = self.0.f.coords;
+
+            let points = [a, b, c, d, e, f];
+            let identity = Matrix3::identity();
+            let metric = AnisoMetric3d::from_mat(identity);
+            let points_and_metrics = points.iter().map(|&p| (p, metric));
+
+            let pt = pt.coords;
+            let triangle = GQuadraticTriangle::from_verts(points_and_metrics);
+            let (proj_point_coords, location) = triangle.project(pt, &[0.2, 0.2], 20, 0.000001);
+            // Reconstituer un Point<Real> à partir des coordonnées projetées
+            let proj_point = Point::from(proj_point_coords);
+
+            // Déterminer si le point projeté est "inside" selon la location
+            let is_inside = matches!(location, QuadraticTrianglePointLocation::OnFace(_, _));
+
+            // Construire et retourner la projection
+            (
+                PointProjection {
+                    is_inside,
+                    point: proj_point,
+                },
+                location,
+            )
+        }
+    }
+
+    impl PointQuery for QuadraticTriangleShape {
+        fn project_local_point(&self, _pt: &Point<Real>, _solid: bool) -> PointProjection {
+            todo!()
+            // self.0.project_local_point(pt, solid)
+        }
+
+        fn project_local_point_and_get_feature(
+            &self,
+            _pt: &Point<Real>,
+        ) -> (PointProjection, FeatureId) {
+            todo!()
+            // self.0.project_local_point_and_get_feature(pt)
+        }
+    }
+    impl RayCast for QuadraticTriangleShape {
+        fn cast_local_ray_and_get_normal(
+            &self,
+            _ray: &Ray,
+            _max_toi: Real,
+            _solid: bool,
+        ) -> Option<RayIntersection> {
+            todo!()
+        }
     }
 }
 

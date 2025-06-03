@@ -1,3 +1,4 @@
+use crate::spatialindex::parry::parry3d::QuadraticTrianglePointLocation;
 use crate::{mesh::Point, metric::Metric, Idx};
 use nalgebra::{Matrix2, Matrix3, Vector1, Vector2, Vector3, Vector4};
 use std::fmt::Debug;
@@ -84,9 +85,16 @@ pub struct GQuadraticTriangle<M: Metric<3>> {
 }
 
 impl<M: Metric<3>> GQuadraticTriangle<M> {
+    // pub fn from_points_with_unit_metric(pts: [Point<3>; 6]) -> Self {
+    //     let metric = std::array::from_fn(|_| M::default());
+    //     Self {
+    //         points: pts,
+    //         metrics: metric,
+    //     }
+    // }
+
     /// Get the jacobian of the transformation from the reference to the current element
     pub fn jacobian(&self, x: &[f64]) -> Matrix3<f64> {
-
         let p0 = Vector3::from(self.points[0]);
         let p1 = Vector3::from(self.points[1]);
         let p2 = Vector3::from(self.points[2]);
@@ -107,7 +115,6 @@ impl<M: Metric<3>> GQuadraticTriangle<M> {
 
             Matrix3::from_columns(&[du, dv, dw])
         } else if x.len() == 3 {
-
             let u = x[0];
             let v = x[1];
             let w = x[2];
@@ -117,7 +124,6 @@ impl<M: Metric<3>> GQuadraticTriangle<M> {
             let dw = 2. * p2 + 2. * v * p4 + 2. * u * p5;
 
             Matrix3::from_columns(&[du, dv, dw])
-
         } else {
             unreachable!();
         }
@@ -186,7 +192,13 @@ impl<M: Metric<3>> GQuadraticTriangle<M> {
     }
 
     #[allow(dead_code)]
-    fn project(&self, p: Point<3>, x_init: &[f64], max_iter: i32, tol: f64) -> Point<3> {
+    pub fn project(
+        &self,
+        p: Point<3>,
+        x_init: &[f64],
+        max_iter: i32,
+        tol: f64,
+    ) -> (Point<3>, QuadraticTrianglePointLocation) {
         // let u = x_init[0];
         // let v = x_init[1];
         let mut x = [x_init[0], x_init[1]];
@@ -201,11 +213,46 @@ impl<M: Metric<3>> GQuadraticTriangle<M> {
             // Calcul de l'erreur
             let err = grad.norm();
             if err < tol {
-                return self.point(&x);
+                break;
             }
         }
         // Si on n'a pas convergé dans max_iter, retourne la dernière estimation
-        self.point(&x)
+        // self.point(&x);
+        let pt = self.point(&x);
+        // Calcul des coordonnées barycentriques linéaires (u, v, w)
+        let u = x[0];
+        let v = x[1];
+        let w = 1.0 - u - v;
+        let bary = [u, v, w];
+
+        // Classification
+        let eps = 1e-6;
+
+        // OnVertex: une coordonnée vaut ≈ 1
+        for (i, &b) in bary.iter().enumerate() {
+            if (b - 1.0).abs() < eps {
+                return (pt, QuadraticTrianglePointLocation::OnVertex(i as u32));
+            }
+        }
+
+        //OnEdge : une coordonnée vaut ≈ 0
+        for (i, &b) in bary.iter().enumerate() {
+            if b.abs() < eps {
+                let (edge_index, edge_coords) = match i {
+                    0 => (1, [v, w]), // sommet 0 nul → arête BC
+                    1 => (2, [u, w]), // sommet 1 nul → arête AC
+                    2 => (0, [u, v]), // sommet 2 nul → arête AB
+                    _ => unreachable!(),
+                };
+                return (
+                    pt,
+                    QuadraticTrianglePointLocation::OnEdge(edge_index, edge_coords),
+                );
+            }
+        }
+
+        // Sinon, dans la face
+        (pt, QuadraticTrianglePointLocation::OnFace(0, bary))
     }
 }
 
@@ -453,7 +500,33 @@ mod tests {
         );
         let p = Point::<3>::new(1. / 3., 1. / 3., 1. / 3.);
         let x_init = [0.2, 0.2];
-        let proj = triangle.project(p, &x_init, 20, 0.0000001);
-        println!("{}", proj);
+        let (proj_point, location) = triangle.project(p, &x_init, 20, 0.0000001);
+        let dist = (proj_point - p).norm();
+        assert!(
+            dist < 1e-6,
+            "Projection should be close to the initial point"
+        );
+
+        //on s’attend à être à l’intérieur de la face (OnFace)
+        match location {
+            QuadraticTrianglePointLocation::OnFace(_, _) => (),
+            _ => panic!("Expected point to be on the face"),
+        }
+        println!("Projected point: {proj_point:?}");
+        println!("Location: {location:?}");
     }
+
+    // #[test]
+    // fn test_quadratic_triangle_from_verts() {
+    //     let points = [
+    //         Point::<3>::from([1., 0., 0.]),
+    //         Point::<3>::from([0., 1., 0.]),
+    //         Point::<3>::from([0., 0., 1.]),
+    //         Point::<3>::from([0.5, 0.5, 0.]),
+    //         Point::<3>::from([0., 0.5, 0.5]),
+    //         Point::<3>::from([0.5, 0., 0.5]),
+    //     ];
+    //     let triangle = GQuadraticTriangle::from_points_with_unit_metric(points);
+    //     assert_eq!(triangle.vert(0), points[0]);
+    // }
 }
