@@ -430,7 +430,7 @@ pub mod parry3d {
     }
 
     /// Wrap the Quadratic Triangle to make it parry 3d shape
-    pub struct QuadraticTriangleShape(QuadraticTriangle);
+    pub struct QuadraticTriangleShape(pub QuadraticTriangle);
 
     impl QuadraticTriangleShape {
         #[allow(dead_code)]
@@ -730,6 +730,68 @@ impl<const D: usize> super::ObjectIndex<D> for ObjectIndex<D> {
                 }
                 ((pt - res).norm(), res)
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nalgebra::Point3;
+    use parry3d::{QuadraticTriangle, QuadraticTrianglePointLocation, QuadraticTriangleShape};
+    use parry3d_f64::shape::Shape;
+
+    #[test]
+    fn test_quadratic_triangle_bounding_sphere_and_projection() {
+        // Définition de 6 points pour le triangle quadratique
+        let points = [
+            Point3::new(0.0, 0.0, 0.0), // a
+            Point3::new(1.0, 0.0, 0.0), // b
+            Point3::new(0.0, 1.0, 0.0), // c
+            Point3::new(0.5, 0.0, 0.0), // d
+            Point3::new(0.5, 0.5, 0.0), // e
+            Point3::new(0.0, 0.5, 0.0), // f
+        ];
+
+        // Construction du QuadraticTriangleShape
+        let qt = QuadraticTriangle {
+            a: points[0],
+            b: points[1],
+            c: points[2],
+            d: points[3],
+            e: points[4],
+            f: points[5],
+        };
+        let shape = QuadraticTriangleShape(qt);
+
+        // Vérifier que le bounding sphere n'est pas vide
+        let bounding_sphere = shape.compute_local_bounding_sphere();
+        let _center = bounding_sphere.center;
+        let radius = bounding_sphere.radius;
+        assert!(radius > 0.0, "Bounding sphere radius should be positive");
+
+        // Point à projeter : un point à l'intérieur du triangle
+        let query_point = Point3::new(0.25, 0.25, 0.0);
+        let (projection, location) =
+            shape.project_local_point_and_get_location(&query_point, false);
+
+        println!("Projection point: {:?}", projection.point);
+        println!("Is inside: {}", projection.is_inside);
+        println!("Location: {:?}", location);
+
+        // La projection doit être proche du point initial (tolérance arbitraire)
+        let dist = (projection.point - query_point).norm();
+        assert!(
+            dist < 1e-3,
+            "Projection point should be close to the query point, got distance {}",
+            dist
+        );
+
+        // On s'attend à ce que le point projeté soit sur la face (ou éventuellement sur un edge)
+        match location {
+            QuadraticTrianglePointLocation::OnFace(_, _)
+            | QuadraticTrianglePointLocation::OnEdge(_, _) => (),
+            _ => panic!("Expected projection to be on face or edge"),
         }
     }
 }
