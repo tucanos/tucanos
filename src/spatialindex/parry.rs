@@ -738,12 +738,11 @@ impl<const D: usize> super::ObjectIndex<D> for ObjectIndex<D> {
 mod tests {
     use super::*;
     use nalgebra::Point3;
-    use parry3d::{QuadraticTriangle, QuadraticTrianglePointLocation, QuadraticTriangleShape};
+    use parry3d::{QuadraticTriangle, QuadraticTriangleShape};
     use parry3d_f64::shape::Shape;
 
     #[test]
     fn test_quadratic_triangle_bounding_sphere_and_projection() {
-        // Définition de 6 points pour le triangle quadratique
         let points = [
             Point3::new(0.0, 0.0, 0.0), // a
             Point3::new(1.0, 0.0, 0.0), // b
@@ -753,7 +752,7 @@ mod tests {
             Point3::new(0.0, 0.5, 0.0), // f
         ];
 
-        // Construction du QuadraticTriangleShape
+        // Construction of the QuadraticTriangleShape
         let qt = QuadraticTriangle {
             a: points[0],
             b: points[1],
@@ -764,12 +763,12 @@ mod tests {
         };
         let shape = QuadraticTriangleShape(qt);
 
-        // Vérifier que le bounding sphere n'est pas vide
+        // Check that the bounding sphere is not empty
         let bounding_sphere = shape.compute_local_bounding_sphere();
         let radius = bounding_sphere.radius;
         assert!(radius > 0.0, "Bounding sphere radius should be positive");
 
-        // Point à projeter : un point à l'intérieur du triangle
+        // Point to project
         let query_point = Point3::new(1., 0., 0.);
         let (projection, location) =
             shape.project_local_point_and_get_location(&query_point, false);
