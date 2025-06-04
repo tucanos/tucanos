@@ -9,7 +9,7 @@ try:
     import CGNS.VAL.simplecheck as CGV
 
     HAVE_CGNS = True
-except:
+except ImportError:
     HAVE_CGNS = False
 
 

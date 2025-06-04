@@ -59,18 +59,18 @@ def run():
             perf.append((name, t, msh.n_elems()))
             print("%s: %d elems, %f s" % (name, msh.n_elems(), t))
 
-            q, l = qualities_and_lengths(msh, get_metric(msh))
+            qualities, lengths = qualities_and_lengths(msh, get_metric(msh))
 
             msh.write_vtk(os.path.join(pth, "cube-linear-%s.vtu" % name))
 
             axs_q[0].hist(
-                q,
+                qualities,
                 bins=50,
                 alpha=0.25,
                 density=True,
-                label="%s (min = %.2f)" % (name, q.min()),
+                label="%s (min = %.2f)" % (name, qualities.min()),
             )
-            axs_q[1].hist(l, bins=50, alpha=0.25, density=True)
+            axs_q[1].hist(lengths, bins=50, alpha=0.25, density=True)
         except subprocess.CalledProcessError as e:
             print("%s failed: %s" % (name, e.output))
 

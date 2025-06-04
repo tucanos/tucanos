@@ -10,8 +10,7 @@ use tucanos::{
 };
 macro_rules! create_geometry {
     ($name: ident, $dim: expr, $etype: ident, $mesh: ident, $geom: ident) => {
-        #[doc = concat!("Piecewise linear geometry consisting of ", stringify!($etype), " in ",
-                                    stringify!($dim), "D")]
+        #[doc = concat!("Piecewise linear geometry consisting of ", stringify!($etype), " in ", stringify!($dim), "D")]
         #[pyclass]
         // #[derive(Clone)]
         pub struct $name {

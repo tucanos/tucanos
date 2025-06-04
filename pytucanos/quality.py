@@ -19,9 +19,9 @@ def lengths(coords, els, m):
     tmp = coords[edgs[:, 1], :] - coords[edgs[:, 0], :]
     if not aniso:
         m = m.squeeze()
-        l = np.linalg.norm(tmp, axis=1)
-        l0 = l / m[edgs[:, 0]]
-        l1 = l / m[edgs[:, 1]]
+        length = np.linalg.norm(tmp, axis=1)
+        l0 = length / m[edgs[:, 0]]
+        l1 = length / m[edgs[:, 1]]
     else:
         mm = sym2mat(m)
         l0 = np.einsum("ik,ikl,il->i", tmp, mm[edgs[:, 0]], tmp) ** 0.5
@@ -60,16 +60,16 @@ def qualities(coords, els, m):
         m = mm[vidx, :, :]
         vol /= v[vidx]
 
-    l = np.zeros(els.shape[0])
+    length = np.zeros(els.shape[0])
     el2edg = TRI2EDG if dim == 2 else TET2EDG
     for e in el2edg:
         tmp = coords[els[:, e[1]], :] - coords[els[:, e[0]], :]
         if not aniso:
-            l += (np.linalg.norm(tmp, axis=1)) ** 2
+            length += (np.linalg.norm(tmp, axis=1)) ** 2
         else:
-            l += np.einsum("ik,ikl,il->i", tmp, m, tmp)
+            length += np.einsum("ik,ikl,il->i", tmp, m, tmp)
 
-    q = vol ** (2 / dim) / l
+    q = vol ** (2 / dim) / length
 
     if dim == 2:
         ideal_vol = 3**0.5 / 4

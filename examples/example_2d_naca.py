@@ -3,7 +3,7 @@ import logging
 import numpy as np
 import matplotlib.pyplot as plt
 import gmsh
-from pytucanos.mesh import Mesh22, Mesh21, plot_mesh, plot_metric, plot_field
+from pytucanos.mesh import Mesh22, Mesh21, plot_mesh
 from pytucanos.geometry import LinearGeometry2d
 from pytucanos.remesh import Remesher2dAniso, PyRemesherParams
 
@@ -113,7 +113,6 @@ def get_meshes():
     gmsh.initialize(sys.argv)
     gmsh.model.add("NACA 0012")
 
-    curvs = []
     upper = gmsh.model.occ.addSpline(
         [gmsh.model.occ.addPoint(x, y, 0, 0.1) for x, y in upper]
     )
@@ -226,7 +225,7 @@ if __name__ == "__main__":
     ax1.set_xlim([-0.5, 1.5])
     ax1.set_ylim([-0.5, 0.5])
 
-    msh.write_vtk(f"naca_0.vtu")
+    msh.write_vtk("naca_0.vtu")
 
     msh.compute_topology()
     geom = LinearGeometry2d(msh, bmsh)
@@ -294,8 +293,8 @@ if __name__ == "__main__":
             geom,
             params=PyRemesherParams.default(),
         )
-        q = remesher.qualities()
-        l = remesher.lengths()
+        qualities = remesher.qualities()
+        lengths = remesher.lengths()
 
         msh = remesher.to_mesh()
         msh.compute_topology()
@@ -308,26 +307,26 @@ if __name__ == "__main__":
 
         fig, ax = plt.subplots(2, 1, tight_layout=True)
         ax[0].hist(
-            q,
+            qualities,
             bins=50,
             alpha=0.25,
             density=True,
-            label="parmesan (q_min = %.2f)" % q.min(),
+            label="parmesan (q_min = %.2f)" % qualities.min(),
         )
         ax[0].set_xlabel("quality")
         ax[0].legend()
         ax[1].hist(
-            l,
+            lengths,
             bins=50,
             alpha=0.25,
             density=True,
-            label="parmesan (l_min = %.2f, l_max = %.2f)" % (l.min(), l.max()),
+            label="parmesan (l_min = %.2f, l_max = %.2f)" % (lengths.min(), lengths.max()),
         )
         ax[1].axvline(x=0.5**0.5, c="r")
         ax[1].axvline(x=2**0.5, c="r")
         ax[1].set_xlabel("edge lengths")
         ax[1].legend()
 
-        msh.write_vtk(f"naca_{it+1}.vtu", {}, {"q": q.reshape((-1, 1))})
+        msh.write_vtk(f"naca_{it+1}.vtu", {}, {"q": qualities.reshape((-1, 1))})
 
     plt.show()

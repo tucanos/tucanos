@@ -42,25 +42,25 @@ if __name__ == "__main__":
     plot_mesh(ax, msh)
     ax.set_title("Adapted")
 
-    q = remesher.qualities()
-    l = remesher.lengths()
+    qualities = remesher.qualities()
+    lengths = remesher.lengths()
 
     fig, ax = plt.subplots(2, 1, tight_layout=True)
     ax[0].hist(
-        q,
+        qualities,
         bins=50,
         alpha=0.25,
         density=True,
-        label="parmesan (q_min = %.2f)" % q.min(),
+        label="parmesan (q_min = %.2f)" % qualities.min(),
     )
     ax[0].set_xlabel("quality")
     ax[0].legend()
     ax[1].hist(
-        l,
+        lengths,
         bins=50,
         alpha=0.25,
         density=True,
-        label="parmesan (l_min = %.2f, l_max = %.2f)" % (l.min(), l.max()),
+        label="parmesan (l_min = %.2f, l_max = %.2f)" % (lengths.min(), lengths.max()),
     )
     ax[1].axvline(x=0.5**0.5, c="r")
     ax[1].axvline(x=2**0.5, c="r")

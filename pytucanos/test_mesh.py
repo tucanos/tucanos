@@ -21,13 +21,13 @@ class TestMeshes(unittest.TestCase):
         coords, elems, etags, faces, ftags = get_square()
 
         with self.assertRaises(ValueError):
-            msh = Mesh33(coords, elems, etags, faces, ftags)
+            _msh = Mesh33(coords, elems, etags, faces, ftags)
 
     def test_init_3d_fail(self):
         coords, elems, etags, faces, ftags = get_cube()
 
         with self.assertRaises(ValueError):
-            msh = Mesh32(coords, elems, etags, faces, ftags)
+            _msh = Mesh32(coords, elems, etags, faces, ftags)
 
     def test_init_2d(self):
         coords, elems, etags, faces, ftags = get_square()
@@ -220,7 +220,7 @@ class TestMeshes(unittest.TestCase):
         tag = bdy[2]
         self.assertEqual((msh.get_ftags() == tag).sum(), 2 * 2**5)
 
-        faces_after, ftags_after = msh.get_faces(), msh.get_ftags()
+        _faces_after, ftags_after = msh.get_faces(), msh.get_ftags()
         self.assertTrue(np.array_equal(np.unique(ftags_after), [1, 2, 3, 5]))
         self.assertEqual(np.nonzero(ftags_after == 3)[0].size, 2 * 2**5)
 
@@ -273,11 +273,9 @@ class TestMeshes(unittest.TestCase):
 
         x, y = msh.get_verts().T
         f = (x + y).reshape((-1, 1))
-        g = (x - y).reshape((-1, 1))
 
         elems = msh.get_elems()
         f_e = f[elems].mean(axis=1)
-        g_e = g[elems].mean(axis=1)
 
         with self.assertRaises(ValueError):
             msh.vertex_data_to_elem_data(f_e)

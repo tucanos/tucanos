@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from pytucanos import HAVE_METIS, HAVE_SCOTCH
-from pytucanos.mesh import get_square, Mesh22, plot_mesh
+from pytucanos.mesh import get_square, Mesh22
 from pytucanos.geometry import LinearGeometry2d
 from pytucanos.remesh import (
     ParallelRemesher2dIso,
@@ -59,14 +59,14 @@ if __name__ == "__main__":
     msh.write_vtk("final.vtu")
 
     msh.compute_edges()
-    q, l = ParallelRemesher2dIso.qualities_and_lengths(msh, m)
+    qualities, lengths = ParallelRemesher2dIso.qualities_and_lengths(msh, m)
 
     fig, (ax0, ax1) = plt.subplots(2, 1)
 
     fig, axs = plt.subplots(2, 1, tight_layout=True)
-    axs[0].hist(q, bins=50, alpha=0.25, density=True)
+    axs[0].hist(qualities, bins=50, alpha=0.25, density=True)
     axs[0].set_xlabel("quality")
-    axs[1].hist(l, bins=50, alpha=0.25, density=True)
+    axs[1].hist(lengths, bins=50, alpha=0.25, density=True)
     axs[1].axvline(x=0.5**0.5, c="r")
     axs[1].axvline(x=2**0.5, c="r")
     axs[1].set_xlabel("edge lengths")

@@ -9,19 +9,19 @@ from ._pytucanos import (
     PyCollapseParams,
     PySwapParams,
     PySmoothParams,
-    PySmoothingMethod,
-    PyRemeshingStep,
+    PySmoothingMethod,  # noqa: F401
+    PyRemeshingStep,  # noqa: F401
     PyRemesherParams,
+    Remesher2dIso, 
+    Remesher2dAniso, 
+    Remesher3dIso, 
+    Remesher3dAniso,
+    ParallelRemesher2dIso,  # noqa: F401
+    ParallelRemesher2dAniso,  # noqa: F401
+    ParallelRemesher3dIso,  # noqa: F401
+    ParallelRemesher3dAniso,  # noqa: F401
+    PyParallelRemesherParams,  # noqa: F401
 )
-from ._pytucanos import Remesher2dIso, Remesher2dAniso, Remesher3dIso, Remesher3dAniso
-from ._pytucanos import (
-    ParallelRemesher2dIso,
-    ParallelRemesher2dAniso,
-    ParallelRemesher3dIso,
-    ParallelRemesher3dAniso,
-    PyParallelRemesherParams,
-)
-
 from .mesh import Mesh22, Mesh33
 from .geometry import LinearGeometry2d, LinearGeometry3d
 

@@ -10,7 +10,6 @@ from pytucanos.remesh import (
     remesh_mmg,
     # remesh_omega_h,
     remesh_refine,
-    remesh_avro,
 )
 from pytucanos.quality import qualities_and_lengths
 
@@ -90,24 +89,24 @@ def run(cases):
             perf.append((name, t, msh.n_elems()))
             print("%s: %d elems, %f s" % (name, msh.n_elems(), t))
 
-            q, l = qualities_and_lengths(msh, get_metric(msh))
+            qualities, lengths = qualities_and_lengths(msh, get_metric(msh))
 
             msh.write_vtk(os.path.join(pth, "cube-cylinder-%s.vtu" % name))
 
             axs_q[0].hist(
-                q,
+                qualities,
                 bins=50,
                 alpha=0.25,
                 density=True,
-                label="%s (min = %.2f)" % (name, q.min()),
+                label="%s (min = %.2f)" % (name, qualities.min()),
             )
             axs_q[0].set_xlim([0.0, 1.0])
             axs_q[1].hist(
-                l[l < 2.0],
+                lengths[lengths < 2.0],
                 bins=50,
                 alpha=0.25,
                 density=True,
-                label="%s (min = %.2f, max = %.2f)" % (name, l.min(), l.max()),
+                label="%s (min = %.2f, max = %.2f)" % (name, lengths.min(), lengths.max()),
             )
             axs_q[1].set_xlim([0.0, 2.0])
         except subprocess.CalledProcessError as e:

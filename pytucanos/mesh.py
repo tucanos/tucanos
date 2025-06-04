@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 from ._pytucanos import (
     Mesh21,
     Mesh22,
@@ -33,7 +32,7 @@ def __plot_boundary(ax, bdy, normals):
     for e, t in zip(edgs, etags):
         (i,) = np.nonzero(tags == t)
         X, Y = xy[e, 0], xy[e, 1]
-        if not t in labels:
+        if t not in labels:
             ax.plot(X, Y, c="C%d" % i, label=repr(t))
             labels[t] = True
         else:

@@ -1,6 +1,5 @@
 import setuptools
 from setuptools_rust import Binding, RustExtension, build_rust
-import sys
 
 
 class BuildRustCommand(build_rust):

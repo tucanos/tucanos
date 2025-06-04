@@ -25,7 +25,7 @@ jobs:
     - name: Install Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
-        components: clippy
+        components: clippy, rustfmt
         toolchain: nightly
         override: true
     - name: Rust cache
@@ -41,10 +41,15 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-nightly-
     - name: Run clippy
       uses: clechasseur/rs-clippy-check@v3
+    - run: cargo fmt --check --all
     - uses: actions/setup-python@v4
       with:
         python-version: '3.11'
         cache: 'pip'
+    - name: Ruff check
+      run: |
+        pip install ruff
+        ruff check
     - name: Run pip install & unittests
       run: |
         pip install .
@@ -74,7 +79,7 @@ jobs:
     - name: Install Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
-        components: clippy
+        components: clippy, rustfmt
         override: true
     - name: Rust cache
       uses: actions/cache@v3
@@ -89,10 +94,15 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-stable-
     - name: Run clippy
       uses: clechasseur/rs-clippy-check@v3
+    - run: cargo fmt --check --all
     - uses: actions/setup-python@v4
       with:
         python-version: '3.11'
         cache: 'pip'
+    - name: Ruff check
+      run: |
+        pip install ruff
+        ruff check
     - name: Run pip install & unittests
       run: |
         pip install .
