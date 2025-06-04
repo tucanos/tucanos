@@ -630,7 +630,7 @@ macro_rules! create_mesh {
             }
 
             /// Extract elements by tag
-            /// Returns the portion of the mesh containing only the element tags in `tags` as well 
+            /// Returns the portion of the mesh containing only the element tags in `tags` as well
             /// as the vertices, elements and face indices in the original mesh
             pub fn extract_tags<'py>(&self, py: Python<'py>, tags: PyReadonlyArray1<Tag>) -> PyResult<(Self, Bound<'py, PyArray1<Idx>>,Bound<'py, PyArray1<Idx>>,Bound<'py, PyArray1<Idx>>)> {
                 let tags = tags.as_slice()?;
@@ -1084,8 +1084,9 @@ impl Mesh22 {
         let mut m = res.unwrap();
 
         if let Some(h_min) = h_min {
-            m.iter_mut()
-                .for_each(|x| x.scale_with_bounds(1.0, h_min, f64::MAX));
+            for x in &mut m {
+                x.scale_with_bounds(1.0, h_min, f64::MAX);
+            }
         }
 
         let m: Vec<f64> = m.iter().flat_map(|m| m.into_iter()).collect();
