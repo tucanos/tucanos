@@ -157,6 +157,7 @@ mod tests {
     use nalgebra::SVector;
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_curvature() -> Result<()> {
         // build a cylinder mesh
         let (r_in, r_out) = (0.1, 0.5);
