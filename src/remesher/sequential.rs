@@ -736,6 +736,7 @@ mod tests_topo {
     };
     use rustc_hash::{FxHashMap, FxHashSet};
     use std::collections::hash_map::Entry;
+    use tmesh::mesh::Mesh;
 
     fn test_topo_2d(etags: [Tag; 2], ftags: [Tag; 4], add_boundary_faces: bool, n_split: i32) {
         let mut mesh = test_mesh_2d();
@@ -914,6 +915,8 @@ mod tests_topo {
 
 #[cfg(test)]
 mod tests {
+    use tmesh::mesh::Mesh;
+
     use super::RemesherParams;
     use crate::{
         Result,

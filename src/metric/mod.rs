@@ -537,6 +537,17 @@ impl AnisoMetric2d {
 
         Self::from_mat(mat)
     }
+
+    #[must_use]
+    pub fn from_meshb(x: [f64; 3]) -> Self {
+        Self::from_slice(&[x[0], x[2], x[1]])
+    }
+
+    #[must_use]
+    pub fn to_meshb(&self) -> [f64; 3] {
+        let x = &self.m;
+        [x[0], x[2], x[1]]
+    }
 }
 
 impl Default for AnisoMetric2d {
@@ -692,6 +703,17 @@ impl AnisoMetric3d {
         let mat = eigvecs.tr_mul(&mat);
 
         Self::from_mat(mat)
+    }
+
+    #[must_use]
+    pub fn from_meshb(x: [f64; 6]) -> Self {
+        Self::from_slice(&[x[0], x[2], x[5], x[1], x[4], x[3]])
+    }
+
+    #[must_use]
+    pub fn to_meshb(&self) -> [f64; 6] {
+        let x = &self.m;
+        [x[0], x[3], x[1], x[5], x[4], x[2]]
     }
 }
 

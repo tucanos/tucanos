@@ -127,10 +127,10 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         let v2v = self.get_vertex_to_vertices()?;
         res.par_iter_mut().enumerate().for_each(|(i_vert, s)| {
-            let neighbors = v2v.row(i_vert as Idx);
+            let neighbors = v2v.row(i_vert);
             let dx_df_w = neighbors.iter().map(|&i| {
-                let dx = self.vert(i) - self.vert(i_vert as Idx);
-                let df = f[i as usize] - f[i_vert];
+                let dx = self.vert(i as Idx) - self.vert(i_vert as Idx);
+                let df = f[i] - f[i_vert];
                 let w = if weight_exp > 0 {
                     1. / dx.norm().powi(weight_exp)
                 } else {
@@ -181,10 +181,10 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             for i_vert in 0..self.n_verts() as usize {
                 if failed[i_vert] {
                     let mut n = 0;
-                    for i_other in v2v.row(i_vert as Idx).iter().copied() {
-                        if !failed[i_other as usize] {
+                    for i_other in v2v.row(i_vert).iter().copied() {
+                        if !failed[i_other] {
                             for i in 0..m {
-                                res[m * i_vert + i] += res[m * i_other as usize + i];
+                                res[m * i_vert + i] += res[m * i_other + i];
                             }
                             n += 1;
                         }
@@ -230,12 +230,14 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 // Don't use a LS scheme for boundary vertices
                 if flg[i_vert] {
                     *fail = true;
-                    grad.iter_mut().for_each(|x| *x = 0.0);
+                    for x in grad.iter_mut() {
+                        *x = 0.0;
+                    }
                 } else {
-                    let neighbors = v2v.row(i_vert as Idx);
+                    let neighbors = v2v.row(i_vert);
                     let dx_df_w = neighbors.iter().map(|&i| {
-                        let dx = self.vert(i) - self.vert(i_vert as Idx);
-                        let df = f[i as usize] - f[i_vert];
+                        let dx = self.vert(i as Idx) - self.vert(i_vert as Idx);
+                        let df = f[i] - f[i_vert];
                         let w = if weight_exp > 0 {
                             1. / dx.norm().powi(weight_exp)
                         } else {
@@ -252,7 +254,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                                 .for_each(|(x, y)| *x = *y);
                         } else {
                             *fail = true;
-                            grad.iter_mut().for_each(|x| *x = 0.0);
+                            for x in grad.iter_mut() {
+                                *x = 0.0;
+                            }
                         }
                     } else if D == 3 {
                         let sol = Self::least_squares::<4, _>(dx_df_w, None);
@@ -262,7 +266,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                                 .for_each(|(x, y)| *x = *y);
                         } else {
                             *fail = true;
-                            grad.iter_mut().for_each(|x| *x = 0.0);
+                            for x in grad.iter_mut() {
+                                *x = 0.0;
+                            }
                         }
                     }
                 }
@@ -314,21 +320,21 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             .zip(failed.par_iter_mut())
             .enumerate()
             .for_each(|(i_vert, (hess, fail))| {
-                let first_order_neighbors = v2v.row(i_vert as Idx);
+                let first_order_neighbors = v2v.row(i_vert);
                 let mut neighbors = first_order_neighbors
                     .iter()
                     .map(|&i| (i, 1))
                     .collect::<FxHashSet<_>>();
                 if use_second_order_neighbors {
-                    first_order_neighbors
-                        .iter()
-                        .for_each(|&i| neighbors.extend(v2v.row(i).iter().map(|&i| (i, 2))));
-                    neighbors.remove(&(i_vert as Idx, 2));
+                    for &i in first_order_neighbors {
+                        neighbors.extend(v2v.row(i).iter().map(|&i| (i, 2)));
+                    }
+                    neighbors.remove(&(i_vert, 2));
                 }
 
                 let dx_df_w = neighbors.iter().map(|&(i, order)| {
-                    let dx = self.vert(i) - self.vert(i_vert as Idx);
-                    let df = f[i as usize] - f[i_vert];
+                    let dx = self.vert(i as Idx) - self.vert(i_vert as Idx);
+                    let df = f[i] - f[i_vert];
                     let w = weight_exp.map_or(if order == 1 { 1.0 } else { 0.1 }, |weight_exp| {
                         if weight_exp > 0 {
                             1. / dx.norm().powi(weight_exp)
@@ -352,7 +358,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                             .for_each(|(x, y)| *x = *y);
                     } else {
                         *fail = true;
-                        hess.iter_mut().for_each(|x| *x = 0.0);
+                        for x in hess.iter_mut() {
+                            *x = 0.0;
+                        }
                     }
                 } else if D == 3 {
                     let sol = Self::least_squares::<10, _>(dx_df_w, w0);
@@ -362,7 +370,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                             .for_each(|(x, y)| *x = *y);
                     } else {
                         *fail = true;
-                        hess.iter_mut().for_each(|x| *x = 0.0);
+                        for x in hess.iter_mut() {
+                            *x = 0.0;
+                        }
                     }
                 }
             });
@@ -381,6 +391,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
 #[cfg(test)]
 mod tests {
+
+    use tmesh::mesh::Mesh;
 
     use crate::{
         Result,

@@ -4,7 +4,6 @@ pub mod geometry;
 pub mod mesh;
 pub mod metric;
 pub mod remesher;
-mod spatialindex;
 
 /// Isotropic or anisotropic remesher in 2 and 3 dimensions
 const H_MAX: f64 = 1e8;

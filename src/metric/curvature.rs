@@ -155,6 +155,7 @@ mod tests {
         metric::{AnisoMetric3d, Metric},
     };
     use nalgebra::SVector;
+    use tmesh::mesh::Mesh;
 
     #[test]
     #[allow(clippy::too_many_lines)]
@@ -177,9 +178,6 @@ mod tests {
 
         // build the geometry
         let (bdy, bdy_ids) = mesh.boundary();
-
-        mesh.write_vtk("test.vtu", None, None)?;
-        bdy.write_vtk("test_bdy.vtu", None, None)?;
 
         // tag vertices on the interior & exterior cylinders
         let mut bdy_flg = vec![0; bdy.n_verts() as usize];

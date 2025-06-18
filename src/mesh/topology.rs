@@ -1,6 +1,5 @@
 use crate::{
     Dim, Idx, Result, Tag, TopoTag,
-    mesh::graph::CSRGraph,
     mesh::{Elem, get_face_to_elem, vector::Vector},
 };
 use core::result;
@@ -8,6 +7,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize, ser::SerializeStruct};
 use std::fmt;
 use std::{collections::HashSet, fs::File, io::Write};
+use tmesh::graph::CSRGraph;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TopoNode {
@@ -260,9 +260,9 @@ impl Topology {
             assert!(!parents.is_empty());
             if let Some(node) = self.get(tag) {
                 assert_eq!(parents.len(), node.parents.len());
-                parents
-                    .iter()
-                    .for_each(|x| assert!(node.parents.contains(x)));
+                for x in parents {
+                    assert!(node.parents.contains(&x));
+                }
             } else {
                 self.insert(tag, &parents);
             }
@@ -357,12 +357,12 @@ impl Topology {
         etags: &Vector<Tag>,
         vtags: &mut [TopoTag],
     ) {
-        let vert2elems = CSRGraph::transpose(elems, Some(vtags.len()));
+        let vert2elems = CSRGraph::transpose(elems.iter(), Some(vtags.len()));
         for (i_vert, vtag) in vtags.iter_mut().enumerate() {
-            let ids = vert2elems.row(i_vert as Idx);
+            let ids = vert2elems.row(i_vert);
             let mut tags = ids
                 .iter()
-                .map(|&i| etags.index(i))
+                .map(|&i| etags.index(i as Idx))
                 .collect::<FxHashSet<_>>();
             if vtag.0 > E::DIM as Dim {
                 assert!(vtag.1 != 0);
@@ -516,6 +516,8 @@ impl Topology {
 
 #[cfg(test)]
 mod tests {
+    use tmesh::mesh::Mesh;
+
     use crate::{
         Tag,
         mesh::{

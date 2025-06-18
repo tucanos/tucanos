@@ -1,7 +1,7 @@
 use crate::{
     Idx, Result, Tag,
     geometry::Geometry,
-    mesh::{Elem, PartitionType, SimplexMesh, SubSimplexMesh},
+    mesh::{Elem, HasTmeshImpl, PartitionType, SimplexMesh, SubSimplexMesh},
     metric::Metric,
     remesher::{Remesher, RemesherParams},
 };
@@ -78,6 +78,7 @@ pub struct ParallelRemeshingInfo {
     info: RemeshingInfo,
     partition_time: f64,
     partition_quality: f64,
+    partition_imbalance: f64,
     partitions: Vec<RemeshingInfo>,
     interface: Option<Box<ParallelRemeshingInfo>>,
 }
@@ -87,8 +88,12 @@ impl ParallelRemeshingInfo {
         let s = &self.info;
         if self.partition_quality > 0.0 {
             println!(
-                "{} -> {} verts, partition quality = {}, {:.2e} secs",
-                s.n_verts_init, s.n_verts_final, self.partition_quality, s.time,
+                "{} -> {} verts, partition quality = {}, partition imbalance = {}, {:.2e} secs",
+                s.n_verts_init,
+                s.n_verts_final,
+                self.partition_quality,
+                self.partition_imbalance,
+                s.time,
             );
             for (i, s) in self.partitions.iter().enumerate() {
                 println!(
@@ -126,10 +131,16 @@ pub struct ParallelRemesher<const D: usize, E: Elem> {
     partition_type: PartitionType,
     interface_bdy_tag: Tag,
     partition_time: f64,
+    partition_quality: f64,
+    partition_imbalance: f64,
     debug: bool,
 }
 
-impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
+impl<const D: usize, E: Elem> ParallelRemesher<D, E>
+where
+    SimplexMesh<D, E>: HasTmeshImpl<D, E>,
+    SimplexMesh<D, E::Face>: HasTmeshImpl<D, E::Face>,
+{
     /// Create a new parallel remesher based on domain decomposition.
     /// If part is `PartitionType::Scotch(n)` or `PartitionType::Metis(n)` the mesh is partitionned into n subdomains using
     /// scotch / metis. If None, the element tag in `mesh` is used as the partition Id
@@ -138,18 +149,20 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
     pub fn new(mut mesh: SimplexMesh<D, E>, partition_type: PartitionType) -> Result<Self> {
         // Partition if needed
         let now = Instant::now();
-        match partition_type {
+        let (partition_quality, partition_imbalance) = match partition_type {
             PartitionType::Hilbert(n)
-            | PartitionType::Scotch(n)
+            // | PartitionType::Scotch(n)
             | PartitionType::MetisRecursive(n)
             | PartitionType::MetisKWay(n) => {
                 assert!(n > 1, "Need at least 2 partitions");
-                mesh.partition(partition_type)?;
+                mesh.partition_simple(partition_type)?
             }
             PartitionType::None => {
                 debug!("Using the existing partition");
+                (0.0, 0.0)
             }
-        }
+        };
+
         let partition_time = now.elapsed().as_secs_f64();
 
         // Get the partition interfaces
@@ -175,6 +188,8 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
             partition_bdy_tags: ifc_tags.keys().copied().collect::<Vec<_>>(),
             interface_bdy_tag: Tag::MIN,
             partition_time,
+            partition_quality,
+            partition_imbalance,
             debug: false,
         })
     }
@@ -293,7 +308,8 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
                 ..Default::default()
             },
             partition_time: self.partition_time,
-            partition_quality: self.mesh.partition_quality()?,
+            partition_quality: self.partition_quality,
+            partition_imbalance: self.partition_imbalance,
             partitions: vec![RemeshingInfo::default(); self.partition_tags.len()],
             ..Default::default()
         };
@@ -301,7 +317,7 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
 
         if self.debug {
             let fname = format!("level_{level}_init.vtu");
-            self.mesh.write_vtk(&fname, None, None).unwrap();
+            self.mesh.vtu_writer().export(&fname)?;
         }
 
         let now = Instant::now();
@@ -311,7 +327,7 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
             .for_each(|(i_part, submesh)| {
                 if self.debug {
                     let fname = format!("level_{level}_part_{i_part}.vtu");
-                    submesh.mesh.write_vtk(&fname, None, None).unwrap();
+                    submesh.mesh.vtu_writer().export(&fname).unwrap();
                 }
 
                 // Remesh the partition
@@ -354,7 +370,7 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
 
                 if self.debug {
                     let fname = format!("level_{level}_part_{i_part}_remeshed.vtu");
-                    local_mesh.write_vtk(&fname, None, None).unwrap();
+                    local_mesh.vtu_writer().export(&fname).unwrap();
                 }
 
                 // Update res
@@ -362,7 +378,7 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
                 let (ids, _, _) = res.add(&local_mesh, |t| t == 1, |_| true, Some(1e-12));
                 if self.debug {
                     let fname = format!("level_{level}_part_{i_part}_res.vtu");
-                    res.write_vtk(&fname, None, None).unwrap();
+                    res.vtu_writer().export(&fname).unwrap();
                 }
                 drop(res);
                 let mut res_m = res_m.lock().unwrap();
@@ -380,7 +396,7 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
                 let (ids, _, _) = ifc.add(&local_mesh, |t| t == part_tag, |_t| true, Some(1e-12));
                 if self.debug {
                     let fname = format!("level_{level}_part_{i_part}_ifc.vtu");
-                    ifc.write_vtk(&fname, None, None).unwrap();
+                    ifc.vtu_writer().export(&fname).unwrap();
                 }
                 drop(ifc);
                 let mut ifc_m = ifc_m.lock().unwrap();
@@ -390,9 +406,9 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
         let mut ifc = ifc.into_inner().unwrap();
         if self.debug {
             let fname = format!("level_{level}_ifc.vtu");
-            ifc.write_vtk(&fname, None, None).unwrap();
+            ifc.vtu_writer().export(&fname).unwrap();
             let fname = format!("level_{level}_ifc_bdy.vtu");
-            ifc.boundary().0.write_vtk(&fname, None, None).unwrap();
+            ifc.boundary().0.vtu_writer().export(&fname).unwrap();
         }
 
         // to be consistent with the base topology
@@ -435,6 +451,7 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
                     },
                     partition_time: 0.0,
                     partition_quality: 0.0,
+                    partition_imbalance: 0.0,
                     partitions: Vec::new(),
                     interface: None,
                 }));
@@ -443,7 +460,7 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
 
         if self.debug {
             let fname = format!("level_{level}_ifc_remeshed.vtu");
-            ifc.write_vtk(&fname, None, None).unwrap();
+            ifc.vtu_writer().export(&fname).unwrap();
         }
 
         // Merge res and ifc
@@ -466,7 +483,7 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
 
         if self.debug {
             let fname = format!("level_{level}_final.vtu");
-            res.write_vtk(&fname, None, None).unwrap();
+            res.vtu_writer().export(&fname).unwrap();
         }
 
         info.info.n_verts_final = res.n_verts();
@@ -479,16 +496,17 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
 #[cfg(test)]
 mod tests {
 
+    use tmesh::mesh::Mesh;
+
     use crate::{
         Result,
         geometry::NoGeometry,
         mesh::{
-            PartitionType, Point,
+            HasTmeshImpl, PartitionType, Point,
             test_meshes::{test_mesh_2d, test_mesh_3d},
         },
         metric::IsoMetric,
-        remesher::RemesherParams,
-        remesher::{ParallelRemesher, ParallelRemesherParams},
+        remesher::{ParallelRemesher, ParallelRemesherParams, RemesherParams},
     };
 
     fn test_domain_decomposition_2d(debug: bool, ptype: PartitionType) -> Result<()> {
@@ -519,8 +537,8 @@ mod tests {
             dd.remesh(&m, &NoGeometry(), RemesherParams::default(), &dd_params)?;
 
         if debug {
-            mesh.write_vtk("res.vtu", None, None)?;
-            mesh.boundary().0.write_vtk("res_bdy.vtu", None, None)?;
+            mesh.vtu_writer().export("res.vtu")?;
+            mesh.vtu_writer().export("res_bdy.vtu")?;
         }
 
         let n = mesh.n_verts();
@@ -596,36 +614,36 @@ mod tests {
         test_domain_decomposition_2d(false, PartitionType::MetisRecursive(5))
     }
 
-    #[cfg(feature = "scotch")]
-    #[test]
-    #[should_panic]
-    fn test_dd_2d_scotch_1() {
-        test_domain_decomposition_2d(false, PartitionType::Scotch(1)).unwrap();
-    }
+    // #[cfg(feature = "scotch")]
+    // #[test]
+    // #[should_panic]
+    // fn test_dd_2d_scotch_1() {
+    //     test_domain_decomposition_2d(false, PartitionType::Scotch(1)).unwrap();
+    // }
 
-    #[cfg(feature = "scotch")]
-    #[test]
-    fn test_dd_2d_scotch_2() -> Result<()> {
-        test_domain_decomposition_2d(false, PartitionType::Scotch(2))
-    }
+    // #[cfg(feature = "scotch")]
+    // #[test]
+    // fn test_dd_2d_scotch_2() -> Result<()> {
+    //     test_domain_decomposition_2d(false, PartitionType::Scotch(2))
+    // }
 
-    #[cfg(feature = "scotch")]
-    #[test]
-    fn test_dd_2d_scotch_3() -> Result<()> {
-        test_domain_decomposition_2d(false, PartitionType::Scotch(3))
-    }
+    // #[cfg(feature = "scotch")]
+    // #[test]
+    // fn test_dd_2d_scotch_3() -> Result<()> {
+    //     test_domain_decomposition_2d(false, PartitionType::Scotch(3))
+    // }
 
-    #[cfg(feature = "scotch")]
-    #[test]
-    fn test_dd_2d_scotch_4() -> Result<()> {
-        test_domain_decomposition_2d(false, PartitionType::Scotch(4))
-    }
+    // #[cfg(feature = "scotch")]
+    // #[test]
+    // fn test_dd_2d_scotch_4() -> Result<()> {
+    //     test_domain_decomposition_2d(false, PartitionType::Scotch(4))
+    // }
 
-    #[cfg(feature = "scotch")]
-    #[test]
-    fn test_dd_2d_scotch_5() -> Result<()> {
-        test_domain_decomposition_2d(false, PartitionType::Scotch(5))
-    }
+    // #[cfg(feature = "scotch")]
+    // #[test]
+    // fn test_dd_2d_scotch_5() -> Result<()> {
+    //     test_domain_decomposition_2d(false, PartitionType::Scotch(5))
+    // }
 
     fn test_domain_decomposition_3d(debug: bool, ptype: PartitionType) -> Result<()> {
         // use crate::init_log;
@@ -659,8 +677,8 @@ mod tests {
             dd.remesh(&m, &NoGeometry(), RemesherParams::default(), &dd_params)?;
 
         if debug {
-            mesh.write_vtk("res.vtu", None, None)?;
-            mesh.boundary().0.write_vtk("res_bdy.vtu", None, None)?;
+            mesh.vtu_writer().export("res.vtu")?;
+            mesh.vtu_writer().export("res_bdy.vtu")?;
         }
 
         let n = mesh.n_verts();
@@ -735,34 +753,34 @@ mod tests {
         test_domain_decomposition_3d(false, PartitionType::MetisRecursive(5))
     }
 
-    #[cfg(feature = "scotch")]
-    #[test]
-    #[should_panic]
-    fn test_dd_3d_scotch_1() {
-        test_domain_decomposition_3d(false, PartitionType::Scotch(1)).unwrap();
-    }
+    // #[cfg(feature = "scotch")]
+    // #[test]
+    // #[should_panic]
+    // fn test_dd_3d_scotch_1() {
+    //     test_domain_decomposition_3d(false, PartitionType::Scotch(1)).unwrap();
+    // }
 
-    #[cfg(feature = "scotch")]
-    #[test]
-    fn test_dd_3d_scotch_2() -> Result<()> {
-        test_domain_decomposition_3d(false, PartitionType::Scotch(2))
-    }
+    // #[cfg(feature = "scotch")]
+    // #[test]
+    // fn test_dd_3d_scotch_2() -> Result<()> {
+    //     test_domain_decomposition_3d(false, PartitionType::Scotch(2))
+    // }
 
-    #[cfg(feature = "scotch")]
-    #[test]
-    fn test_dd_3d_scotch_3() -> Result<()> {
-        test_domain_decomposition_3d(false, PartitionType::Scotch(3))
-    }
+    // #[cfg(feature = "scotch")]
+    // #[test]
+    // fn test_dd_3d_scotch_3() -> Result<()> {
+    //     test_domain_decomposition_3d(false, PartitionType::Scotch(3))
+    // }
 
-    #[cfg(feature = "scotch")]
-    #[test]
-    fn test_dd_3d_scotch_4() -> Result<()> {
-        test_domain_decomposition_3d(false, PartitionType::Scotch(4))
-    }
+    // #[cfg(feature = "scotch")]
+    // #[test]
+    // fn test_dd_3d_scotch_4() -> Result<()> {
+    //     test_domain_decomposition_3d(false, PartitionType::Scotch(4))
+    // }
 
-    #[cfg(feature = "scotch")]
-    #[test]
-    fn test_dd_3d_scotch_5() -> Result<()> {
-        test_domain_decomposition_3d(false, PartitionType::Scotch(5))
-    }
+    // #[cfg(feature = "scotch")]
+    // #[test]
+    // fn test_dd_3d_scotch_5() -> Result<()> {
+    //     test_domain_decomposition_3d(false, PartitionType::Scotch(5))
+    // }
 }

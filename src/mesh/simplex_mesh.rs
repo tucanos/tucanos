@@ -1,18 +1,11 @@
 use super::{
     geom_elems::GElem,
-    graph::{CSRGraph, reindex},
-    to_simplices::{hex2tets, pri2tets, pyr2tets, qua2tris},
-    topo_elems::{Edge, Elem, Tetrahedron, Triangle, get_face_to_elem},
+    topo_elems::{Elem, get_face_to_elem},
     topology::Topology,
     twovec,
     vector::Vector,
 };
-use crate::{
-    Dim, Error, Idx, Result, Tag, TopoTag,
-    metric::IsoMetric,
-    min_max_iter,
-    spatialindex::{DefaultObjectIndex, DefaultPointIndex, ObjectIndex, PointIndex},
-};
+use crate::{Dim, Error, Idx, Result, Tag, TopoTag, metric::IsoMetric, min_max_iter};
 use log::{debug, warn};
 use nalgebra::SVector;
 use rayon::{
@@ -20,22 +13,47 @@ use rayon::{
     slice::ParallelSliceMut,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map::Entry};
 use std::marker::PhantomData;
+use tmesh::{
+    graph::CSRGraph,
+    io::VTUFile,
+    spatialindex::{ObjectIndex, PointIndex},
+};
+
+/// Renumber the vertices in order to have contininuous indices, and return he map from old to nex indices
+#[must_use]
+pub fn reindex<E: Elem>(elems: &Vector<E>) -> (Vec<E>, FxHashMap<Idx, Idx>) {
+    let mut map = FxHashMap::default();
+    let mut next = 0 as Idx;
+    for i in elems.iter().flatten() {
+        if let Entry::Vacant(e) = map.entry(i) {
+            e.insert(next);
+            next += 1;
+        }
+    }
+
+    let new_elems = elems
+        .iter()
+        .map(|e| E::from_iter(e.iter().map(|&i| *map.get(&i).unwrap())))
+        .collect();
+
+    (new_elems, map)
+}
 
 /// A mesh containing a single type of elements in D-dimensions
 #[derive(Debug, Default)]
 pub struct SimplexMesh<const D: usize, E: Elem> {
     /// Coordinates of the vertices (length = D * # of vertices)
-    verts: Vector<Point<D>>,
+    pub(super) verts: Vector<Point<D>>,
     /// Element connectivity (length = # of vertices per element * # of elements)
-    elems: Vector<E>,
+    pub(super) elems: Vector<E>,
     /// Element tags (length = # of elements)
-    etags: Vector<Tag>,
+    pub(super) etags: Vector<Tag>,
     /// Face connectivity (length = # of vertices per face * # of faces)
-    faces: Vector<E::Face>,
+    pub(super) faces: Vector<E::Face>,
     /// Faces tags (length = # of faces)
-    ftags: Vector<Tag>,
+    pub(super) ftags: Vector<Tag>,
     point: PhantomData<SVector<f64, D>>,
     elem: PhantomData<E>,
     /// Face to element connectitivity stored as a HashMap taking the face vertices (sorted) and returning
@@ -194,13 +212,13 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
     /// Get an iterator through the vertices
     #[must_use]
-    pub fn verts(&self) -> impl ExactSizeIterator<Item = Point<D>> + '_ {
+    pub fn verts(&self) -> impl ExactSizeIterator<Item = Point<D>> + Clone + '_ {
         self.verts.iter()
     }
 
     /// Get a parallel iterator through the vertices
     #[must_use]
-    pub fn par_verts(&self) -> impl IndexedParallelIterator<Item = Point<D>> + '_ {
+    pub fn par_verts(&self) -> impl IndexedParallelIterator<Item = Point<D>> + Clone + '_ {
         (0..self.n_verts()).into_par_iter().map(|i| self.vert(i))
     }
 
@@ -231,13 +249,13 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
     /// Get an iterator through the elements
     #[must_use]
-    pub fn elems(&self) -> impl ExactSizeIterator<Item = E> + '_ {
+    pub fn elems(&self) -> impl ExactSizeIterator<Item = E> + Clone + '_ {
         self.elems.iter()
     }
 
     /// Get a parallel iterator through the elements
     #[must_use]
-    pub fn par_elems(&self) -> impl IndexedParallelIterator<Item = E> + '_ {
+    pub fn par_elems(&self) -> impl IndexedParallelIterator<Item = E> + Clone + '_ {
         (0..self.n_elems()).into_par_iter().map(|i| self.elem(i))
     }
 
@@ -254,13 +272,13 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
     /// Get an iterator through the elements tags
     #[must_use]
-    pub fn etags(&self) -> impl ExactSizeIterator<Item = Tag> + '_ {
+    pub fn etags(&self) -> impl ExactSizeIterator<Item = Tag> + Clone + '_ {
         self.etags.iter()
     }
 
     /// Get a parallel iterator through the elements tags
     #[must_use]
-    pub fn par_etags(&self) -> impl IndexedParallelIterator<Item = Tag> + '_ {
+    pub fn par_etags(&self) -> impl IndexedParallelIterator<Item = Tag> + Clone + '_ {
         (0..self.n_elems()).into_par_iter().map(|i| self.etag(i))
     }
 
@@ -296,13 +314,13 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
     /// Get an iterator through the faces
     #[must_use]
-    pub fn faces(&self) -> impl ExactSizeIterator<Item = E::Face> + '_ {
+    pub fn faces(&self) -> impl ExactSizeIterator<Item = E::Face> + Clone + '_ {
         self.faces.iter()
     }
 
     /// Get a parallel iterator through the faces
     #[must_use]
-    pub fn par_faces(&self) -> impl IndexedParallelIterator<Item = E::Face> + '_ {
+    pub fn par_faces(&self) -> impl IndexedParallelIterator<Item = E::Face> + Clone + '_ {
         (0..self.n_faces()).into_par_iter().map(|i| self.face(i))
     }
 
@@ -319,13 +337,13 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
     /// Get an iterator through the face tags
     #[must_use]
-    pub fn ftags(&self) -> impl ExactSizeIterator<Item = Tag> + '_ {
+    pub fn ftags(&self) -> impl ExactSizeIterator<Item = Tag> + Clone + '_ {
         self.ftags.iter()
     }
 
     /// Get a parallel iterator through the face tags
     #[must_use]
-    pub fn par_ftags(&self) -> impl IndexedParallelIterator<Item = Tag> + '_ {
+    pub fn par_ftags(&self) -> impl IndexedParallelIterator<Item = Tag> + Clone + '_ {
         (0..self.n_faces()).into_par_iter().map(|i| self.ftag(i))
     }
 
@@ -391,7 +409,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         debug!("Compute the vertex to element connectivity");
 
         if self.vertex_to_elems.is_none() {
-            self.vertex_to_elems = Some(CSRGraph::transpose(&self.elems, None));
+            self.vertex_to_elems = Some(CSRGraph::transpose(self.elems.iter(), None));
         } else {
             warn!("Vertex to element connectivity already computed");
         }
@@ -431,7 +449,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     }
                 }
             }
-            self.elem_to_elems = Some(CSRGraph::new(&g));
+            self.elem_to_elems = Some(CSRGraph::from_edges(g.iter().copied(), None));
         } else {
             warn!("Element to element connectivity already computed");
         }
@@ -496,7 +514,10 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             if self.edges.is_none() {
                 self.compute_edges();
             }
-            self.vertex_to_vertices = Some(CSRGraph::new(self.edges.as_ref().unwrap()));
+            self.vertex_to_vertices = Some(CSRGraph::from_edges(
+                self.edges.as_ref().unwrap().iter().copied(),
+                None,
+            ));
         } else {
             warn!("Vertex to vertex connectivity already computed");
         }
@@ -568,20 +589,6 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         }
     }
 
-    /// Compute an octree to locate elements
-    #[must_use]
-    pub fn compute_vert_tree(&self) -> DefaultPointIndex<D> {
-        debug!("Compute the vertex octree");
-        <DefaultPointIndex<D> as PointIndex<D>>::new(self)
-    }
-
-    /// Compute an octree to locate elements
-    #[must_use]
-    pub fn compute_elem_tree(&self) -> DefaultObjectIndex<D> {
-        debug!("Compute the element octree");
-        <DefaultObjectIndex<D> as ObjectIndex<D>>::new(self)
-    }
-
     /// Convert a field defined at the element centers (P0) to a field defined at the vertices (P1)
     /// using a weighted average. For metric fields, use `elem_data_to_vertex_data_metric`
     /// vertex-to-element connectivity and volumes are required
@@ -612,14 +619,16 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         res.par_chunks_mut(n_comp)
             .enumerate()
             .for_each(|(i_vert, vals)| {
-                for i_elem in v2e.row(i_vert as Idx).iter().copied() {
-                    let w = elem_vol[i_elem as usize] / f64::from(E::N_VERTS);
+                for i_elem in v2e.row(i_vert).iter().copied() {
+                    let w = elem_vol[i_elem] / f64::from(E::N_VERTS);
                     for i_comp in 0..n_comp {
-                        vals[i_comp] += w * v[n_comp * i_elem as usize + i_comp];
+                        vals[i_comp] += w * v[n_comp * i_elem + i_comp];
                     }
                 }
                 let w = node_vol[i_vert];
-                vals.iter_mut().for_each(|v| *v /= w);
+                for v in vals.iter_mut() {
+                    *v /= w;
+                }
             });
 
         Ok(res)
@@ -824,7 +833,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let mut vert_ids = vec![0; n_bdy_verts];
 
         for (old, new) in indices {
-            verts[new as usize] = self.verts.index(old);
+            verts[new as usize] = self.verts.index(old as Idx);
             vert_ids[new as usize] = old;
         }
 
@@ -1046,11 +1055,11 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             let (bdy, ids) = self.boundary();
             let (obdy, oids) = other.boundary();
             if bdy.n_verts() > 0 && obdy.n_verts() > 0 {
-                let tree = obdy.compute_vert_tree();
+                let tree = PointIndex::new(obdy.verts());
                 bdy.verts().enumerate().for_each(|(i_self, vx)| {
                     let (i_other, _) = tree.nearest_vert(&vx);
                     let i_self = ids[i_self];
-                    let i_other = oids[i_other as usize];
+                    let i_other = oids[i_other];
                     if (vx - other.vert(i_other)).norm() < merge_tol {
                         new_vert_ids[i_other as usize] = i_self as Idx;
                     }
@@ -1147,6 +1156,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
     /// Add vertices to the mesh
     pub fn add_verts<'a, I: ExactSizeIterator<Item = &'a [f64]>>(&mut self, verts: I) {
+        self.verts.reserve(verts.len());
         for v in verts {
             self.verts.push(Point::<D>::from_column_slice(v));
         }
@@ -1196,310 +1206,30 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     }
 }
 
-impl SimplexMesh<2, Triangle> {
-    pub fn add_quas<
-        'a,
-        I1: ExactSizeIterator<Item = &'a [Idx]>,
-        I2: ExactSizeIterator<Item = Tag>,
-    >(
-        &mut self,
-        quas: I1,
-        qua_tags: I2,
-    ) -> ([Idx; 2], Vec<Idx>) {
-        assert_eq!(quas.len(), qua_tags.len());
-
-        let start = self.n_elems();
-        let mut indices = Vec::with_capacity(2 * quas.len());
-        for (i, (q, tag)) in quas.zip(qua_tags).enumerate() {
-            debug_assert_eq!(q.len(), 4);
-            for t in qua2tris(q) {
-                self.elems.push(t);
-                self.etags.push(tag);
-                indices.push(i as Idx);
-            }
-        }
-        let end = self.n_elems();
-        ([start, end], indices)
-    }
-
-    pub fn add_tris<
-        'a,
-        I1: ExactSizeIterator<Item = &'a [Idx]>,
-        I2: ExactSizeIterator<Item = Tag>,
-    >(
-        &mut self,
-        tris: I1,
-        tri_tags: I2,
-    ) -> ([Idx; 2], Vec<Idx>) {
-        assert_eq!(tris.len(), tri_tags.len());
-
-        let start = self.n_elems();
-        let mut indices = Vec::with_capacity(tris.len());
-        for (i, (t, tag)) in tris.zip(tri_tags).enumerate() {
-            debug_assert_eq!(t.len(), 3);
-            self.elems.push(Triangle::new(t[0], t[1], t[2]));
-            self.etags.push(tag);
-            indices.push(i as Idx);
-        }
-        let end = self.n_elems();
-        ([start, end], indices)
-    }
-
-    pub fn add_edgs<
-        'a,
-        I1: ExactSizeIterator<Item = &'a [Idx]>,
-        I2: ExactSizeIterator<Item = Tag>,
-    >(
-        &mut self,
-        edgs: I1,
-        edg_tags: I2,
-    ) -> ([Idx; 2], Vec<Idx>) {
-        assert_eq!(edgs.len(), edg_tags.len());
-
-        let start = self.n_elems();
-        let mut indices = Vec::with_capacity(edgs.len());
-        for (i, (e, tag)) in edgs.zip(edg_tags).enumerate() {
-            debug_assert_eq!(e.len(), 2);
-            self.faces.push(Edge::new(e[0], e[1]));
-            self.ftags.push(tag);
-            indices.push(i as Idx);
-        }
-        let end = self.n_elems();
-        ([start, end], indices)
-    }
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug)]
+pub enum PartitionType {
+    Hilbert(usize),
+    // Scotch(Idx),
+    MetisRecursive(usize),
+    MetisKWay(usize),
+    None,
 }
 
-impl SimplexMesh<3, Triangle> {
-    pub fn add_quas<
-        'a,
-        I1: ExactSizeIterator<Item = &'a [Idx]>,
-        I2: ExactSizeIterator<Item = Tag>,
-    >(
-        &mut self,
-        quas: I1,
-        qua_tags: I2,
-    ) -> ([Idx; 2], Vec<Idx>) {
-        assert_eq!(quas.len(), qua_tags.len());
+pub trait HasTmeshImpl<const D: usize, E: Elem> {
+    fn elem_tree(&self) -> ObjectIndex<D>;
 
-        let start = self.n_elems();
-        let mut indices = Vec::with_capacity(2 * quas.len());
-        for (i, (q, tag)) in quas.zip(qua_tags).enumerate() {
-            debug_assert_eq!(q.len(), 4);
-            for t in qua2tris(q) {
-                self.elems.push(t);
-                self.etags.push(tag);
-                indices.push(i as Idx);
-            }
-        }
-        let end = self.n_elems();
-        ([start, end], indices)
-    }
+    fn vtu_writer(&self) -> VTUFile;
 
-    pub fn add_tris<
-        'a,
-        I1: ExactSizeIterator<Item = &'a [Idx]>,
-        I2: ExactSizeIterator<Item = Tag>,
-    >(
-        &mut self,
-        tris: I1,
-        tri_tags: I2,
-    ) -> ([Idx; 2], Vec<Idx>) {
-        assert_eq!(tris.len(), tri_tags.len());
-
-        let start = self.n_elems();
-        let mut indices = Vec::with_capacity(tris.len());
-        for (i, (t, tag)) in tris.zip(tri_tags).enumerate() {
-            debug_assert_eq!(t.len(), 3);
-            self.elems.push(Triangle::new(t[0], t[1], t[2]));
-            self.etags.push(tag);
-            indices.push(i as Idx);
-        }
-        let end = self.n_elems();
-        ([start, end], indices)
-    }
-
-    pub fn add_edgs<
-        'a,
-        I1: ExactSizeIterator<Item = &'a [Idx]>,
-        I2: ExactSizeIterator<Item = Tag>,
-    >(
-        &mut self,
-        edgs: I1,
-        edg_tags: I2,
-    ) -> ([Idx; 2], Vec<Idx>) {
-        assert_eq!(edgs.len(), edg_tags.len());
-
-        let start = self.n_elems();
-        let mut indices = Vec::with_capacity(edgs.len());
-        for (i, (e, tag)) in edgs.zip(edg_tags).enumerate() {
-            debug_assert_eq!(e.len(), 2);
-            self.faces.push(Edge::new(e[0], e[1]));
-            self.ftags.push(tag);
-            indices.push(i as Idx);
-        }
-        let end = self.n_elems();
-        ([start, end], indices)
-    }
-}
-
-impl SimplexMesh<3, Tetrahedron> {
-    pub fn add_hexs<
-        'a,
-        I1: ExactSizeIterator<Item = &'a [Idx]>,
-        I2: ExactSizeIterator<Item = Tag>,
-    >(
-        &mut self,
-        hexs: I1,
-        hex_tags: I2,
-    ) -> ([Idx; 2], Vec<Idx>) {
-        assert_eq!(hexs.len(), hex_tags.len());
-
-        let start = self.n_elems();
-        let mut indices = Vec::with_capacity(6 * hexs.len());
-        for (i, (h, tag)) in hexs.zip(hex_tags).enumerate() {
-            debug_assert_eq!(h.len(), 8);
-            let (first, last) = hex2tets(h);
-            for t in first {
-                self.elems.push(t);
-                self.etags.push(tag);
-                indices.push(i as Idx);
-            }
-            if let Some(t) = last {
-                self.elems.push(t);
-                self.etags.push(tag);
-                indices.push(i as Idx);
-            }
-        }
-        let end = self.n_elems();
-        ([start, end], indices)
-    }
-
-    pub fn add_pris<
-        'a,
-        I1: ExactSizeIterator<Item = &'a [Idx]>,
-        I2: ExactSizeIterator<Item = Tag>,
-    >(
-        &mut self,
-        pris: I1,
-        pri_tags: I2,
-    ) -> ([Idx; 2], Vec<Idx>) {
-        assert_eq!(pris.len(), pri_tags.len());
-
-        let start = self.n_elems();
-        let mut indices = Vec::with_capacity(3 * pris.len());
-        for (i, (p, tag)) in pris.zip(pri_tags).enumerate() {
-            debug_assert_eq!(p.len(), 6);
-            for t in pri2tets(p) {
-                self.elems.push(t);
-                self.etags.push(tag);
-                indices.push(i as Idx);
-            }
-        }
-        let end = self.n_elems();
-        ([start, end], indices)
-    }
-
-    pub fn add_pyrs<
-        'a,
-        I1: ExactSizeIterator<Item = &'a [Idx]>,
-        I2: ExactSizeIterator<Item = Tag>,
-    >(
-        &mut self,
-        pyrs: I1,
-        pyr_tags: I2,
-    ) -> ([Idx; 2], Vec<Idx>) {
-        assert_eq!(pyrs.len(), pyr_tags.len());
-
-        let start = self.n_elems();
-        let mut indices = Vec::with_capacity(2 * pyrs.len());
-        for (i, (p, tag)) in pyrs.zip(pyr_tags).enumerate() {
-            debug_assert_eq!(p.len(), 5);
-            for t in pyr2tets(p) {
-                self.elems.push(t);
-                self.etags.push(tag);
-                indices.push(i as Idx);
-            }
-        }
-        let end = self.n_elems();
-        ([start, end], indices)
-    }
-
-    pub fn add_tets<
-        'a,
-        I1: ExactSizeIterator<Item = &'a [Idx]>,
-        I2: ExactSizeIterator<Item = Tag>,
-    >(
-        &mut self,
-        tets: I1,
-        tet_tags: I2,
-    ) -> ([Idx; 2], Vec<Idx>) {
-        assert_eq!(tets.len(), tet_tags.len());
-
-        let start = self.n_elems();
-        let mut indices = Vec::with_capacity(tets.len());
-        for (i, (t, tag)) in tets.zip(tet_tags).enumerate() {
-            debug_assert_eq!(t.len(), 4);
-            self.elems.push(Tetrahedron::new(t[0], t[1], t[2], t[3]));
-            self.etags.push(tag);
-            indices.push(i as Idx);
-        }
-        let end = self.n_elems();
-        ([start, end], indices)
-    }
-
-    pub fn add_quas<
-        'a,
-        I1: ExactSizeIterator<Item = &'a [Idx]>,
-        I2: ExactSizeIterator<Item = Tag>,
-    >(
-        &mut self,
-        quas: I1,
-        qua_tags: I2,
-    ) -> ([Idx; 2], Vec<Idx>) {
-        assert_eq!(quas.len(), qua_tags.len());
-
-        let start = self.n_elems();
-        let mut indices = Vec::with_capacity(2 * quas.len());
-        for (i, (q, tag)) in quas.zip(qua_tags).enumerate() {
-            debug_assert_eq!(q.len(), 4);
-            for t in qua2tris(q) {
-                self.faces.push(t);
-                self.ftags.push(tag);
-                indices.push(i as Idx);
-            }
-        }
-        let end = self.n_elems();
-        ([start, end], indices)
-    }
-
-    pub fn add_tris<
-        'a,
-        I1: ExactSizeIterator<Item = &'a [Idx]>,
-        I2: ExactSizeIterator<Item = Tag>,
-    >(
-        &mut self,
-        tris: I1,
-        tri_tags: I2,
-    ) -> ([Idx; 2], Vec<Idx>) {
-        assert_eq!(tris.len(), tri_tags.len());
-
-        let start = self.n_elems();
-        let mut indices = Vec::with_capacity(tris.len());
-        for (i, (t, tag)) in tris.zip(tri_tags).enumerate() {
-            debug_assert_eq!(t.len(), 3);
-            self.faces.push(Triangle::new(t[0], t[1], t[2]));
-            self.ftags.push(tag);
-            indices.push(i as Idx);
-        }
-        let end = self.n_elems();
-        ([start, end], indices)
-    }
+    fn partition_simple(&mut self, ptype: PartitionType) -> Result<(f64, f64)>;
 }
 
 #[cfg(test)]
 mod tests {
 
     use std::f64::consts::SQRT_2;
+
+    use tmesh::mesh::Mesh;
 
     use crate::{
         Result,
@@ -1612,63 +1342,6 @@ mod tests {
             let p = mesh.verts.index(i);
             assert!(p[0] - p[1] > -1e-10);
         }
-    }
-
-    #[test]
-    fn test_quas_2d() {
-        let verts = [0., 0., 1., 0., 1., 1., 0., 1., 1.5, 0.5];
-        let quas = [0, 1, 2, 3];
-        let qua_tags = [1];
-        let tris = [1, 4, 2];
-        let tri_tags = [1];
-        let edgs = [0, 1, 1, 5, 5, 2, 2, 3, 3, 0];
-        let edg_tags = [1; 5];
-
-        let mut msh = SimplexMesh::<2, Triangle>::empty();
-        msh.add_verts(verts.chunks(2));
-        msh.add_quas(quas.chunks(4), qua_tags.iter().copied());
-        msh.add_tris(tris.chunks(3), tri_tags.iter().copied());
-        msh.add_edgs(edgs.chunks(2), edg_tags.iter().copied());
-        assert_eq!(msh.n_verts(), 5);
-        assert_eq!(msh.n_elems(), 3);
-        assert_eq!(msh.n_faces(), 5);
-
-        assert!(f64::abs(msh.vol() - 1.25) < 1e-10);
-    }
-
-    #[test]
-    fn test_hexs_pyrs() {
-        let verts = [
-            0., 0., 0., 1., 0., 0., 1., 1., 0., 0., 1., 0., 0., 0., 1., 1., 0., 1., 1., 1., 1., 0.,
-            1., 1., 0.5, 0.5, 1.5,
-        ];
-        let hexs = [0, 1, 2, 3, 4, 5, 6, 7];
-        let hex_tags = [1];
-        let pyrs = [4, 5, 6, 7, 8];
-        let pyr_tags = [1];
-        let quas = [0, 1, 2, 3, 0, 1, 5, 4, 1, 2, 6, 5, 2, 3, 7, 6, 3, 0, 4, 7];
-        let qua_tags = [2; 5];
-        let tris = [4, 5, 8, 5, 6, 8, 6, 7, 8, 7, 4, 8];
-        let tri_tags = [1; 4];
-
-        let mut msh = SimplexMesh::<3, Tetrahedron>::empty();
-        msh.add_verts(verts.chunks(3));
-        msh.add_hexs(hexs.chunks(8), hex_tags.iter().copied());
-        msh.add_pyrs(pyrs.chunks(5), pyr_tags.iter().copied());
-        msh.add_quas(quas.chunks(4), qua_tags.iter().copied());
-        msh.add_tris(tris.chunks(3), tri_tags.iter().copied());
-
-        assert_eq!(msh.n_verts(), 9);
-        assert_eq!(msh.n_elems(), 8);
-        assert_eq!(msh.n_faces(), 14);
-
-        // Build external faces
-        msh.add_boundary_faces();
-        assert_eq!(msh.n_verts(), 9);
-        assert_eq!(msh.n_elems(), 8);
-        assert_eq!(msh.n_faces(), 14);
-
-        assert!(f64::abs(msh.vol() - 7. / 6.) < 1e-10);
     }
 
     #[test]

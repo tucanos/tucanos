@@ -1,3 +1,5 @@
+use tmesh::mesh::Mesh;
+
 use crate::geometry::Geometry;
 use crate::mesh::{Edge, Point, SimplexMesh, Tetrahedron, Triangle};
 use crate::{Dim, Error, Result, TopoTag};
