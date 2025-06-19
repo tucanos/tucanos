@@ -29,8 +29,8 @@ tmesh = { git = "https://github.com/tucanos/tmesh.git", branch="xg/dev" }
 64bit-tags = []
 metis = ["tmesh/metis"]
 
-[[bin]]
-name = "test_simple3d"
+[[example]]
+name = "adapt_ellipse"
 required-features = ["metis"]
 
 [profile.release]

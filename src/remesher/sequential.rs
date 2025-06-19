@@ -132,6 +132,19 @@ impl Default for RemesherParams {
     }
 }
 
+impl RemesherParams {
+    pub fn set_max_angle(&mut self, angle: f64) {
+        for step in &mut self.steps {
+            match step {
+                RemeshingStep::Split(_) => {}
+                RemeshingStep::Collapse(p) => p.max_angle = angle,
+                RemeshingStep::Swap(p) => p.max_angle = angle,
+                RemeshingStep::Smooth(p) => p.max_angle = angle,
+            }
+        }
+    }
+}
+
 impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     /// Initialize the remesher
     pub fn new<G: Geometry<D>>(mesh: &SimplexMesh<D, E>, m: &[M], geom: &G) -> Result<Self> {
