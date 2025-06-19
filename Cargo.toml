@@ -31,7 +31,7 @@ metis = ["tmesh/metis"]
 
 [[bin]]
 name = "test_simple3d"
-required-features = ["scotch"]
+required-features = ["metis"]
 
 [profile.release]
 debug = 1

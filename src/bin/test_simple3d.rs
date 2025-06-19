@@ -2,10 +2,11 @@ use env_logger::Env;
 use nalgebra::SMatrix;
 use rustc_hash::FxHashMap;
 use std::{f64::consts::PI, time::Instant};
+use tmesh::mesh::Mesh;
 use tucanos::{
     Result, Tag, TopoTag,
     geometry::Geometry,
-    mesh::{GElem, PartitionType, Point, SimplexMesh, Tetrahedron, Topology},
+    mesh::{GElem, HasTmeshImpl, PartitionType, Point, SimplexMesh, Tetrahedron, Topology},
     metric::{AnisoMetric3d, Metric},
     remesher::{ParallelRemesher, ParallelRemesherParams, Remesher, RemesherParams},
 };
@@ -297,7 +298,7 @@ fn main() -> Result<()> {
     init_log("warn");
 
     // Load the mesh
-    let mut mesh = SimplexMesh::<3, Tetrahedron>::read_meshb("data/simple3d.meshb")?;
+    let mut mesh = SimplexMesh::<3, Tetrahedron>::from_meshb("data/simple3d.meshb")?;
 
     // Merge tags WING_1_TAG and WING_2_TAG to make analytical projection easier
     mesh.mut_ftags().for_each(|t| {
@@ -313,10 +314,8 @@ fn main() -> Result<()> {
     mesh.check()?;
 
     // Save the input mesh in .vtu format
-    mesh.write_vtk("simple3d.vtu", None, None)?;
-    mesh.boundary()
-        .0
-        .write_vtk("simple3d_bdy.vtu", None, None)?;
+    mesh.vtu_writer().export("simple3d.vtu")?;
+    mesh.boundary().0.vtu_writer().export("simple3d_bdy.vtu")?;
 
     // Analytical geometry
     mesh.compute_topology();
@@ -364,7 +363,7 @@ fn main() -> Result<()> {
         remesher.check()?;
         remesher.to_mesh(true)
     } else {
-        let mut dd = ParallelRemesher::new(mesh, PartitionType::Scotch(n_part))?;
+        let mut dd = ParallelRemesher::new(mesh, PartitionType::MetisRecursive(n_part))?;
         dd.set_debug(debug);
         let dd_params = ParallelRemesherParams::new(2, 2, 10000);
         let (mesh, stats, _) = dd.remesh(&metric, &geom, params, &dd_params)?;
@@ -375,9 +374,9 @@ fn main() -> Result<()> {
         "Remeshing done in {}s with {n_part} partitions",
         now.elapsed().as_secs_f32()
     );
-    mesh.write_vtk("simple3d_remeshed.vtu", None, None)?;
+    mesh.vtu_writer().export("simple3d_remeshed.vtu")?;
     let bdy = mesh.boundary().0;
-    bdy.write_vtk("simple3d_remeshed_bdy.vtu", None, None)?;
+    bdy.vtu_writer().export("simple3d_remeshed_bdy.vtu")?;
 
     let max_angle = geom.max_normal_angle(&mesh);
     println!("max angle : {max_angle}");
