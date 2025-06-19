@@ -1184,18 +1184,14 @@ pub trait HasTmeshImpl<const D: usize, E: Elem> {
 #[cfg(test)]
 mod tests {
 
-    use std::f64::consts::SQRT_2;
-
-    use tmesh::mesh::Mesh;
-
     use crate::{
         Result,
         mesh::{
-            Edge, Elem, GElem, SimplexMesh, Tetrahedron, Triangle,
+            Edge, Elem, GElem, Triangle,
             test_meshes::{test_mesh_2d, test_mesh_3d},
         },
-        min_max_iter,
     };
+    use tmesh::mesh::Mesh;
 
     #[test]
     fn test_2d() {
