@@ -1161,49 +1161,6 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             self.verts.push(Point::<D>::from_column_slice(v));
         }
     }
-
-    /// Compute the skewness for all internal faces in the mesh
-    /// Skewness is the normalized distance between a line that connects two
-    /// adjacent cell centroids and the distance from that line to the shared
-    /// face’s center.
-    pub fn face_skewnesses(&self) -> Result<impl Iterator<Item = (Idx, Idx, f64)> + '_> {
-        self.get_face_to_elems().map(|x| {
-            x.iter()
-                .filter(|(_, elems)| elems.len() == 2)
-                .map(|(f, elems)| {
-                    let f = self.gface(*f).center();
-                    let e0 = self.gelem(self.elem(elems[0])).center();
-                    let e1 = self.gelem(self.elem(elems[1])).center();
-                    let e2f = f - e0;
-                    let l_e2f = e2f.norm();
-                    let e2e = e1 - e0;
-                    let l_e2e = e2e.norm();
-                    let tmp = e2e.dot(&e2f) / (l_e2e * l_e2f);
-                    let ang = f64::acos(tmp.clamp(-1., 1.));
-                    let s = l_e2f * ang.sin();
-                    (elems[0], elems[1], s / l_e2e)
-                })
-        })
-    }
-
-    /// Compute the edge ratio for all the elements in the mesh
-    #[must_use]
-    pub fn edge_length_ratios(&self) -> impl ExactSizeIterator<Item = f64> + '_ {
-        self.elems().map(|e| {
-            let (l_min, l_max) = min_max_iter((0..(E::N_EDGES as Idx)).map(|i| {
-                let [i0, i1] = e.edge(i);
-                (self.vert(i1) - self.vert(i0)).norm()
-            }));
-            l_max / l_min
-        })
-    }
-
-    /// Compute the ratio of inscribed radius to circumradius
-    /// (normalized to be between 0 and 1) for all the elements in the mesh
-    #[must_use]
-    pub fn elem_gammas(&self) -> impl ExactSizeIterator<Item = f64> + '_ {
-        self.gelems().map(|ge| ge.gamma())
-    }
 }
 
 #[allow(dead_code)]
@@ -1342,75 +1299,5 @@ mod tests {
             let p = mesh.verts.index(i);
             assert!(p[0] - p[1] > -1e-10);
         }
-    }
-
-    #[test]
-    fn test_skewness_2d() {
-        let mut mesh = test_mesh_2d().split();
-
-        mesh.compute_face_to_elems();
-
-        let count = mesh
-            .face_skewnesses()
-            .unwrap()
-            .map(|(_, _, s)| assert!(s.abs() < 1e-3))
-            .count();
-        assert_eq!(count, 8);
-    }
-
-    #[test]
-    fn test_skewness_3d() {
-        let mut mesh = test_mesh_3d().split();
-
-        mesh.compute_face_to_elems();
-
-        let count = mesh
-            .face_skewnesses()
-            .unwrap()
-            .map(|(_, _, s)| assert!(s < 0.5, "{s}"))
-            .count();
-        assert_eq!(count, 56);
-    }
-
-    #[test]
-    fn test_edge_ratio_2d() {
-        let mesh = test_mesh_2d().split();
-
-        let count = mesh
-            .edge_length_ratios()
-            .map(|s| assert!((s - SQRT_2) < 1e-6))
-            .count();
-        assert_eq!(count, 8);
-    }
-
-    #[test]
-    fn test_edge_ratio_3d() {
-        let mesh: SimplexMesh<3, Tetrahedron> = test_mesh_3d().split();
-
-        let count = mesh
-            .edge_length_ratios()
-            .map(|s| assert!(s < 3.0_f64.sqrt() + 1e-6))
-            .count();
-        assert_eq!(count, 40);
-    }
-
-    #[test]
-    fn test_gamma_2d() {
-        let mesh = test_mesh_2d().split();
-
-        let count = mesh
-            .elem_gammas()
-            .map(|s| assert!((s - 0.8284).abs() < 1e-4))
-            .count();
-        assert_eq!(count, 8);
-    }
-
-    #[test]
-    fn test_gamma_3d() {
-        let mesh: SimplexMesh<3, Tetrahedron> = test_mesh_3d().split();
-
-        let (gamma_min, gamma_max) = min_max_iter(mesh.elem_gammas());
-        assert!((gamma_min - 0.623).abs() < 1e-3);
-        assert!((gamma_max - 1.0).abs() < 1e-3);
     }
 }

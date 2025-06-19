@@ -112,10 +112,6 @@ pub trait GElem<const D: usize, M: Metric<D>>: Clone + Copy + Debug + Send {
 
     /// Get the i-th geometric face
     fn gface(&self, i: Idx) -> Self::Face;
-
-    /// Gamma quality measure, ratio of inscribed radius to circumradius
-    /// normalized to be between 0 and 1
-    fn gamma(&self) -> f64;
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -303,53 +299,6 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GTetrahedron<D, M> {
             _ => unreachable!(),
         }
     }
-
-    fn gamma(&self) -> f64 {
-        let vol = self.vol();
-        if vol < f64::EPSILON {
-            return 0.0;
-        }
-
-        let a = self.points[1] - self.points[0];
-        let b = self.points[2] - self.points[0];
-        let c = self.points[3] - self.points[0];
-
-        let aa = self.points[3] - self.points[2];
-        let bb = self.points[3] - self.points[1];
-        let cc = self.points[2] - self.points[1];
-
-        let la = a.norm_squared();
-        let lb = b.norm_squared();
-        let lc = c.norm_squared();
-        let laa = aa.norm_squared();
-        let lbb = bb.norm_squared();
-        let lcc = cc.norm_squared();
-
-        let lalaa = (la * laa).sqrt();
-        let lblbb = (lb * lbb).sqrt();
-        let lclcc = (lc * lcc).sqrt();
-
-        let tmp = (lalaa + lblbb + lclcc)
-            * (lalaa + lblbb - lclcc)
-            * (lalaa - lblbb + lclcc)
-            * (-lalaa + lblbb + lclcc);
-
-        // This happens when the 4 points are (nearly) co-planar
-        // => R is actually undetermined but the quality is (close to) zero
-        if tmp < f64::EPSILON {
-            return 0.0;
-        }
-
-        let r = tmp.sqrt() / 24.0 / vol;
-
-        let s1 = self.gface(0).vol();
-        let s2 = self.gface(1).vol();
-        let s3 = self.gface(2).vol();
-        let s4 = self.gface(3).vol();
-        let rho = 9.0 * vol / (s1 + s2 + s3 + s4);
-
-        rho / r
-    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -532,27 +481,6 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GTriangle<D, M> {
             _ => unreachable!(),
         }
     }
-
-    fn gamma(&self) -> f64 {
-        let mut a = self.points[2] - self.points[1];
-        let mut b = self.points[0] - self.points[2];
-        let mut c = self.points[1] - self.points[0];
-
-        a.normalize_mut();
-        b.normalize_mut();
-        c.normalize_mut();
-
-        let sina = Self::cross_norm(&b, &c);
-        let sinb = Self::cross_norm(&a, &c);
-        let sinc = Self::cross_norm(&a, &b);
-
-        let tmp = sina + sinb + sinc;
-        if tmp < 1e-12 {
-            0.0
-        } else {
-            4.0 * sina * sinb * sinc / tmp
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -633,10 +561,6 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GEdge<D, M> {
     fn gface(&self, _i: Idx) -> Self::Face {
         unreachable!();
     }
-
-    fn gamma(&self) -> f64 {
-        1.0
-    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -698,10 +622,6 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GVertex<D, M> {
 
     fn gface(&self, _i: Idx) -> Self::Face {
         unreachable!();
-    }
-
-    fn gamma(&self) -> f64 {
-        1.0
     }
 }
 
