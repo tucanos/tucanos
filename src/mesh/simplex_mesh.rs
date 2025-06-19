@@ -5,7 +5,7 @@ use super::{
     twovec,
     vector::Vector,
 };
-use crate::{Dim, Error, Idx, Result, Tag, TopoTag, metric::IsoMetric, min_max_iter};
+use crate::{Dim, Error, Idx, Result, Tag, TopoTag, metric::IsoMetric};
 use log::{debug, warn};
 use nalgebra::SVector;
 use rayon::{
