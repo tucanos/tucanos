@@ -44,11 +44,14 @@ pub type tucanos_tag_t = i16;
 /// @param boundary A mesh representing the boundary faces of `mesh`. This function consume and free the boundary.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tucanos_geom3d_new(
-    mesh: *const tucanos_mesh33_t,
+    mesh: *mut tucanos_mesh33_t,
     boundary: *mut tucanos_mesh32_t,
 ) -> *mut tucanos_geom3d_t {
     unsafe {
-        let mesh = &(*mesh).implem;
+        let mesh = &mut (*mesh).implem;
+        if mesh.get_topology().is_err() {
+            mesh.compute_topology();
+        }
         let boundary = Box::from_raw(boundary).implem;
         LinearGeometry::new(mesh, boundary).map_or(std::ptr::null_mut(), |implem| {
             Box::into_raw(Box::new(tucanos_geom3d_t { implem }))
@@ -197,15 +200,14 @@ pub extern "C" fn tucanos_mesh33_new(
     faces: *const u32,
     ftags: *const tucanos_tag_t,
 ) -> *mut tucanos_mesh33_t {
-    let mut m = SimplexMesh::new_with_vector(
+    let implem = SimplexMesh::new_with_vector(
         (verts, num_verts).into(),
         (elems, num_elements).into(),
         (tags, num_elements).into(),
         (faces, num_faces).into(),
         (ftags, num_faces).into(),
     );
-    m.compute_topology();
-    Box::into_raw(Box::new(tucanos_mesh33_t { implem: m }))
+    Box::into_raw(Box::new(tucanos_mesh33_t { implem }))
 }
 
 #[unsafe(no_mangle)]
