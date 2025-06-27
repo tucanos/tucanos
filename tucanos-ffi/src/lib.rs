@@ -108,7 +108,8 @@ pub unsafe extern "C" fn tucanos_remesher3diso_tomesh(
 ) -> *mut tucanos_mesh33_t {
     unsafe {
         let remesher = &mut (*remesher).implem;
-        let implem = remesher.to_mesh(only_bdy_faces);
+        let mut implem = remesher.to_mesh(only_bdy_faces);
+        implem.compute_topology();
         Box::into_raw(Box::new(tucanos_mesh33_t { implem }))
     }
 }
@@ -176,7 +177,8 @@ pub unsafe extern "C" fn tucanos_remesher3daniso_tomesh(
 ) -> *mut tucanos_mesh33_t {
     unsafe {
         let remesher = &mut (*remesher).implem;
-        let implem = remesher.to_mesh(only_bdy_faces);
+        let mut implem = remesher.to_mesh(only_bdy_faces);
+        implem.compute_topology();
         Box::into_raw(Box::new(tucanos_mesh33_t { implem }))
     }
 }
