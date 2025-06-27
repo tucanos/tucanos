@@ -76,12 +76,12 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 .par_iter_mut()
                 .enumerate()
                 .map(|(i_vert, m_new)| {
-                    let neighbors = v2v.row(i_vert as Idx);
+                    let neighbors = v2v.row(i_vert);
                     let v0 = self.vert(i_vert as Idx);
                     let mut fixed = false;
                     for &i_neigh in neighbors {
-                        let e = self.vert(i_neigh) - v0;
-                        let m = &tmp[i_neigh as usize];
+                        let e = self.vert(i_neigh as Idx) - v0;
+                        let m = &tmp[i_neigh];
                         let g = Self::edge_gradation(m_new, m, &e);
                         if g < 1.01 * beta {
                             continue;
@@ -152,17 +152,16 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                         return;
                     }
                     let pt = self.vert(i_vert as Idx);
-                    let neighbors = v2v.row(i_vert as Idx);
-                    let mut valid_neighbors =
-                        neighbors.iter().copied().filter(|&i| flg[i as usize]);
+                    let neighbors = v2v.row(i_vert);
+                    let mut valid_neighbors = neighbors.iter().copied().filter(|&i| flg[i]);
                     if let Some(i) = valid_neighbors.next() {
-                        let m_i = metric[i as usize];
-                        let pt_i = self.vert(i);
+                        let m_i = metric[i];
+                        let pt_i = self.vert(i as Idx);
                         let e = pt - pt_i;
                         *m_new = m_i.span(&e, beta, t);
                         for i in valid_neighbors {
-                            let m_i = metric[i as usize];
-                            let pt_i = self.vert(i);
+                            let m_i = metric[i];
+                            let pt_i = self.vert(i as Idx);
                             let e = pt - pt_i;
                             let m_i_spanned = m_i.span(&e, beta, t);
                             *m_new = m_new.intersect(&m_i_spanned);
@@ -212,6 +211,8 @@ mod tests {
     };
     use nalgebra::SMatrix;
     use rand::{Rng, SeedableRng, rngs::StdRng};
+    use tmesh::mesh::Mesh;
+
     #[test]
     fn test_gradation_iso() {
         let beta = 1.5;

@@ -1,5 +1,5 @@
 use crate::{
-    Idx, Result,
+    Result,
     mesh::GElem,
     mesh::{Elem, SimplexMesh},
     metric::Metric,
@@ -86,16 +86,16 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             .zip(node_vol.par_iter())
             .enumerate()
             .for_each(|(i_vert, (m_vert, vert_vol))| {
-                let elems = v2e.row(i_vert as Idx);
+                let elems = v2e.row(i_vert);
                 let n_elems = elems.len();
                 let mut weights = Vec::with_capacity(n_elems);
                 let mut metrics = Vec::with_capacity(n_elems);
                 weights.extend(
                     elems
                         .iter()
-                        .map(|i| elem_vol[*i as usize] / f64::from(E::N_VERTS) / vert_vol),
+                        .map(|i| elem_vol[*i] / f64::from(E::N_VERTS) / vert_vol),
                 );
-                metrics.extend(elems.iter().map(|&i| v[i as usize]));
+                metrics.extend(elems.iter().map(|&i| v[i]));
                 let wm = weights.iter().copied().zip(metrics.iter());
                 *m_vert = M::interpolate(wm);
             });
@@ -200,6 +200,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
 #[cfg(test)]
 mod tests {
+    use tmesh::mesh::Mesh;
+
     use crate::{
         mesh::Point,
         mesh::test_meshes::{test_mesh_2d, test_mesh_3d},
