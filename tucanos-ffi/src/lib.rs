@@ -226,7 +226,7 @@ pub unsafe extern "C" fn tucanos_mesh33_verts(
     last: u32,
 ) {
     unsafe {
-        let out = std::slice::from_raw_parts_mut(out, (last - first) as usize);
+        let out = std::slice::from_raw_parts_mut(out, 3*(last - first) as usize);
         let m = &((*m).implem);
         let mut k = 0;
         for i in first..last {
@@ -244,7 +244,7 @@ pub unsafe extern "C" fn tucanos_mesh33_elems(
     last: u32,
 ) {
     unsafe {
-        let out = std::slice::from_raw_parts_mut(out, (last - first) as usize);
+        let out = std::slice::from_raw_parts_mut(out, 4*(last - first) as usize);
         let m = &((*m).implem);
         let mut k = 0;
         for i in first..last {
