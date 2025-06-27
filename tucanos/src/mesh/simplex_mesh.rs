@@ -170,19 +170,19 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
     /// Get the number of vertices
     #[must_use]
-    pub fn n_verts(&self) -> Idx {
+    pub const fn n_verts(&self) -> Idx {
         self.verts.len() as Idx
     }
 
     /// Get the number or elements
     #[must_use]
-    pub fn n_elems(&self) -> Idx {
+    pub const fn n_elems(&self) -> Idx {
         self.elems.len() as Idx
     }
 
     /// Get the number of faces
     #[must_use]
-    pub fn n_faces(&self) -> Idx {
+    pub const fn n_faces(&self) -> Idx {
         self.faces.len() as Idx
     }
 

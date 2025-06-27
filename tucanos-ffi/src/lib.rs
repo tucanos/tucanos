@@ -209,12 +209,12 @@ pub extern "C" fn tucanos_mesh33_new(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tucanos_mesh33_num_verts(m: *const tucanos_mesh33_t) -> u32 {
+pub const unsafe extern "C" fn tucanos_mesh33_num_verts(m: *const tucanos_mesh33_t) -> u32 {
     unsafe { (*m).implem.n_verts() }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tucanos_mesh33_num_elems(m: *const tucanos_mesh33_t) -> u32 {
+pub const unsafe extern "C" fn tucanos_mesh33_num_elems(m: *const tucanos_mesh33_t) -> u32 {
     unsafe { (*m).implem.n_elems() }
 }
 

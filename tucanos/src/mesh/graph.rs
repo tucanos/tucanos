@@ -143,7 +143,7 @@ impl CSRGraph {
     }
 
     #[must_use]
-    pub fn n(&self) -> Idx {
+    pub const fn n(&self) -> Idx {
         self.ptr.len() as Idx - 1
     }
 
@@ -153,7 +153,7 @@ impl CSRGraph {
     }
 
     #[must_use]
-    pub fn n_edges(&self) -> Idx {
+    pub const fn n_edges(&self) -> Idx {
         self.indices.len() as Idx
     }
 

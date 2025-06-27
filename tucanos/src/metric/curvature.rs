@@ -51,7 +51,6 @@ impl SimplexMesh<3, Tetrahedron> {
                     let mut hv = 1. / (r_h * v.norm());
                     let mut hn = f64::min(hu, hv);
                     if use_h_n {
-                        #[allow(clippy::collapsible_if)]
                         if let Some(h_n) = h_n {
                             assert!(h_n[i_bdy_vert as usize] > 0.0);
                             hn = h_n[i_bdy_vert as usize].min(hn);
@@ -123,7 +122,6 @@ impl SimplexMesh<2, Triangle> {
                     let hu = 1. / (r_h * u.norm());
                     let mut hn = hu;
                     if use_h_n {
-                        #[allow(clippy::collapsible_if)]
                         if let Some(h_n) = h_n {
                             assert!(h_n[i_bdy_vert as usize] > 0.0);
                             hn = h_n[i_bdy_vert as usize].min(hn);
