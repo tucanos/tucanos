@@ -16,43 +16,6 @@ permissions:
   checks: write
 
 jobs:
-  nightly:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        lfs: false
-    - run: sudo apt-get install -y libmetis-dev libscotch-dev libnlopt-dev
-    - id: toolchain
-      uses: dtolnay/rust-toolchain@master
-      with:
-        components: clippy, rustfmt
-        toolchain: nightly
-    - run: rustup override set ${{steps.toolchain.outputs.name}}
-    - name: Rust cache
-      uses: actions/cache@v4
-      with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-nightly-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-nightly-
-    - name: Run clippy
-      uses: clechasseur/rs-clippy-check@v4
-    - run: cargo fmt --check --all
-    - name: Run cargo test
-      uses: clechasseur/rs-cargo@v3
-      with:
-        command: test 
-        args: --features=scotch,metis,nlopt
-    - name: Run cargo test --release
-      uses: clechasseur/rs-cargo@v3
-      with:
-        command: test
-        args: --release --features=scotch,metis,nlopt
   stable:
     runs-on: ubuntu-latest
     steps:
