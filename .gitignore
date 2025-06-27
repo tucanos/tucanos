@@ -1,2 +1,15 @@
-target/
+/target
 Cargo.lock
+*.mesh
+*.meshb
+*.sol
+*.solb
+*.vtu
+*.geo
+*.pyc
+*.pyd
+build/
+*.h5
+*.so
+.cargo/
+*.code-workspace
