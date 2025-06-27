@@ -1,6 +1,6 @@
 [workspace]
-members = ["tucanos", "tucanos-ffi", "tucanos-ffi-test"]
-default-members = ["tucanos"]
+members = ["tucanos", "tmesh", "tucanos-ffi", "tucanos-ffi-test"]
+default-members = ["tucanos", "tmesh"]
 resolver = "3"
 
 [workspace.package]

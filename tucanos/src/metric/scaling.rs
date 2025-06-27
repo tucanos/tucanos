@@ -229,8 +229,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     *m = Self::get_bounded_metric(scale, h_min, h_max, Some(m), m_f, step, m_i);
                 });
         } else {
-            m.iter_mut()
-                .for_each(|m| m.scale_with_bounds(scale, h_min, h_max));
+            for m in m.iter_mut() {
+                m.scale_with_bounds(scale, h_min, h_max);
+            }
         }
 
         Ok(scale)
@@ -239,6 +240,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
 #[cfg(test)]
 mod tests {
+    use tmesh::mesh::Mesh;
+
     use crate::{
         Idx, Result,
         mesh::Point,

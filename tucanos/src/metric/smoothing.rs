@@ -1,5 +1,5 @@
 use crate::{
-    Idx, Result,
+    Result,
     mesh::{Elem, SimplexMesh},
     metric::Metric,
 };
@@ -34,9 +34,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 let mut max_vol = vol;
                 let mut min_idx = 0;
                 let mut max_idx = 0;
-                let neighbors = v2v.row(i_vert as Idx);
+                let neighbors = v2v.row(i_vert);
                 for i_neigh in neighbors {
-                    let m_n = &m[*i_neigh as usize];
+                    let m_n = &m[*i_neigh];
                     let vol = m_n.vol();
                     if vol < min_vol {
                         min_vol = vol;
@@ -64,7 +64,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 for i_neigh in neighbors {
                     if min_idx != i_neigh + 1 && max_idx != i_neigh + 1 {
                         weights.push(w);
-                        metrics.push(&m[*i_neigh as usize]);
+                        metrics.push(&m[*i_neigh]);
                     }
                 }
 
@@ -77,6 +77,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
 #[cfg(test)]
 mod tests {
+    use tmesh::mesh::Mesh;
+
     use crate::{
         mesh::Point,
         mesh::test_meshes::{test_mesh_2d, test_mesh_3d},

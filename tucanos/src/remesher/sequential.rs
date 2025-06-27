@@ -132,6 +132,19 @@ impl Default for RemesherParams {
     }
 }
 
+impl RemesherParams {
+    pub fn set_max_angle(&mut self, angle: f64) {
+        for step in &mut self.steps {
+            match step {
+                RemeshingStep::Split(_) => {}
+                RemeshingStep::Collapse(p) => p.max_angle = angle,
+                RemeshingStep::Swap(p) => p.max_angle = angle,
+                RemeshingStep::Smooth(p) => p.max_angle = angle,
+            }
+        }
+    }
+}
+
 impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     /// Initialize the remesher
     pub fn new<G: Geometry<D>>(mesh: &SimplexMesh<D, E>, m: &[M], geom: &G) -> Result<Self> {
@@ -727,7 +740,7 @@ mod tests_topo {
         Tag,
         geometry::NoGeometry,
         mesh::{
-            Point,
+            HasTmeshImpl, Point,
             test_meshes::{test_mesh_2d, test_mesh_3d},
         },
         metric::IsoMetric,
@@ -735,6 +748,7 @@ mod tests_topo {
     };
     use rustc_hash::{FxHashMap, FxHashSet};
     use std::collections::hash_map::Entry;
+    use tmesh::mesh::Mesh;
 
     fn test_topo_2d(etags: [Tag; 2], ftags: [Tag; 4], add_boundary_faces: bool, n_split: i32) {
         let mut mesh = test_mesh_2d();
@@ -762,7 +776,7 @@ mod tests_topo {
         mesh.compute_topology();
 
         mesh.compute_face_to_elems();
-        mesh.check().unwrap();
+        mesh.check_simple().unwrap();
 
         let geom = NoGeometry();
         let metric: Vec<_> = mesh.verts().map(|_| IsoMetric::from(0.5)).collect();
@@ -770,7 +784,7 @@ mod tests_topo {
         remesher.check().unwrap();
         let mut mesh = remesher.to_mesh(false);
         mesh.compute_face_to_elems();
-        mesh.check().unwrap();
+        mesh.check_simple().unwrap();
 
         let ftags = mesh.ftags().collect::<FxHashSet<_>>();
         let bdy = mesh.boundary().0;
@@ -849,7 +863,7 @@ mod tests_topo {
         mesh.compute_topology();
 
         mesh.compute_face_to_elems();
-        mesh.check().unwrap();
+        mesh.check_simple().unwrap();
 
         let bdy = mesh.boundary().0;
         let mut stats = FxHashMap::default();
@@ -867,7 +881,7 @@ mod tests_topo {
         remesher.check().unwrap();
         let mut mesh = remesher.to_mesh(false);
         mesh.compute_face_to_elems();
-        mesh.check().unwrap();
+        mesh.check_simple().unwrap();
 
         let ftags = mesh.ftags().collect::<FxHashSet<_>>();
         let bdy = mesh.boundary().0;
@@ -913,6 +927,8 @@ mod tests_topo {
 
 #[cfg(test)]
 mod tests {
+    use tmesh::mesh::Mesh;
+
     use super::RemesherParams;
     use crate::{
         Result,

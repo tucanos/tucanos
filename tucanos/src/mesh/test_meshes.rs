@@ -1,3 +1,5 @@
+use tmesh::mesh::Mesh;
+
 use crate::geometry::Geometry;
 use crate::mesh::{Edge, Point, SimplexMesh, Tetrahedron, Triangle};
 use crate::{Dim, Error, Result, TopoTag};
@@ -219,18 +221,18 @@ pub fn test_mesh_3d() -> SimplexMesh<3, Tetrahedron> {
     ];
     let etags = vec![1, 1, 1, 1, 1];
     let faces = vec![
-        Triangle::new(0, 1, 2),
-        Triangle::new(0, 2, 3),
+        Triangle::new(0, 2, 1),
+        Triangle::new(0, 3, 2),
         Triangle::new(5, 6, 7),
         Triangle::new(5, 7, 4),
         Triangle::new(0, 1, 5),
         Triangle::new(0, 5, 4),
-        Triangle::new(2, 6, 7),
-        Triangle::new(2, 7, 3),
+        Triangle::new(2, 7, 6),
+        Triangle::new(2, 3, 7),
         Triangle::new(1, 2, 5),
         Triangle::new(2, 6, 5),
-        Triangle::new(0, 3, 7),
-        Triangle::new(0, 7, 4),
+        Triangle::new(0, 7, 3),
+        Triangle::new(0, 4, 7),
     ];
     let ftags = vec![1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6];
 
