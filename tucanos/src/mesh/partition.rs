@@ -122,7 +122,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// is stored in self.etags
     #[cfg(feature = "metis")]
     pub fn partition_metis(&mut self, n_parts: Idx, method: &str) -> Result<()> {
-        debug!("Partition the mesh into {} using metis", n_parts);
+        debug!("Partition the mesh into {n_parts} using metis");
 
         if self.etags().any(|t| t != 1) {
             warn!("Erase the element tags");

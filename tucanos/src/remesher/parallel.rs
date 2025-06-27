@@ -189,7 +189,7 @@ impl<const D: usize, E: Elem> ParallelRemesher<D, E> {
     }
 
     #[must_use]
-    pub fn n_verts(&self) -> Idx {
+    pub const fn n_verts(&self) -> Idx {
         self.mesh.n_verts()
     }
 

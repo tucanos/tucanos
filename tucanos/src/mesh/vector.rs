@@ -41,7 +41,7 @@ enum VectorImpl<T: FromNativePointer> {
 }
 
 impl<T: FromNativePointer> VectorImpl<T> {
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         match &self {
             Self::Std(x) => x.len(),
             Self::Native((_, s)) => *s,
@@ -137,7 +137,7 @@ impl<T: Copy + FromNativePointer> Vector<T> {
         }
     }
 
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.data.len()
     }
 
@@ -150,7 +150,7 @@ impl<T: Copy + FromNativePointer> Vector<T> {
             }),
         }
     }
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.data.len() == 0
     }
 

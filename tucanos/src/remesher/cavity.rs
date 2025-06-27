@@ -293,12 +293,12 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
     }
 
     /// Get the number of vertices in the cavity
-    pub fn n_verts(&self) -> Idx {
+    pub const fn n_verts(&self) -> Idx {
         self.points.len() as Idx
     }
 
     /// Get the number of elements in the cavity
-    pub fn n_elems(&self) -> Idx {
+    pub const fn n_elems(&self) -> Idx {
         self.elems.len() as Idx
     }
 
