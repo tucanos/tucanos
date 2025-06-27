@@ -1,7 +1,7 @@
 [package]
 name = "tucanos-ffi"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
 description = "C / FFI wrapper for the Tucanos mesher"
 
 [lib]
@@ -9,7 +9,7 @@ name = "tucanos"
 crate-type = ["cdylib"]
 
 [dependencies]
-tucanos = { path = ".." }
+tucanos = { path = "../tucanos" }
 log = "0.4.22"
 
 [build-dependencies]
