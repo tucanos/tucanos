@@ -9,7 +9,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 log = "0.4.27"
-tmesh = { path="../" }
+tmesh = { path="../tmesh" }
 numpy = "0.24.0"
 pyo3 = { version = "0.24.1", features = ["extension-module", "multiple-pymethods"] }
 pyo3-log = "0.12"
