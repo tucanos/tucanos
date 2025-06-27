@@ -229,6 +229,10 @@ macro_rules! impl_mesh {
                     PartitionType::None => unreachable!(),
                 }
             }
+
+            fn boundary_flag(&self) -> Vec<bool> {
+                <Self as Mesh<$dim, $cell_dim, $face_dim>>::boundary_flag(self)
+            }
         }
 
         impl SimplexMesh<$dim, $name> {

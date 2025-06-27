@@ -6,6 +6,7 @@ use crate::{
 };
 use log::debug;
 use rustc_hash::FxHashSet;
+use tmesh::mesh::Mesh;
 
 impl SimplexMesh<3, Tetrahedron> {
     /// Compute an anisotropic metric based on the boundary curvature
@@ -39,7 +40,7 @@ impl SimplexMesh<3, Tetrahedron> {
 
         // Set the metric at the boundary vertices
         for tag in bdy_tags {
-            let ids = bdy.extract_tag(tag).parent_vert_ids;
+            let ids = bdy.extract_elems(|t| t == tag).parent_vert_ids;
             let use_h_n = h_n_tags.is_some_and(|h_n_tags| h_n_tags.contains(&tag));
             ids.iter()
                 .map(|&i| (i, boundary_vertex_ids[i as usize]))
@@ -113,7 +114,7 @@ impl SimplexMesh<2, Triangle> {
 
         // Set the metric at the boundary vertices
         for tag in bdy_tags {
-            let ids = bdy.extract_tag(tag).parent_vert_ids;
+            let ids = bdy.extract_elems(|t| t == tag).parent_vert_ids;
             let use_h_n = h_n_tags.is_some_and(|h_n_tags| h_n_tags.contains(&tag));
             ids.iter()
                 .map(|&i| (i, boundary_vertex_ids[i as usize]))

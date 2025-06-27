@@ -22,7 +22,7 @@ rayon = "1.10"
 typenum = { version ="1.17", features = ["const-generics"] }
 num = "0.4.3"
 tempfile = "3.14"
-tmesh = { git = "https://github.com/tucanos/tmesh.git", branch="xg/dev" }
+tmesh = { path="../tmesh" }
 
 [features]
 32bit-tags = []

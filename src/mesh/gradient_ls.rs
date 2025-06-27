@@ -13,7 +13,12 @@ use rayon::{
 };
 use rustc_hash::FxHashSet;
 
-impl<const D: usize, E: Elem> SimplexMesh<D, E> {
+use super::HasTmeshImpl;
+
+impl<const D: usize, E: Elem> SimplexMesh<D, E>
+where
+    SimplexMesh<D, E>: HasTmeshImpl<D, E>,
+{
     /// Compute a linear or quadratic approximation of a function defined at the mesh vertices
     ///
     /// A weighted least squares is used: the function $`f`$ is approximated as around $`x_i`$
