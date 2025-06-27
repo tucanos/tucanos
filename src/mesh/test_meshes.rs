@@ -459,23 +459,31 @@ pub fn sphere_mesh(level: usize) -> SimplexMesh<3, Tetrahedron> {
 #[must_use]
 pub fn test_mesh_2d_quadratic() -> QuadraticMesh<QuadraticTriangle> {
     let verts = vec![
-        Point::<3>::new(0., 0., 0.),
         Point::<3>::new(1., 0., 0.),
         Point::<3>::new(0., 1., 0.),
-        Point::<3>::new(0.5, 0., 0.),
+        Point::<3>::new(0., 0., 1.),
         Point::<3>::new(0.5, 0.5, 0.),
-        Point::<3>::new(0., 0.5, 0.),
+        Point::<3>::new(0., 0.5, 0.5),
+        Point::<3>::new(0.5, 0., 0.5),
+        Point::<3>::new(1., 1.5, -0.5),
+        Point::<3>::new(1., 0.75, -0.5),
+        Point::<3>::new(0.5, 1.25, -0.5),
     ];
 
-    let tris = vec![QuadraticTriangle::new(0, 1, 2, 3, 4, 5)];
+    let tris = vec![
+        QuadraticTriangle::new(0, 1, 2, 3, 4, 5),
+        QuadraticTriangle::new(0, 6, 1, 7, 8, 3),
+    ];
 
-    let tri_tags = vec![1];
+    let tri_tags = vec![1, 2];
     let edgs = vec![
         QuadraticEdge::new(0, 1, 3),
         QuadraticEdge::new(1, 2, 4),
         QuadraticEdge::new(2, 0, 5),
+        QuadraticEdge::new(0, 6, 7),
+        QuadraticEdge::new(6, 1, 8),
     ];
-    let edg_tags = vec![1, 2, 3];
+    let edg_tags = vec![1, 2, 3, 4, 5];
 
     QuadraticMesh::new(verts, tris, tri_tags, edgs, edg_tags)
 }

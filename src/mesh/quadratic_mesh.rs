@@ -38,14 +38,6 @@ pub struct SubQuadraticMesh<QE: QuadraticElem> {
     pub parent_face_ids: Vec<Idx>,
 }
 
-pub struct QuadraticMesh2 {
-    verts: Vec<Point<3>>,
-    tris: Vec<[Idx; 6]>,
-    tri_tags: Vec<Tag>,
-    edgs: Vec<[Idx; 3]>,
-    edg_tags: Vec<Tag>,
-}
-
 impl<QE: QuadraticElem> QuadraticMesh<QE> {
     #[must_use]
     pub fn new_with_vector(

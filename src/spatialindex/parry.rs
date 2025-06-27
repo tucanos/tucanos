@@ -147,14 +147,16 @@ mod parry2d {
 
 pub mod parry3d {
     use crate::{
-        mesh::{Elem, GQuadraticElem, GQuadraticTriangle, SimplexMesh},
+        mesh::{
+            Elem, GQuadraticElem, GQuadraticTriangle, QuadraticElem, QuadraticMesh, SimplexMesh,
+        },
         metric::{AnisoMetric, AnisoMetric3d},
         Idx,
     };
     use nalgebra::{Matrix3, Point3};
 
     use parry3d_f64::{
-        bounding_volume::{details, Aabb, BoundingSphere},
+        bounding_volume::{Aabb, BoundingSphere},
         mass_properties::MassProperties,
         math::{Isometry, Point, Real},
         partitioning::Qbvh,
@@ -403,7 +405,7 @@ pub mod parry3d {
         ((pt - res).norm(), res)
     }
 
-    #[derive(Copy, Clone)]
+    #[derive(Debug, Copy, Clone)]
     pub struct QuadraticTriangle {
         pub a: Point<Real>,
         pub b: Point<Real>,
@@ -416,13 +418,29 @@ pub mod parry3d {
     impl QuadraticTriangle {
         #[inline]
         pub fn bounding_sphere(&self) -> parry3d_f64::bounding_volume::BoundingSphere {
-            let pts = [self.a, self.b, self.c, self.d, self.e, self.f];
-            details::point_cloud_bounding_sphere(&pts[..])
+            let a = self.a.coords;
+            let b = self.b.coords;
+            let c = self.c.coords;
+            let d = self.d.coords;
+            let e = self.e.coords;
+            let f = self.f.coords;
+
+            let p0 = Point3::from(a);
+            let p1 = Point3::from(b);
+            let p2 = Point3::from(c);
+
+            // Bezier control points
+            let p3 = Point3::from(2.0 * d - 0.5 * a - 0.5 * b);
+            let p4 = Point3::from(2.0 * e - 0.5 * b - 0.5 * c);
+            let p5 = Point3::from(2.0 * f - 0.5 * c - 0.5 * a);
+
+            let pts = [p0, p1, p2, p3, p4, p5];
+            parry3d_f64::bounding_volume::details::point_cloud_bounding_sphere(&pts[..])
         }
     }
 
     #[allow(clippy::enum_variant_names)]
-    #[derive(Debug)]
+    #[derive(Debug, Copy, Clone)]
     pub enum QuadraticTrianglePointLocation {
         OnVertex(u32),
         OnEdge(u32, [Real; 2]),
@@ -430,6 +448,7 @@ pub mod parry3d {
     }
 
     /// Wrap the Quadratic Triangle to make it parry 3d shape
+    #[derive(Debug, Copy, Clone)]
     pub struct QuadraticTriangleShape(pub QuadraticTriangle);
 
     impl QuadraticTriangleShape {
@@ -437,11 +456,11 @@ pub mod parry3d {
         pub const fn new(a: &[Point<Real>; 6]) -> Self {
             Self(QuadraticTriangle {
                 a: a[0],
-                b: a[0],
-                c: a[0],
-                d: a[0],
-                e: a[0],
-                f: a[0],
+                b: a[1],
+                c: a[2],
+                d: a[3],
+                e: a[4],
+                f: a[5],
             })
         }
     }
@@ -508,6 +527,7 @@ pub mod parry3d {
 
     impl PointQueryWithLocation for QuadraticTriangleShape {
         type Location = QuadraticTrianglePointLocation;
+        // Project a point on self (QuadraticTriangleShape)
         fn project_local_point_and_get_location(
             &self,
             pt: &Point<Real>,
@@ -527,14 +547,14 @@ pub mod parry3d {
 
             let pt = pt.coords;
             let triangle = GQuadraticTriangle::from_verts(points_and_metrics);
-            let (proj_point_coords, location) = triangle.project(pt, &[0.2, 0.2], 20, 0.000001);
-            // Reconstituer un Point<Real> à partir des coordonnées projetées
+            let (proj_point_coords, location) = triangle.project(pt, &[0.3, 0.3], 100, 0.000001);
+            // Rebuild a Point<Real> from the projected coords
             let proj_point = Point::from(proj_point_coords);
 
-            // Déterminer si le point projeté est "inside" selon la location
+            // Determine whether the projected point is “inside” according to the location
             let is_inside = matches!(location, QuadraticTrianglePointLocation::OnFace(_, _));
 
-            // Construire et retourner la projection
+            // Build and return the projection
             (
                 PointProjection {
                     is_inside,
@@ -546,9 +566,9 @@ pub mod parry3d {
     }
 
     impl PointQuery for QuadraticTriangleShape {
-        fn project_local_point(&self, _pt: &Point<Real>, _solid: bool) -> PointProjection {
-            todo!()
-            // self.0.project_local_point(pt, solid)
+        fn project_local_point(&self, pt: &Point<Real>, solid: bool) -> PointProjection {
+            let (projection, _) = self.project_local_point_and_get_location(pt, solid);
+            projection
         }
 
         fn project_local_point_and_get_feature(
@@ -567,6 +587,109 @@ pub mod parry3d {
             _solid: bool,
         ) -> Option<RayIntersection> {
             todo!()
+        }
+    }
+
+    pub struct QuadraticTriangleToQuadraticTriangle {}
+    impl MeshToShape for QuadraticTriangleToQuadraticTriangle {
+        type Shape = QuadraticTriangleShape;
+        type Location = QuadraticTrianglePointLocation;
+        fn shape(id: u32, verts: &[f64], elems: &[Idx]) -> Self::Shape {
+            Self::Shape::new(&points(id, verts, elems))
+        }
+    }
+
+    pub struct QuadraticMeshShape<MS: MeshToShape> {
+        // TODO: this is copied from SimplexMesh. It would nice to just reference it. Sadly Rust forbid
+        // self referencing objects and spatialindex::ObjectIndex is a member of SimplexMesh. An
+        // alternative would be to pass verts and elem as arguments of ObjectIndex::nearest but
+        // TypedSimdCompositeShape does not accept additionnals arguments.
+        verts: Vec<f64>,
+        elems: Vec<Idx>,
+        tree: Qbvh<u32>,
+        phantom: PhantomData<MS>,
+    }
+    impl<MS: MeshToShape> QuadraticMeshShape<MS> {
+        fn local_aabb<QE: QuadraticElem>(mesh: &QuadraticMesh<QE>, quadratic_elem: &QE) -> Aabb {
+            let mut min = Point::origin();
+            let mut max = min;
+
+            for d in 0..3 {
+                let (mn, mx) = quadratic_elem
+                    .iter()
+                    .map(|&idx| mesh.vert(idx)[d])
+                    .fold((f64::MAX, -f64::MAX), |(mn, mx), x| (mn.min(x), mx.max(x)));
+                min.coords[d] = mn;
+                max.coords[d] = mx;
+            }
+
+            Aabb::new(min, max)
+        }
+        pub fn new<QE: QuadraticElem>(mesh: &QuadraticMesh<QE>) -> Self {
+            let mut tree = Qbvh::new();
+            let data = mesh
+                .tris()
+                .enumerate()
+                .map(|(i, qe)| (i as u32, Self::local_aabb(mesh, &qe)));
+            tree.clear_and_rebuild(data, 0.);
+            let mut elems = Vec::with_capacity((mesh.n_tris() as usize) * (QE::N_VERTS as usize));
+            for qe in mesh.tris() {
+                elems.extend(qe.iter().copied());
+            }
+            let mut verts = Vec::with_capacity(2 * mesh.n_verts() as usize);
+            for qe in mesh.verts() {
+                verts.extend(qe.iter().copied());
+            }
+            Self {
+                verts,
+                elems,
+                tree,
+                phantom: PhantomData,
+            }
+        }
+    }
+
+    impl<MS: MeshToShape> PointQueryWithLocation for QuadraticMeshShape<MS> {
+        type Location = (u32, MS::Location);
+
+        fn project_local_point_and_get_location(
+            &self,
+            point: &Point<Real>,
+            solid: bool,
+        ) -> (PointProjection, Self::Location) {
+            let mut visitor =
+                PointCompositeShapeProjWithLocationBestFirstVisitor::new(self, point, solid);
+            self.tree.traverse_best_first(&mut visitor).unwrap().1
+        }
+    }
+
+    impl<MS: MeshToShape> TypedSimdCompositeShape for QuadraticMeshShape<MS> {
+        type PartShape = MS::Shape;
+        type PartId = u32;
+        type PartNormalConstraints = dyn NormalConstraints;
+
+        fn map_typed_part_at(
+            &self,
+            shape_id: Self::PartId,
+            mut f: impl FnMut(
+                Option<&Isometry<Real>>,
+                &Self::PartShape,
+                Option<&Self::PartNormalConstraints>,
+            ),
+        ) {
+            f(None, &MS::shape(shape_id, &self.verts, &self.elems), None);
+        }
+
+        fn map_untyped_part_at(
+            &self,
+            shape_id: Self::PartId,
+            mut f: impl FnMut(Option<&Isometry<Real>>, &dyn Shape, Option<&dyn NormalConstraints>),
+        ) {
+            f(None, &MS::shape(shape_id, &self.verts, &self.elems), None);
+        }
+
+        fn typed_qbvh(&self) -> &Qbvh<Self::PartId> {
+            &self.tree
         }
     }
 }
@@ -588,6 +711,7 @@ enum ParryImpl<const D: usize> {
     Edge2D(parry2d::MeshShape<D, parry2d::EdgeToSegment>),
     Edge3D(parry3d::MeshShape<D, parry3d::EdgeToSegment>),
     Tetra(parry3d::MeshShape<D, parry3d::TetraToTetra>),
+    QuadraticTria3D(parry3d::QuadraticMeshShape<parry3d::QuadraticTriangleToQuadraticTriangle>),
 }
 
 impl<const D: usize> super::ObjectIndex<D> for ObjectIndex<D> {
@@ -641,22 +765,11 @@ impl<const D: usize> super::ObjectIndex<D> for ObjectIndex<D> {
 
     fn newquadratic<QE: QuadraticElem>(mesh: &QuadraticMesh<QE>) -> Self {
         if QE::N_VERTS == 6 {
-            let mut coords = Vec::with_capacity(3 * mesh.n_verts() as usize);
-            for p in mesh.verts() {
-                coords.push(nalgebra::Point3::new(p[0], p[1], p[2]));
-            }
-            let elems: Vec<_> = mesh
-                .tris()
-                .map(|e| {
-                    let mut i = e.iter();
-                    std::array::from_fn(|_| *i.next().unwrap())
-                })
-                .collect();
             Self {
-                inner: ParryImpl::Tria3D(parry3d_f64::shape::TriMesh::new(coords, elems).unwrap()),
+                inner: ParryImpl::QuadraticTria3D(parry3d::QuadraticMeshShape::new(mesh)),
             }
         } else {
-            unimplemented!("E::N_VERTS={}", QE::N_VERTS);
+            unimplemented!("QE::N_VERTS={}", QE::N_VERTS);
         }
     }
 
@@ -687,6 +800,13 @@ impl<const D: usize> super::ObjectIndex<D> for ObjectIndex<D> {
             ParryImpl::Tria2D(shape) => {
                 let (_, (id, _)) = shape.project_local_point_and_get_location(
                     &nalgebra::Point2::new(pt[0], pt[1]),
+                    true,
+                );
+                id
+            }
+            ParryImpl::QuadraticTria3D(shape) => {
+                let (_, (id, _)) = shape.project_local_point_and_get_location(
+                    &nalgebra::Point3::new(pt[0], pt[1], pt[2]),
                     true,
                 );
                 id
@@ -730,51 +850,48 @@ impl<const D: usize> super::ObjectIndex<D> for ObjectIndex<D> {
                 }
                 ((pt - res).norm(), res)
             }
+            ParryImpl::QuadraticTria3D(shape) => {
+                let (p, _) = shape.project_local_point_and_get_location(
+                    &nalgebra::Point3::new(pt[0], pt[1], pt[2]),
+                    true,
+                );
+                let p = p.point;
+                let mut res = Point::<D>::zeros();
+                for i in 0..D {
+                    res[i] = p[i];
+                }
+                ((pt - res).norm(), res)
+            }
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use nalgebra::Point3;
-    use parry3d::{QuadraticTriangle, QuadraticTriangleShape};
-    use parry3d_f64::shape::Shape;
+    use crate::{
+        mesh::test_meshes::test_mesh_2d_quadratic,
+        mesh::Point,
+        spatialindex::{DefaultObjectIndex, ObjectIndex},
+    };
 
     #[test]
     fn test_quadratic_triangle_bounding_sphere_and_projection() {
-        let points = [
-            Point3::new(0.0, 0.0, 0.0), // a
-            Point3::new(1.0, 0.0, 0.0), // b
-            Point3::new(0.0, 1.0, 0.0), // c
-            Point3::new(0.5, 0.0, 0.0), // d
-            Point3::new(0.5, 0.5, 0.0), // e
-            Point3::new(0.0, 0.5, 0.0), // f
+        let mesh = test_mesh_2d_quadratic();
+
+        let tree: DefaultObjectIndex<3> = DefaultObjectIndex::newquadratic(&mesh);
+
+        let query_points = [
+            Point::<3>::new(-1.7, 0.5, 1.1),
+            Point::<3>::new(20.0, 10., -1.),
         ];
 
-        // Construction of the QuadraticTriangleShape
-        let qt = QuadraticTriangle {
-            a: points[0],
-            b: points[1],
-            c: points[2],
-            d: points[3],
-            e: points[4],
-            f: points[5],
-        };
-        let shape = QuadraticTriangleShape(qt);
+        for (i, &pt) in query_points.iter().enumerate() {
+            let id = tree.nearest_elem(&pt);
+            println!("nearest elem for point {} = {}", i + 1, id);
 
-        // Check that the bounding sphere is not empty
-        let bounding_sphere = shape.compute_local_bounding_sphere();
-        let radius = bounding_sphere.radius;
-        assert!(radius > 0.0, "Bounding sphere radius should be positive");
-
-        // Point to project
-        let query_point = Point3::new(1., 0., 0.);
-        let (projection, location) =
-            shape.project_local_point_and_get_location(&query_point, false);
-
-        println!("Projection point: {:?}", projection.point);
-        println!("Is inside: {}", projection.is_inside);
-        println!("Location: {location:?}");
+            let (dist, proj) = tree.project(&pt);
+            println!("distance = {dist}");
+            println!("projected point = {proj}");
+        }
     }
 }

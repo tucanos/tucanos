@@ -490,7 +490,7 @@ mod tests {
             triangle.center(),
             Point::<3>::new(1. / 3., 1. / 3., 1. / 3.)
         );
-        let p = Point::<3>::new(1. / 3., 1. / 3., 1. / 3.);
+        let p = Point::<3>::new(1. / 3., 1. / 3., 1./3.);
         let x_init = [0.2, 0.2];
         let (proj_point, location) = triangle.project(p, &x_init, 20, 0.0000001);
         let dist = (proj_point - p).norm();
