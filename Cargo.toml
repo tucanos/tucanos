@@ -52,6 +52,7 @@ unused_variables = "deny"
 unused_mut = "deny"
 dead_code = "deny"
 unused_attributes = "deny"
+unsafe_op_in_unsafe_fn = "deny"
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }

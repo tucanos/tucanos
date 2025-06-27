@@ -1,7 +1,7 @@
 [package]
 name = "tucanos-ffi-test"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 # See https://github.com/rust-lang/cargo/issues/1581
 description = "Test for tucanos-ffi"
 
@@ -12,7 +12,7 @@ description = "Test for tucanos-ffi"
 # See https://github.com/rust-lang/cargo/issues/6412
 
 [build-dependencies]
-bindgen = "0.71.1"
+bindgen = "0.72.0"
 
 [lints]
 workspace = true
