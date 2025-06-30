@@ -344,6 +344,46 @@ impl CSRGraph {
     pub fn connected_components(&self) -> Result<Vec<usize>> {
         Ok(ConnectedComponents::new(self)?.vtag)
     }
+
+    /// Extract a sub-graph
+    #[must_use]
+    pub fn subgraph<I: Iterator<Item = usize>>(&self, ids: I) -> Self {
+        let mut new_ids = vec![usize::MAX; self.n()];
+        let mut m = 0;
+        for (i, j) in ids.enumerate() {
+            new_ids[j] = i;
+            m += 1;
+        }
+        let mut ptr = vec![0];
+        let mut indices = Vec::new();
+        let mut values = Vec::new();
+        for (old_i, &new_i) in new_ids.iter().enumerate() {
+            if new_i != usize::MAX {
+                for k in self.row_ptr(old_i) {
+                    let old_j = self.indices[k];
+                    let new_j = new_ids[old_j];
+                    if new_j != usize::MAX {
+                        indices.push(new_j);
+                        if let Some(v) = &self.values {
+                            values.push(v[k]);
+                        }
+                    }
+                }
+                ptr.push(indices.len());
+            }
+        }
+        let values = if self.values.is_none() {
+            None
+        } else {
+            Some(values)
+        };
+        Self {
+            ptr,
+            indices,
+            values,
+            m,
+        }
+    }
 }
 
 /// Connected components of a graph
