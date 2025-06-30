@@ -200,9 +200,9 @@ pub fn fix_curvature<const D: usize, E: Elem>(
 
     let (_, bdy_ids) = smesh.boundary();
     let mut bdy_flag = vec![false; smesh.n_verts() as usize];
-    bdy_ids
-        .into_iter()
-        .for_each(|i| bdy_flag[i as usize] = true);
+    for i in bdy_ids {
+        bdy_flag[i as usize] = true;
+    }
 
     let e2e = smesh.get_elem_to_elems()?;
     let mut flg = Vec::with_capacity(smesh.n_elems() as usize);
@@ -226,17 +226,17 @@ pub fn fix_curvature<const D: usize, E: Elem>(
                 // Use any of the valid neighbors
                 // TODO: take the closest
                 let valid_neighbors = e2e
-                    .row(i_elem as Idx)
+                    .row(i_elem)
                     .iter()
                     .copied()
-                    .filter(|i| !flg[*i as usize])
-                    .filter(|i| etags[*i as usize] == etags[i_elem]);
+                    .filter(|i| !flg[*i])
+                    .filter(|i| etags[*i] == etags[i_elem]);
                 let mut min_dist = f64::MAX;
                 let e = smesh.elem(i_elem as Idx);
                 let c = smesh.gelem(e).center();
                 let mut i_neighbor = None;
                 for i in valid_neighbors {
-                    let e2 = smesh.elem(i);
+                    let e2 = smesh.elem(i as Idx);
                     let c2 = smesh.gelem(e2).center();
                     let dist = (c2 - c).norm();
                     if dist < min_dist {
@@ -248,7 +248,7 @@ pub fn fix_curvature<const D: usize, E: Elem>(
                 if let Some(i_neighbor) = i_neighbor {
                     if D == 2 {
                         u[i_elem].normalize_mut();
-                        u[i_elem] *= u[i_neighbor as usize].norm();
+                        u[i_elem] *= u[i_neighbor].norm();
                     } else {
                         let v = v.as_mut().unwrap();
 
@@ -256,15 +256,15 @@ pub fn fix_curvature<const D: usize, E: Elem>(
                         let mut n = u[i_elem].cross(&v[i_elem]);
                         n.normalize_mut();
 
-                        let mut v_new = v[i_neighbor as usize];
+                        let mut v_new = v[i_neighbor];
                         v_new.normalize_mut();
                         let mut u_new = v_new.cross(&n);
                         u_new.normalize_mut();
                         v_new = n.cross(&u_new);
                         v_new.normalize_mut();
 
-                        u[i_elem] = u_new * u[i_neighbor as usize].norm();
-                        v[i_elem] = v_new * v[i_neighbor as usize].norm();
+                        u[i_elem] = u_new * u[i_neighbor].norm();
+                        v[i_elem] = v_new * v[i_neighbor].norm();
 
                         to_fix -= 1;
                         fixed.push(i_elem);
@@ -283,7 +283,9 @@ pub fn fix_curvature<const D: usize, E: Elem>(
             }
             break;
         }
-        fixed.iter().for_each(|&i| flg[i] = false);
+        for i in fixed {
+            flg[i] = false;
+        }
         n_iter += 1;
     }
 
@@ -313,6 +315,8 @@ impl HasCurvature<3> for SimplexMesh<3, Triangle> {
 
 #[cfg(test)]
 mod tests {
+    use tmesh::mesh::Mesh;
+
     use crate::{
         H_MAX, Result,
         mesh::{GElem, Point, SimplexMesh, Triangle, test_meshes::test_mesh_2d},

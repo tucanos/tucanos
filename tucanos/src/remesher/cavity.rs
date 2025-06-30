@@ -371,16 +371,6 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
             ftags,
         )
     }
-
-    #[allow(dead_code)]
-    pub fn debug(&self) {
-        let msh = self.to_mesh();
-        msh.write_vtk("cavity.vtu", None, None).unwrap();
-        msh.boundary()
-            .0
-            .write_vtk("cavity_bdy.vtu", None, None)
-            .unwrap();
-    }
 }
 
 impl<const D: usize, E: Elem, M: Metric<D>> fmt::Display for Cavity<D, E, M> {
@@ -607,17 +597,5 @@ impl<'a, const D: usize, E: Elem, M: Metric<D>> FilledCavity<'a, D, E, M> {
             }
         }
         true
-    }
-
-    #[allow(dead_code)]
-    pub fn debug(&self) {
-        self.cavity.debug();
-        let msh = self.to_mesh();
-        msh.write_vtk("filled_cavity.vtu", None, None).unwrap();
-        msh.boundary()
-            .0
-            .write_vtk("filled_cavity_bdy.vtu", None, None)
-            .unwrap();
-        println!("Cavity:\n{}\nFtype: {:?}", self.cavity, self.ftype);
     }
 }

@@ -4,7 +4,6 @@ pub mod geometry;
 pub mod mesh;
 pub mod metric;
 pub mod remesher;
-mod spatialindex;
 
 /// Isotropic or anisotropic remesher in 2 and 3 dimensions
 const H_MAX: f64 = 1e8;
@@ -41,14 +40,8 @@ pub type Idx = u32;
 /// Topological tags: dimension
 pub type Dim = i8;
 /// Topological tags: tag
-#[cfg(all(feature = "32bit-tags", feature = "64bit-tags"))]
-compile_error!("features `32bit-tags` and `64bit-tags` are mutually exclusive");
-#[cfg(feature = "64bit-tags")]
-pub type Tag = i64;
-#[cfg(feature = "32bit-tags")]
-pub type Tag = i32;
-#[cfg(not(any(feature = "32bit-tags", feature = "64bit-tags")))]
-pub type Tag = i16;
+pub type Tag = tmesh::Tag;
+
 /// Topological tags: dimension and tag
 pub type TopoTag = (Dim, Tag);
 

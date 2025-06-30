@@ -1,7 +1,7 @@
 use crate::{
     Result, Tag,
     geometry::LinearGeometry,
-    mesh::{Edge, Point, SimplexMesh, Tetrahedron, Triangle},
+    mesh::{Edge, HasTmeshImpl, Point, SimplexMesh, Tetrahedron, Triangle},
     metric::{AnisoMetric2d, AnisoMetric3d},
 };
 use log::debug;
@@ -153,8 +153,10 @@ mod tests {
         metric::{AnisoMetric3d, Metric},
     };
     use nalgebra::SVector;
+    use tmesh::mesh::Mesh;
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_curvature() -> Result<()> {
         // build a cylinder mesh
         let (r_in, r_out) = (0.1, 0.5);
@@ -174,9 +176,6 @@ mod tests {
 
         // build the geometry
         let (bdy, bdy_ids) = mesh.boundary();
-
-        mesh.write_vtk("test.vtu", None, None)?;
-        bdy.write_vtk("test_bdy.vtu", None, None)?;
 
         // tag vertices on the interior & exterior cylinders
         let mut bdy_flg = vec![0; bdy.n_verts() as usize];

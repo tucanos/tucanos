@@ -1,19 +1,15 @@
 //! Python bindings for dual meshes
+use crate::mesh::{PyBoundaryMesh2d, PyBoundaryMesh3d, PyMesh2d, PyMesh3d};
 use numpy::{PyArray, PyArray1, PyArray2, PyArrayMethods};
 use pyo3::{Bound, PyResult, Python, exceptions::PyRuntimeError, pyclass, pymethods};
 use tmesh::{
     Tag,
-    dual_mesh::{DualMesh, DualType},
-    dual_mesh_2d::DualMesh2d,
-    dual_mesh_3d::DualMesh3d,
-    poly_mesh::PolyMesh,
+    dual::{DualMesh, DualMesh2d, DualMesh3d, DualType, PolyMesh},
 };
-
-use crate::mesh::{PyBoundaryMesh2d, PyBoundaryMesh3d, PyMesh2d, PyMesh3d};
 
 /// Type of dual cells (mapping of `tmesh::DualType`)
 #[pyclass(eq, eq_int)]
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum PyDualType {
     /// Medial cells
     Median,
@@ -47,8 +43,13 @@ macro_rules! create_dual_mesh {
 
             /// Get a copy of the vertices
             pub fn get_verts<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                PyArray::from_vec(py, self.0.verts().flatten().cloned().collect())
-                    .reshape([self.0.n_verts(), $dim])
+                let mut res = Vec::with_capacity($dim * self.0.n_verts());
+                for v in self.0.verts() {
+                    for &x in v.as_slice() {
+                        res.push(x);
+                    }
+                }
+                PyArray::from_vec(py, res).reshape([self.0.n_verts(), $dim])
             }
 
             /// Number of elements

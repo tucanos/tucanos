@@ -1,13 +1,10 @@
 use crate::{
-    Result, Tag,
-    mesh::{
-        Elem, GElem, Point, SimplexMesh,
-        graph::{CSRGraph, ConnectedComponents},
-    },
-    spatialindex::ObjectIndex,
+    Idx, Result, Tag,
+    mesh::{Elem, GElem, Point, SimplexMesh},
 };
 use log::debug;
 use std::collections::HashMap;
+use tmesh::{graph::CSRGraph, spatialindex::ObjectIndex};
 
 impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Automatically tag the (surface) mesh elements as follows
@@ -33,15 +30,12 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             }
         }
 
-        let e2e = CSRGraph::new(&e2e);
-
-        let cc = ConnectedComponents::<Tag>::new(&e2e)?;
-        let components = cc.tags();
+        let components = CSRGraph::from_edges(e2e.iter().copied(), None).connected_components()?;
 
         let mut new_tags: HashMap<Tag, Vec<Tag>> = HashMap::new();
         let mut tags = HashMap::new();
         let mut next = 1;
-        self.mut_etags().zip(components).for_each(|(t, &c)| {
+        self.mut_etags().zip(components).for_each(|(t, c)| {
             if let Some(new_tag) = tags.get(&(*t, c)) {
                 *t = *new_tag;
             } else {
@@ -78,12 +72,12 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// to the tag of the element of `self` onto which the element center is projected.
     pub fn transfer_tags<E2: Elem>(
         &self,
-        tree: &impl ObjectIndex<D>,
+        tree: &ObjectIndex<D>,
         mesh: &mut SimplexMesh<D, E2>,
     ) -> Result<()> {
         let get_tag = |pt: &Point<D>| {
             let idx = tree.nearest_elem(pt);
-            self.etag(idx)
+            self.etag(idx as Idx)
         };
 
         if E2::DIM == E::DIM {
@@ -110,6 +104,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
 #[cfg(test)]
 mod tests {
+    use tmesh::{mesh::Mesh, spatialindex::ObjectIndex};
+
     use crate::mesh::test_meshes::{test_mesh_2d, test_mesh_3d};
     use std::collections::HashMap;
 
@@ -172,7 +168,7 @@ mod tests {
         assert_eq!(new_tags.len(), 1);
         assert_eq!(*new_tags.get(&1).unwrap(), vec![1, 2, 3, 4, 5, 6]);
 
-        let tree = bdy.compute_elem_tree();
+        let tree = ObjectIndex::new(&bdy);
         bdy.transfer_tags(&tree, &mut mesh).unwrap();
 
         let mut res = HashMap::new();
