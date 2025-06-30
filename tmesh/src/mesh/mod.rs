@@ -853,8 +853,8 @@ where
     }
 
     /// Get the i-th partition
-    fn get_partition<M: Mesh<D, C, F>>(&self, i: usize) -> M {
-        self.extract_elems(|t| t == i as Tag + 1)
+    fn get_partition(&self, i: usize) -> SubMesh<D, C, F, Self> {
+        SubMesh::new(self, i as Tag + 1)
     }
 
     /// Partition the mesh (RCM ordering applied to the element to element connectivity)
@@ -865,6 +865,7 @@ where
     ) -> Result<(f64, f64)> {
         let partitioner = P::new(self, n_parts, weights)?;
         let parts = partitioner.compute()?;
+        assert_eq!(parts.len(), self.n_elems());
 
         let quality = partitioner.partition_quality(&parts);
         let imbalance = partitioner.partition_imbalance(&parts);
@@ -1016,65 +1017,6 @@ where
         vtu.export(file_name)?;
 
         Ok(())
-    }
-
-    /// Build a `Mesh<D, C, F>` mesh containing elements such that `filter(tag)` is true
-    /// Only the required vertices are present
-    fn extract_elems<G: Fn(Tag) -> bool, M: Mesh<D, C, F>>(&self, filter: G) -> M {
-        let mut new_ids = vec![usize::MAX; self.n_verts()];
-        let mut next = 0;
-
-        let n_elems = self
-            .elems()
-            .zip(self.etags())
-            .filter(|(_, t)| filter(*t))
-            .map(|(e, _)| {
-                for &i in &e {
-                    if new_ids[i] == usize::MAX {
-                        new_ids[i] = next;
-                        next += 1;
-                    }
-                }
-            })
-            .count();
-        let n_verts = next;
-        let n_faces = self
-            .faces()
-            .filter(|f| f.iter().all(|&i| new_ids[i] != usize::MAX))
-            .count();
-
-        let mut verts = vec![Vertex::<D>::zeros(); n_verts];
-        let mut faces = Vec::with_capacity(n_faces);
-        let mut ftags = Vec::with_capacity(n_faces);
-        let mut elems = Vec::with_capacity(n_elems);
-        let mut etags = Vec::with_capacity(n_elems);
-
-        new_ids
-            .iter()
-            .enumerate()
-            .filter(|&(_, j)| *j != usize::MAX)
-            .for_each(|(i, &j)| verts[j] = self.vert(i));
-        self.faces()
-            .zip(self.ftags())
-            .filter(|(f, _)| f.iter().all(|&i| new_ids[i] != usize::MAX))
-            .for_each(|(f, t)| {
-                faces.push(std::array::from_fn(|i| new_ids[f[i]]));
-                ftags.push(t);
-            });
-        self.elems()
-            .zip(self.etags())
-            .filter(|(e, _)| e.iter().all(|&i| new_ids[i] != usize::MAX))
-            .for_each(|(e, t)| {
-                elems.push(std::array::from_fn(|i| new_ids[e[i]]));
-                etags.push(t);
-            });
-
-        let mut res = M::empty();
-        res.add_verts(verts.iter().copied());
-        res.add_faces(faces.iter().copied(), ftags.iter().copied());
-        res.add_elems(elems.iter().copied(), etags.iter().copied());
-
-        res
     }
 
     /// Build a `Mesh<D, C2, F2>` mesh containing faces such that `filter(tag)` is true

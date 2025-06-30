@@ -1,12 +1,13 @@
 //! Tetrahedron meshes in 3d
 use crate::{
-    mesh::{GenericMesh, Mesh},
     Vert3d,
+    mesh::{GenericMesh, Mesh},
 };
 
 /// Create a `Mesh<3, 4, 3>` of a `lx` by `ly` by `lz` box by splitting a `nx` by `ny` by `nz`
 /// uniform structured grid
-#[must_use] pub fn box_mesh<M: Mesh<3, 4, 3>>(lx: f64, nx: usize, ly: f64, ny: usize, lz: f64, nz: usize) -> M {
+#[must_use]
+pub fn box_mesh<M: Mesh<3, 4, 3>>(lx: f64, nx: usize, ly: f64, ny: usize, lz: f64, nz: usize) -> M {
     let dx = lx / (nx as f64 - 1.);
     let x_1d = (0..nx).map(|i| i as f64 * dx).collect::<Vec<_>>();
 
@@ -20,7 +21,8 @@ use crate::{
 }
 
 /// Create a `Mesh<2, 3, 2>` of box by splitting a structured grid`
-#[must_use] pub fn nonuniform_box_mesh<M: Mesh<3, 4, 3>>(x: &[f64], y: &[f64], z: &[f64]) -> M {
+#[must_use]
+pub fn nonuniform_box_mesh<M: Mesh<3, 4, 3>>(x: &[f64], y: &[f64], z: &[f64]) -> M {
     let nx = x.len();
     let ny = y.len();
     let nz = z.len();
@@ -139,13 +141,12 @@ pub type Mesh3d = GenericMesh<3, 4, 3>;
 #[cfg(test)]
 mod tests {
     use crate::{
-        assert_delta,
+        Vert3d, assert_delta,
         mesh::{
-            bandwidth, box_mesh, cell_center,
+            BoundaryMesh3d, Mesh, Mesh3d, MutMesh, Simplex, Tetrahedron, Triangle, bandwidth,
+            box_mesh, cell_center,
             partition::{HilbertPartitioner, KMeansPartitioner3d, RCMPartitioner},
-            BoundaryMesh3d, Mesh, Mesh3d, MutMesh, Simplex, Tetrahedron, Triangle,
         },
-        Vert3d,
     };
     use rayon::iter::ParallelIterator;
 
@@ -273,7 +274,7 @@ mod tests {
         assert!(imbalance < 0.0002);
 
         for i in 0..4 {
-            let part: Mesh3d = msh.get_partition(i);
+            let part = msh.get_partition(i).mesh;
             let cc = part.vertex_to_vertices().connected_components().unwrap();
             let n_cc = cc.iter().copied().max().unwrap() + 1;
             assert_eq!(n_cc, 1);
@@ -331,7 +332,7 @@ mod tests {
         assert!(imbalance < 0.0002);
 
         for i in 0..4 {
-            let part: Mesh3d = msh.get_partition(i);
+            let part = msh.get_partition(i).mesh;
             let cc = part.vertex_to_vertices().connected_components().unwrap();
             let n_cc = cc.iter().copied().max().unwrap() + 1;
             assert_eq!(n_cc, 1);
@@ -347,7 +348,7 @@ mod tests {
         assert!(imbalance < 0.04);
 
         for i in 0..4 {
-            let part: Mesh3d = msh.get_partition(i);
+            let part = msh.get_partition(i).mesh;
             let cc = part.vertex_to_vertices().connected_components().unwrap();
             let n_cc = cc.iter().copied().max().unwrap() + 1;
             assert_eq!(n_cc, 1);
