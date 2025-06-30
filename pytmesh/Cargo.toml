@@ -14,5 +14,11 @@ numpy = "0.24.0"
 pyo3 = { version = "0.24.1", features = ["extension-module", "multiple-pymethods"] }
 pyo3-log = "0.12"
 
-[lints.rust]
-missing_docs = "warn"
+[features]
+32bit-tags = ["tmesh/32bit-tags"]
+64bit-tags = ["tmesh/64bit-tags"]
+metis = ["tmesh/metis"]
+
+
+[lints]
+workspace = true
