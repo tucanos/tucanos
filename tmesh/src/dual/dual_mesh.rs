@@ -13,7 +13,7 @@ use crate::{
 };
 use nalgebra::{DMatrix, DVector};
 use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
-use rustc_hash::{FxBuildHasher, FxHashMap};
+use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
 /// Types of dual cells
 #[derive(Clone, Copy, Debug)]
@@ -240,6 +240,41 @@ where
                     "Face {i} ({f:?}) = face {j} ({:?})",
                     self.face(j)
                 )));
+            }
+        }
+
+        // faces appear at most once in 1 or 2 elements
+        let mut flg = vec![0; self.n_faces()];
+        for (i_elem, e) in self.elems().enumerate() {
+            let mut tmp = FxHashSet::with_capacity_and_hasher(e.len(), FxBuildHasher);
+            for &(i, sgn) in e {
+                if tmp.contains(&i) {
+                    return Err(Error::from(&format!(
+                        "Face {i} appears multiple times in element {i_elem}"
+                    )));
+                }
+                tmp.insert(i);
+                if flg[i] == 0 {
+                    if sgn {
+                        flg[i] = 1;
+                    } else {
+                        flg[i] = -1;
+                    }
+                } else if flg[i] == 1 {
+                    if sgn {
+                        return Err(Error::from(&format!("Face {i} appears twice with True")));
+                    }
+                    flg[i] = 2;
+                } else if flg[i] == -1 {
+                    if !sgn {
+                        return Err(Error::from(&format!("Face {i} appears twice with False")));
+                    }
+                    flg[i] = 2;
+                } else if flg[i] == 2 {
+                    return Err(Error::from(&format!("Face {i} appears 3 times")));
+                } else {
+                    unreachable!()
+                }
             }
         }
 
