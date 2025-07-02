@@ -580,18 +580,6 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    #[ignore]
-    fn test_3d_simple3d() -> Result<()> {
-        let mesh = SimplexMesh::<3, Tetrahedron>::from_meshb("data/simple3d.meshb")?;
-
-        assert_eq!(mesh.n_verts(), 242118);
-        assert_eq!(mesh.n_faces(), 44830);
-        assert_eq!(mesh.n_elems(), 1380547);
-
-        Ok(())
-    }
-
     fn mean_bandwidth_e2v<const D: usize, E: Elem>(mesh: &SimplexMesh<D, E>) -> f64 {
         let mut mean = 0;
         for i_elem in 0..mesh.n_elems() {
