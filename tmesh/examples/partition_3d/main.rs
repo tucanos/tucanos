@@ -71,7 +71,7 @@ fn main() -> Result<()> {
         imbalance
     );
     for i in 0..n_parts {
-        let pmesh: Mesh3d = msh.get_partition(i);
+        let pmesh = msh.get_partition(i).mesh;
         let cc = pmesh.vertex_to_vertices().connected_components()?;
         let n_cc = cc.iter().copied().max().unwrap_or(0) + 1;
         println!("  part {i}: {n_cc} components");
@@ -87,7 +87,7 @@ fn main() -> Result<()> {
         imbalance
     );
     for i in 0..n_parts {
-        let pmesh: Mesh3d = msh.get_partition(i);
+        let pmesh = msh.get_partition(i).mesh;
         let cc = pmesh.vertex_to_vertices().connected_components()?;
         let n_cc = cc.iter().copied().max().unwrap_or(0) + 1;
         println!("  part {i}: {n_cc} components");
@@ -103,7 +103,7 @@ fn main() -> Result<()> {
         imbalance
     );
     for i in 0..n_parts {
-        let pmesh: Mesh3d = msh.get_partition(i);
+        let pmesh = msh.get_partition(i).mesh;
         let cc = pmesh.vertex_to_vertices().connected_components()?;
         let n_cc = cc.iter().copied().max().unwrap_or(0) + 1;
         println!("  part {i}: {n_cc} components");
