@@ -257,40 +257,47 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
                             tmp_faces.insert(sorted_face, (i_face, 0));
                             i_face
                         };
-
                         let mut ok = false;
                         let slice = &mut poly_to_face
                             [poly_to_face_ptr[edg[0]]..poly_to_face_ptr[edg[0] + 1]];
-                        for j in slice {
-                            if j.0 == i_face {
-                                // face is present twice --> remove it
-                                *j = (usize::MAX, true);
-                                ok = true;
-                                break;
-                            } else if j.0 == usize::MAX {
-                                *j = (i_face, is_sorted);
-                                ok = true;
-                                break;
+                        let n = slice
+                            .iter_mut()
+                            .filter(|(i, _)| *i == i_face)
+                            .map(|(i, _)| *i = usize::MAX)
+                            .count();
+                        if n == 0 {
+                            for j in slice {
+                                if j.0 == usize::MAX {
+                                    *j = (i_face, is_sorted);
+                                    ok = true;
+                                    break;
+                                }
                             }
+                            assert!(ok);
+                        } else {
+                            assert_eq!(n, 1);
                         }
-                        assert!(ok);
 
                         let mut ok = false;
                         let slice = &mut poly_to_face
                             [poly_to_face_ptr[edg[1]]..poly_to_face_ptr[edg[1] + 1]];
-                        for j in slice {
-                            if j.0 == i_face {
-                                // face is present twice --> remove it
-                                *j = (usize::MAX, true);
-                                ok = true;
-                                break;
-                            } else if j.0 == usize::MAX {
-                                *j = (i_face, !is_sorted);
-                                ok = true;
-                                break;
+                        let n = slice
+                            .iter_mut()
+                            .filter(|(i, _)| *i == i_face)
+                            .map(|(i, _)| *i = usize::MAX)
+                            .count();
+                        if n == 0 {
+                            for j in slice {
+                                if j.0 == usize::MAX {
+                                    *j = (i_face, !is_sorted);
+                                    ok = true;
+                                    break;
+                                }
                             }
+                            assert!(ok);
+                        } else {
+                            assert_eq!(n, 1);
                         }
-                        assert!(ok);
                     }
                 }
             }
@@ -331,6 +338,8 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
                     let mut ok = false;
                     let slice =
                         &mut poly_to_face[poly_to_face_ptr[edg[0]]..poly_to_face_ptr[edg[0] + 1]];
+                    let n = slice.iter_mut().filter(|(i, _)| *i == i_face).count();
+                    assert_eq!(n, 0);
                     for j in slice {
                         if j.0 == usize::MAX {
                             *j = (i_face, is_sorted);
@@ -366,6 +375,8 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
                     let mut ok = false;
                     let slice =
                         &mut poly_to_face[poly_to_face_ptr[edg[1]]..poly_to_face_ptr[edg[1] + 1]];
+                    let n = slice.iter_mut().filter(|(i, _)| *i == i_face).count();
+                    assert_eq!(n, 0);
                     for j in slice {
                         if j.0 == usize::MAX {
                             *j = (i_face, is_sorted);
@@ -448,6 +459,7 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
             .filter(|&&i| edge_normals[i].norm() > 1e-12)
             .map(|&i| edge_normals[i])
             .collect::<Vec<_>>();
+
         Self {
             verts,
             faces,
