@@ -52,12 +52,19 @@ impl<T: FromNativePointer> VectorImpl<T> {
 unsafe impl<T: FromNativePointer> Sync for VectorImpl<T> {}
 unsafe impl<T: FromNativePointer> Send for VectorImpl<T> {}
 
-struct NativeIter<T: FromNativePointer> {
+#[derive(Clone)]
+struct NativeIter<T: FromNativePointer + Clone>
+where
+    T::PointerType: Clone,
+{
     cur: *const T::PointerType,
     end: *const T::PointerType,
 }
 
-impl<T: FromNativePointer> Iterator for NativeIter<T> {
+impl<T: FromNativePointer + Clone> Iterator for NativeIter<T>
+where
+    T::PointerType: Clone,
+{
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -76,7 +83,10 @@ impl<T: FromNativePointer> Iterator for NativeIter<T> {
     }
 }
 
-impl<T: FromNativePointer> ExactSizeIterator for NativeIter<T> {
+impl<T: FromNativePointer + Clone> ExactSizeIterator for NativeIter<T>
+where
+    T::PointerType: Clone,
+{
     fn len(&self) -> usize {
         let o = unsafe { self.end.offset_from(self.cur) };
         debug_assert!(o >= 0, "{o}");
@@ -84,12 +94,19 @@ impl<T: FromNativePointer> ExactSizeIterator for NativeIter<T> {
     }
 }
 
-enum Iter<'a, T: FromNativePointer> {
+#[derive(Clone)]
+enum Iter<'a, T: FromNativePointer + Clone>
+where
+    T::PointerType: Clone,
+{
     Std(std::iter::Copied<std::slice::Iter<'a, T>>),
     Native(NativeIter<T>),
 }
 
-impl<T: Copy + FromNativePointer> Iterator for Iter<'_, T> {
+impl<T: Copy + FromNativePointer> Iterator for Iter<'_, T>
+where
+    T::PointerType: Clone,
+{
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -106,7 +123,10 @@ impl<T: Copy + FromNativePointer> Iterator for Iter<'_, T> {
     }
 }
 
-impl<T: Copy + FromNativePointer> ExactSizeIterator for Iter<'_, T> {
+impl<T: Copy + FromNativePointer> ExactSizeIterator for Iter<'_, T>
+where
+    T::PointerType: Clone,
+{
     fn len(&self) -> usize {
         match self {
             Iter::Std(x) => x.len(),
@@ -123,7 +143,10 @@ pub struct Vector<T: FromNativePointer> {
 const VECTOR_MSG: &str =
     "This fonction is not supported with the C array backed mesh. Call tucanos_mesh_clone().";
 
-impl<T: Copy + FromNativePointer> Vector<T> {
+impl<T: Copy + FromNativePointer> Vector<T>
+where
+    T::PointerType: Clone,
+{
     pub fn as_std(&self) -> &Vec<T> {
         match &self.data {
             VectorImpl::Std(x) => x,
@@ -141,7 +164,7 @@ impl<T: Copy + FromNativePointer> Vector<T> {
         self.data.len()
     }
 
-    pub fn iter(&self) -> impl ExactSizeIterator<Item = T> + '_ {
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = T> + Clone + '_ {
         match &self.data {
             VectorImpl::Std(x) => Iter::Std(x.iter().copied()),
             VectorImpl::Native((p, s)) => Iter::Native(NativeIter {
@@ -166,15 +189,40 @@ impl<T: Copy + FromNativePointer> Vector<T> {
         }
     }
 
+    pub fn index_mut(&mut self, i: Idx) -> &mut T {
+        let i = i as usize;
+        match &mut self.data {
+            VectorImpl::Std(x) => &mut x[i],
+            VectorImpl::Native(_) => panic!("Cannot use index_mut native vectors"),
+        }
+    }
+
     pub fn push(&mut self, v: T) {
         match &mut self.data {
             VectorImpl::Std(x) => x.push(v),
             VectorImpl::Native(_) => panic!("Cannot push to native vectors"),
         }
     }
+
+    pub fn reserve(&mut self, additional: usize) {
+        match &mut self.data {
+            VectorImpl::Std(x) => x.reserve(additional),
+            VectorImpl::Native(_) => panic!("Cannot reserve native vectors"),
+        }
+    }
+
+    pub fn clear(&mut self) {
+        match &mut self.data {
+            VectorImpl::Std(x) => x.clear(),
+            VectorImpl::Native(_) => panic!("Cannot clear native vectors"),
+        }
+    }
 }
 
-impl<T: Clone + FromNativePointer + Copy> Clone for Vector<T> {
+impl<T: Clone + FromNativePointer + Copy> Clone for Vector<T>
+where
+    T::PointerType: Clone,
+{
     fn clone(&self) -> Self {
         match &self.data {
             VectorImpl::Std(x) => Self {

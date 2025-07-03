@@ -1,7 +1,7 @@
 [package]
 name = "tmesh"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 
 [dependencies]
 base64 = "0.22.1"
@@ -14,6 +14,23 @@ rayon = "1.10.0"
 rustc-hash = "2.1.1"
 serde = { version = "1.0.219", features = ["derive"]}
 tempfile = "3.19.1"
+kdtree = { version = "0.7" }
+parry3d-f64 = { version = "0.21.1" }
+parry2d-f64 = { version = "0.21.1" }
+coupe = { git = "https://github.com/tucanos/coupe.git", version = "0.1.0", branch="xg/dev" }
+metis = { git = "https://github.com/tucanos/metis-rs.git", rev = "d31aa3e", optional=true}
+lindel = "0.1.1"
+stl_io = "0.8.5"
 
-[lints.rust]
-missing_docs = "warn"
+[features]
+32bit-tags = []
+64bit-tags = []
+
+[lints]
+workspace = true
+
+[[example]]
+name = "dual_mesh_2d"
+
+[[example]]
+name = "partition_3d"

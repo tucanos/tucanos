@@ -37,6 +37,7 @@ impl SimplexMesh<2, Triangle> {
 mod tests {
     use crate::{Result, mesh::test_meshes::test_mesh_3d, metric::Metric};
     use nalgebra::Matrix3;
+    use tmesh::mesh::Mesh;
 
     #[test]
     fn test_implied_metric() -> Result<()> {

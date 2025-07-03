@@ -15,9 +15,9 @@ log = "0.4.22"
 [build-dependencies]
 cbindgen = "0.29"
 
-[lints]
-workspace = true
-
 [features]
 32bit-tags = ["tucanos/32bit-tags"]
 64bit-tags = ["tucanos/64bit-tags"]
+
+[lints]
+workspace = true

@@ -1,15 +1,15 @@
 mod curvature;
+mod orient;
 
 use crate::{
-    Dim, Error, Result, Tag, TopoTag,
     geometry::curvature::HasCurvature,
-    mesh::{Elem, GElem, Topology},
-    mesh::{Point, SimplexMesh},
-    spatialindex::{DefaultObjectIndex, ObjectIndex},
+    mesh::{Elem, GElem, HasTmeshImpl, Point, SimplexMesh, Topology},
+    Dim, Error, Idx, Result, Tag, TopoTag,
 };
 use log::{debug, warn};
+pub use orient::orient_geometry;
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::collections::HashMap;
+use tmesh::spatialindex::ObjectIndex;
 
 /// Representation of a D-dimensional geometry
 pub trait Geometry<const D: usize>: Send + Sync {
@@ -86,13 +86,16 @@ impl<const D: usize> Geometry<D> for NoGeometry<D> {
 /// Geometry for a patch of faces with a constant tag
 struct LinearPatchGeometry<const D: usize> {
     /// The ObjectIndex
-    tree: DefaultObjectIndex<D>,
+    tree: ObjectIndex<D>,
 }
 
 impl<const D: usize> LinearPatchGeometry<D> {
     /// Create a `LinearPatchGeometry` from a `SimplexMesh`
-    pub fn new<E: Elem>(mesh: &SimplexMesh<D, E>) -> Self {
-        let tree = mesh.compute_elem_tree();
+    pub fn new<E: Elem>(mesh: &SimplexMesh<D, E>) -> Self
+    where
+        SimplexMesh<D, E>: HasTmeshImpl<D, E>,
+    {
+        let tree = mesh.elem_tree();
 
         Self { tree }
     }
@@ -108,7 +111,7 @@ struct LinearPatchGeometryWithCurvature<const D: usize, E: Elem> {
     /// The face mesh
     mesh: SimplexMesh<D, E>,
     /// The ObjectIndex
-    tree: DefaultObjectIndex<D>,
+    tree: ObjectIndex<D>,
     /// Optionally, the first principal curvature direction
     u: Option<Vec<Point<D>>>,
     /// Optionally, the second principal curvature direction (3D only)
@@ -117,11 +120,11 @@ struct LinearPatchGeometryWithCurvature<const D: usize, E: Elem> {
 
 impl<const D: usize, E: Elem> LinearPatchGeometryWithCurvature<D, E>
 where
-    SimplexMesh<D, E>: HasCurvature<D>,
+    SimplexMesh<D, E>: HasCurvature<D> + HasTmeshImpl<D, E>,
 {
     /// Create a `LinearPatchGeometry` from a `SimplexMesh`
     pub fn new(mut mesh: SimplexMesh<D, E>) -> Self {
-        let tree = mesh.compute_elem_tree();
+        let tree = mesh.elem_tree();
         mesh.compute_face_to_elems();
         mesh.add_boundary_faces();
         mesh.clear_face_to_elems();
@@ -155,7 +158,7 @@ where
             return Err(Error::from("LinearGeometry: compute_curvature not called"));
         }
 
-        let i_elem = self.tree.nearest_elem(pt) as usize;
+        let i_elem = self.tree.nearest_elem(pt);
         let u = self.u.as_ref().unwrap();
         self.v.as_ref().map_or_else(
             || Ok((u[i_elem], None)),
@@ -164,28 +167,10 @@ where
     }
 
     pub fn write_curvature(&self, fname: &str) -> Result<()> {
-        // Export the curvature
-        let u1 = self
-            .u
-            .as_ref()
-            .unwrap()
-            .iter()
-            .flatten()
-            .copied()
-            .collect::<Vec<_>>();
-        let v1 = self
-            .v
-            .as_ref()
-            .unwrap()
-            .iter()
-            .flatten()
-            .copied()
-            .collect::<Vec<_>>();
-        let mut data = HashMap::new();
-        data.insert(String::from("u"), u1.as_slice());
-        data.insert(String::from("v"), v1.as_slice());
-
-        self.mesh.write_vtk(fname, None, Some(data))?;
+        let mut writer = self.mesh.vtu_writer();
+        writer.add_point_data("u", D, self.u.as_ref().unwrap().iter().flatten().copied());
+        writer.add_point_data("v", D, self.v.as_ref().unwrap().iter().flatten().copied());
+        writer.export(fname)?;
 
         Ok(())
     }
@@ -205,7 +190,8 @@ where
 
 impl<const D: usize, E: Elem> LinearGeometry<D, E>
 where
-    SimplexMesh<D, E>: HasCurvature<D>,
+    SimplexMesh<D, E>: HasCurvature<D> + HasTmeshImpl<D, E>,
+    SimplexMesh<D, E::Face>: HasTmeshImpl<D, E::Face>,
 {
     /// Create a `LinearGeometry` for the boundary of `mesh` (with positive tags) from a
     /// `SimplexMesh` representation of the boundary
@@ -294,7 +280,7 @@ where
 
 impl<const D: usize, E: Elem> Geometry<D> for LinearGeometry<D, E>
 where
-    SimplexMesh<D, E>: HasCurvature<D>,
+    SimplexMesh<D, E>: HasCurvature<D> + HasTmeshImpl<D, E>,
 {
     fn check(&self, _topo: &Topology) -> Result<()> {
         // The check is performed during creation
@@ -334,7 +320,7 @@ where
 
         let patch = self.patches.get(&tag.1).unwrap();
         let idx = patch.tree.nearest_elem(pt);
-        let n_ref = patch.mesh.gelem(patch.mesh.elem(idx)).normal();
+        let n_ref = patch.mesh.gelem(patch.mesh.elem(idx as Idx)).normal();
         let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
         f64::acos(cos_a).to_degrees()
     }
@@ -342,21 +328,22 @@ where
 
 #[cfg(test)]
 mod tests {
+    use tmesh::mesh::{read_stl, Mesh};
+
     use super::{Geometry, LinearGeometry};
     use crate::{
-        Result,
         mesh::{
-            Point,
-            io::read_stl,
             test_meshes::{test_mesh_2d, test_mesh_3d, write_stl_file},
+            Point, SimplexMesh, Triangle,
         },
+        Result,
     };
     use std::fs::remove_file;
 
     #[test]
     fn test_stl() -> Result<()> {
         write_stl_file("cube2.stl")?;
-        let geom = read_stl("cube2.stl");
+        let geom: SimplexMesh<3, Triangle> = read_stl("cube2.stl")?;
         remove_file("cube2.stl")?;
 
         let mut mesh = geom.clone();

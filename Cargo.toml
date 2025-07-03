@@ -1,6 +1,6 @@
 [workspace]
-members = ["tucanos", "tucanos-ffi", "tucanos-ffi-test"]
-default-members = ["tucanos"]
+members = ["tucanos", "tmesh", "pytmesh", "tucanos-ffi", "tucanos-ffi-test"]
+default-members = ["tucanos", "tmesh"]
 resolver = "3"
 
 [workspace.package]
@@ -37,6 +37,9 @@ unreadable_literal = "allow"
 # TODO: to remove
 cognitive_complexity = "allow"
 too_long_first_doc_paragraph = "allow"
+ptr_as_ptr = "allow"
+borrow_as_ptr = "allow"
+ref_as_ptr = "allow"
 
 [profile.release]
 debug = 1

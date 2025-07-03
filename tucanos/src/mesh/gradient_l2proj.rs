@@ -1,5 +1,5 @@
 use crate::{
-    Idx, Result,
+    Result,
     mesh::{Elem, GElem, Point, SimplexMesh},
 };
 use log::debug;
@@ -49,12 +49,14 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         let mut res = vec![0.0; D * self.n_verts() as usize];
         res.par_chunks_mut(D).enumerate().for_each(|(i_vert, g)| {
-            for &i_elem in v2e.row(i_vert as Idx) {
+            for &i_elem in v2e.row(i_vert) {
                 for i in 0..D {
-                    g[i] += tmp[D * i_elem as usize + i];
+                    g[i] += tmp[D * i_elem + i];
                 }
             }
-            g.iter_mut().for_each(|x| *x /= fac * vol[i_vert]);
+            for x in g.iter_mut() {
+                *x /= fac * vol[i_vert];
+            }
         });
 
         Ok(res)
@@ -115,12 +117,14 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             _ => unreachable!(),
         };
         res.par_chunks_mut(n).enumerate().for_each(|(i_vert, g)| {
-            for &i_elem in v2e.row(i_vert as Idx) {
+            for &i_elem in v2e.row(i_vert) {
                 for i in 0..n {
-                    g[i] += tmp[n * i_elem as usize + i];
+                    g[i] += tmp[n * i_elem + i];
                 }
             }
-            g.iter_mut().for_each(|x| *x /= fac * vol[i_vert]);
+            for x in g.iter_mut() {
+                *x /= fac * vol[i_vert];
+            }
         });
         Ok(res)
     }
@@ -128,6 +132,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
 #[cfg(test)]
 mod tests {
+
+    use tmesh::mesh::Mesh;
 
     use crate::{
         Result,
