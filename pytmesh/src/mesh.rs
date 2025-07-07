@@ -1,3 +1,6 @@
+#![allow(clippy::ptr_as_ptr)]
+#![allow(clippy::borrow_as_ptr)]
+#![allow(clippy::ref_as_ptr)]
 //! Python bindings for simplex meshes
 use numpy::{
     PyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2,
