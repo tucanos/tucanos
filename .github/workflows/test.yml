@@ -67,6 +67,11 @@ jobs:
       with:
         command: run
         args: --example partition_3d --features=metis --release
+    - name: Run example/dual_mesh_3d
+      uses: clechasseur/rs-cargo@v3
+      with:
+        command: run
+        args: --example dual_mesh_3d --release
   c_api:
     runs-on: ubuntu-latest
     steps:
