@@ -34,3 +34,6 @@ name = "dual_mesh_2d"
 
 [[example]]
 name = "partition_3d"
+
+[[example]]
+name = "dual_mesh_3d"
