@@ -149,4 +149,12 @@ jobs:
         cd pytucanos
         pip install -e .
         python -m unittest discover
-      
+    - name: Run the pytucanos examples
+      run: |
+        cd pytucanos
+        pip install -e .
+        python examples/example_2d.py
+        python examples/example_2d_aniso.py
+        python examples/example_2d_hessian.py
+        python examples/example_2d_implied.py
+        python examples/example_2d_parallel.py  
