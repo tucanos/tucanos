@@ -935,6 +935,8 @@ pub trait HasTmeshImpl<const D: usize, E: Elem> {
     where
         F1: FnMut(Tag) -> bool,
         F2: FnMut(Tag) -> bool;
+
+    fn fix_face_orientation(&mut self);
 }
 
 #[cfg(test)]

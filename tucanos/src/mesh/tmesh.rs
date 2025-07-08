@@ -275,6 +275,11 @@ macro_rules! impl_mesh {
                     merge_tol,
                 )
             }
+
+            fn fix_face_orientation(&mut self) {
+                let all_faces = self.all_faces();
+                self.fix_orientation(&all_faces);
+            }
         }
     };
 }

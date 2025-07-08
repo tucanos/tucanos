@@ -405,7 +405,7 @@ where
         ifc.mut_etags().for_each(|t| *t = 1);
         ifc.remove_faces(|t| self.is_partition_bdy(t));
         if self.debug {
-            ifc.compute_face_to_elems();
+            ifc.fix_face_orientation();
             ifc.check_simple().unwrap();
         }
 
@@ -455,10 +455,14 @@ where
 
         // Merge res and ifc
         let mut res = res.into_inner().unwrap();
+        if self.debug {
+            res.fix_face_orientation();
+            res.check_simple().unwrap();
+        }
         ifc.mut_etags().for_each(|t| *t = 2);
         let (ids, _, _) = res.add(&ifc, |_| true, |_| true, Some(1e-12));
         if self.debug {
-            res.compute_face_to_elems();
+            res.fix_face_orientation();
             res.check_simple().unwrap();
         }
         let mut res_m = res_m.into_inner().unwrap();
@@ -467,7 +471,7 @@ where
         res.remove_faces(|t| self.is_interface_bdy(t));
         res.mut_etags().for_each(|t| *t = 1);
         if self.debug {
-            res.compute_face_to_elems();
+            res.fix_face_orientation();
             res.check_simple().unwrap();
         }
 
