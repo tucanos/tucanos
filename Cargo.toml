@@ -1,0 +1,42 @@
+[workspace]
+members = ["tucanos", "tmesh", "pytmesh", "tucanos-ffi", "tucanos-ffi-test"]
+default-members = ["tucanos", "tmesh"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+
+[workspace.lints.rust]
+unused_imports = "deny"
+unused_variables = "deny"
+unused_mut = "deny"
+dead_code = "deny"
+unused_attributes = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
+missing_panics_doc = "allow"
+match_same_arms = "allow"
+similar_names = "allow"
+cast_possible_truncation = "allow"
+missing_errors_doc = "allow"
+cast_precision_loss = "allow"
+multiple_crate_versions = "allow"
+cargo_common_metadata = "allow"
+doc_markdown = "allow"
+suboptimal_flops = "allow"
+many_single_char_names = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+should_panic_without_expect = "allow"
+unreadable_literal = "allow"
+# TODO: to remove
+cognitive_complexity = "allow"
+too_long_first_doc_paragraph = "allow"
+
+[profile.release]
+debug = 1

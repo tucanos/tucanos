@@ -1,0 +1,14 @@
+[build-system]
+requires = ["maturin>=1,<2"]
+build-backend = "maturin"
+
+[project]
+name = "pytmesh"
+dependencies = [
+  "numpy",
+]
+
+[project.optional-dependencies]
+test=[
+  "vtk==9.3"
+]

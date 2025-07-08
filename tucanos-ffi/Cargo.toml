@@ -1,0 +1,23 @@
+[package]
+name = "tucanos-ffi"
+version = "0.1.0"
+edition.workspace = true
+description = "C / FFI wrapper for the Tucanos mesher"
+
+[lib]
+name = "tucanos"
+crate-type = ["cdylib"]
+
+[dependencies]
+tucanos = { path = "../tucanos" }
+log = "0.4.22"
+
+[build-dependencies]
+cbindgen = "0.29"
+
+[features]
+32bit-tags = ["tucanos/32bit-tags"]
+64bit-tags = ["tucanos/64bit-tags"]
+
+[lints]
+workspace = true

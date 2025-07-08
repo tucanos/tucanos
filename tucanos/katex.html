@@ -1,0 +1,34 @@
+<!-- From https://github.com/CAD97/katex-doc -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css" integrity="sha384-vKruj+a13U8yHIkAyGgK1J3ArTLzrFGBbBc0tDp4ad/EyewESeXE/Iv67Aj8gKZ0" crossorigin="anonymous">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.js" integrity="sha384-PwRUT/YqbnEjkZO0zZxNqcxACrXe+j766U2amXcgMg5457rve2Y7I6ZJSm2A0mS4" crossorigin="anonymous"></script>
+<script>
+  "use strict";
+  document.addEventListener("DOMContentLoaded", function () {
+      var maths = document.getElementsByClassName("language-math");
+      for (var i=0; i<maths.length; i++) {
+          var el = maths[i];
+          katex.render(el.innerText, el, {displayMode: true});
+      }
+
+      var codes = document.getElementsByTagName("code");
+      for (i=0; i<codes.length; i++) {
+          el = codes[i];
+          if (el.classList.contains("language-math")) continue;
+          if (el.classList.contains("language-inline-math")) {
+              katex.render(el.innerText, el);
+              continue;
+          }
+
+          var parent = el.parentNode;
+          if (parent.nodeName.toLowerCase() === "pre") continue;
+          // TODO: Can this be done with DOM manipulation rather than string manipulation?
+          // https://stackoverflow.com/q/48438067/3019990
+          var inlineMath = "$" + el.outerHTML + "$";
+          if (parent.innerHTML.indexOf(inlineMath) !== -1) {
+              el.classList.add("language-inline-math");
+              parent.innerHTML = parent.innerHTML.replace("$" + el.outerHTML + "$", el.outerHTML);
+              i--;
+          }
+      }
+  });
+</script>

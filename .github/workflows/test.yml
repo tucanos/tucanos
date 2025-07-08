@@ -1,0 +1,138 @@
+name: Cargo test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+  packages: read
+  pull-requests: read
+  checks: write
+
+jobs:
+  stable:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        lfs: false
+    - run: sudo apt-get install -y libmetis-dev libnlopt-dev gmsh
+    - id: toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        components: clippy
+        toolchain: stable
+    - run: rustup override set ${{steps.toolchain.outputs.name}}
+    - name: Rust cache
+      uses: actions/cache@v4
+      with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-stable-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-stable-
+    - name: Run clippy
+      uses: clechasseur/rs-clippy-check@v4
+    - name: Run cargo test
+      uses: clechasseur/rs-cargo@v3
+      with:
+        command: test
+        args: --features=metis,nlopt
+    - name: Run cargo test --release
+      uses: clechasseur/rs-cargo@v3
+      with:
+        command: test
+        args: --release --features=metis,nlopt
+    - name: Run example/adapt_ellipse
+      uses: clechasseur/rs-cargo@v3
+      with:
+        command: run
+        args: --example adapt_ellipse --features=metis --release
+    - name: Run example/dual_mesh_2d
+      uses: clechasseur/rs-cargo@v3
+      with:
+        command: run
+        args: --example dual_mesh_2d --release
+    - name: Run example/partition_3d
+      uses: clechasseur/rs-cargo@v3
+      with:
+        command: run
+        args: --example partition_3d --features=metis --release
+    - name: Run example/dual_mesh_3d
+      uses: clechasseur/rs-cargo@v3
+      with:
+        command: run
+        args: --example dual_mesh_3d --release
+  c_api:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        lfs: false
+    - run: sudo apt-get install -y libmetis-dev libnlopt-dev
+    - id: toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        components: clippy
+        toolchain: stable
+    - run: rustup override set ${{steps.toolchain.outputs.name}}
+    - name: Rust cache
+      uses: actions/cache@v4
+      with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-stable-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-stable-
+    - name: Test FFI 16bit tags
+      run: cargo build -p tucanos-ffi && cargo test -p tucanos-ffi-test
+    - name: Test FFI 32bit tags
+      run: cargo build -p tucanos-ffi --features 32bit-tags && cargo test -p tucanos-ffi-test
+    - name: Test FFI 64bit tags
+      run: cargo build -p tucanos-ffi --features 64bit-tags && cargo test -p tucanos-ffi-test
+  python:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        lfs: false
+    - run: sudo apt-get install -y libmetis-dev libnlopt-dev
+    - id: toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        components: clippy
+        toolchain: stable
+    - run: rustup override set ${{steps.toolchain.outputs.name}}
+    - name: Rust cache
+      uses: actions/cache@v4
+      with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-stable-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-stable-
+    - name: Run clippy
+      uses: clechasseur/rs-clippy-check@v4
+      with:
+        args: -p pytmesh
+    - name: Test pytmesh
+      run: |
+        cd pytmesh
+        pip install vtk==9.3
+        pip install -e .
+        python -m unittest discover

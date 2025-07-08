@@ -1,0 +1,18 @@
+[package]
+name = "tucanos-ffi-test"
+version = "0.1.0"
+edition.workspace = true
+# See https://github.com/rust-lang/cargo/issues/1581
+description = "Test for tucanos-ffi"
+
+# tucanos-ffi-test does not depends on the tucanos-ffi crate, only on libtucanos.so. This can
+# be declared using artifact-dependencies but this is still only nightly. Until it get stable
+# we manually trigger the tucanos-ffi build
+# See https://doc.rust-lang.org/nightly/cargo/reference/unstable.html#artifact-dependencies
+# See https://github.com/rust-lang/cargo/issues/6412
+
+[build-dependencies]
+bindgen = "0.72.0"
+
+[lints]
+workspace = true
