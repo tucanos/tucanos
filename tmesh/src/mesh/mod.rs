@@ -688,12 +688,22 @@ where
         if Self::faces_are_oriented() {
             let vol = self.par_gelems().map(|ge| Cell::<C>::vol(&ge)).sum::<f64>();
             let vol2 = self
-                .par_gfaces()
-                .map(|gf| cell_center(&gf).dot(&Face::<F>::normal(&gf)))
+                .par_faces()
+                .filter(|f| {
+                    let f = f.sorted();
+                    let [_, i0, i1] = all_faces.get(&f).unwrap();
+                    *i0 == usize::MAX || *i1 == usize::MAX
+                })
+                .map(|f| {
+                    let gf = self.gface(&f);
+                    cell_center(&gf).dot(&Face::<F>::normal(&gf))
+                })
                 .sum::<f64>()
                 / D as f64;
             if (vol - vol2).abs() > 1e-10 * vol {
-                return Err(Error::from("Invalid volume"));
+                return Err(Error::from(&format!(
+                    "Invalid volume : {vol} from elements, {vol2} from boundary faces"
+                )));
             }
         }
         Ok(())
