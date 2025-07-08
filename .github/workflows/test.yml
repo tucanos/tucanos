@@ -126,6 +126,10 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-stable-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-stable-
+    - name: Run ruff
+      run: |
+        pip install ruff
+        ruff check .
     - name: Run clippy (pytmesh)
       uses: clechasseur/rs-clippy-check@v4
       with:
