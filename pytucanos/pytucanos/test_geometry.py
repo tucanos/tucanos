@@ -39,7 +39,7 @@ class TestGeometry3d(unittest.TestCase):
         n = 4 * m
         theta = 2.0 * np.pi * np.linspace(0, 1, n + 1) - 3.0 * np.pi / 4.0
         edgs = np.stack([np.arange(0, n), np.arange(1, n + 1)], axis=-1).astype(
-            np.uint32
+            np.uint64
         )
         edgs[-1, -1] = 0
         etags = np.ones(n, dtype=np.int16)
@@ -55,7 +55,7 @@ class TestGeometry3d(unittest.TestCase):
                     [0, 2 * m],
                 ],
             ],
-        ).astype(np.uint32)
+        ).astype(np.uint64)
         etags = np.append(etags, 5).astype(np.int16)
 
         x = 0.5 + 0.5**0.5 * np.cos(theta)
@@ -65,7 +65,7 @@ class TestGeometry3d(unittest.TestCase):
             coords,
             edgs,
             etags,
-            np.zeros([0, 1], dtype=np.uint32),
+            np.zeros([0, 1], dtype=np.uint64),
             np.zeros(0, dtype=np.int16),
         )
 

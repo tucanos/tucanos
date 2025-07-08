@@ -1,3 +1,6 @@
+#![allow(clippy::ptr_as_ptr)]
+#![allow(clippy::borrow_as_ptr)]
+#![allow(clippy::ref_as_ptr)]
 use crate::{
     geometry::{LinearGeometry2d, LinearGeometry3d},
     mesh::{Mesh22, Mesh33},
@@ -11,13 +14,13 @@ use pyo3::{
     pyclass, pymethods,
     types::PyType,
 };
+use pytmesh::PyPartitionerType;
 use tucanos::{
     Idx,
-    mesh::{PartitionType, Tetrahedron, Triangle},
+    mesh::{Tetrahedron, Triangle},
     metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
     remesher::{ParallelRemesher, ParallelRemesherParams},
 };
-
 #[pyclass(get_all, set_all)]
 #[derive(Clone)]
 pub struct PyParallelRemesherParams {
@@ -26,14 +29,14 @@ pub struct PyParallelRemesherParams {
     min_verts: Idx,
 }
 impl PyParallelRemesherParams {
-    pub fn from(other: &ParallelRemesherParams) -> Self {
+    const fn from(other: &ParallelRemesherParams) -> Self {
         Self {
             n_layers: other.n_layers,
             max_levels: other.max_levels,
             min_verts: other.min_verts,
         }
     }
-    pub fn to(&self) -> ParallelRemesherParams {
+    const fn to(&self) -> ParallelRemesherParams {
         ParallelRemesherParams::new(self.n_layers, self.max_levels, self.min_verts)
     }
 }
@@ -41,7 +44,7 @@ impl PyParallelRemesherParams {
 #[pymethods]
 impl PyParallelRemesherParams {
     #[new]
-    pub fn new(n_layers: Idx, max_levels: Idx, min_verts: Idx) -> Self {
+    const fn new(n_layers: Idx, max_levels: Idx, min_verts: Idx) -> Self {
         Self {
             n_layers,
             max_levels,
@@ -74,21 +77,8 @@ macro_rules! create_parallel_remesher {
         #[pymethods]
         impl $name {
             #[new]
-            pub fn new(mesh: &$mesh, partition_type: &str, n_partitions: Idx) -> PyResult<Self> {
-                let partition_type = if partition_type == "scotch" {
-                    PartitionType::Scotch(n_partitions)
-                } else if partition_type == "metis_kway" {
-                    PartitionType::MetisKWay(n_partitions)
-                } else if partition_type == "metis_recursive" {
-                    PartitionType::MetisRecursive(n_partitions)
-                } else if partition_type == "hilbert" {
-                    PartitionType::Hilbert(n_partitions)
-                } else {
-                    return Err(PyValueError::new_err(
-        "Invalid partition type: allowed values are scotch, metis_kway, metis_recursive"));
-                };
-
-                let dd = ParallelRemesher::new(mesh.mesh.clone(), partition_type);
+            pub fn new(mesh: &$mesh, method: PyPartitionerType, n_partitions: Idx) -> PyResult<Self> {
+                let dd = ParallelRemesher::new(mesh.0.clone(), method.to(n_partitions as usize));
                 if let Err(res) = dd {
                     return Err(PyRuntimeError::new_err(res.to_string()));
                 }
@@ -100,9 +90,7 @@ macro_rules! create_parallel_remesher {
             }
 
             pub fn partitionned_mesh(&mut self) -> $mesh {
-                $mesh {
-                    mesh: self.dd.partitionned_mesh().clone(),
-                }
+                $mesh(self.dd.partitionned_mesh().clone())
             }
 
             #[allow(clippy::too_many_arguments)]
@@ -133,7 +121,7 @@ macro_rules! create_parallel_remesher {
                         .unwrap()
                 });
 
-                let mesh = $mesh { mesh };
+                let mesh = $mesh(mesh);
 
                 let m = m.iter().flat_map(|m| m.into_iter()).collect::<Vec<_>>();
 
@@ -152,7 +140,7 @@ macro_rules! create_parallel_remesher {
                 mesh: &$mesh,
                 m: PyReadonlyArray2<f64>,
             ) -> PyResult<(Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>)> {
-                if m.shape()[0] != mesh.n_verts() as usize {
+                if m.shape()[0] != mesh.n_verts()  {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
                 if m.shape()[1] != $metric::N as usize {
@@ -165,9 +153,9 @@ macro_rules! create_parallel_remesher {
                     .map(|x| $metric::from_slice(x))
                     .collect();
 
-                let q = mesh.mesh.qualities(&m);
+                let q = mesh.0.qualities(&m);
                 let l = mesh
-                    .mesh
+                    .0
                     .edge_lengths(&m)
                     .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
 

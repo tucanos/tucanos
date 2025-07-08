@@ -1010,6 +1010,77 @@ where
         Ok(())
     }
 
+    fn write_solb_it<const N: usize, G: FnMut(&[f64]) -> [f64; N]>(
+        &self,
+        arr: &[f64],
+        file_name: &str,
+        f: G,
+    ) -> Result<()> {
+        assert_eq!(arr.len(), N * self.n_verts());
+
+        let mut writer = MeshbWriter::new(file_name, 2, D as u8)?;
+        writer.write_solution(arr.chunks(N).map(f))?;
+        writer.close();
+
+        Ok(())
+    }
+
+    fn write_solb(&self, arr: &[f64], file_name: &str) -> Result<()> {
+        let n_comp = arr.len() / self.n_verts();
+        match D {
+            2 => match n_comp {
+                1 => self.write_solb_it::<1, _>(arr, file_name, |x| [x[0]])?,
+                2 => self.write_solb_it::<2, _>(arr, file_name, |x| [x[0], x[1]])?,
+                3 => self.write_solb_it::<3, _>(arr, file_name, |x| [x[0], x[2], x[1]])?,
+                _ => unreachable!(),
+            },
+            3 => match n_comp {
+                1 => self.write_solb_it::<1, _>(arr, file_name, |x| [x[0]])?,
+                3 => self.write_solb_it::<3, _>(arr, file_name, |x| [x[0], x[1], x[2]])?,
+                6 => self.write_solb_it::<6, _>(arr, file_name, |x| {
+                    [x[0], x[3], x[1], x[5], x[4], x[2]]
+                })?,
+                _ => unreachable!(),
+            },
+            _ => unreachable!(),
+        }
+
+        Ok(())
+    }
+
+    fn read_solb_it<const N: usize, G: FnMut([f64; N]) -> [f64; N]>(
+        mut reader: MeshbReader,
+        f: G,
+    ) -> Result<Vec<f64>> {
+        let sol = reader.read_solution::<N>()?;
+        Ok(sol.flat_map(f).collect())
+    }
+
+    fn read_solb(file_name: &str) -> Result<(Vec<f64>, usize)> {
+        let mut reader = MeshbReader::new(file_name)?;
+        let d = reader.dimension();
+        assert_eq!(d, D as u8);
+        let m = reader.get_solution_size()?;
+
+        let res = match d {
+            2 => match m {
+                1 => Self::read_solb_it::<1, _>(reader, |x| [x[0]])?,
+                2 => Self::read_solb_it::<2, _>(reader, |x| [x[0], x[1]])?,
+                3 => Self::read_solb_it::<3, _>(reader, |x| [x[0], x[2], x[1]])?,
+                _ => unreachable!(),
+            },
+            3 => match m {
+                1 => Self::read_solb_it::<1, _>(reader, |x| [x[0]])?,
+                3 => Self::read_solb_it::<3, _>(reader, |x| [x[0], x[1], x[2]])?,
+                6 => Self::read_solb_it::<6, _>(reader, |x| [x[0], x[2], x[5], x[1], x[4], x[3]])?,
+                _ => unreachable!(),
+            },
+            _ => unreachable!(),
+        };
+
+        Ok((res, m))
+    }
+
     /// Export the mesh to a `.vtu` file
     fn write_vtk(&self, file_name: &str) -> Result<()> {
         let vtu = VTUFile::from_mesh(self, VTUEncoding::Binary);

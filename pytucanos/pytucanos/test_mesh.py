@@ -128,7 +128,7 @@ class TestMeshes(unittest.TestCase):
         maxi = elems.max(axis=1)
         before = (maxi - mini).mean()
 
-        msh.reorder_hilbert()
+        msh, _, _, _ = msh.reorder_hilbert()
 
         elems = msh.get_elems()
         mini = elems.min(axis=1)
@@ -147,7 +147,7 @@ class TestMeshes(unittest.TestCase):
         maxi = elems.max(axis=1)
         before = (maxi - mini).mean()
 
-        msh.reorder_hilbert()
+        msh, _, _, _ = msh.reorder_hilbert()
 
         elems = msh.get_elems()
         mini = elems.min(axis=1)
@@ -326,7 +326,6 @@ class TestMeshes(unittest.TestCase):
         self.assertTrue(np.allclose(vols.sum(), 1.0))
 
     def test_autotag_2d(self):
-
         coords, elems, etags, faces, ftags = get_square(two_tags=False)
         ftags[:] = 1
 
@@ -353,7 +352,6 @@ class TestMeshes(unittest.TestCase):
         self.assertTrue(np.array_equal(counts, [8, 8, 8, 8]))
 
     def test_autotag_3d(self):
-
         coords, elems, etags, faces, ftags = get_cube()
         ftags[:] = 1
 

@@ -1,3 +1,6 @@
+#![allow(clippy::ptr_as_ptr)]
+#![allow(clippy::borrow_as_ptr)]
+#![allow(clippy::ref_as_ptr)]
 use crate::{
     geometry::{LinearGeometry2d, LinearGeometry3d},
     mesh::{Mesh22, Mesh33},
@@ -33,7 +36,7 @@ pub struct PyCollapseParams {
 }
 
 impl PyCollapseParams {
-    fn from(other: &CollapseParams) -> Self {
+    const fn from(other: &CollapseParams) -> Self {
         Self {
             l: other.l,
             max_iter: other.max_iter,
@@ -44,7 +47,7 @@ impl PyCollapseParams {
             max_angle: other.max_angle,
         }
     }
-    fn to(&self) -> CollapseParams {
+    const fn to(&self) -> CollapseParams {
         CollapseParams {
             l: self.l,
             max_iter: self.max_iter,
@@ -60,7 +63,7 @@ impl PyCollapseParams {
 #[pymethods]
 impl PyCollapseParams {
     #[new]
-    pub fn new(
+    const fn new(
         l: f64,
         max_iter: Idx,
         max_l_rel: f64,
@@ -99,7 +102,7 @@ pub struct PySplitParams {
 }
 
 impl PySplitParams {
-    fn from(other: &SplitParams) -> Self {
+    const fn from(other: &SplitParams) -> Self {
         Self {
             l: other.l,
             max_iter: other.max_iter,
@@ -110,7 +113,7 @@ impl PySplitParams {
             min_q_abs: other.min_q_abs,
         }
     }
-    fn to(&self) -> SplitParams {
+    const fn to(&self) -> SplitParams {
         SplitParams {
             l: self.l,
             max_iter: self.max_iter,
@@ -127,7 +130,7 @@ impl PySplitParams {
 impl PySplitParams {
     #[new]
     #[allow(clippy::similar_names)]
-    pub fn new(
+    const fn new(
         l: f64,
         max_iter: Idx,
         min_l_rel: f64,
@@ -165,7 +168,7 @@ pub struct PySwapParams {
 }
 
 impl PySwapParams {
-    fn from(other: &SwapParams) -> Self {
+    const fn from(other: &SwapParams) -> Self {
         Self {
             q: other.q,
             max_iter: other.max_iter,
@@ -176,7 +179,7 @@ impl PySwapParams {
             max_angle: other.max_angle,
         }
     }
-    fn to(&self) -> SwapParams {
+    const fn to(&self) -> SwapParams {
         SwapParams {
             q: self.q,
             max_iter: self.max_iter,
@@ -192,7 +195,7 @@ impl PySwapParams {
 #[pymethods]
 impl PySwapParams {
     #[new]
-    pub fn new(
+    const fn new(
         q: f64,
         max_iter: Idx,
         max_l_rel: f64,
@@ -275,7 +278,7 @@ impl PySmoothParams {
 #[pymethods]
 impl PySmoothParams {
     #[new]
-    pub fn new(
+    const fn new(
         n_iter: Idx,
         method: PySmoothingMethod,
         relax: Vec<f64>,
@@ -291,7 +294,7 @@ impl PySmoothParams {
         }
     }
     #[classmethod]
-    pub fn default(_cls: &Bound<'_, PyType>) -> Self {
+    fn default(_cls: &Bound<'_, PyType>) -> Self {
         Self::from(&SmoothParams::default())
     }
 }
@@ -312,7 +315,7 @@ pub struct PyRemesherParams {
     debug: bool,
 }
 impl PyRemesherParams {
-    pub fn from(other: &RemesherParams) -> Self {
+    fn from(other: &RemesherParams) -> Self {
         let steps = other
             .steps
             .iter()
@@ -349,12 +352,12 @@ impl PyRemesherParams {
 #[pymethods]
 impl PyRemesherParams {
     #[new]
-    pub fn new(steps: Vec<PyRemeshingStep>, debug: bool) -> Self {
+    const fn new(steps: Vec<PyRemeshingStep>, debug: bool) -> Self {
         Self { steps, debug }
     }
 
     #[classmethod]
-    pub fn default(_cls: &Bound<'_, PyType>) -> Self {
+    fn default(_cls: &Bound<'_, PyType>) -> Self {
         Self::from(&RemesherParams::default())
     }
 }
@@ -379,7 +382,7 @@ macro_rules! create_remesher {
         impl $name {
             #[new]
             pub fn new(mesh: &$mesh, geometry: &$geom, m: PyReadonlyArray2<f64>) -> PyResult<Self> {
-                if m.shape()[0] != mesh.mesh.n_verts() as usize {
+                if m.shape()[0] != mesh.0.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
                 if m.shape()[1] != $metric::N as usize {
@@ -392,7 +395,7 @@ macro_rules! create_remesher {
                     .map(|x| $metric::from_slice(x))
                     .collect();
 
-                let remesher = Remesher::new(&mesh.mesh, &m, &geometry.geom);
+                let remesher = Remesher::new(&mesh.0, &m, &geometry.geom);
                 if let Err(res) = remesher {
                     return Err(PyRuntimeError::new_err(res.to_string()));
                 }
@@ -412,7 +415,7 @@ macro_rules! create_remesher {
                 m: PyReadonlyArray2<f64>,
                 p: Option<Idx>,
             ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                if m.shape()[0] != mesh.mesh.n_verts() as usize {
+                if m.shape()[0] != mesh.0.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
                 if m.shape()[1] != <$metric as Metric<$dim>>::N {
@@ -462,7 +465,7 @@ macro_rules! create_remesher {
                 step: Option<f64>,
                 max_iter: Option<Idx>,
             ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                if m.shape()[0] != mesh.mesh.n_verts() as usize {
+                if m.shape()[0] != mesh.0.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
                 if m.shape()[1] != <$metric as Metric<$dim>>::N {
@@ -487,7 +490,7 @@ macro_rules! create_remesher {
                             .chunks($metric::N)
                             .map(|x| $metric::from_slice(x))
                             .collect();
-                        mesh.mesh.scale_metric(
+                        mesh.0.scale_metric(
                             &mut m,
                             h_min,
                             h_max,
@@ -498,7 +501,7 @@ macro_rules! create_remesher {
                             max_iter.unwrap_or(10),
                         )
                     } else {
-                        mesh.mesh.scale_metric(
+                        mesh.0.scale_metric(
                             &mut m,
                             h_min,
                             h_max,
@@ -515,7 +518,7 @@ macro_rules! create_remesher {
                         .chunks($metric::N)
                         .map(|x| $metric::from_slice(x))
                         .collect();
-                    mesh.mesh.scale_metric(
+                    mesh.0.scale_metric(
                         &mut m,
                         h_min,
                         h_max,
@@ -526,7 +529,7 @@ macro_rules! create_remesher {
                         max_iter.unwrap_or(10),
                     )
                 } else {
-                    mesh.mesh.scale_metric(
+                    mesh.0.scale_metric(
                         &mut m,
                         h_min,
                         h_max,
@@ -554,7 +557,7 @@ macro_rules! create_remesher {
                 mesh: &$mesh,
                 m: PyReadonlyArray2<f64>,
             ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                if m.shape()[0] != mesh.mesh.n_verts() as usize {
+                if m.shape()[0] != mesh.0.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
                 if m.shape()[1] != <$metric as Metric<$dim>>::N {
@@ -566,7 +569,7 @@ macro_rules! create_remesher {
                     .chunks($metric::N)
                     .map(|x| $metric::from_slice(x))
                     .collect();
-                let m = mesh.mesh.smooth_metric(&m);
+                let m = mesh.0.smooth_metric(&m);
                 if let Err(m) = m {
                     return Err(PyRuntimeError::new_err(m.to_string()));
                 }
@@ -588,7 +591,7 @@ macro_rules! create_remesher {
                 t: f64,
                 n_iter: Idx,
             ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                if m.shape()[0] != mesh.mesh.n_verts() as usize {
+                if m.shape()[0] != mesh.0.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
                 if m.shape()[1] != <$metric as Metric<$dim>>::N {
@@ -600,7 +603,7 @@ macro_rules! create_remesher {
                     .chunks($metric::N)
                     .map(|x| $metric::from_slice(x))
                     .collect();
-                let res = mesh.mesh.apply_metric_gradation(&mut m, beta, t, n_iter);
+                let res = mesh.0.apply_metric_gradation(&mut m, beta, t, n_iter);
                 match res {
                     Ok(_) => {
                         let m: Vec<_> = m.iter().cloned().flatten().collect();
@@ -622,7 +625,7 @@ macro_rules! create_remesher {
                 mesh: &$mesh,
                 m: PyReadonlyArray2<f64>,
             ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                if m.shape()[0] != mesh.mesh.n_elems() as usize {
+                if m.shape()[0] != mesh.0.n_elems() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
                 if m.shape()[1] != <$metric as Metric<$dim>>::N {
@@ -634,7 +637,7 @@ macro_rules! create_remesher {
                     .chunks($metric::N)
                     .map(|x| $metric::from_slice(x))
                     .collect();
-                let res = mesh.mesh.elem_data_to_vertex_data_metric::<$metric>(&m);
+                let res = mesh.0.elem_data_to_vertex_data_metric::<$metric>(&m);
                 match res {
                     Ok(res) => {
                         let res: Vec<_> = res.iter().cloned().flatten().collect();
@@ -655,7 +658,7 @@ macro_rules! create_remesher {
                 mesh: &$mesh,
                 m: PyReadonlyArray2<f64>,
             ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                if m.shape()[0] != mesh.mesh.n_verts() as usize {
+                if m.shape()[0] != mesh.0.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
                 if m.shape()[1] != <$metric as Metric<$dim>>::N {
@@ -667,7 +670,7 @@ macro_rules! create_remesher {
                     .chunks($metric::N)
                     .map(|x| $metric::from_slice(x))
                     .collect();
-                let res = mesh.mesh.vertex_data_to_elem_data_metric::<$metric>(&m);
+                let res = mesh.0.vertex_data_to_elem_data_metric::<$metric>(&m);
                 match res {
                     Ok(res) => {
                         let res: Vec<_> = res.iter().cloned().flatten().collect();
@@ -690,14 +693,14 @@ macro_rules! create_remesher {
                 m_other: PyReadonlyArray2<f64>,
                 step: f64,
             ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                if m.shape()[0] != mesh.mesh.n_verts() as usize {
+                if m.shape()[0] != mesh.0.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
                 if m.shape()[1] != <$metric as Metric<$dim>>::N {
                     return Err(PyValueError::new_err("Invalid dimension 1"));
                 }
 
-                if m_other.shape()[0] != mesh.mesh.n_verts() as usize {
+                if m_other.shape()[0] != mesh.0.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
                 if m_other.shape()[1] != <$metric as Metric<$dim>>::N {
@@ -711,7 +714,7 @@ macro_rules! create_remesher {
                 let m_other = m_other.chunks($metric::N).map(|x| $metric::from_slice(x));
 
                 let mut res =
-                    Vec::with_capacity(mesh.mesh.n_verts() as usize * <$metric as Metric<$dim>>::N);
+                    Vec::with_capacity(mesh.0.n_verts() as usize * <$metric as Metric<$dim>>::N);
 
                 for (mut m_i, m_other_i) in m.zip(m_other) {
                     m_i.control_step(&m_other_i, step);
@@ -733,7 +736,7 @@ macro_rules! create_remesher {
                     .chunks($metric::N)
                     .map(|x| $metric::from_slice(x))
                     .collect::<Vec<_>>();
-                mesh.mesh.metric_info(&m)
+                mesh.0.metric_info(&m)
             }
 
             /// Check that the mesh is valid
@@ -756,9 +759,7 @@ macro_rules! create_remesher {
             #[must_use]
             #[pyo3(signature = (only_bdy_faces=None))]
             pub fn to_mesh(&self, only_bdy_faces: Option<bool>) -> $mesh {
-                $mesh {
-                    mesh: self.remesher.to_mesh(only_bdy_faces.unwrap_or(false)),
-                }
+                $mesh(self.remesher.to_mesh(only_bdy_faces.unwrap_or(false)))
             }
 
             /// Get the number of vertices

@@ -3,14 +3,15 @@ use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 use tmesh::mesh::partition::{MetisKWay, MetisPartitioner, MetisRecursive};
 use tmesh::{
     io::{VTUEncoding, VTUFile},
-    mesh::{Cell, Face, Mesh, partition::HilbertPartitioner},
-    minimeshb::{reader::MeshbReader, writer::MeshbWriter},
+    mesh::{
+        Cell, Face, Mesh,
+        partition::{HilbertPartitioner, PartitionType},
+    },
     spatialindex::ObjectIndex,
 };
 
 use super::{
-    Edge, Elem, HasTmeshImpl, PartitionType, Point, SimplexMesh, SubSimplexMesh, Tetrahedron,
-    Triangle, Vertex,
+    Edge, Elem, HasTmeshImpl, Point, SimplexMesh, SubSimplexMesh, Tetrahedron, Triangle, Vertex,
 };
 use crate::{Idx, Result, Tag};
 
@@ -214,15 +215,12 @@ macro_rules! impl_mesh {
             fn partition_simple(&mut self, ptype: PartitionType) -> Result<(f64, f64)> {
                 match ptype {
                     PartitionType::Hilbert(n) => self.partition::<HilbertPartitioner>(n, None),
-                    // PartitionType::Scotch(n) => self.partition_scotch(n),
-                    #[cfg(not(feature = "metis"))]
-                    PartitionType::MetisRecursive(n) => panic!("MetisRecursive({n}) not available"),
+                    PartitionType::RCM(_) => unimplemented!(),
+                    PartitionType::KMeans(_) => unimplemented!(),
                     #[cfg(feature = "metis")]
                     PartitionType::MetisRecursive(n) => {
                         self.partition::<MetisPartitioner<MetisRecursive>>(n, None)
                     }
-                    #[cfg(not(feature = "metis"))]
-                    PartitionType::MetisKWay(n) => panic!("MetisKWay({n}) not available"),
                     #[cfg(feature = "metis")]
                     PartitionType::MetisKWay(n) => {
                         self.partition::<MetisPartitioner<MetisKWay>>(n, None)
@@ -278,81 +276,6 @@ macro_rules! impl_mesh {
                 )
             }
         }
-
-        impl SimplexMesh<$dim, $name> {
-            fn write_solb_it<const N: usize, F: FnMut(&[f64]) -> [f64; N]>(
-                &self,
-                arr: &[f64],
-                file_name: &str,
-                f: F,
-            ) -> Result<()> {
-                assert_eq!(arr.len(), N * self.n_verts() as usize);
-
-                let mut writer = MeshbWriter::new(file_name, 2, $dim as u8)?;
-                writer.write_solution(arr.chunks(N).map(f))?;
-                writer.close();
-
-                Ok(())
-            }
-
-            pub fn write_solb(&self, arr: &[f64], file_name: &str) -> Result<()> {
-                let n_comp = arr.len() / self.n_verts() as usize;
-                match $dim {
-                    2 => match n_comp {
-                        1 => self.write_solb_it::<1, _>(arr, file_name, |x| [x[0]])?,
-                        2 => self.write_solb_it::<2, _>(arr, file_name, |x| [x[0], x[1]])?,
-                        3 => self.write_solb_it::<3, _>(arr, file_name, |x| [x[0], x[2], x[1]])?,
-                        _ => unreachable!(),
-                    },
-                    3 => match n_comp {
-                        1 => self.write_solb_it::<1, _>(arr, file_name, |x| [x[0]])?,
-                        3 => self.write_solb_it::<3, _>(arr, file_name, |x| [x[0], x[1], x[2]])?,
-                        6 => self.write_solb_it::<6, _>(arr, file_name, |x| {
-                            [x[0], x[3], x[1], x[5], x[4], x[2]]
-                        })?,
-                        _ => unreachable!(),
-                    },
-                    _ => unreachable!(),
-                }
-
-                Ok(())
-            }
-
-            fn read_solb_it<const N: usize, F: FnMut([f64; N]) -> [f64; N]>(
-                mut reader: MeshbReader,
-                f: F,
-            ) -> Result<Vec<f64>> {
-                let sol = reader.read_solution::<N>()?;
-                Ok(sol.flat_map(f).collect())
-            }
-
-            pub fn read_solb(file_name: &str) -> Result<(Vec<f64>, usize)> {
-                let mut reader = MeshbReader::new(file_name)?;
-                let d = reader.dimension();
-                assert_eq!(d, $dim as u8);
-                let m = reader.get_solution_size()?;
-
-                let res = match d {
-                    2 => match m {
-                        1 => Self::read_solb_it::<1, _>(reader, |x| [x[0]])?,
-                        2 => Self::read_solb_it::<2, _>(reader, |x| [x[0], x[1]])?,
-                        3 => Self::read_solb_it::<3, _>(reader, |x| [x[0], x[2], x[1]])?,
-                        _ => unreachable!(),
-                    },
-                    3 => match m {
-                        1 => Self::read_solb_it::<1, _>(reader, |x| [x[0]])?,
-                        3 => Self::read_solb_it::<3, _>(reader, |x| [x[0], x[1], x[2]])?,
-                        6 => Self::read_solb_it::<6, _>(reader, |x| {
-                            [x[0], x[2], x[5], x[1], x[4], x[3]]
-                        })?,
-                        _ => unreachable!(),
-                    },
-                    _ => unreachable!(),
-                };
-
-                Ok((res, m))
-            }
-        }
     };
 }
 
@@ -370,13 +293,13 @@ mod tests {
     use crate::{
         Result,
         mesh::{
-            Elem, HasTmeshImpl, PartitionType, Point, SimplexMesh, Tetrahedron, Triangle,
+            Elem, HasTmeshImpl, Point, SimplexMesh, Tetrahedron, Triangle,
             test_meshes::{test_mesh_2d, test_mesh_3d},
         },
         metric::{AnisoMetric2d, AnisoMetric3d, Metric},
     };
     use tempfile::NamedTempFile;
-    use tmesh::mesh::Mesh;
+    use tmesh::mesh::{Mesh, partition::PartitionType};
 
     #[test]
     fn test_2d_ascii() -> Result<()> {

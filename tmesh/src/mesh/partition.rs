@@ -65,6 +65,19 @@ pub trait Partitioner: Sized {
     }
 }
 
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug)]
+pub enum PartitionType {
+    Hilbert(usize),
+    RCM(usize),
+    KMeans(usize),
+    #[cfg(feature = "metis")]
+    MetisRecursive(usize),
+    #[cfg(feature = "metis")]
+    MetisKWay(usize),
+    None,
+}
+
 /// Simple geometric partitionner based on the Hilbert indices of the element centers
 pub struct HilbertPartitioner {
     n_parts: usize,

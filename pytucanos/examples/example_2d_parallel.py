@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from pytucanos import HAVE_METIS, HAVE_SCOTCH
+from pytucanos import HAVE_METIS
 from pytucanos.mesh import get_square, Mesh22
 from pytucanos.geometry import LinearGeometry2d
 from pytucanos.remesh import (
@@ -20,7 +20,6 @@ def get_h(msh):
 
 
 if __name__ == "__main__":
-
     import logging
 
     FORMAT = "%(levelname)s %(name)s %(message)s"
@@ -39,8 +38,6 @@ if __name__ == "__main__":
 
     if HAVE_METIS:
         method = "metis_kway"
-    elif HAVE_SCOTCH:
-        method = "scotch"
     else:
         method = "hilbert"
     remesher = ParallelRemesher2dIso(msh, method, 3)

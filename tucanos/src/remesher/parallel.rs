@@ -1,7 +1,7 @@
 use crate::{
     Idx, Result, Tag,
     geometry::Geometry,
-    mesh::{Elem, HasTmeshImpl, PartitionType, SimplexMesh, SubSimplexMesh},
+    mesh::{Elem, HasTmeshImpl, SimplexMesh, SubSimplexMesh},
     metric::Metric,
     remesher::{Remesher, RemesherParams},
 };
@@ -10,6 +10,7 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIter
 use rustc_hash::FxHashSet;
 use serde::Serialize;
 use std::{sync::Mutex, time::Instant};
+use tmesh::mesh::partition::PartitionType;
 
 #[derive(Clone, Debug)]
 pub struct ParallelRemesherParams {
@@ -149,19 +150,7 @@ where
     pub fn new(mut mesh: SimplexMesh<D, E>, partition_type: PartitionType) -> Result<Self> {
         // Partition if needed
         let now = Instant::now();
-        let (partition_quality, partition_imbalance) = match partition_type {
-            PartitionType::Hilbert(n)
-            // | PartitionType::Scotch(n)
-            | PartitionType::MetisRecursive(n)
-            | PartitionType::MetisKWay(n) => {
-                assert!(n > 1, "Need at least 2 partitions");
-                mesh.partition_simple(partition_type)?
-            }
-            PartitionType::None => {
-                debug!("Using the existing partition");
-                (0.0, 0.0)
-            }
-        };
+        let (partition_quality, partition_imbalance) = mesh.partition_simple(partition_type)?;
 
         let partition_time = now.elapsed().as_secs_f64();
 
@@ -496,19 +485,17 @@ where
 
 #[cfg(test)]
 mod tests {
-
-    use tmesh::mesh::Mesh;
-
     use crate::{
         Result,
         geometry::NoGeometry,
         mesh::{
-            HasTmeshImpl, PartitionType, Point,
+            HasTmeshImpl, Point,
             test_meshes::{test_mesh_2d, test_mesh_3d},
         },
         metric::IsoMetric,
         remesher::{ParallelRemesher, ParallelRemesherParams, RemesherParams},
     };
+    use tmesh::mesh::{Mesh, partition::PartitionType};
 
     fn test_domain_decomposition_2d(debug: bool, ptype: PartitionType) -> Result<()> {
         // use crate::init_log;

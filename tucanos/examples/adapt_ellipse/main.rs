@@ -5,11 +5,11 @@ use env_logger::Env;
 use nalgebra::SMatrix;
 use rustc_hash::FxHashMap;
 use std::{path::Path, process::Command, time::Instant};
-use tmesh::mesh::Mesh;
+use tmesh::mesh::{Mesh, partition::PartitionType};
 use tucanos::{
     Result, Tag, TopoTag,
     geometry::Geometry,
-    mesh::{GElem, HasTmeshImpl, PartitionType, Point, SimplexMesh, Tetrahedron, Topology},
+    mesh::{GElem, HasTmeshImpl, Point, SimplexMesh, Tetrahedron, Topology},
     metric::{AnisoMetric3d, Metric},
     remesher::{ParallelRemesher, ParallelRemesherParams, Remesher, RemesherParams},
 };

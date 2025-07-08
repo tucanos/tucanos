@@ -20,7 +20,10 @@ use tmesh::{
     mesh::{
         BoundaryMesh2d, BoundaryMesh3d, Mesh, Mesh2d, Mesh3d, nonuniform_box_mesh,
         nonuniform_rectangle_mesh,
-        partition::{HilbertPartitioner, KMeansPartitioner2d, KMeansPartitioner3d, RCMPartitioner},
+        partition::{
+            HilbertPartitioner, KMeansPartitioner2d, KMeansPartitioner3d, PartitionType,
+            RCMPartitioner,
+        },
         read_stl,
     },
 };
@@ -44,12 +47,33 @@ pub enum PyPartitionerType {
     MetisKWay,
 }
 
+impl PyPartitionerType {
+    #[allow(dead_code)]
+    #[must_use]
+    pub const fn to(self, n: usize) -> PartitionType {
+        match self {
+            Self::Hilbert => PartitionType::Hilbert(n),
+            Self::RCM => PartitionType::RCM(n),
+            Self::KMeans => PartitionType::KMeans(n),
+            #[cfg(feature = "metis")]
+            Self::MetisRecursive => PartitionType::MetisRecursive(n),
+            #[cfg(feature = "metis")]
+            Self::MetisKWay => PartitionType::MetisKWay(n),
+        }
+    }
+}
+
 macro_rules! create_mesh {
     ($pyname: ident, $name: ident, $dim: expr, $cell_dim: expr, $face_dim: expr) => {
         #[doc = concat!("Python binding for ", stringify!($name))]
         #[pyclass]
         pub struct $pyname(pub(crate) $name);
+    };
+}
 
+#[macro_export]
+macro_rules! impl_mesh {
+    ($pyname: ident, $name: ident, $dim: expr, $cell_dim: expr, $face_dim: expr) => {
         #[pymethods]
         impl $pyname {
             /// Create a new mesh from coordinates, connectivities and tags
@@ -103,30 +127,35 @@ macro_rules! create_mesh {
             }
 
             /// Number of vertices
-            fn n_verts(&self) -> usize {
-                self.0.n_verts()
+            pub fn n_verts(&self) -> usize {
+                Mesh::<$dim, $cell_dim, $face_dim>::n_verts(&self.0)
             }
 
             /// Get a copy of the vertices
             fn get_verts<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                let mut res = Vec::with_capacity($dim * self.0.n_verts());
+                let mut res = Vec::with_capacity($dim * self.n_verts());
                 for v in self.0.verts() {
                     for &x in v.as_slice() {
                         res.push(x);
                     }
                 }
-                PyArray::from_vec(py, res).reshape([self.0.n_verts(), $dim])
+                PyArray::from_vec(py, res).reshape([self.n_verts(), $dim])
             }
 
             /// Number of elements
             fn n_elems(&self) -> usize {
-                self.0.n_elems()
+                Mesh::<$dim, $cell_dim, $face_dim>::n_elems(&self.0)
             }
 
             /// Get a copy of the elements
             fn get_elems<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<usize>>> {
-                PyArray::from_vec(py, self.0.elems().flatten().collect())
-                    .reshape([self.0.n_elems(), $cell_dim])
+                PyArray::from_vec(
+                    py,
+                    Mesh::<$dim, $cell_dim, $face_dim>::elems(&self.0)
+                        .flatten()
+                        .collect(),
+                )
+                .reshape([self.n_elems(), $cell_dim])
             }
 
             /// Get a copy of the element tags
@@ -136,13 +165,18 @@ macro_rules! create_mesh {
 
             /// Number of faces
             fn n_faces(&self) -> usize {
-                self.0.n_faces()
+                Mesh::<$dim, $cell_dim, $face_dim>::n_faces(&self.0)
             }
 
             /// Get a copy of the faces
             fn get_faces<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<usize>>> {
-                PyArray::from_vec(py, self.0.faces().flatten().collect())
-                    .reshape([self.0.n_faces(), $face_dim])
+                PyArray::from_vec(
+                    py,
+                    Mesh::<$dim, $cell_dim, $face_dim>::faces(&self.0)
+                        .flatten()
+                        .collect(),
+                )
+                .reshape([self.n_faces(), $face_dim])
             }
 
             /// Get a copy of the face tags
@@ -174,6 +208,13 @@ macro_rules! create_mesh {
                     .map_err(|e| PyRuntimeError::new_err(e.to_string()))
             }
 
+            /// Write a solution to a .sol(b) file
+            pub fn write_solb(&self, fname: &str, arr: PyReadonlyArray2<f64>) -> PyResult<()> {
+                self.0
+                    .write_solb(&arr.to_vec().unwrap(), fname)
+                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+            }
+
             /// Read a `.meshb` file
             #[classmethod]
             fn from_meshb(_cls: &Bound<'_, PyType>, file_name: &str) -> PyResult<Self> {
@@ -181,6 +222,46 @@ macro_rules! create_mesh {
                     $name::from_meshb(file_name)
                         .map_err(|e| PyRuntimeError::new_err(e.to_string()))?,
                 ))
+            }
+
+            /// Read a solution stored in a .sol(b) file
+            #[classmethod]
+            pub fn read_solb<'py>(
+                _cls: &Bound<'_, PyType>,
+                py: Python<'py>,
+                fname: &str,
+            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
+                use pyo3::exceptions::PyRuntimeError;
+
+                let res = $name::read_solb(fname);
+                match res {
+                    Ok((sol, m)) => {
+                        let n = sol.len() / m;
+                        Ok(PyArray::from_vec(py, sol).reshape([n, m])?)
+                    }
+                    Err(err) => Err(PyRuntimeError::new_err(err.to_string())),
+                }
+            }
+
+            #[doc = concat!("Create an empty ", stringify!($name))]
+            #[classmethod]
+            pub fn empty(_cls: &Bound<'_, PyType>) -> Self {
+                Self($name::empty())
+            }
+
+            pub fn add_verts(&mut self, coords: PyReadonlyArray2<f64>) -> PyResult<()> {
+                if coords.shape()[1] != $dim {
+                    return Err(PyValueError::new_err("Invalid dimension 1 for coords"));
+                }
+                let coords = coords.as_slice()?;
+                let coords = coords.chunks($dim).map(|p| {
+                    let mut vx = Vertex::<$dim>::zeros();
+                    vx.copy_from_slice(p);
+                    vx
+                });
+                self.0.add_verts(coords);
+
+                Ok(())
             }
 
             /// Split and add quandrangles
@@ -376,7 +457,7 @@ macro_rules! create_mesh {
                 tol: f64,
                 nearest: bool,
             ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                if data.shape()[0] != self.0.n_verts() {
+                if data.shape()[0] != self.n_verts() {
                     return Err(PyValueError::new_err("Invalid dimension 0 for data"));
                 }
                 let m = data.shape()[1];
@@ -447,9 +528,13 @@ macro_rules! create_mesh {
 }
 
 create_mesh!(PyMesh2d, Mesh2d, 2, 3, 2);
+impl_mesh!(PyMesh2d, Mesh2d, 2, 3, 2);
 create_mesh!(PyBoundaryMesh2d, BoundaryMesh2d, 2, 2, 1);
+impl_mesh!(PyBoundaryMesh2d, BoundaryMesh2d, 2, 2, 1);
 create_mesh!(PyMesh3d, Mesh3d, 3, 4, 3);
+impl_mesh!(PyMesh3d, Mesh3d, 3, 4, 3);
 create_mesh!(PyBoundaryMesh3d, BoundaryMesh3d, 3, 3, 2);
+impl_mesh!(PyBoundaryMesh3d, BoundaryMesh3d, 3, 3, 2);
 
 #[pymethods]
 impl PyMesh2d {

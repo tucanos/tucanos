@@ -5,6 +5,7 @@ mod extruded;
 mod mesh;
 mod poly;
 
+pub use mesh::PyPartitionerType;
 use pyo3::{
     Bound, PyResult, Python, pymodule,
     types::{PyModule, PyModuleMethods},

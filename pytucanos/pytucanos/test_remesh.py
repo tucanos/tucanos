@@ -3,6 +3,7 @@ import unittest
 from .mesh import (
     Mesh21,
     Mesh22,
+    PartitionerType,
     get_square,
 )
 from .geometry import LinearGeometry2d
@@ -57,7 +58,7 @@ class TestRemesh(unittest.TestCase):
 
         h = 0.1 * np.ones(msh.n_verts()).reshape((-1, 1))
 
-        remesher = ParallelRemesher2dIso(msh, "hilbert", 2)
+        remesher = ParallelRemesher2dIso(msh, PartitionerType.Hilbert, 2)
         params = PyRemesherParams.default()
         parallel_params = PyParallelRemesherParams.default()
         parallel_params.max_levels = 2
@@ -86,7 +87,7 @@ class TestRemesh(unittest.TestCase):
         y = 0.5 + r * np.sin(theta)
         coords = np.stack([x, y], axis=-1)
 
-        idx = np.arange(4 * n, dtype=np.uint32)
+        idx = np.arange(4 * n, dtype=np.uint64)
         elems = np.stack(
             [idx, idx + 1],
             axis=-1,
@@ -105,7 +106,7 @@ class TestRemesh(unittest.TestCase):
                     [
                         [2 * n, 0],
                     ],
-                    dtype=np.uint32,
+                    dtype=np.uint64,
                 ),
             ]
         )
@@ -117,7 +118,7 @@ class TestRemesh(unittest.TestCase):
             ),
         )
 
-        faces = np.zeros((0, 1), dtype=np.uint32)
+        faces = np.zeros((0, 1), dtype=np.uint64)
         ftags = np.zeros(0, dtype=np.int16)
         msh.compute_topology()
         geom = LinearGeometry2d(msh, Mesh21(coords, elems, etags, faces, ftags))
@@ -190,7 +191,6 @@ class TestRemesh(unittest.TestCase):
         self.assertLess(msh.n_verts(), 300)
 
     def test_2d_aniso_parallel(self):
-
         coords, elems, etags, faces, ftags = get_square(two_tags=False)
         msh = Mesh22(coords, elems, etags, faces, ftags).split().split()
         msh.compute_topology()
@@ -203,7 +203,7 @@ class TestRemesh(unittest.TestCase):
             m[:, 0] = 1.0 / hx**2
             m[:, 1] = 1.0 / hy**2
 
-            remesher = ParallelRemesher2dAniso(msh, "hilbert", 2)
+            remesher = ParallelRemesher2dAniso(msh, PartitionerType.Hilbert, 2)
             params = update_params(
                 PyRemesherParams.default(), PyRemeshingStep.Split, "min_q_abs", 0.1
             )

@@ -1,15 +1,10 @@
 import numpy as np
-from ._pytucanos import (
-    Mesh21,
-    Mesh22,
-    Mesh32,
-    Mesh33,
-)
+from .pytucanos import Mesh21, Mesh22, Mesh32, Mesh33
+from .pytucanos import PyPartitionerType as PartitionerType  # noqa: F401
 from .metric import sym2mat
 
 
 def create_mesh(coords, elems, etags, faces, ftags):
-
     if coords.shape[1] == 2:
         return Mesh22(coords, elems, etags, faces, ftags)
     else:
@@ -20,7 +15,6 @@ def create_mesh(coords, elems, etags, faces, ftags):
 
 
 def __plot_boundary(ax, bdy, normals):
-
     xy = bdy.get_verts()
     edgs = bdy.get_elems()
     etags = bdy.get_etags()
@@ -52,9 +46,7 @@ def __plot_boundary(ax, bdy, normals):
 
 
 def plot_mesh(ax, msh, etag=True, boundary=True, normals=False):
-
     if isinstance(msh, Mesh22):
-
         xy = msh.get_verts()
 
         tris = msh.get_elems()
@@ -74,7 +66,6 @@ def plot_mesh(ax, msh, etag=True, boundary=True, normals=False):
 
 
 def plot_field(ax, msh, arr, loc="vertex"):
-
     assert isinstance(msh, Mesh22)
 
     xy = msh.get_verts()
@@ -93,7 +84,6 @@ def plot_field(ax, msh, arr, loc="vertex"):
 
 
 def plot_metric(ax, msh, m, loc="vertex"):
-
     assert isinstance(msh, Mesh22)
 
     xy = msh.get_verts()
@@ -118,7 +108,6 @@ def plot_metric(ax, msh, m, loc="vertex"):
 
 
 def get_cube():
-
     coords = np.array(
         [
             [0.0, 0.0, 0.0],
@@ -139,7 +128,7 @@ def get_cube():
             [0, 5, 7, 4],
             [2, 7, 5, 6],
         ],
-        dtype=np.uint32,
+        dtype=np.uint64,
     )
     etags = np.array([1, 1, 1, 1, 1], dtype=np.int16)
     faces = np.array(
@@ -157,7 +146,7 @@ def get_cube():
             [0, 3, 7],
             [0, 7, 4],
         ],
-        dtype=np.uint32,
+        dtype=np.uint64,
     )
     ftags = np.array([1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6], dtype=np.int16)
 
@@ -165,7 +154,6 @@ def get_cube():
 
 
 def get_square(two_tags=True):
-
     coords = np.array(
         [
             [0.0, 0.0],
@@ -179,7 +167,7 @@ def get_square(two_tags=True):
             [0, 1, 2],
             [0, 2, 3],
         ],
-        dtype=np.uint32,
+        dtype=np.uint64,
     )
     if two_tags:
         etags = np.array([1, 2], dtype=np.int16)
@@ -191,7 +179,7 @@ def get_square(two_tags=True):
                 [3, 0],
                 [0, 2],
             ],
-            dtype=np.uint32,
+            dtype=np.uint64,
         )
         ftags = np.array([1, 2, 3, 4, 5], dtype=np.int16)
     else:
@@ -203,7 +191,7 @@ def get_square(two_tags=True):
                 [2, 3],
                 [3, 0],
             ],
-            dtype=np.uint32,
+            dtype=np.uint64,
         )
         ftags = np.array([1, 2, 3, 4], dtype=np.int16)
 

@@ -4,7 +4,7 @@ import subprocess
 import numpy as np
 import matplotlib.pyplot as plt
 import logging
-from ._pytucanos import (
+from .pytucanos import (
     PySplitParams,
     PyCollapseParams,
     PySwapParams,
@@ -12,9 +12,9 @@ from ._pytucanos import (
     PySmoothingMethod,  # noqa: F401
     PyRemeshingStep,  # noqa: F401
     PyRemesherParams,
-    Remesher2dIso, 
-    Remesher2dAniso, 
-    Remesher3dIso, 
+    Remesher2dIso,
+    Remesher2dAniso,
+    Remesher3dIso,
     Remesher3dAniso,
     ParallelRemesher2dIso,  # noqa: F401
     ParallelRemesher2dAniso,  # noqa: F401
@@ -27,7 +27,6 @@ from .geometry import LinearGeometry2d, LinearGeometry3d
 
 
 def print_params(params):
-
     for i, step in enumerate(params.steps):
         step = step._0
         if isinstance(step, PyCollapseParams):
@@ -85,7 +84,6 @@ def print_params(params):
 
 
 def update_params(params, step, key, value):
-
     res = []
     for s in params.steps:
         if isinstance(s, step):
@@ -153,7 +151,6 @@ def plot_stats(remesher):
 
 
 def __write_tmp_meshb(msh, h):
-
     if isinstance(msh, (Mesh22, Mesh33)):
         msh.write_meshb("tmp.meshb")
         msh.write_solb("tmp.solb", h)
@@ -162,7 +159,6 @@ def __write_tmp_meshb(msh, h):
 
 
 def __read_tmp_meshb(dim, fname="tmp.meshb", remove=True):
-
     if dim == 2:
         msh = Mesh22.from_meshb(fname)
     elif dim == 3:
@@ -175,7 +171,6 @@ def __read_tmp_meshb(dim, fname="tmp.meshb", remove=True):
 
 
 def __iso_to_aniso_3d(h):
-
     if h.shape[1] == 1:
         m = np.zeros((h.shape[0], 6), dtype=np.float64)
         for i in range(3):
@@ -219,7 +214,6 @@ def remesh(msh, h, bdy=None, step=None, params=None):
 
 
 def use_podman():
-
     if "USE_PODMAN" in os.environ:
         return [
             "podman",

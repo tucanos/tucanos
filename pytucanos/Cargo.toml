@@ -1,46 +1,26 @@
 [package]
-name = "_pytucanos"
+name = "pytucanos"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
 
 [lib]
-name = "_pytucanos"
+name = "pytucanos"
 crate-type = ["cdylib"]
 
 [dependencies]
 log = "0.4.27"
-tucanos = { git = "https://github.com/tucanos/tucanos.git", rev = "3b47b85" }
+tucanos = { path="../tucanos" }
 numpy = "0.25.0"
 pyo3 = { version = "0.25.0", features = ["extension-module", "multiple-pymethods"] }
 pyo3-log = "0.12"
 rayon = "1.10.0"
 affinity = "0.1.2"
+pytmesh = { version = "0.1.0", path = "../pytmesh" }
+tmesh = { version = "0.1.0", path = "../tmesh" }
 
 [features]
 nlopt = ["tucanos/nlopt"]
-scotch = ["tucanos/scotch"]
-metis = ["tucanos/metis"]
+metis = ["tucanos/metis", "pytmesh/metis"]
 
-[lints.rust]
-unused_imports = "deny"
-unused_variables = "deny"
-
-[lints.clippy]
-all = { level = "deny", priority = -1 }
-pedantic = { level = "deny", priority = -1 }
-nursery = { level = "deny", priority = -1 }
-cargo = { level = "deny", priority = -1 }
-missing_panics_doc = "allow"
-cast_possible_truncation = "allow"
-missing_errors_doc = "allow"
-cast_precision_loss = "allow"
-multiple_crate_versions = "allow"
-cargo_common_metadata = "allow"
-doc_markdown = "allow"
-suboptimal_flops = "allow"
-should_panic_without_expect = "allow"
-ptr_as_ptr = "allow"
-borrow_as_ptr = "allow"
-ref_as_ptr = "allow"
-needless_pass_by_value = "allow"
-missing_const_for_fn = "allow"
+[lints]
+workspace = true

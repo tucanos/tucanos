@@ -126,7 +126,7 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-stable-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-stable-
-    - name: Run clippy
+    - name: Run clippy (pytmesh)
       uses: clechasseur/rs-clippy-check@v4
       with:
         args: -p pytmesh
@@ -136,3 +136,13 @@ jobs:
         pip install vtk==9.3
         pip install -e .
         python -m unittest discover
+    - name: Run clippy (pytucanos)
+      uses: clechasseur/rs-clippy-check@v4
+      with:
+        args: -p pytucanos
+    - name: Test pytucanos
+      run: |
+        cd pytucanos
+        pip install -e .
+        python -m unittest discover
+      

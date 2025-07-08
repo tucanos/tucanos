@@ -33,6 +33,7 @@ pub fn get_thread_affinity(py: Python<'_>) -> PyResult<Bound<'_, PyArray1<usize>
 
 /// Set the thread affinity and return the number of rayon threads
 #[pyfunction]
+#[allow(clippy::needless_pass_by_value)]
 pub fn set_thread_affinity(cores: PyReadonlyArray1<usize>) -> PyResult<usize> {
     let tmp = cores.as_slice();
     if let Err(err) = tmp {
@@ -49,11 +50,12 @@ pub fn set_thread_affinity(cores: PyReadonlyArray1<usize>) -> PyResult<usize> {
 
 /// Python bindings for pytucanos
 #[pymodule]
-#[pyo3(name = "_pytucanos")]
+#[pyo3(name = "pytucanos")]
 pub fn pytucanos(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     pyo3_log::init();
     m.add_function(wrap_pyfunction!(get_thread_affinity, m)?)?;
     m.add_function(wrap_pyfunction!(set_thread_affinity, m)?)?;
+    m.add_class::<pytmesh::PyPartitionerType>()?;
     m.add_class::<crate::mesh::Mesh33>()?;
     m.add_class::<crate::mesh::Mesh32>()?;
     m.add_class::<crate::mesh::Mesh31>()?;
@@ -81,9 +83,5 @@ pub fn pytucanos(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add("HAVE_METIS", false)?;
     #[cfg(feature = "metis")]
     m.add("HAVE_METIS", true)?;
-    #[cfg(not(feature = "scotch"))]
-    m.add("HAVE_SCOTCH", false)?;
-    #[cfg(feature = "scotch")]
-    m.add("HAVE_SCOTCH", true)?;
     Ok(())
 }

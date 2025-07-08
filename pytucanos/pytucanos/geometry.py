@@ -1,1 +1,1 @@
-from ._pytucanos import LinearGeometry2d, LinearGeometry3d  # noqa: F401
+from .pytucanos import LinearGeometry2d, LinearGeometry3d  # noqa: F401

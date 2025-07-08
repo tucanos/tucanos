@@ -27,7 +27,7 @@ setuptools.setup(
     install_requires=["numpy", "matplotlib"],
     rust_extensions=[
         RustExtension(
-            "pytucanos._pytucanos",
+            "pytucanos.pytucanos",
             binding=Binding.PyO3,
         )
     ],

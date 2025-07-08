@@ -15,7 +15,9 @@ use rayon::{
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::{HashMap, hash_map::Entry};
 use std::marker::PhantomData;
-use tmesh::{graph::CSRGraph, io::VTUFile, spatialindex::ObjectIndex};
+use tmesh::{
+    graph::CSRGraph, io::VTUFile, mesh::partition::PartitionType, spatialindex::ObjectIndex,
+};
 
 /// Renumber the vertices in order to have contininuous indices, and return he map from old to nex indices
 #[must_use]
@@ -906,16 +908,6 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             .iter_mut()
             .for_each(|t| *t = new_ftags(*t));
     }
-}
-
-#[allow(dead_code)]
-#[derive(Clone, Copy, Debug)]
-pub enum PartitionType {
-    Hilbert(usize),
-    // Scotch(Idx),
-    MetisRecursive(usize),
-    MetisKWay(usize),
-    None,
 }
 
 pub trait HasTmeshImpl<const D: usize, E: Elem> {
