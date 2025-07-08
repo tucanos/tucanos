@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from pytucanos import HAVE_METIS
-from pytucanos.mesh import get_square, Mesh22
+from pytucanos.mesh import get_square, Mesh22, PartitionerType
 from pytucanos.geometry import LinearGeometry2d
 from pytucanos.remesh import (
     ParallelRemesher2dIso,
@@ -29,7 +29,7 @@ if __name__ == "__main__":
     coords, elems, etags, faces, ftags = get_square(two_tags=False)
 
     msh = Mesh22(coords, elems, etags, faces, ftags).split().split().split().split()
-    msh.add_boundary_faces()
+    msh.fix()
     msh.compute_topology()
 
     geom = LinearGeometry2d(msh)
@@ -37,9 +37,9 @@ if __name__ == "__main__":
     m = get_h(msh).reshape((-1, 1))
 
     if HAVE_METIS:
-        method = "metis_kway"
+        method = PartitionerType.MetisKWay
     else:
-        method = "hilbert"
+        method = PartitionerType.Hilbert
     remesher = ParallelRemesher2dIso(msh, method, 3)
     remesher.partitionned_mesh().write_vtk("initial.vtu")
 

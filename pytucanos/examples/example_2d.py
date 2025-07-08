@@ -36,7 +36,7 @@ if __name__ == "__main__":
     ax.set_title("Fix boundaries")
 
     # Hilbert renumbering
-    new_vert_indices, new_elem_indices, new_face_indices = msh.reorder_hilbert()
+    msh, new_vert_indices, new_elem_indices, new_face_indices = msh.reorder_hilbert()
     f2 = np.empty(f.shape)
     f2[new_vert_indices] = f
 
@@ -69,7 +69,7 @@ if __name__ == "__main__":
     other = Mesh22(coords, elems, etags, faces, ftags).split().split().split().split()
     f_other = get_h(other).reshape((-1, 1))
 
-    f = other.interpolate_linear(msh, f_other)
+    f = other.interpolate(f_other, msh.get_verts())
     fig, ax = plt.subplots()
     cax = plot_field(ax, msh, f[:, 0], "vertex")
     fig.colorbar(cax, ax=ax)
