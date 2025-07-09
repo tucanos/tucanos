@@ -1,5 +1,6 @@
 mod cavity;
 mod collapse;
+mod cost_estimator;
 mod parallel;
 mod sequential;
 mod smooth;
