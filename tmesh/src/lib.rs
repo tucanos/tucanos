@@ -1,6 +1,7 @@
 //! Simplex meshes in 2D and 3D
 use core::fmt;
 use nalgebra::SVector;
+use std::cmp::Ordering;
 
 pub mod dual;
 pub mod extruded;
@@ -65,4 +66,11 @@ macro_rules! assert_delta {
             ($x - $y).abs()
         )
     };
+}
+
+fn argmax<T: PartialOrd>(arr: &[T]) -> Option<usize> {
+    arr.iter()
+        .enumerate()
+        .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+        .map(|(index, _)| index)
 }
