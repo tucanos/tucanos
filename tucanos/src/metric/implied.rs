@@ -1,9 +1,30 @@
 use crate::{
     Result,
-    mesh::{SimplexMesh, Tetrahedron, Triangle},
+    mesh::{GTetrahedron, GTriangle, SimplexMesh, Tetrahedron, Triangle},
     metric::{AnisoMetric2d, AnisoMetric3d},
 };
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
+
+use super::{IsoMetric, Metric};
+
+pub trait HasImpliedMetric<const D: usize, M: Metric<D>>: Sized {
+    type ImpliedMetricType: Metric<D> + Default + Send + Sync;
+    fn calculate_implied_metric(&self) -> Self::ImpliedMetricType;
+}
+
+impl HasImpliedMetric<3, IsoMetric<3>> for GTetrahedron<3, IsoMetric<3>> {
+    type ImpliedMetricType = AnisoMetric3d;
+    fn calculate_implied_metric(&self) -> Self::ImpliedMetricType {
+        self.implied_metric()
+    }
+}
+
+impl HasImpliedMetric<2, IsoMetric<2>> for GTriangle<2, IsoMetric<2>> {
+    type ImpliedMetricType = AnisoMetric2d;
+    fn calculate_implied_metric(&self) -> Self::ImpliedMetricType {
+        self.implied_metric()
+    }
+}
 
 impl SimplexMesh<3, Tetrahedron> {
     /// Compute the element-implied metric
