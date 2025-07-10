@@ -546,7 +546,7 @@ impl Partitioner for KMeansPartitioner2d {
         .partition(&mut partition, (self.centers.as_slice(), &self.weights))?;
 
         coupe::KMeans {
-            delta_threshold: 0.0,
+            // delta_threshold: 0.0,
             ..Default::default()
         }
         .partition(&mut partition, (self.centers.as_slice(), &self.weights))?;
@@ -613,7 +613,7 @@ impl Partitioner for KMeansPartitioner3d {
         .partition(&mut partition, (self.centers.as_slice(), &self.weights))?;
 
         coupe::KMeans {
-            delta_threshold: 0.0,
+            // delta_threshold: 0.0,
             ..Default::default()
         }
         .partition(&mut partition, (self.centers.as_slice(), &self.weights))?;
