@@ -140,12 +140,14 @@ pub type Mesh3d = GenericMesh<3, 4, 3>;
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "coupe")]
+    use crate::mesh::partition::KMeansPartitioner3d;
     use crate::{
         Vert3d, assert_delta,
         mesh::{
             BoundaryMesh3d, Mesh, Mesh3d, MutMesh, Simplex, Tetrahedron, Triangle, bandwidth,
             box_mesh, cell_center,
-            partition::{HilbertPartitioner, KMeansPartitioner3d, RCMPartitioner},
+            partition::{HilbertPartitioner, RCMPartitioner},
         },
     };
     use rayon::iter::ParallelIterator;
@@ -268,7 +270,7 @@ mod tests {
     #[test]
     fn test_part_rcm() {
         let mut msh = box_mesh::<Mesh3d>(1.0, 20, 1.0, 20, 1.0, 20).random_shuffle();
-        let (quality, imbalance) = msh.partition::<RCMPartitioner>(4, None).unwrap();
+        let (quality, imbalance) = msh.partition::<RCMPartitioner>(4, None, false).unwrap();
 
         assert!(quality < 0.045);
         assert!(imbalance < 0.0002);
@@ -326,7 +328,7 @@ mod tests {
     #[test]
     fn test_part_hilbert() {
         let mut msh = box_mesh::<Mesh3d>(1.0, 20, 1.0, 20, 1.0, 20).random_shuffle();
-        let (quality, imbalance) = msh.partition::<HilbertPartitioner>(4, None).unwrap();
+        let (quality, imbalance) = msh.partition::<HilbertPartitioner>(4, None, false).unwrap();
 
         assert!(quality < 0.04);
         assert!(imbalance < 0.0002);
@@ -339,10 +341,13 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "coupe")]
     #[test]
     fn test_part_kmeans() {
         let mut msh = box_mesh::<Mesh3d>(1.0, 6, 1.0, 5, 1.0, 5).random_shuffle();
-        let (quality, imbalance) = msh.partition::<KMeansPartitioner3d>(4, None).unwrap();
+        let (quality, imbalance) = msh
+            .partition::<KMeansPartitioner3d>(4, None, false)
+            .unwrap();
 
         assert!(quality < 0.11);
         assert!(imbalance < 0.04);

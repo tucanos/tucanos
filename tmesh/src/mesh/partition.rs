@@ -1,6 +1,9 @@
 //! Mesh partitioners
 use super::{Cell, Face, Mesh, Simplex, cell_center, hilbert::hilbert_indices};
-use crate::{Error, Result, Vert2d, Vert3d, argmax, graph::CSRGraph};
+#[cfg(feature = "coupe")]
+use crate::{Error, Vert2d, Vert3d};
+use crate::{Result, argmax, graph::CSRGraph};
+#[cfg(feature = "coupe")]
 use coupe::Partition;
 
 use std::collections::{HashSet, VecDeque};
@@ -14,6 +17,7 @@ pub enum PartitionType {
     BFS(usize),
     BFSWR(usize),
     RCM(usize),
+    #[cfg(feature = "coupe")]
     KMeans(usize),
     #[cfg(feature = "metis")]
     MetisRecursive(usize),
@@ -79,7 +83,8 @@ pub trait Partitioner: Sized + Send + Sync {
         }
         f64::from(split) / f64::from(count)
     }
-    /// todo
+    /// Correct partitions to have only one connected component per partition
+    /// The balance between partition will be affected
     fn partition_correction(&self, part: &mut Vec<usize>) {
         let n_elems = self.graph().n();
         let weights = self.weights().collect::<Vec<_>>();
@@ -90,7 +95,6 @@ pub trait Partitioner: Sized + Send + Sync {
             let sgraph = self.graph().subgraph(elem_ids.iter().copied());
             let cc = sgraph.connected_components().unwrap();
             let n_cc = cc.iter().copied().max().unwrap_or(0) + 1;
-            println!("{i_part} -> {n_cc}");
             if n_cc > 1 {
                 let mut cc_weights = vec![0.0; n_cc];
                 let mut n_faces = vec![vec![0; self.n_parts()]; n_cc];
@@ -491,6 +495,7 @@ impl Partitioner for RCMPartitioner {
     }
 }
 
+#[cfg(feature = "coupe")]
 /// KMeans partitionner based on `coupe` (2d)
 pub struct KMeansPartitioner2d {
     n_parts: usize,
@@ -498,6 +503,8 @@ pub struct KMeansPartitioner2d {
     centers: Vec<Vert2d>,
     weights: Vec<f64>,
 }
+
+#[cfg(feature = "coupe")]
 impl Partitioner for KMeansPartitioner2d {
     fn new<const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>(
         msh: &M,
@@ -555,6 +562,7 @@ impl Partitioner for KMeansPartitioner2d {
     }
 }
 
+#[cfg(feature = "coupe")]
 /// KMeans partitionner based on `coupe` (3d)
 pub struct KMeansPartitioner3d {
     n_parts: usize,
@@ -563,6 +571,7 @@ pub struct KMeansPartitioner3d {
     weights: Vec<f64>,
 }
 
+#[cfg(feature = "coupe")]
 impl Partitioner for KMeansPartitioner3d {
     fn new<const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>(
         msh: &M,
@@ -735,11 +744,16 @@ mod tests {
     #[cfg(feature = "metis")]
     use crate::mesh::partition::{MetisPartitioner, MetisRecursive};
     use crate::mesh::{
-        Mesh, Mesh2d, Mesh3d, box_mesh,
+        Mesh, Mesh3d, box_mesh,
         partition::{
-            BFSPartitionner, HilbertBallPartitioner, HilbertPartitioner, KMeansPartitioner2d,
-            KMeansPartitioner3d, Partitioner, RCMPartitioner,
+            BFSPartitionner, HilbertBallPartitioner, HilbertPartitioner, Partitioner,
+            RCMPartitioner,
         },
+    };
+    #[cfg(feature = "coupe")]
+    use crate::mesh::{
+        Mesh2d,
+        partition::{KMeansPartitioner2d, KMeansPartitioner3d},
         rectangle_mesh,
     };
 
@@ -789,6 +803,7 @@ mod tests {
         assert!(partitioner.partition_imbalance(&parts) < 0.002);
     }
 
+    #[cfg(feature = "coupe")]
     #[test]
     fn test_coupe_kmeans2d() {
         let msh: Mesh2d = rectangle_mesh(1.0, 5, 1.0, 6);
@@ -801,6 +816,7 @@ mod tests {
         assert!(partitioner.partition_imbalance(&parts) < 0.41);
     }
 
+    #[cfg(feature = "coupe")]
     #[test]
     fn test_coupe_kmeans() {
         let msh: Mesh3d = box_mesh(1.0, 6, 1.0, 5, 1.0, 5);

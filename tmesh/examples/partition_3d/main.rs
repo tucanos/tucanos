@@ -1,5 +1,7 @@
 //! Mesh partition example
 use std::{path::Path, process::Command, time::Instant};
+#[cfg(feature = "coupe")]
+use tmesh::mesh::partition::KMeansPartitioner3d;
 #[cfg(feature = "metis")]
 use tmesh::mesh::partition::{MetisKWay, MetisPartitioner, MetisRecursive};
 use tmesh::{
@@ -7,7 +9,8 @@ use tmesh::{
     mesh::{
         BoundaryMesh3d, Mesh, Mesh3d,
         partition::{
-            HilbertBallPartitioner, HilbertPartitioner, KMeansPartitioner3d, RCMPartitioner,
+            BFSPartitionner, BFSWRPartitionner, HilbertBallPartitioner, HilbertPartitioner,
+            RCMPartitioner,
         },
     },
 };
@@ -29,14 +32,15 @@ Physical Volume("E", 16) = {1};
 
 "#;
 
-fn print_partition_cc(msh: &Mesh3d, n_parts: usize) {
+fn check_partition_cc(msh: &Mesh3d, n_parts: usize) {
     for i in 0..n_parts {
         let pmesh = msh.get_partition(i).mesh;
         let faces = pmesh.all_faces();
         let graph = pmesh.element_pairs(&faces);
         let cc = graph.connected_components().unwrap();
         let n_cc = cc.iter().copied().max().unwrap_or(0) + 1;
-        println!("  part {i}: {n_cc} components");
+        assert_eq!(n_cc, 1);
+        // println!("  part {i}: {n_cc} components");
     }
 }
 
@@ -62,7 +66,7 @@ fn main() -> Result<()> {
         );
     }
 
-    let msh = Mesh3d::from_meshb(fname.to_str().unwrap())?;
+    let msh = Mesh3d::from_meshb(fname.to_str().unwrap())?.split();
 
     let (mut msh, _, _, _) = msh.reorder_rcm();
     let (bdy, _): (BoundaryMesh3d, _) = msh.boundary();
@@ -72,10 +76,10 @@ fn main() -> Result<()> {
 
     println!("# of elements: {}", msh.n_elems());
 
-    let n_parts = 4;
+    let n_parts = 8;
 
     let start = Instant::now();
-    let (quality, imbalance) = msh.partition::<HilbertPartitioner>(n_parts, None)?;
+    let (quality, imbalance) = msh.partition::<HilbertPartitioner>(n_parts, None, true)?;
     let t = start.elapsed();
     println!(
         "HilbertPartitioner: {:.2e}s, quality={:.2e}, imbalance={:.2e}",
@@ -83,10 +87,10 @@ fn main() -> Result<()> {
         quality,
         imbalance
     );
-    print_partition_cc(&msh, n_parts);
+    check_partition_cc(&msh, n_parts);
 
     let start = Instant::now();
-    let (quality, imbalance) = msh.partition::<HilbertBallPartitioner>(n_parts, None)?;
+    let (quality, imbalance) = msh.partition::<HilbertBallPartitioner>(n_parts, None, true)?;
     let t = start.elapsed();
     println!(
         "HilbertBallPartitioner: {:.2e}s, quality={:.2e}, imbalance={:.2e}",
@@ -94,10 +98,10 @@ fn main() -> Result<()> {
         quality,
         imbalance
     );
-    print_partition_cc(&msh, n_parts);
+    check_partition_cc(&msh, n_parts);
 
     let start = Instant::now();
-    let (quality, imbalance) = msh.partition::<RCMPartitioner>(n_parts, None)?;
+    let (quality, imbalance) = msh.partition::<RCMPartitioner>(n_parts, None, true)?;
     let t = start.elapsed();
     println!(
         "RCMPartitioner: {:.2e}s, quality={:.2e}, imbalance={:.2e}",
@@ -105,24 +109,49 @@ fn main() -> Result<()> {
         quality,
         imbalance
     );
-    print_partition_cc(&msh, n_parts);
+    check_partition_cc(&msh, n_parts);
 
     let start = Instant::now();
-    let (quality, imbalance) = msh.partition::<KMeansPartitioner3d>(n_parts, None)?;
+    let (quality, imbalance) = msh.partition::<BFSPartitionner>(n_parts, None, true)?;
     let t = start.elapsed();
     println!(
-        "KMeansPartitioner3d: {:.2e}s, quality={:.2e}, imbalance={:.2e}",
+        "BFSPartitionner: {:.2e}s, quality={:.2e}, imbalance={:.2e}",
         t.as_secs_f64(),
         quality,
         imbalance
     );
-    print_partition_cc(&msh, n_parts);
+    check_partition_cc(&msh, n_parts);
+
+    let start = Instant::now();
+    let (quality, imbalance) = msh.partition::<BFSWRPartitionner>(n_parts, None, true)?;
+    let t = start.elapsed();
+    println!(
+        "BFSWRPartitionner: {:.2e}s, quality={:.2e}, imbalance={:.2e}",
+        t.as_secs_f64(),
+        quality,
+        imbalance
+    );
+    check_partition_cc(&msh, n_parts);
+
+    #[cfg(feature = "coupe")]
+    {
+        let start = Instant::now();
+        let (quality, imbalance) = msh.partition::<KMeansPartitioner3d>(n_parts, None, true)?;
+        let t = start.elapsed();
+        println!(
+            "KMeansPartitioner3d: {:.2e}s, quality={:.2e}, imbalance={:.2e}",
+            t.as_secs_f64(),
+            quality,
+            imbalance
+        );
+        check_partition_cc(&msh, n_parts);
+    }
 
     #[cfg(feature = "metis")]
     {
         let start = Instant::now();
         let (quality, imbalance) =
-            msh.partition::<MetisPartitioner<MetisRecursive>>(n_parts, None)?;
+            msh.partition::<MetisPartitioner<MetisRecursive>>(n_parts, None, true)?;
         let t = start.elapsed();
         println!(
             "MetisPartitioner<MetisRecursive>: {:.2e}s, quality={:.2e}, imbalance={:.2e}",
@@ -130,10 +159,11 @@ fn main() -> Result<()> {
             quality,
             imbalance
         );
-        print_partition_cc(&msh, n_parts);
+        check_partition_cc(&msh, n_parts);
 
         let start = Instant::now();
-        let (quality, imbalance) = msh.partition::<MetisPartitioner<MetisKWay>>(n_parts, None)?;
+        let (quality, imbalance) =
+            msh.partition::<MetisPartitioner<MetisKWay>>(n_parts, None, true)?;
         let t = start.elapsed();
         println!(
             "MetisPartitioner<MetisKWay>: {:.2e}s, quality={:.2e}, imbalance={:.2e}",
@@ -141,7 +171,7 @@ fn main() -> Result<()> {
             quality,
             imbalance
         );
-        print_partition_cc(&msh, n_parts);
+        check_partition_cc(&msh, n_parts);
     }
 
     Ok(())

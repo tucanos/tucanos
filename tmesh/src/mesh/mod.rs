@@ -872,9 +872,13 @@ where
         &mut self,
         n_parts: usize,
         weights: Option<Vec<f64>>,
+        correct: bool,
     ) -> Result<(f64, f64)> {
         let partitioner = P::new(self, n_parts, weights)?;
-        let parts = partitioner.compute()?;
+        let mut parts = partitioner.compute()?;
+        if correct {
+            partitioner.partition_correction(&mut parts);
+        }
         assert_eq!(parts.len(), self.n_elems());
 
         let quality = partitioner.partition_quality(&parts);
