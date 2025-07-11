@@ -170,7 +170,7 @@ impl Partitioner for BFSWRPartitionner {
         let mut next_unassigned_elem_root = 0;
         let mut n_assigned_elements = 0;
 
-        while n_assigned_elements < n_elems {
+        while n_assigned_elements < n_elems && current_partition_idx < self.n_parts() {
             while next_unassigned_elem_root < n_elems
                 && assigned_elements[self.ids[next_unassigned_elem_root]]
             {
