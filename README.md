@@ -2,42 +2,46 @@
 
 # About
 
-This is a 2D and 3D anisotropic mesh adaptation library based on [*Four-Dimensional Anisotropic Mesh Adaptation for
+This repository contains libraries for operations on 2D and 3D simplex meshes, including
+- [`tunacos`](https://github.com/tucanos/tucanos/tree/main/tucanos) for anisotropic mesh adaptation library based on [*Four-Dimensional Anisotropic Mesh Adaptation for
 Spacetime Numerical Simulations* by
-Philip Claude Caplan](https://www.cs.middlebury.edu/~pcaplan/docs/Caplan_2019_PhD.pdf).
+Philip Claude Caplan](https://www.cs.middlebury.edu/~pcaplan/docs/Caplan_2019_PhD.pdf). Tools for feature-based, geometry-based and mesh-implied metric computation are also provided, as well as for operations such as scaling and intersection.
+- [`tmesh`](https://github.com/tucanos/tucanos/tree/main/tmesh) for general mesh operations, including creation from general elements, dual mesh computation, partitioning, ordering...
 
 A Python wrapper can be found [here](https://github.com/tucanos/pytucanos).
 
-# Dependencies not managed by Cargo
+
+## Building
+
+Building the libraries requires a recent version of rust, that should be installed [as follows](https://www.rust-lang.org/tools/install)
+
+### Dependencies not managed by Cargo
 
 They are all optional.
 
-* [NLOpt](https://github.com/stevengj/nlopt) can be used for smoothing, but the current implementation is quite inefficient
-* Different LAPACK versions (Accelerate, MKL) may be used if available
-
-# Building
-
-* `metis` and `scotch` locations may need to be declared using environment variables. This can be done in `.cargo/config.toml`, for example:
+* [`NLOpt`](https://github.com/stevengj/nlopt) can be used for smoothing, but the current implementation is quite inefficient
+* [`metis`](https://github.com/KarypisLab/METIS) can be used to produce better quality mesh partitioning. The location of  `metis` may need to be declared using environment variables. This can be done in `.cargo/config.toml`, for example:
 ```toml
 [env]
 METISDIR="/path/to/metis_prefix"
-SCOTCHDIR="/path/to/scotch_prefix"
 ```
 
-* Optional [cargo features](https://doc.rust-lang.org/cargo/reference/features.html) are:
-    - `nlopt` to enable smoothing with NLOpt
-    - `metis`
-    - `scotch`
+### Features
 
-## Render doc
+Optional [cargo features](https://doc.rust-lang.org/cargo/reference/features.html) are:
+    - `nlopt` 
+    - `metis`
+    - `coupe`
+
+### Render doc
 
 ```
 RUSTDOCFLAGS="--html-in-header katex.html" cargo doc --no-deps --document-private-items
 ```
 
-# Using from C with FFI
+## Using from C with FFI
 
-Tucanos provides a C API using
+Tucanos provides a [C API](https://github.com/tucanos/tucanos/tree/main/tucanos-ffi) using
 [FFI](https://en.wikipedia.org/wiki/Foreign_function_interface). To be able to
 use it first ensure the FFI wrapper is built using:
 
@@ -84,3 +88,69 @@ int main(void) {
   tucanos_mesh33_delete(new_mesh);
 }
 ```
+
+## Using from python
+
+Python bindings for `tmesh` and `tucanos` are provided. 
+
+## Remeshing benchmarks
+
+### Reference codes
+
+#### [MMG](https://github.com/MmgTools/mmg)
+
+A minimal version can be installed with:
+
+```
+cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$PREFIX -DUSE_VTK=OFF -DUSE_ELAS=OFF -DUSE_SCOTCH=OFF
+make -j$(nproc) install
+```
+
+NB: the performance will be better with scotch installed
+
+#### [Omega\_h](https://github.com/sandialabs/omega_h)
+
+Before building Omega`_h you shall ensure that
+<https://github.com/sandialabs/omega_h/pull/408> is merged in you sources. Also
+make sure that libMeshb is installed. A minimal version can then be installed
+with:
+
+```
+cmake .. -DCMAKE_INSTALL_PREFIX=$PREFIX -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DOmega_h_USE_libMeshb=ON
+make -j$(nproc) install
+```
+
+#### [Refine](https://github.com/nasa/refine)
+
+A minimal version can be installed with:
+
+```
+cmake .. -DCMAKE_INSTALL_PREFIX=$PREFIX -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON
+make -j$(nproc) install
+```
+
+#### [Avro](https://philipclaude.gitlab.io/avro/)
+
+Detailed installation instructions are available [here](https://philipclaude.gitlab.io/avro/)
+
+#### Docker / podman
+
+A [`Dockerfile`](./pytucanos/benchmarks/Dockerfile) is included, and the image containing all the remeshers above may be build with e.g. as follows
+```
+cd pytucanos
+podman build . -t remeshers
+```
+
+### Benchmarks
+
+- [Isotropic remeshing in a 2D square domain
+](pytucanos/benchmarks/square_iso/README.md)
+- [Anisotropic remeshing in a 2D square domain
+](pytucanos/benchmarks/square_linear/README.md)
+- [Isotropic remeshing in a 3D cubic domain
+](pytucanos/benchmarks/cube_iso/README.md)
+- [Anisotropic remeshing in a 3D cubic domain
+](pytucanos/benchmarks/cube_linear/README.md)
+- [polar-1 benchmark from the UGAWG
+](pytucanos/benchmarks/cube_cylinder/README.md)
+
