@@ -49,6 +49,31 @@ Optional [cargo features](https://doc.rust-lang.org/cargo/reference/features.htm
 RUSTDOCFLAGS="--html-in-header katex.html" cargo doc --no-deps --document-private-items
 ```
 
+## Using from python
+
+Python bindings for `tmesh` and `tucanos` are provided. To install them:
+
+* [Install Rust](https://www.rust-lang.org/tools/install)
+* Optionally enter your prefered `conda` or `venv` or `virtualenv`
+* Run:
+
+```bash
+pip install 'git+https://github.com/tucanos/tucanos.git#subdirectory=pytmesh' \
+'git+https://github.com/tucanos/tucanos.git#subdirectory=pytucanos'
+```
+
+To install tucanos in debug mode:
+
+```bash
+pip install -C debug=true 'git+https://github.com/tucanos/tucanos.git#subdirectory=pytucanos'
+```
+
+To install Tucanos with metis support:
+
+```bash
+pip install -C metis=true 'git+https://github.com/tucanos/tucanos.git#subdirectory=pytucanos'
+```
+
 ## Using from C with FFI
 
 Tucanos provides a [C API](https://github.com/tucanos/tucanos/tree/main/tucanos-ffi) using
@@ -98,10 +123,6 @@ int main(void) {
   tucanos_mesh33_delete(new_mesh);
 }
 ```
-
-## Using from python
-
-Python bindings for `tmesh` and `tucanos` are provided. 
 
 ## Remeshing benchmarks
 
