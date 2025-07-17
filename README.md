@@ -12,8 +12,6 @@ This repository contains libraries for operations on 2D and 3D simplex meshes, i
   mesh operations, including creation from general elements, dual mesh
   computation, partitioning, ordering...
 
-A Python wrapper can be found [here](https://github.com/tucanos/pytucanos).
-
 
 ## Building
 
