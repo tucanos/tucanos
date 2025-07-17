@@ -3,24 +3,33 @@
 # About
 
 This repository contains libraries for operations on 2D and 3D simplex meshes, including
-- [`tunacos`](https://github.com/tucanos/tucanos/tree/main/tucanos) for anisotropic mesh adaptation library based on [*Four-Dimensional Anisotropic Mesh Adaptation for
-Spacetime Numerical Simulations* by
-Philip Claude Caplan](https://www.cs.middlebury.edu/~pcaplan/docs/Caplan_2019_PhD.pdf). Tools for feature-based, geometry-based and mesh-implied metric computation are also provided, as well as for operations such as scaling and intersection.
-- [`tmesh`](https://github.com/tucanos/tucanos/tree/main/tmesh) for general mesh operations, including creation from general elements, dual mesh computation, partitioning, ordering...
+- [`tunacos`](https://github.com/tucanos/tucanos/tree/main/tucanos) for
+  anisotropic mesh adaptation library based on
+  [*Four-Dimensional Anisotropic Mesh Adaptation for Spacetime Numerical Simulations* by Philip Claude Caplan](https://www.cs.middlebury.edu/~pcaplan/docs/Caplan_2019_PhD.pdf).
+  Tools for feature-based, geometry-based and mesh-implied metric computation
+  are also provided, as well as for operations such as scaling and intersection.
+- [`tmesh`](https://github.com/tucanos/tucanos/tree/main/tmesh) for general
+  mesh operations, including creation from general elements, dual mesh
+  computation, partitioning, ordering...
 
 A Python wrapper can be found [here](https://github.com/tucanos/pytucanos).
 
 
 ## Building
 
-Building the libraries requires a recent version of rust, that should be installed [as follows](https://www.rust-lang.org/tools/install)
+Building the libraries requires a recent version of rust, that should be installed
+[as follows](https://www.rust-lang.org/tools/install)
 
 ### Dependencies not managed by Cargo
 
 They are all optional.
 
-* [`NLOpt`](https://github.com/stevengj/nlopt) can be used for smoothing, but the current implementation is quite inefficient
-* [`metis`](https://github.com/KarypisLab/METIS) can be used to produce better quality mesh partitioning. The location of  `metis` may need to be declared using environment variables. This can be done in `.cargo/config.toml`, for example:
+* [`NLOpt`](https://github.com/stevengj/nlopt) can be used for smoothing, but
+  the current implementation is quite inefficient
+* [`metis`](https://github.com/KarypisLab/METIS) can be used to produce better
+  quality mesh partitioning. The location of  `metis` may need to be declared
+  using environment variables. This can be done in `.cargo/config.toml`, for
+  example:
 ```toml
 [env]
 METISDIR="/path/to/metis_prefix"
@@ -29,9 +38,10 @@ METISDIR="/path/to/metis_prefix"
 ### Features
 
 Optional [cargo features](https://doc.rust-lang.org/cargo/reference/features.html) are:
-    - `nlopt` 
-    - `metis`
-    - `coupe`
+
+- `nlopt`
+- `metis`
+- `coupe`
 
 ### Render doc
 
@@ -135,7 +145,9 @@ Detailed installation instructions are available [here](https://philipclaude.git
 
 #### Docker / podman
 
-A [`Dockerfile`](./pytucanos/benchmarks/Dockerfile) is included, and the image containing all the remeshers above may be build with e.g. as follows
+A [`Dockerfile`](./pytucanos/benchmarks/Dockerfile) is included, and the image
+containing all the remeshers above may be build with e.g. as follows
+
 ```
 cd pytucanos
 podman build . -t remeshers
