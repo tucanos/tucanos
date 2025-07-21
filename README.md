@@ -18,28 +18,28 @@ This repository contains libraries for operations on 2D and 3D simplex meshes, i
 Building the libraries requires a recent version of rust, that should be installed
 [as follows](https://www.rust-lang.org/tools/install)
 
-### Dependencies not managed by Cargo
+### Features
+
+Optional [cargo features](https://doc.rust-lang.org/cargo/reference/features.html) are:
+
+- [`nlopt`](https://github.com/stevengj/nlopt) can be used for smoothing, but
+  the current implementation is quite inefficient
+- [`metis`](https://github.com/KarypisLab/METIS) can be used to produce better
+  quality mesh partitioning. 
+- [`coupe`](https://github.com/LIHPC-Computational-Geometry/coupe) can also be used for
+  mesh partitioning.
+
+#### Dependencies not managed by Cargo
 
 They are all optional.
-
-* [`NLOpt`](https://github.com/stevengj/nlopt) can be used for smoothing, but
-  the current implementation is quite inefficient
-* [`metis`](https://github.com/KarypisLab/METIS) can be used to produce better
-  quality mesh partitioning. The location of  `metis` may need to be declared
+* `nlopt`.
+* `metis`. The location of  `metis` may need to be declared
   using environment variables. This can be done in `.cargo/config.toml`, for
   example:
 ```toml
 [env]
 METISDIR="/path/to/metis_prefix"
 ```
-
-### Features
-
-Optional [cargo features](https://doc.rust-lang.org/cargo/reference/features.html) are:
-
-- `nlopt`
-- `metis`
-- `coupe`
 
 ### Render doc
 
@@ -60,17 +60,19 @@ pip install 'git+https://github.com/tucanos/tucanos.git#subdirectory=pytmesh' \
 'git+https://github.com/tucanos/tucanos.git#subdirectory=pytucanos'
 ```
 
-To install tucanos in debug mode:
+### Enable features or debug build
 
+To install `tucanos`
+- in debug mode:
 ```bash
 pip install -C debug=true 'git+https://github.com/tucanos/tucanos.git#subdirectory=pytucanos'
 ```
-
-To install Tucanos with metis support:
-
+- with metis support:
 ```bash
 pip install -C metis=true 'git+https://github.com/tucanos/tucanos.git#subdirectory=pytucanos'
 ```
+
+The same applies to `tmesh`
 
 ## Using from C with FFI
 
@@ -139,9 +141,9 @@ NB: the performance will be better with scotch installed
 
 #### [Omega\_h](https://github.com/sandialabs/omega_h)
 
-Before building Omega`_h you shall ensure that
+Before building `Omega_h` you shall ensure that
 <https://github.com/sandialabs/omega_h/pull/408> is merged in you sources. Also
-make sure that libMeshb is installed. A minimal version can then be installed
+make sure that `libMeshb` is installed. A minimal version can then be installed
 with:
 
 ```
@@ -165,8 +167,7 @@ Detailed installation instructions are available [here](https://philipclaude.git
 #### Docker / podman
 
 A [`Dockerfile`](./pytucanos/benchmarks/Dockerfile) is included, and the image
-containing all the remeshers above may be build with e.g. as follows
-
+containing all the remeshers above may be build with
 ```
 cd pytucanos
 podman build . -t remeshers
