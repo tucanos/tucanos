@@ -14,6 +14,8 @@ use pyo3::{
     types::{PyDict, PyType},
 };
 use pytmesh::{PyPartitionerType, impl_mesh};
+#[cfg(feature = "metis")]
+use tmesh::mesh::partition::{MetisKWay, MetisPartitioner, MetisRecursive};
 use tmesh::{
     Vertex,
     interpolate::{InterpolationMethod, Interpolator},
