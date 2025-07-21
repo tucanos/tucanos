@@ -137,9 +137,13 @@ jobs:
     - name: Test pytmesh
       run: |
         cd pytmesh
-        pip install vtk==9.3
-        pip install -e .
+        pip install -e .[test]
         python -m unittest discover
+    - name: Test pytmesh (with metis)
+      run: |
+        cd pytmesh
+        pip install -C metis=true -e .
+        python -c "import pytmesh; assert(pytmesh.HAVE_METIS)"
     - name: Run clippy (pytucanos)
       uses: clechasseur/rs-clippy-check@v4
       with:
@@ -158,3 +162,8 @@ jobs:
         python examples/example_2d_hessian.py
         python examples/example_2d_implied.py
         python examples/example_2d_parallel.py  
+    - name: Test pytucanos (with metis)
+      run: |
+        cd pytucanos
+        pip install -C metis=true -e .
+        python -c "import pytucanos; assert(pytucanos.HAVE_METIS)"
