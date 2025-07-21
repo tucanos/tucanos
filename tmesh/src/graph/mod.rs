@@ -39,9 +39,9 @@ pub fn reindex<const N: usize>(elems: &[[usize; N]]) -> (Vec<[usize; N]>, FxHash
 /// CSR representation of a graph
 #[derive(Debug, Default, Clone)]
 pub struct CSRGraph {
-    ptr: Vec<usize>,
-    indices: Vec<usize>,
-    values: Option<Vec<usize>>,
+    pub(crate) ptr: Vec<usize>,
+    pub(crate) indices: Vec<usize>,
+    pub(crate) values: Option<Vec<usize>>,
     m: usize,
 }
 

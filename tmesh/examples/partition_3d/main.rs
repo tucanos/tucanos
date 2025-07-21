@@ -1,7 +1,7 @@
 //! Mesh partition example
 use std::{path::Path, process::Command, time::Instant};
 #[cfg(feature = "coupe")]
-use tmesh::mesh::partition::KMeansPartitioner3d;
+use tmesh::mesh::partition::{CoupeArcSwap, CoupeKMeans, CoupePartitioner};
 #[cfg(feature = "metis")]
 use tmesh::mesh::partition::{MetisKWay, MetisPartitioner, MetisRecursive};
 use tmesh::{
@@ -136,10 +136,23 @@ fn main() -> Result<()> {
     #[cfg(feature = "coupe")]
     {
         let start = Instant::now();
-        let (quality, imbalance) = msh.partition::<KMeansPartitioner3d>(n_parts, None, true)?;
+        let (quality, imbalance) =
+            msh.partition::<CoupePartitioner<CoupeKMeans>>(n_parts, None, true)?;
         let t = start.elapsed();
         println!(
-            "KMeansPartitioner3d: {:.2e}s, quality={:.2e}, imbalance={:.2e}",
+            "CoupePartitioner<CoupeKMeans>: {:.2e}s, quality={:.2e}, imbalance={:.2e}",
+            t.as_secs_f64(),
+            quality,
+            imbalance
+        );
+        check_partition_cc(&msh, n_parts);
+
+        let start = Instant::now();
+        let (quality, imbalance) =
+            msh.partition::<CoupePartitioner<CoupeArcSwap>>(n_parts, None, true)?;
+        let t = start.elapsed();
+        println!(
+            "CoupePartitioner<CoupeArcSwap>: {:.2e}s, quality={:.2e}, imbalance={:.2e}",
             t.as_secs_f64(),
             quality,
             imbalance

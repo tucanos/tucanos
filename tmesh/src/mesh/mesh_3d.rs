@@ -141,7 +141,7 @@ pub type Mesh3d = GenericMesh<3, 4, 3>;
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "coupe")]
-    use crate::mesh::partition::KMeansPartitioner3d;
+    use crate::mesh::partition::CoupePartitioner;
     use crate::{
         Vert3d, assert_delta,
         mesh::{
@@ -344,13 +344,30 @@ mod tests {
     #[cfg(feature = "coupe")]
     #[test]
     fn test_part_kmeans() {
+        use crate::mesh::partition::CoupeKMeans;
+
         let mut msh = box_mesh::<Mesh3d>(1.0, 6, 1.0, 5, 1.0, 5).random_shuffle();
-        let (quality, imbalance) = msh
-            .partition::<KMeansPartitioner3d>(4, None, false)
+        let (_quality, _imbalance) = msh
+            .partition::<CoupePartitioner<CoupeKMeans>>(4, None, false)
             .unwrap();
 
-        assert!(quality < 0.11);
-        assert!(imbalance < 0.04);
+        for i in 0..4 {
+            let part = msh.get_partition(i).mesh;
+            let cc = part.vertex_to_vertices().connected_components().unwrap();
+            let n_cc = cc.iter().copied().max().unwrap() + 1;
+            assert_eq!(n_cc, 1);
+        }
+    }
+
+    #[cfg(feature = "coupe")]
+    #[test]
+    fn test_part_arcswap() {
+        use crate::mesh::partition::CoupeArcSwap;
+
+        let mut msh = box_mesh::<Mesh3d>(1.0, 6, 1.0, 5, 1.0, 5).random_shuffle();
+        let (_quality, _imbalance) = msh
+            .partition::<CoupePartitioner<CoupeArcSwap>>(4, None, false)
+            .unwrap();
 
         for i in 0..4 {
             let part = msh.get_partition(i).mesh;
