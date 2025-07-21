@@ -9,3 +9,4 @@ from .pytmesh import PyPolyMeshType as PolyMeshType  # noqa: F401
 from .pytmesh import PyPolyMesh2d as PolyMesh2d  # noqa: F401
 from .pytmesh import PyPolyMesh3d as PolyMesh3d  # noqa: F401
 from .pytmesh import PyExtrudedMesh2d as ExtrudedMesh2d  # noqa: F401
+from .pytmesh import HAVE_METIS  # noqa: F401
