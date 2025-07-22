@@ -1,11 +1,10 @@
 mod complexity;
 mod curvature;
 mod gradation;
-mod implied;
+pub mod implied;
 mod reduction;
 mod scaling;
 mod smoothing;
-
 use crate::metric::reduction::{control_step, simultaneous_reduction, step};
 use crate::{Error, Result, mesh::Point};
 use crate::{H_MAX, S_MAX, S_MIN, S_RATIO_MAX};
@@ -30,6 +29,10 @@ pub trait Metric<const D: usize>:
     fn length(&self, e: &Point<D>) -> f64;
     /// Compute the volume associated with the metric
     fn vol(&self) -> f64;
+    /// Compute density associated with the metric
+    fn density(&self) -> f64 {
+        1.0 / self.vol()
+    }
     /// Interpolate between different metrics to return a valid metric
     fn interpolate<'a, I: Iterator<Item = (f64, &'a Self)>>(weights_and_metrics: I) -> Self
     where
@@ -225,6 +228,18 @@ impl<const D: usize> Display for IsoMetric<D> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "h = {:?}", self.0)?;
         Ok(())
+    }
+}
+
+impl From<IsoMetric<2>> for AnisoMetric2d {
+    fn from(iso_metric_2d: IsoMetric<2>) -> Self {
+        Self::from_iso(&iso_metric_2d)
+    }
+}
+
+impl From<IsoMetric<3>> for AnisoMetric3d {
+    fn from(iso_metric_3d: IsoMetric<3>) -> Self {
+        Self::from_iso(&iso_metric_3d)
     }
 }
 
