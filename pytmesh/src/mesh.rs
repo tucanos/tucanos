@@ -283,6 +283,45 @@ macro_rules! impl_mesh {
                 Ok(())
             }
 
+            /// Clear all faces
+            pub fn clear_faces(&mut self) {
+                self.0.clear_faces()
+            }
+
+            /// Add faces
+            pub fn add_faces(
+                &mut self,
+                faces: PyReadonlyArray2<usize>,
+                ftags: PyReadonlyArray1<Tag>,
+            ) -> PyResult<()> {
+                if faces.shape()[1] != $face_dim {
+                    return Err(PyValueError::new_err("Invalid dimension 1 for coords"));
+                }
+                let faces = faces.as_slice()?;
+                let faces = faces.chunks($face_dim).map(|x| x.try_into().unwrap());
+                let ftags = ftags.as_slice()?;
+                self.0.add_faces(faces, ftags.iter().copied());
+
+                Ok(())
+            }
+
+            /// Add elements
+            pub fn add_elems(
+                &mut self,
+                elems: PyReadonlyArray2<usize>,
+                etags: PyReadonlyArray1<Tag>,
+            ) -> PyResult<()> {
+                if elems.shape()[1] != $cell_dim {
+                    return Err(PyValueError::new_err("Invalid dimension 1 for coords"));
+                }
+                let elems = elems.as_slice()?;
+                let elems = elems.chunks($cell_dim).map(|x| x.try_into().unwrap());
+                let etags = etags.as_slice()?;
+                self.0.add_elems(elems, etags.iter().copied());
+
+                Ok(())
+            }
+
             /// Split and add quandrangles
             fn add_quadrangles(
                 &mut self,
