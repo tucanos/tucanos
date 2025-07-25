@@ -10,7 +10,7 @@ use pyo3::{
     Bound, PyResult, Python,
     exceptions::{PyRuntimeError, PyValueError},
     pyclass, pymethods,
-    types::PyType,
+    types::{PyDict, PyDictMethods, PyType},
 };
 #[cfg(feature = "metis")]
 use tmesh::mesh::partition::{MetisKWay, MetisPartitioner, MetisRecursive};
@@ -185,13 +185,24 @@ macro_rules! impl_mesh {
             }
 
             /// Fix the element & face orientation (if possible) and tag internal faces (if needed)
-            fn fix(&mut self) -> PyResult<()> {
-                let all_faces = self.0.all_faces();
-                self.0.fix_orientation(&all_faces);
-                self.0.tag_internal_faces(&all_faces);
-                self.0
-                    .check(&all_faces)
-                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+            fn fix<'py>(
+                &mut self,
+                py: Python<'py>,
+            ) -> PyResult<(Bound<'py, PyDict>, Bound<'py, PyDict>)> {
+                let (bdy, ifc) = self
+                    .0
+                    .fix()
+                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+                let dict_bdy = PyDict::new(py);
+                for (k, v) in bdy.iter() {
+                    dict_bdy.set_item(k, v)?;
+                }
+                let dict_ifc = PyDict::new(py);
+                for (k, v) in ifc.iter() {
+                    dict_ifc.set_item((k[0], k[1]), v)?;
+                }
+
+                Ok((dict_bdy, dict_ifc))
             }
 
             /// Export the mesh to a `.vtu` file
