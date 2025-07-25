@@ -1,12 +1,13 @@
 //! Triangle meshes in 2d
 use crate::{
-    mesh::{GenericMesh, Mesh},
     Vert2d,
+    mesh::{GenericMesh, Mesh},
 };
 
 /// Create a `Mesh<2, 3, 2>` of a `lx` by `ly` rectangle by splitting a `nx` by `ny`
 /// uniform structured grid
-#[must_use] pub fn rectangle_mesh<M: Mesh<2, 3, 2>>(lx: f64, nx: usize, ly: f64, ny: usize) -> M {
+#[must_use]
+pub fn rectangle_mesh<M: Mesh<2, 3, 2>>(lx: f64, nx: usize, ly: f64, ny: usize) -> M {
     let dx = lx / (nx as f64 - 1.);
     let x_1d = (0..nx).map(|i| i as f64 * dx).collect::<Vec<_>>();
 
@@ -17,7 +18,8 @@ use crate::{
 }
 
 /// Create a `Mesh<2, 3, 2>` of rectangle by splitting a structured grid
-#[must_use] pub fn nonuniform_rectangle_mesh<M: Mesh<2, 3, 2>>(x: &[f64], y: &[f64]) -> M {
+#[must_use]
+pub fn nonuniform_rectangle_mesh<M: Mesh<2, 3, 2>>(x: &[f64], y: &[f64]) -> M {
     let nx = x.len();
     let ny = y.len();
 
@@ -61,7 +63,7 @@ use crate::{
     res.add_quadrangles(quads.iter().copied(), etags.iter().copied());
     res.add_faces(faces.iter().copied(), ftags.iter().copied());
     let faces = res.all_faces();
-    res.fix_orientation(&faces);
+    res.fix_faces_orientation(&faces);
     res
 }
 
@@ -71,12 +73,11 @@ pub type Mesh2d = GenericMesh<2, 3, 2>;
 #[cfg(test)]
 mod tests {
     use crate::{
-        assert_delta,
+        Vert2d, assert_delta,
         mesh::{
-            bandwidth, cell_center, rectangle_mesh, BoundaryMesh2d, Edge, Mesh, Mesh2d, Simplex,
-            Triangle,
+            BoundaryMesh2d, Edge, Mesh, Mesh2d, Simplex, Triangle, bandwidth, cell_center,
+            rectangle_mesh,
         },
-        Vert2d,
     };
     use rayon::iter::ParallelIterator;
 

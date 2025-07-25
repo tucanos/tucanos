@@ -452,19 +452,19 @@ where
     /// and check the valitity
     #[allow(clippy::type_complexity)]
     fn fix(&mut self) -> Result<(FxHashMap<Tag, Tag>, FxHashMap<[Tag; 2], Tag>)> {
+        let n = self.fix_elems_orientation();
+        assert_eq!(n, 0);
         let all_faces = self.all_faces();
         let btags = self.tag_boundary_faces(&all_faces);
         let itags = self.tag_internal_faces(&all_faces);
-        self.fix_orientation(&all_faces);
+        self.fix_faces_orientation(&all_faces);
         self.check(&all_faces)?;
         Ok((btags, itags))
     }
 
-    /// Fix the orientation
-    /// - of elements (so that their volume is >0)
-    /// - of boundary faces to be oriented outwards (if possible)
-    /// - of internal faces to be oriented from the lower to the higher element tag
-    fn fix_orientation(&mut self, all_faces: &FxHashMap<Face<F>, [usize; 3]>) {
+    /// Fix the orientation of elements (so that their volume is >0), return the number of
+    /// elements fixed
+    fn fix_elems_orientation(&mut self) -> usize {
         let flg = self
             .elems()
             .map(|e| Cell::<C>::vol(&self.gelem(&e)) < 0.0)
@@ -475,8 +475,14 @@ where
             .filter(|(_, f)| **f)
             .map(|(i, _)| self.invert_elem(i))
             .count();
-        debug!("{n} elements reoriented");
+        debug!("{n} elems reoriented");
+        n
+    }
 
+    /// Fix the orientation
+    /// - of boundary faces to be oriented outwards (if possible)
+    /// - of internal faces to be oriented from the lower to the higher element tag
+    fn fix_faces_orientation(&mut self, all_faces: &FxHashMap<Face<F>, [usize; 3]>) -> usize {
         if Self::faces_are_oriented() {
             let flg = self
                 .faces()
@@ -508,7 +514,9 @@ where
                 .map(|(i, _)| self.invert_face(i))
                 .count();
             debug!("{n} faces reoriented");
+            return n;
         }
+        0
     }
 
     /// Compute the faces that are connected to only one element and that are not already tagged
