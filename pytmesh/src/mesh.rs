@@ -260,6 +260,14 @@ macro_rules! impl_mesh {
                 Self($name::empty())
             }
 
+            /// Add vertices, faces and elements from another mesh
+            /// If `tol` is not None, vertices on the boundaries of `self`
+            /// and `other` are merged if closer than the tolerance.
+            pub fn add(&mut self, other: &Self, tol: Option<f64>) {
+                self.0.add(&other.0, |_| true, |_| true, tol);
+            }
+
+            /// Add vertices
             pub fn add_verts(&mut self, coords: PyReadonlyArray2<f64>) -> PyResult<()> {
                 if coords.shape()[1] != $dim {
                     return Err(PyValueError::new_err("Invalid dimension 1 for coords"));
