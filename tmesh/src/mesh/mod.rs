@@ -532,7 +532,7 @@ where
             .map(|(f, t)| (f.sorted(), t))
             .collect::<FxHashMap<_, _>>();
 
-        let mut next_tag = self.par_ftags().max().unwrap_or(0) + 1;
+        let mut next_tag = -self.par_ftags().max().unwrap_or(0) - 1;
 
         // add untagged boundary faces
         for (f, &[_, i0, i1]) in all_faces {
@@ -543,7 +543,7 @@ where
                 } else {
                     res.insert(etag, next_tag);
                     self.add_faces(std::iter::once(f).copied(), std::iter::once(next_tag));
-                    next_tag += 1;
+                    next_tag -= 1;
                 }
             }
             if i1 == usize::MAX && !tagged_faces.contains_key(f) {
@@ -553,7 +553,7 @@ where
                 } else {
                     res.insert(etag, next_tag);
                     self.add_faces(std::iter::once(f).copied(), std::iter::once(next_tag));
-                    next_tag += 1;
+                    next_tag -= 1;
                 }
             }
         }
@@ -574,7 +574,7 @@ where
             .map(|(f, t)| (f.sorted(), t))
             .collect::<FxHashMap<_, _>>();
 
-        let mut next_tag = self.par_ftags().max().unwrap_or(0) + 1;
+        let mut next_tag = -self.par_ftags().max().unwrap_or(0) - 1;
 
         // check tagged internal faces
         for (f, &[_, i0, i1]) in all_faces {
@@ -604,7 +604,7 @@ where
                     } else {
                         res.insert(tags, next_tag);
                         self.add_faces(std::iter::once(f).copied(), std::iter::once(next_tag));
-                        next_tag += 1;
+                        next_tag -= 1;
                     }
                 }
             }
