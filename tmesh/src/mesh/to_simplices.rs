@@ -1,4 +1,4 @@
-use super::{Tetrahedron, Triangle};
+use super::{Hexahedron, Prism, Pyramid, Quadrangle, Tetrahedron, Triangle};
 
 // Subdivision of standard elements to triangles and tetrahedra maintaining a consistent mesh. The algorithms are taken from
 // How to Subdivide Pyramids, Prisms and Hexahedra into Tetrahedra
@@ -48,7 +48,7 @@ fn argmin(arr: &[usize]) -> usize {
 
 /// Convert a quadrangle into 2 triangles
 #[must_use]
-pub fn qua2tris(quad: &[usize]) -> [Triangle; 2] {
+pub fn qua2tris(quad: &Quadrangle) -> [Triangle; 2] {
     let mut tri1 = Triangle::default();
     let mut tri2 = Triangle::default();
 
@@ -73,7 +73,7 @@ pub fn qua2tris(quad: &[usize]) -> [Triangle; 2] {
 
 /// Convert a pyramid into 2 tetrahedra
 #[must_use]
-pub fn pyr2tets(pyr: &[usize]) -> [Tetrahedron; 2] {
+pub fn pyr2tets(pyr: &Pyramid) -> [Tetrahedron; 2] {
     let mut tet1 = Tetrahedron::default();
     let mut tet2 = Tetrahedron::default();
 
@@ -81,7 +81,6 @@ pub fn pyr2tets(pyr: &[usize]) -> [Tetrahedron; 2] {
         tet1[0] = pyr[0];
         tet1[1] = pyr[1];
         tet1[2] = pyr[2];
-        tet1[3] = pyr[4];
         tet2[0] = pyr[0];
         tet2[1] = pyr[2];
         tet2[2] = pyr[3];
@@ -89,18 +88,18 @@ pub fn pyr2tets(pyr: &[usize]) -> [Tetrahedron; 2] {
         tet1[0] = pyr[1];
         tet1[1] = pyr[2];
         tet1[2] = pyr[3];
-        tet1[3] = pyr[4];
         tet2[0] = pyr[1];
         tet2[1] = pyr[3];
         tet2[2] = pyr[0];
     }
+    tet1[3] = pyr[4];
     tet2[3] = pyr[4];
     [tet1, tet2]
 }
 
 /// Convert a prism into 3 tetrahedra
 #[must_use]
-pub fn pri2tets(pri: &[usize]) -> [Tetrahedron; 3] {
+pub fn pri2tets(pri: &Prism) -> [Tetrahedron; 3] {
     let imin = argmin(pri);
 
     let mut usize = [0; 6];
@@ -137,7 +136,7 @@ pub fn pri2tets(pri: &[usize]) -> [Tetrahedron; 3] {
 /// Convert a hex into 5 or 6 tetrahedra
 #[must_use]
 #[allow(clippy::too_many_lines)]
-pub fn hex2tets(hex: &[usize]) -> ([Tetrahedron; 5], Option<Tetrahedron>) {
+pub fn hex2tets(hex: &Hexahedron) -> ([Tetrahedron; 5], Option<Tetrahedron>) {
     let imin = argmin(hex);
 
     let mut usize = [0; 8];
