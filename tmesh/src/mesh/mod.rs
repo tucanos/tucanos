@@ -1246,7 +1246,7 @@ where
     }
 
     /// Split prisms and add them to the mesh (C == 4)
-    fn add_prisms<I1: ExactSizeIterator<Item = Hexahedron>, I2: ExactSizeIterator<Item = Tag>>(
+    fn add_prisms<I1: ExactSizeIterator<Item = Prism>, I2: ExactSizeIterator<Item = Tag>>(
         &mut self,
         pris: I1,
         tags: I2,
@@ -1268,7 +1268,7 @@ where
     }
 
     /// Split pyramids and add them to the mesh (C == 4)
-    fn add_pyramids<I1: ExactSizeIterator<Item = Hexahedron>, I2: ExactSizeIterator<Item = Tag>>(
+    fn add_pyramids<I1: ExactSizeIterator<Item = Pyramid>, I2: ExactSizeIterator<Item = Tag>>(
         &mut self,
         pyrs: I1,
         tags: I2,
