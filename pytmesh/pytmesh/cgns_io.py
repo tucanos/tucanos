@@ -90,6 +90,18 @@ def load_cgns(fname, cls=None):
 
             for els in CGU.hasChildType(zone, CGK.Elements_ts):
                 etype, _ = CGU.getValue(els)
+                if etype not in [
+                    CGK.BAR_2,
+                    CGK.TRI_3,
+                    CGK.QUAD_4,
+                    CGK.TETRA_4,
+                    CGK.PYRA_5,
+                    CGK.PENTA_6,
+                    CGK.HEXA_8,
+                ]:
+                    raise NotImplementedError(
+                        f"Element type {cgns_elem_name(etype)} not implemented"
+                    )
                 erange = CGU.getValue(CGU.getChildByName(els, "ElementRange"))
                 ids = np.arange(erange[0] - 1, erange[1], dtype=np.uint32)
                 econn = CGU.getValue(CGU.getChildByName(els, "ElementConnectivity"))
@@ -125,6 +137,8 @@ def load_cgns(fname, cls=None):
                         raise NotImplementedError(
                             f"Unknown element type {cgns_elem_name(etype)} / {etype}"
                         )
+                else:
+                    raise NotImplementedError()
 
             bdy, ifc = msh.fix()
             assert len(ifc) == 0
