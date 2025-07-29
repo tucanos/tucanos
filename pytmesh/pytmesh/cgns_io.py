@@ -83,10 +83,16 @@ def load_cgns(fname, cls=None):
                 else:
                     range = CGU.getValue(CGU.getChildByName(bc, "PointRange")).squeeze()
                     ids = np.arange(range[0] - 1, range[1])
-                bcs.append((bc[0], next_tag, ids))
-                names[bc[0]] = next_tag
-                logging.debug(f"Read BC {bc[0]}: {ids.size} faces, tag = {next_tag}")
-                next_tag += 1
+                if bc[0] in names:
+                    tag = names[bc[0]]
+                else:
+                    tag = next_tag
+                    next_tag += 1
+                    names[bc[0]] = tag
+
+                bcs.append((bc[0], tag, ids))
+
+                logging.debug(f"Read BC {bc[0]}: {ids.size} faces, tag = {tag}")
 
             for els in CGU.hasChildType(zone, CGK.Elements_ts):
                 etype, _ = CGU.getValue(els)
@@ -105,10 +111,8 @@ def load_cgns(fname, cls=None):
                 erange = CGU.getValue(CGU.getChildByName(els, "ElementRange"))
                 ids = np.arange(erange[0] - 1, erange[1], dtype=np.uint32)
                 econn = CGU.getValue(CGU.getChildByName(els, "ElementConnectivity"))
+                logging.info(f"Read {ids.size} {cgns_elem_name(etype)}")
                 econn = econn.astype(np.uint64).reshape((ids.size, -1)) - 1
-                logging.debug(
-                    f"Read {ids.size} {cgns_elem_name(etype)} ({erange[0] - 1} -> {erange[1]})"
-                )
                 tags = np.zeros(ids.size, dtype=np.int16)
                 for name, tag, bdy_ids in bcs:
                     tmp = np.searchsorted(bdy_ids, ids)
