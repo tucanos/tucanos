@@ -6,7 +6,9 @@ use tmesh::{
     Result,
     mesh::{
         BoundaryMesh3d, Mesh, Mesh3d,
-        partition::{HilbertPartitioner, KMeansPartitioner3d, RCMPartitioner},
+        partition::{
+            HilbertBallPartitioner, HilbertPartitioner, KMeansPartitioner3d, RCMPartitioner,
+        },
     },
 };
 
@@ -26,6 +28,17 @@ Physical Surface("sphere", 15) = {4, 5};
 Physical Volume("E", 16) = {1};
 
 "#;
+
+fn print_partition_cc(msh: &Mesh3d, n_parts: usize) {
+    for i in 0..n_parts {
+        let pmesh = msh.get_partition(i).mesh;
+        let faces = pmesh.all_faces();
+        let graph = pmesh.element_pairs(&faces);
+        let cc = graph.connected_components().unwrap();
+        let n_cc = cc.iter().copied().max().unwrap_or(0) + 1;
+        println!("  part {i}: {n_cc} components");
+    }
+}
 
 #[allow(clippy::too_many_lines)]
 fn main() -> Result<()> {
@@ -70,12 +83,18 @@ fn main() -> Result<()> {
         quality,
         imbalance
     );
-    for i in 0..n_parts {
-        let pmesh = msh.get_partition(i).mesh;
-        let cc = pmesh.vertex_to_vertices().connected_components()?;
-        let n_cc = cc.iter().copied().max().unwrap_or(0) + 1;
-        println!("  part {i}: {n_cc} components");
-    }
+    print_partition_cc(&msh, n_parts);
+
+    let start = Instant::now();
+    let (quality, imbalance) = msh.partition::<HilbertBallPartitioner>(n_parts, None)?;
+    let t = start.elapsed();
+    println!(
+        "HilbertBallPartitioner: {:.2e}s, quality={:.2e}, imbalance={:.2e}",
+        t.as_secs_f64(),
+        quality,
+        imbalance
+    );
+    print_partition_cc(&msh, n_parts);
 
     let start = Instant::now();
     let (quality, imbalance) = msh.partition::<RCMPartitioner>(n_parts, None)?;
@@ -86,12 +105,7 @@ fn main() -> Result<()> {
         quality,
         imbalance
     );
-    for i in 0..n_parts {
-        let pmesh = msh.get_partition(i).mesh;
-        let cc = pmesh.vertex_to_vertices().connected_components()?;
-        let n_cc = cc.iter().copied().max().unwrap_or(0) + 1;
-        println!("  part {i}: {n_cc} components");
-    }
+    print_partition_cc(&msh, n_parts);
 
     let start = Instant::now();
     let (quality, imbalance) = msh.partition::<KMeansPartitioner3d>(n_parts, None)?;
@@ -102,12 +116,7 @@ fn main() -> Result<()> {
         quality,
         imbalance
     );
-    for i in 0..n_parts {
-        let pmesh = msh.get_partition(i).mesh;
-        let cc = pmesh.vertex_to_vertices().connected_components()?;
-        let n_cc = cc.iter().copied().max().unwrap_or(0) + 1;
-        println!("  part {i}: {n_cc} components");
-    }
+    print_partition_cc(&msh, n_parts);
 
     #[cfg(feature = "metis")]
     {
@@ -121,12 +130,7 @@ fn main() -> Result<()> {
             quality,
             imbalance
         );
-        for i in 0..n_parts {
-            let pmesh = msh.get_partition(i).mesh;
-            let cc = pmesh.vertex_to_vertices().connected_components()?;
-            let n_cc = cc.iter().copied().max().unwrap_or(0) + 1;
-            println!("  part {i}: {n_cc} components");
-        }
+        print_partition_cc(&msh, n_parts);
 
         let start = Instant::now();
         let (quality, imbalance) = msh.partition::<MetisPartitioner<MetisKWay>>(n_parts, None)?;
@@ -137,12 +141,7 @@ fn main() -> Result<()> {
             quality,
             imbalance
         );
-        for i in 0..n_parts {
-            let pmesh = msh.get_partition(i).mesh;
-            let cc = pmesh.vertex_to_vertices().connected_components()?;
-            let n_cc = cc.iter().copied().max().unwrap_or(0) + 1;
-            println!("  part {i}: {n_cc} components");
-        }
+        print_partition_cc(&msh, n_parts);
     }
 
     Ok(())
