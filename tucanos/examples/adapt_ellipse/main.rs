@@ -314,7 +314,11 @@ fn main() -> Result<()> {
         remesher.check()?;
         remesher.to_mesh(true)
     } else {
-        let mut dd = ParallelRemesher::new(mesh, PartitionType::MetisRecursive(n_part))?;
+        #[cfg(feature = "metis")]
+        let part = PartitionType::MetisRecursive(n_part);
+        #[cfg(not(feature = "metis"))]
+        let part = PartitionType::Hilbert(n_part);
+        let mut dd = ParallelRemesher::new(mesh, part)?;
         dd.set_debug(debug);
         let dd_params = ParallelRemesherParams::new(2, 2, 10000);
         let (mesh, stats, _) = dd.remesh(&metric, &geom, params, &dd_params)?;
