@@ -919,7 +919,11 @@ pub trait HasTmeshImpl<const D: usize, E: Elem> {
 
     fn boundary_flag(&self) -> Vec<bool>;
 
-    fn extract_tag(&self, tag: Tag) -> SubSimplexMesh<D, E>;
+    fn extract_tag(&self, tag: Tag) -> SubSimplexMesh<D, E> {
+        self.extract_tags(|t| t == tag)
+    }
+
+    fn extract_tags<G: Fn(Tag) -> bool>(&self, filter: G) -> SubSimplexMesh<D, E>;
 
     fn check_simple(&self) -> Result<()>;
 
