@@ -1,6 +1,6 @@
 use super::Remesher;
 use crate::{
-    Dim, Idx, Result,
+    Dim, Result,
     geometry::Geometry,
     mesh::Elem,
     metric::Metric,
@@ -144,43 +144,35 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                             self.add_tagged_face(E::Face::from_vertex_and_face(ip, &b), t)?;
                         }
                         n_splits += 1;
-                    } else if matches!(status, CavityCheckStatus::Invalid)
-                        && cavity.elems.len() == 1
-                        && tag.0 < E::DIM as Dim
+                    } else if matches!(status, CavityCheckStatus::Invalid) && tag.0 < E::DIM as Dim
                     {
-                        // If the cavity contains one element with two (1 in 2D) tagged faces with the same tag
-                        // then we remove the element from the mesh
-
-                        let e = cavity.global_elem(&cavity.elems[0]);
-                        let mut tags = vec![0; E::N_FACES as usize];
-                        let mut face_tag = 0;
-                        let mut n_tagged = 0;
-                        let mut same_tags = true;
-                        for i in 0..E::N_FACES {
-                            let f = e.face(i);
-                            let f = f.sorted();
-                            let tag = self.tagged_faces.get(&f);
-                            if let Some(tag) = tag {
-                                tags[i as usize] = *tag;
-                                n_tagged += 1;
-                                if face_tag == 0 {
-                                    face_tag = *tag;
-                                } else if *tag != face_tag {
-                                    same_tags = false;
-                                }
+                        let remove_elems = match E::Face::DIM {
+                            2 => {
+                                cavity.tagged_faces.len() == 2
+                                    && cavity.tagged_faces[0].1 == tag.1
+                                    && cavity.tagged_faces[1].1 == tag.1
                             }
-                        }
+                            1 => {
+                                cavity.tagged_faces.len() == 1 && cavity.tagged_faces[0].1 == tag.1
+                            }
+                            _ => unreachable!(),
+                        };
+                        let remove_elems = remove_elems
+                            && cavity.faces().all(|(f, _)| {
+                                let f = cavity.global_elem(&f).sorted();
+                                !self.tagged_faces.contains_key(&f)
+                            });
 
-                        if n_tagged == E::Face::DIM && same_tags {
-                            // remove the element
-                            self.remove_elem(cavity.global_elem_ids[0])?;
-                            for (i, &t) in tags.iter().enumerate() {
-                                let f = e.face(i as Idx);
-                                if t == face_tag {
-                                    self.remove_tagged_face(f)?;
-                                } else {
-                                    self.add_tagged_face(f, face_tag)?;
-                                }
+                        if remove_elems {
+                            for &i in &cavity.global_elem_ids {
+                                self.remove_elem(i)?;
+                            }
+                            for (f, _) in cavity.global_tagged_faces() {
+                                self.remove_tagged_face(f)?;
+                            }
+                            for (f, _) in cavity.faces() {
+                                let f = cavity.global_elem(&f).sorted();
+                                self.add_tagged_face(f, tag.1)?;
                             }
                             n_removed += 1;
                         }
@@ -189,7 +181,6 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                     }
                 }
             }
-
             debug!(
                 "Iteration {n_iter}: {n_splits} edges split ({n_fails} failed - {n_removed} elements removed)"
             );
