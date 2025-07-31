@@ -151,10 +151,10 @@ where
     Cell<F>: Simplex<F>,
 {
     /// Extract the elements with a given tag
-    pub fn new(mesh: &M, tag: Tag) -> Self {
+    pub fn new<G: Fn(Tag) -> bool>(mesh: &M, filter: G) -> Self {
         let mut res = M::empty();
         let (parent_vert_ids, parent_elem_ids, parent_face_ids) =
-            res.add(mesh, |t| t == tag, |_| true, None);
+            res.add(mesh, filter, |_| true, None);
         Self {
             mesh: res,
             parent_vert_ids,
@@ -872,7 +872,7 @@ where
 
     /// Get the i-th partition
     fn get_partition(&self, i: usize) -> SubMesh<D, C, F, Self> {
-        SubMesh::new(self, i as Tag + 1)
+        SubMesh::new(self, |t| t == i as Tag + 1)
     }
 
     /// Partition the mesh (RCM ordering applied to the element to element connectivity)

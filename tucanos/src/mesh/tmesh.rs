@@ -233,10 +233,10 @@ macro_rules! impl_mesh {
                 <Self as Mesh<$dim, $cell_dim, $face_dim>>::boundary_flag(self)
             }
 
-            fn extract_tag(&self, tag: Tag) -> SubSimplexMesh<$dim, $name> {
+            fn extract_tags<G: Fn(Tag) -> bool>(&self, filter: G) -> SubSimplexMesh<$dim, $name> {
                 let mut res = SimplexMesh::<$dim, $name>::empty();
                 let (parent_vert_ids, parent_elem_ids, parent_face_ids) =
-                    Mesh::add(&mut res, self, |t| t == tag, |_| true, None);
+                    Mesh::add(&mut res, self, filter, |_| true, None);
                 // res.fix_orientation(&res.all_faces());
                 // res.check_simple().unwrap();
                 SubSimplexMesh::<$dim, $name> {
