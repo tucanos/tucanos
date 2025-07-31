@@ -964,7 +964,7 @@ where
     /// Export the mesh to a `.meshb` file
     #[allow(clippy::unnecessary_fallible_conversions)]
     fn write_meshb(&self, file_name: &str) -> Result<()> {
-        let mut writer = MeshbWriter::new(file_name, 4, D as u8)?;
+        let mut writer = MeshbWriter::new(file_name, 3, D as u8)?;
 
         writer.write_vertices::<D, _, _>(
             self.verts().map(|x| {
@@ -1036,7 +1036,7 @@ where
     ) -> Result<()> {
         assert_eq!(arr.len(), N * self.n_verts());
 
-        let mut writer = MeshbWriter::new(file_name, 2, D as u8)?;
+        let mut writer = MeshbWriter::new(file_name, 3, D as u8)?;
         writer.write_solution(arr.chunks(N).map(f))?;
         writer.close();
 
