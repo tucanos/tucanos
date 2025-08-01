@@ -15,7 +15,7 @@ rustc-hash = "2.1.1"
 serde = { version = "1.0.219", features = ["derive"]}
 tempfile = "3.19.1"
 kdtree = { version = "0.7" }
-parry3d-f64 = { version = "0.21.1" }
+parry3d-f64 = { version = "0.22.0" }
 parry2d-f64 = { version = "0.21.1" }
 coupe = { git = "https://github.com/tucanos/coupe.git", version = "0.1.0", branch="xg/dev" }
 metis = { git = "https://github.com/tucanos/metis-rs.git", rev = "d31aa3e", optional=true}
