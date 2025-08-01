@@ -12,7 +12,6 @@ class TestField(unittest.TestCase):
         logging.disable(logging.CRITICAL)
 
     def test_2d_scalar(self):
-
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh22(coords, elems, etags, faces, ftags)
         f = np.random.rand(msh.n_verts(), 1)
@@ -23,7 +22,6 @@ class TestField(unittest.TestCase):
         os.remove("tmp.solb")
 
     def test_2d_vector(self):
-
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh22(coords, elems, etags, faces, ftags)
         f = np.random.rand(msh.n_verts(), 2)
@@ -34,7 +32,6 @@ class TestField(unittest.TestCase):
         os.remove("tmp.solb")
 
     def test_2d_tensor(self):
-
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh22(coords, elems, etags, faces, ftags)
         f = np.random.rand(msh.n_verts(), 3)
@@ -45,7 +42,6 @@ class TestField(unittest.TestCase):
         os.remove("tmp.solb")
 
     def test_3d_scalar(self):
-
         coords, elems, etags, faces, ftags = get_cube()
         msh = Mesh33(coords, elems, etags, faces, ftags)
         f = np.random.rand(msh.n_verts(), 1)
@@ -56,7 +52,6 @@ class TestField(unittest.TestCase):
         os.remove("tmp.solb")
 
     def test_3d_vector(self):
-
         coords, elems, etags, faces, ftags = get_cube()
         msh = Mesh33(coords, elems, etags, faces, ftags)
         f = np.random.rand(msh.n_verts(), 3)
@@ -67,7 +62,6 @@ class TestField(unittest.TestCase):
         os.remove("tmp.solb")
 
     def test_3d_tensor(self):
-
         coords, elems, etags, faces, ftags = get_cube()
         msh = Mesh33(coords, elems, etags, faces, ftags)
         f = np.random.rand(msh.n_verts(), 6)

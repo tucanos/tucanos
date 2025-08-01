@@ -320,13 +320,14 @@ if __name__ == "__main__":
             bins=50,
             alpha=0.25,
             density=True,
-            label="parmesan (l_min = %.2f, l_max = %.2f)" % (lengths.min(), lengths.max()),
+            label="parmesan (l_min = %.2f, l_max = %.2f)"
+            % (lengths.min(), lengths.max()),
         )
         ax[1].axvline(x=0.5**0.5, c="r")
         ax[1].axvline(x=2**0.5, c="r")
         ax[1].set_xlabel("edge lengths")
         ax[1].legend()
 
-        msh.write_vtk(f"naca_{it+1}.vtu", {}, {"q": qualities.reshape((-1, 1))})
+        msh.write_vtk(f"naca_{it + 1}.vtu", {}, {"q": qualities.reshape((-1, 1))})
 
     plt.show()

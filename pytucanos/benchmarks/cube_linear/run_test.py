@@ -17,7 +17,6 @@ from time import time
 
 
 def get_metric(msh):
-
     x, y, z = msh.get_verts().T
 
     h_x = 0.1
@@ -35,7 +34,6 @@ def get_metric(msh):
 
 
 def run_loop(remesh):
-
     coords, elems, etags, faces, ftags = get_cube()
     msh = Mesh33(coords, elems, etags, faces, ftags)
 
@@ -49,7 +47,6 @@ def run_loop(remesh):
 
 
 def run(cases):
-
     print("Cube - linear")
 
     pth = os.path.dirname(__file__)
@@ -97,7 +94,6 @@ def run(cases):
 
 
 if __name__ == "__main__":
-
     import logging
 
     FORMAT = "%(levelname)s %(name)s %(message)s"

@@ -58,7 +58,6 @@ def mat2sym(m):
 
 
 def anisotropy(m):
-
     m = sym2mat(m)
     eigvals, _ = np.linalg.eigh(m)
     sizes = 1.0 / np.sqrt(eigvals)
@@ -66,7 +65,6 @@ def anisotropy(m):
 
 
 def bound_anisotropy(m, aniso_max):
-
     m = sym2mat(m)
 
     eigvals, eigvecs = np.linalg.eigh(m)
@@ -81,7 +79,6 @@ def bound_anisotropy(m, aniso_max):
 
 
 def metric2sizes(m):
-
     m = sym2mat(m)
     eigvals, eigvecs = np.linalg.eigh(m)
     eigvals = 1.0 / np.sqrt(eigvals)
