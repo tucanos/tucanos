@@ -17,7 +17,6 @@ from time import time
 
 
 def get_metric(msh):
-
     x, y, z = msh.get_verts().T
 
     r = (x**2 + y**2) ** 0.5
@@ -56,7 +55,6 @@ def get_metric(msh):
 
 
 def run_loop(remesh, name):
-
     pth = os.path.dirname(__file__)
     if name == "tucanos":
         msh = Mesh33.from_meshb(os.path.join(pth, "cube-cylinder.mesh"))
@@ -73,7 +71,6 @@ def run_loop(remesh, name):
 
 
 def run(cases):
-
     print("Cube - cylinder")
 
     pth = os.path.dirname(__file__)
@@ -106,7 +103,8 @@ def run(cases):
                 bins=50,
                 alpha=0.25,
                 density=True,
-                label="%s (min = %.2f, max = %.2f)" % (name, lengths.min(), lengths.max()),
+                label="%s (min = %.2f, max = %.2f)"
+                % (name, lengths.min(), lengths.max()),
             )
             axs_q[1].set_xlim([0.0, 2.0])
         except subprocess.CalledProcessError as e:
@@ -130,7 +128,6 @@ def run(cases):
 
 
 if __name__ == "__main__":
-
     import logging
 
     FORMAT = "%(levelname)s %(name)s %(message)s"

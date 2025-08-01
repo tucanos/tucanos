@@ -4,9 +4,7 @@ from . import Mesh2d, DualType, DualMesh2d
 
 
 class TestExtrudedMeshes(unittest.TestCase):
-
     def test_mesh(self):
-
         nx = 10
         ny = 15
         msh = Mesh2d.rectangle_mesh(np.linspace(0, 1, nx), np.linspace(0, 2, ny))
@@ -16,7 +14,6 @@ class TestExtrudedMeshes(unittest.TestCase):
         msh.check_equals(msh2, 1e-12)
 
     def test_dual(self):
-
         nx = 10
         ny = 15
         msh = Mesh2d.rectangle_mesh(np.linspace(0, 1, nx), np.linspace(0, 2, ny))

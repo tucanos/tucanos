@@ -17,7 +17,6 @@ TET2EDG = [
 
 
 def edges(els):
-
     assert els.ndim == 2
     if els.shape[1] == 2:
         edgs = els.copy()

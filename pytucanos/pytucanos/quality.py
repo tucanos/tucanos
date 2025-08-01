@@ -4,7 +4,6 @@ from .metric import sym2mat
 
 
 def qualities_and_lengths(mesh, m):
-
     coords = mesh.get_verts()
     els = mesh.get_elems()
 
@@ -12,7 +11,6 @@ def qualities_and_lengths(mesh, m):
 
 
 def lengths(coords, els, m):
-
     edgs = edges(els)
     aniso = m.ndim == 2 and m.shape[1] > 1
 
@@ -36,7 +34,6 @@ def lengths(coords, els, m):
 
 
 def qualities(coords, els, m):
-
     aniso = m.ndim == 2 and m.shape[1] > 1
     dim = coords.shape[1]
 

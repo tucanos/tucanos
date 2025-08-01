@@ -9,12 +9,10 @@ from pytucanos.quality import qualities_and_lengths
 
 
 def get_mesh():
-
     return Mesh22(*get_square())
 
 
 def get_metric(msh):
-
     x, y = msh.get_verts().T
 
     hx = 0.1
@@ -28,7 +26,6 @@ def get_metric(msh):
 
 
 def run_loop(remesh):
-
     msh = get_mesh()
 
     t0 = time()
@@ -40,7 +37,6 @@ def run_loop(remesh):
 
 
 def run():
-
     print("Square - iso")
 
     pth = os.path.dirname(__file__)
@@ -91,7 +87,6 @@ def run():
 
 
 if __name__ == "__main__":
-
     import logging
 
     FORMAT = "%(levelname)s %(name)s %(message)s"
