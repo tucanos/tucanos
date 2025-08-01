@@ -129,7 +129,8 @@ jobs:
     - name: Run ruff
       run: |
         pip install ruff
-        ruff check .
+        ruff check
+        ruff format --check
     - name: Run clippy (pytmesh)
       uses: clechasseur/rs-clippy-check@v4
       with:
