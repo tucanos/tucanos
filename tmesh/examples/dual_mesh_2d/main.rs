@@ -1,9 +1,9 @@
 //! Dual meshes in 2d
 use std::{path::Path, process::Command};
 use tmesh::{
+    Result,
     dual::{DualMesh, DualMesh2d, DualType, PolyMesh, SimplePolyMesh},
     mesh::{BoundaryMesh2d, Mesh, Mesh2d},
-    Result,
 };
 
 /// .geo file to generate the input mesh with gmsh:

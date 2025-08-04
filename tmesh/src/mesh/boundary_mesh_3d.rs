@@ -1,7 +1,7 @@
 //! Boundary of `Mesh3d`
 use crate::{
-    mesh::{GenericMesh, Mesh},
     Result, Vert3d,
+    mesh::{GenericMesh, Mesh},
 };
 use std::fs::OpenOptions;
 
@@ -32,9 +32,8 @@ pub fn read_stl<M: Mesh<3, 3, 2>>(file_name: &str) -> Result<M> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        assert_delta,
-        mesh::{box_mesh, BoundaryMesh3d, Mesh, Mesh3d, Simplex, Triangle},
-        Vert3d,
+        Vert3d, assert_delta,
+        mesh::{BoundaryMesh3d, Mesh, Mesh3d, Simplex, Triangle, box_mesh},
     };
     use rayon::iter::ParallelIterator;
 
