@@ -2,9 +2,9 @@ mod curvature;
 mod orient;
 
 use crate::{
+    Dim, Error, Idx, Result, Tag, TopoTag,
     geometry::curvature::HasCurvature,
     mesh::{Elem, GElem, HasTmeshImpl, Point, SimplexMesh, Topology},
-    Dim, Error, Idx, Result, Tag, TopoTag,
 };
 use log::{debug, warn};
 pub use orient::orient_geometry;
@@ -328,15 +328,15 @@ where
 
 #[cfg(test)]
 mod tests {
-    use tmesh::mesh::{read_stl, Mesh};
+    use tmesh::mesh::{Mesh, read_stl};
 
     use super::{Geometry, LinearGeometry};
     use crate::{
-        mesh::{
-            test_meshes::{test_mesh_2d, test_mesh_3d, write_stl_file},
-            Point, SimplexMesh, Triangle,
-        },
         Result,
+        mesh::{
+            Point, SimplexMesh, Triangle,
+            test_meshes::{test_mesh_2d, test_mesh_3d, write_stl_file},
+        },
     };
     use std::fs::remove_file;
 

@@ -1,9 +1,9 @@
 //! Extrude 2d triangle meshes to 3d as 1 layer of prisms
 use crate::{
-    dual::{merge_polylines, DualMesh2d, PolyMesh, PolyMeshType, SimplePolyMesh},
+    Error, Result, Tag, Vert2d, Vert3d,
+    dual::{DualMesh2d, PolyMesh, PolyMeshType, SimplePolyMesh, merge_polylines},
     io::{VTUEncoding, VTUFile},
     mesh::{Mesh, Mesh2d, Prism, Quadrangle, Triangle},
-    Error, Result, Tag, Vert2d, Vert3d,
 };
 
 /// Extrusion of a `Mesh2d` along `z`
@@ -19,7 +19,8 @@ pub struct ExtrudedMesh2d {
 
 impl ExtrudedMesh2d {
     /// Create a new mesh from coordinates, connectivities and tags
-    #[must_use] pub const fn new(
+    #[must_use]
+    pub const fn new(
         verts: Vec<Vert3d>,
         prisms: Vec<Prism>,
         prism_tags: Vec<Tag>,
@@ -40,7 +41,8 @@ impl ExtrudedMesh2d {
     }
 
     /// Extrude a `Mesh2d` by a distance `h` along direction `z`
-    #[must_use] pub fn from_mesh2d(msh: &Mesh2d, h: f64) -> Self {
+    #[must_use]
+    pub fn from_mesh2d(msh: &Mesh2d, h: f64) -> Self {
         assert!(h > 0.0);
 
         let n = msh.n_verts();
@@ -112,57 +114,68 @@ impl ExtrudedMesh2d {
     }
 
     /// Number of vertices
-    #[must_use] pub const fn n_verts(&self) -> usize {
+    #[must_use]
+    pub const fn n_verts(&self) -> usize {
         self.verts.len()
     }
 
     /// Sequential iterator over the vertices
-    #[must_use] pub fn verts(&self) -> impl ExactSizeIterator<Item = Vert3d> + '_ {
+    #[must_use]
+    pub fn verts(&self) -> impl ExactSizeIterator<Item = Vert3d> + '_ {
         self.verts.iter().copied()
     }
 
     /// Number of prisms
-    #[must_use] pub const fn n_prisms(&self) -> usize {
+    #[must_use]
+    pub const fn n_prisms(&self) -> usize {
         self.prisms.len()
     }
 
     /// Sequential iterator over the prisms
-    #[must_use] pub fn prisms(&self) -> impl ExactSizeIterator<Item = &Prism> + '_ {
+    #[must_use]
+    pub fn prisms(&self) -> impl ExactSizeIterator<Item = &Prism> + '_ {
         self.prisms.iter()
     }
 
     /// Sequential iterator over the prism tags
-    #[must_use] pub fn prism_tags(&self) -> impl ExactSizeIterator<Item = Tag> + '_ {
+    #[must_use]
+    pub fn prism_tags(&self) -> impl ExactSizeIterator<Item = Tag> + '_ {
         self.prism_tags.iter().copied()
     }
 
     /// Number of triangles
-    #[must_use] pub const fn n_tris(&self) -> usize {
+    #[must_use]
+    pub const fn n_tris(&self) -> usize {
         self.tris.len()
     }
 
     /// Sequential iterator over the triangles
-    #[must_use] pub fn tris(&self) -> impl ExactSizeIterator<Item = &Triangle> + '_ {
+    #[must_use]
+    pub fn tris(&self) -> impl ExactSizeIterator<Item = &Triangle> + '_ {
         self.tris.iter()
     }
 
     /// Sequential iterator over the triangle tags
-    #[must_use] pub fn tri_tags(&self) -> impl ExactSizeIterator<Item = Tag> + '_ {
+    #[must_use]
+    pub fn tri_tags(&self) -> impl ExactSizeIterator<Item = Tag> + '_ {
         self.tri_tags.iter().copied()
     }
 
     /// Number of quadrangles
-    #[must_use] pub const fn n_quads(&self) -> usize {
+    #[must_use]
+    pub const fn n_quads(&self) -> usize {
         self.quads.len()
     }
 
     /// Sequential iterator over the quadrangles
-    #[must_use] pub fn quads(&self) -> impl ExactSizeIterator<Item = &Quadrangle> + '_ {
+    #[must_use]
+    pub fn quads(&self) -> impl ExactSizeIterator<Item = &Quadrangle> + '_ {
         self.quads.iter()
     }
 
     /// Sequential iterator over the quandrangle tags
-    #[must_use] pub fn quad_tags(&self) -> impl ExactSizeIterator<Item = Tag> + '_ {
+    #[must_use]
+    pub fn quad_tags(&self) -> impl ExactSizeIterator<Item = Tag> + '_ {
         self.quad_tags.iter().copied()
     }
 
@@ -178,14 +191,16 @@ impl ExtrudedMesh2d {
 
 impl Mesh2d {
     /// Extrude the mesh by a distance `h` along direction `z`
-    #[must_use] pub fn extrude(&self, h: f64) -> ExtrudedMesh2d {
+    #[must_use]
+    pub fn extrude(&self, h: f64) -> ExtrudedMesh2d {
         ExtrudedMesh2d::from_mesh2d(self, h)
     }
 }
 
 impl DualMesh2d {
     /// Extrude the mesh by a distance `h` along direction `z`
-    #[must_use] pub fn extrude(&self, h: f64) -> SimplePolyMesh<3> {
+    #[must_use]
+    pub fn extrude(&self, h: f64) -> SimplePolyMesh<3> {
         let mut res = SimplePolyMesh::<3>::empty(PolyMeshType::Polyhedra);
 
         let n = self.n_verts();
@@ -236,7 +251,7 @@ impl DualMesh2d {
 mod tests {
     use crate::{
         dual::{DualMesh, DualMesh2d, DualType},
-        mesh::{rectangle_mesh, Mesh, Mesh2d},
+        mesh::{Mesh, Mesh2d, rectangle_mesh},
     };
 
     use super::ExtrudedMesh2d;

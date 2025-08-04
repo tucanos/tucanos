@@ -20,7 +20,8 @@ impl<const D: usize> PointIndex<D> {
     }
 
     /// Get the index of the nearest point & the distance
-    #[must_use] pub fn nearest_vert(&self, pt: &Vertex<D>) -> (usize, f64) {
+    #[must_use]
+    pub fn nearest_vert(&self, pt: &Vertex<D>) -> (usize, f64) {
         let r = self
             .tree
             .nearest(pt.as_slice(), 1, &kdtree::distance::squared_euclidean)
@@ -34,13 +35,13 @@ pub use parry::ObjectIndex;
 #[cfg(test)]
 mod tests {
     use nalgebra::SVector;
-    use rand::{rngs::StdRng, Rng, SeedableRng};
+    use rand::{Rng, SeedableRng, rngs::StdRng};
     use std::f64::consts::PI;
 
     use crate::{
+        Vert2d, Vert3d,
         mesh::{BoundaryMesh2d, BoundaryMesh3d, Mesh},
         spatialindex::ObjectIndex,
-        Vert2d, Vert3d,
     };
 
     #[test]

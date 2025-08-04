@@ -7,9 +7,8 @@ pub type BoundaryMesh2d = GenericMesh<2, 2, 1>;
 #[cfg(test)]
 mod tests {
     use crate::{
-        assert_delta,
-        mesh::{rectangle_mesh, Edge, Mesh, Mesh2d, Simplex},
-        Vert2d,
+        Vert2d, assert_delta,
+        mesh::{Edge, Mesh, Mesh2d, Simplex, rectangle_mesh},
     };
     use rayon::iter::ParallelIterator;
 
