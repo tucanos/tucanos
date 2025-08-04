@@ -2,9 +2,10 @@ use crate::{
     Vertex,
     mesh::{Cell, Mesh, Simplex},
 };
+use parry2d_f64::math::Point as Point2;
 use parry2d_f64::query::{PointQuery as _, PointQueryWithLocation as _};
+use parry3d_f64::math::Point as Point3;
 use parry3d_f64::query::{PointQuery as _, PointQueryWithLocation as _};
-
 // To add new type of elements:
 // - Select a parry Shape which match the element type.
 // - If the Shape does not exists create it with ShapeType::Custom
@@ -15,7 +16,6 @@ use parry3d_f64::query::{PointQuery as _, PointQueryWithLocation as _};
 // - Fix missing cases in `match` statements
 
 mod parry2d {
-    use nalgebra::Point2;
     use parry2d_f64::{
         bounding_volume::Aabb,
         math::{Isometry, Point, Real},
@@ -57,14 +57,10 @@ mod parry2d {
         fn shape(id: u32, verts: &[f64], elems: &[usize]) -> Self::Shape;
     }
 
-    fn points<const COUNT: usize>(
-        id: u32,
-        verts: &[f64],
-        elems: &[usize],
-    ) -> [Point2<Real>; COUNT] {
+    fn points<const COUNT: usize>(id: u32, verts: &[f64], elems: &[usize]) -> [Point<Real>; COUNT] {
         std::array::from_fn(|i| {
             let vid = elems[COUNT * id as usize + i];
-            Point2::new(verts[vid * 2], verts[vid * 2 + 1])
+            Point::new(verts[vid * 2], verts[vid * 2 + 1])
         })
     }
     pub struct EdgeToSegment {}
@@ -191,7 +187,6 @@ mod parry2d {
 }
 
 mod parry3d {
-    use nalgebra::Point3;
     use parry3d_f64::{
         bounding_volume::{Aabb, BoundingSphere},
         mass_properties::MassProperties,
@@ -323,14 +318,10 @@ mod parry3d {
             Self::Shape::new(&points(id, verts, elems))
         }
     }
-    fn points<const COUNT: usize>(
-        id: u32,
-        verts: &[f64],
-        elems: &[usize],
-    ) -> [Point3<Real>; COUNT] {
+    fn points<const COUNT: usize>(id: u32, verts: &[f64], elems: &[usize]) -> [Point<Real>; COUNT] {
         std::array::from_fn(|i| {
             let vid = elems[COUNT * id as usize + i];
-            Point3::new(verts[vid * 3], verts[vid * 3 + 1], verts[vid * 3 + 2])
+            Point::new(verts[vid * 3], verts[vid * 3 + 1], verts[vid * 3 + 2])
         })
     }
     pub struct EdgeToSegment {}
@@ -463,7 +454,7 @@ mod parry3d {
     ) -> (f64, Vertex<D>) {
         assert_eq!(D, 3);
         let (p, _) =
-            shape.project_local_point_and_get_location(&Point3::new(pt[0], pt[1], pt[2]), false);
+            shape.project_local_point_and_get_location(&Point::new(pt[0], pt[1], pt[2]), false);
         let p = p.point;
         let mut res = Vertex::<D>::zeros();
         for i in 0..3 {
@@ -504,7 +495,7 @@ impl<const D: usize> ObjectIndex<D> {
         if D == 3 && C == 3 {
             let coords = mesh
                 .verts()
-                .map(|p| nalgebra::Point3::from_slice(p.as_slice()))
+                .map(|p| Point3::from_slice(p.as_slice()))
                 .collect();
             let elems = mesh
                 .elems()
@@ -528,7 +519,7 @@ impl<const D: usize> ObjectIndex<D> {
         } else if D == 2 && C == 3 {
             let coords = mesh
                 .verts()
-                .map(|p| nalgebra::Point2::from_slice(p.as_slice()))
+                .map(|p| Point2::from_slice(p.as_slice()))
                 .collect();
             let elems = mesh
                 .elems()
@@ -547,32 +538,24 @@ impl<const D: usize> ObjectIndex<D> {
     pub fn nearest_elem(&self, pt: &Vertex<D>) -> usize {
         match &self.inner {
             ParryImpl::Tria3D(shape) => {
-                let (_, (id, _)) = shape.project_local_point_and_get_location(
-                    &nalgebra::Point3::new(pt[0], pt[1], pt[2]),
-                    true,
-                );
+                let (_, (id, _)) = shape
+                    .project_local_point_and_get_location(&Point3::new(pt[0], pt[1], pt[2]), true);
                 id as usize
             }
             ParryImpl::Edge2D(shape) => {
-                let (_, (id, _)) = shape.project_local_point_and_get_location(
-                    &nalgebra::Point2::new(pt[0], pt[1]),
-                    true,
-                );
+                let (_, (id, _)) =
+                    shape.project_local_point_and_get_location(&Point2::new(pt[0], pt[1]), true);
                 id as usize
             }
             ParryImpl::Tetra(shape) => {
-                let (_, (id, _)) = shape.project_local_point_and_get_location(
-                    &nalgebra::Point3::new(pt[0], pt[1], pt[2]),
-                    true,
-                );
+                let (_, (id, _)) = shape
+                    .project_local_point_and_get_location(&Point3::new(pt[0], pt[1], pt[2]), true);
                 id as usize
             }
             ParryImpl::Edge3D(_) => todo!(),
             ParryImpl::Tria2D(shape) => {
-                let (_, (id, _)) = shape.project_local_point_and_get_location(
-                    &nalgebra::Point2::new(pt[0], pt[1]),
-                    true,
-                );
+                let (_, (id, _)) =
+                    shape.project_local_point_and_get_location(&Point2::new(pt[0], pt[1]), true);
                 id as usize
             }
         }
@@ -584,8 +567,7 @@ impl<const D: usize> ObjectIndex<D> {
         match &self.inner {
             ParryImpl::Tria3D(shape) => {
                 // https://docs.rs/parry3d/latest/parry3d/query/point/trait.PointQuery.html#method.project_point
-                let p =
-                    shape.project_local_point(&nalgebra::Point3::new(pt[0], pt[1], pt[2]), true);
+                let p = shape.project_local_point(&Point3::new(pt[0], pt[1], pt[2]), true);
                 let p = p.point;
                 let mut res = Vertex::<D>::zeros();
                 for i in 0..D {
@@ -594,10 +576,8 @@ impl<const D: usize> ObjectIndex<D> {
                 ((pt - res).norm(), res)
             }
             ParryImpl::Edge2D(shape) => {
-                let (p, _) = shape.project_local_point_and_get_location(
-                    &nalgebra::Point2::new(pt[0], pt[1]),
-                    false,
-                );
+                let (p, _) =
+                    shape.project_local_point_and_get_location(&Point2::new(pt[0], pt[1]), false);
                 let p = p.point;
                 let mut res = Vertex::<D>::zeros();
                 for i in 0..D {
@@ -608,7 +588,7 @@ impl<const D: usize> ObjectIndex<D> {
             ParryImpl::Tetra(_) => todo!(),
             ParryImpl::Edge3D(shape) => parry3d::project(shape, pt),
             ParryImpl::Tria2D(shape) => {
-                let p = shape.project_local_point(&nalgebra::Point2::new(pt[0], pt[1]), true);
+                let p = shape.project_local_point(&Point2::new(pt[0], pt[1]), true);
                 let p = p.point;
                 let mut res = Vertex::<D>::zeros();
                 for i in 0..D {
