@@ -40,6 +40,8 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-stable-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-stable-
+    - uses: olix0r/cargo-action-fmt/setup@v2
+    - run: cargo check -q --all --message-format=json | cargo-action-fmt
     - name: Run clippy
       uses: clechasseur/rs-clippy-check@v4
     - name: Run cargo test
