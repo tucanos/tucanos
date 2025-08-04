@@ -1,7 +1,7 @@
 //! Mesh partitioners
 use super::{Cell, Face, Mesh, Simplex, cell_center, hilbert::hilbert_indices};
-use crate::{Error, Result, Vert2d, Vert3d, graph::CSRGraph};
-use coupe::Partition;
+use crate::{Error, Result, graph::CSRGraph};
+use coupe::{Partition, nalgebra::SVector};
 #[cfg(feature = "metis")]
 use std::marker::PhantomData;
 
@@ -195,7 +195,7 @@ impl Partitioner for RCMPartitioner {
 pub struct KMeansPartitioner2d {
     n_parts: usize,
     graph: CSRGraph,
-    centers: Vec<Vert2d>,
+    centers: Vec<SVector<f64, 2>>,
     weights: Vec<f64>,
 }
 impl Partitioner for KMeansPartitioner2d {
@@ -215,7 +215,7 @@ impl Partitioner for KMeansPartitioner2d {
 
                 let centers = msh
                     .gelems()
-                    .map(|ge| Vert2d::from_row_slice(cell_center(&ge).as_slice()))
+                    .map(|ge| SVector::from_row_slice(cell_center(&ge).as_slice()))
                     .collect();
                 let weights = weights.unwrap_or_else(|| vec![1.0; msh.n_elems()]);
                 Ok(Self {
@@ -259,7 +259,7 @@ impl Partitioner for KMeansPartitioner2d {
 pub struct KMeansPartitioner3d {
     n_parts: usize,
     graph: CSRGraph,
-    centers: Vec<Vert3d>,
+    centers: Vec<SVector<f64, 3>>,
     weights: Vec<f64>,
 }
 
@@ -280,7 +280,7 @@ impl Partitioner for KMeansPartitioner3d {
 
                 let centers = msh
                     .gelems()
-                    .map(|ge| Vert3d::from_row_slice(cell_center(&ge).as_slice()))
+                    .map(|ge| SVector::from_row_slice(cell_center(&ge).as_slice()))
                     .collect();
                 let weights = weights.unwrap_or_else(|| vec![1.0; msh.n_elems()]);
                 Ok(Self {
