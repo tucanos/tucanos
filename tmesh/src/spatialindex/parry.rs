@@ -1,6 +1,6 @@
 use crate::{
-    mesh::{Cell, Mesh, Simplex},
     Vertex,
+    mesh::{Cell, Mesh, Simplex},
 };
 use parry2d_f64::query::{PointQuery as _, PointQueryWithLocation as _};
 use parry3d_f64::query::{PointQuery as _, PointQueryWithLocation as _};
@@ -19,18 +19,18 @@ mod parry2d {
     use parry2d_f64::{
         bounding_volume::Aabb,
         math::{Isometry, Point, Real},
-        partitioning::Qbvh,
-        query::{
-            details::NormalConstraints, point::PointCompositeShapeProjWithLocationBestFirstVisitor,
-            PointProjection, PointQueryWithLocation,
+        partitioning::{Bvh, BvhBuildStrategy},
+        query::{PointProjection, PointQueryWithLocation, details::NormalConstraints},
+        shape::{
+            CompositeShape, CompositeShapeRef, Segment, SegmentPointLocation, Shape,
+            TypedCompositeShape,
         },
-        shape::{Segment, SegmentPointLocation, Shape, TypedSimdCompositeShape},
     };
     use std::marker::PhantomData;
 
     use crate::{
-        mesh::{Cell, Mesh, Simplex},
         Vertex,
+        mesh::{Cell, Mesh, Simplex},
     };
 
     pub trait MeshToShape {
@@ -84,7 +84,7 @@ mod parry2d {
         // TypedSimdCompositeShape does not accept additionnals arguments.
         verts: Vec<f64>,
         elems: Vec<usize>,
-        tree: Qbvh<u32>,
+        tree: Bvh,
         phantom: PhantomData<MS>,
     }
 
@@ -111,12 +111,11 @@ mod parry2d {
             Cell<F>: Simplex<F>,
         {
             assert_eq!(D, 2);
-            let mut tree = Qbvh::new();
             let data = mesh
                 .gelems()
                 .enumerate()
-                .map(|(i, ge)| (i as u32, Self::local_aabb(&ge)));
-            tree.clear_and_rebuild(data, 0.);
+                .map(|(i, ge)| (i, Self::local_aabb(&ge)));
+            let tree = Bvh::from_iter(BvhBuildStrategy::Binned, data);
             let elems = mesh.elems().flatten().collect::<Vec<_>>();
             let verts = mesh.verts().flat_map(|x| [x[0], x[1]]).collect::<Vec<_>>();
             Self {
@@ -136,39 +135,57 @@ mod parry2d {
             point: &Point<Real>,
             solid: bool,
         ) -> (PointProjection, Self::Location) {
-            let mut visitor =
-                PointCompositeShapeProjWithLocationBestFirstVisitor::new(self, point, solid);
-            self.tree.traverse_best_first(&mut visitor).unwrap().1
+            let (seg_id, (proj, loc)) = CompositeShapeRef(self)
+                .project_local_point_and_get_location(point, Real::MAX, solid)
+                .unwrap();
+            (proj, (seg_id, loc))
         }
     }
 
-    impl<const D: usize, MS: MeshToShape> TypedSimdCompositeShape for MeshShape<D, MS> {
+    impl<const D: usize, MS: MeshToShape> CompositeShape for MeshShape<D, MS> {
+        fn map_part_at(
+            &self,
+            shape_id: u32,
+            f: &mut dyn FnMut(Option<&Isometry<f64>>, &dyn Shape, Option<&dyn NormalConstraints>),
+        ) {
+            f(None, &MS::shape(shape_id, &self.verts, &self.elems), None);
+        }
+
+        fn bvh(&self) -> &Bvh {
+            &self.tree
+        }
+    }
+    impl<const D: usize, MS: MeshToShape> TypedCompositeShape for MeshShape<D, MS> {
         type PartShape = MS::Shape;
-        type PartId = u32;
+
         type PartNormalConstraints = dyn NormalConstraints;
 
-        fn map_typed_part_at(
+        fn map_typed_part_at<T>(
             &self,
-            shape_id: Self::PartId,
+            shape_id: u32,
             mut f: impl FnMut(
-                Option<&Isometry<Real>>,
+                Option<&Isometry<f64>>,
                 &Self::PartShape,
                 Option<&Self::PartNormalConstraints>,
-            ),
-        ) {
-            f(None, &MS::shape(shape_id, &self.verts, &self.elems), None);
+            ) -> T,
+        ) -> Option<T> {
+            Some(f(
+                None,
+                &MS::shape(shape_id, &self.verts, &self.elems),
+                None,
+            ))
         }
 
-        fn map_untyped_part_at(
+        fn map_untyped_part_at<T>(
             &self,
-            shape_id: Self::PartId,
-            mut f: impl FnMut(Option<&Isometry<Real>>, &dyn Shape, Option<&dyn NormalConstraints>),
-        ) {
-            f(None, &MS::shape(shape_id, &self.verts, &self.elems), None);
-        }
-
-        fn typed_qbvh(&self) -> &Qbvh<Self::PartId> {
-            &self.tree
+            shape_id: u32,
+            mut f: impl FnMut(Option<&Isometry<f64>>, &dyn Shape, Option<&dyn NormalConstraints>) -> T,
+        ) -> Option<T> {
+            Some(f(
+                None,
+                &MS::shape(shape_id, &self.verts, &self.elems),
+                None,
+            ))
         }
     }
 }
@@ -179,21 +196,21 @@ mod parry3d {
         bounding_volume::{Aabb, BoundingSphere},
         mass_properties::MassProperties,
         math::{Isometry, Point, Real},
-        partitioning::Qbvh,
+        partitioning::{Bvh, BvhBuildStrategy},
         query::{
-            details::NormalConstraints, point::PointCompositeShapeProjWithLocationBestFirstVisitor,
             PointProjection, PointQuery, PointQueryWithLocation, Ray, RayCast, RayIntersection,
+            details::NormalConstraints,
         },
         shape::{
-            FeatureId, Segment, SegmentPointLocation, Shape, ShapeType, Tetrahedron,
-            TetrahedronPointLocation, TypedShape, TypedSimdCompositeShape,
+            CompositeShape, CompositeShapeRef, FeatureId, Segment, SegmentPointLocation, Shape,
+            ShapeType, Tetrahedron, TetrahedronPointLocation, TypedCompositeShape, TypedShape,
         },
     };
     use std::marker::PhantomData;
 
     use crate::{
-        mesh::{Cell, Mesh, Simplex},
         Vertex,
+        mesh::{Cell, Mesh, Simplex},
     };
     /// Create a parry Shape from a tucanos Elem
     pub trait MeshToShape {
@@ -333,7 +350,7 @@ mod parry3d {
         // TypedSimdCompositeShape does not accept additionnals arguments.
         verts: Vec<f64>,
         elems: Vec<usize>,
-        tree: Qbvh<u32>,
+        tree: Bvh,
         phantom: PhantomData<MS>,
     }
     impl<const D: usize, MS: MeshToShape> MeshShape<D, MS> {
@@ -358,12 +375,11 @@ mod parry3d {
             Cell<F>: Simplex<F>,
         {
             assert_eq!(D, 3);
-            let mut tree = Qbvh::new();
             let data = mesh
                 .gelems()
                 .enumerate()
-                .map(|(i, ge)| (i as u32, Self::local_aabb(&ge)));
-            tree.clear_and_rebuild(data, 0.);
+                .map(|(i, ge)| (i, Self::local_aabb(&ge)));
+            let tree = Bvh::from_iter(BvhBuildStrategy::Binned, data);
             let elems = mesh.elems().flatten().collect::<Vec<_>>();
             let verts = mesh
                 .verts()
@@ -387,39 +403,57 @@ mod parry3d {
             point: &Point<Real>,
             solid: bool,
         ) -> (PointProjection, Self::Location) {
-            let mut visitor =
-                PointCompositeShapeProjWithLocationBestFirstVisitor::new(self, point, solid);
-            self.tree.traverse_best_first(&mut visitor).unwrap().1
+            let (seg_id, (proj, loc)) = CompositeShapeRef(self)
+                .project_local_point_and_get_location(point, Real::MAX, solid)
+                .unwrap();
+            (proj, (seg_id, loc))
         }
     }
 
-    impl<const D: usize, MS: MeshToShape> TypedSimdCompositeShape for MeshShape<D, MS> {
+    impl<const D: usize, MS: MeshToShape> CompositeShape for MeshShape<D, MS> {
+        fn map_part_at(
+            &self,
+            shape_id: u32,
+            f: &mut dyn FnMut(Option<&Isometry<f64>>, &dyn Shape, Option<&dyn NormalConstraints>),
+        ) {
+            f(None, &MS::shape(shape_id, &self.verts, &self.elems), None);
+        }
+
+        fn bvh(&self) -> &Bvh {
+            &self.tree
+        }
+    }
+    impl<const D: usize, MS: MeshToShape> TypedCompositeShape for MeshShape<D, MS> {
         type PartShape = MS::Shape;
-        type PartId = u32;
+
         type PartNormalConstraints = dyn NormalConstraints;
 
-        fn map_typed_part_at(
+        fn map_typed_part_at<T>(
             &self,
-            shape_id: Self::PartId,
+            shape_id: u32,
             mut f: impl FnMut(
-                Option<&Isometry<Real>>,
+                Option<&Isometry<f64>>,
                 &Self::PartShape,
                 Option<&Self::PartNormalConstraints>,
-            ),
-        ) {
-            f(None, &MS::shape(shape_id, &self.verts, &self.elems), None);
+            ) -> T,
+        ) -> Option<T> {
+            Some(f(
+                None,
+                &MS::shape(shape_id, &self.verts, &self.elems),
+                None,
+            ))
         }
 
-        fn map_untyped_part_at(
+        fn map_untyped_part_at<T>(
             &self,
-            shape_id: Self::PartId,
-            mut f: impl FnMut(Option<&Isometry<Real>>, &dyn Shape, Option<&dyn NormalConstraints>),
-        ) {
-            f(None, &MS::shape(shape_id, &self.verts, &self.elems), None);
-        }
-
-        fn typed_qbvh(&self) -> &Qbvh<Self::PartId> {
-            &self.tree
+            shape_id: u32,
+            mut f: impl FnMut(Option<&Isometry<f64>>, &dyn Shape, Option<&dyn NormalConstraints>) -> T,
+        ) -> Option<T> {
+            Some(f(
+                None,
+                &MS::shape(shape_id, &self.verts, &self.elems),
+                None,
+            ))
         }
     }
 
@@ -509,7 +543,8 @@ impl<const D: usize> ObjectIndex<D> {
     }
 
     /// Get the index of the nearest element
-    #[must_use] pub fn nearest_elem(&self, pt: &Vertex<D>) -> usize {
+    #[must_use]
+    pub fn nearest_elem(&self, pt: &Vertex<D>) -> usize {
         match &self.inner {
             ParryImpl::Tria3D(shape) => {
                 let (_, (id, _)) = shape.project_local_point_and_get_location(
@@ -544,7 +579,8 @@ impl<const D: usize> ObjectIndex<D> {
     }
 
     /// Project a point onto the nearest element
-    #[must_use] pub fn project(&self, pt: &Vertex<D>) -> (f64, Vertex<D>) {
+    #[must_use]
+    pub fn project(&self, pt: &Vertex<D>) -> (f64, Vertex<D>) {
         match &self.inner {
             ParryImpl::Tria3D(shape) => {
                 // https://docs.rs/parry3d/latest/parry3d/query/point/trait.PointQuery.html#method.project_point
