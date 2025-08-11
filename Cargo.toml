@@ -7,12 +7,10 @@ resolver = "3"
 edition = "2024"
 
 [workspace.lints.rust]
-unused_imports = "deny"
-unused_variables = "deny"
-unused_mut = "deny"
-dead_code = "deny"
-unused_attributes = "deny"
-unsafe_op_in_unsafe_fn = "deny"
+unused = "deny"
+warnings = "deny"
+unused_qualifications = "deny"
+nonstandard_style = "deny"
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }

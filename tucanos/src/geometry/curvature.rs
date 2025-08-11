@@ -344,11 +344,11 @@ mod tests {
 
         // Get the indices of corner vertices
         mesh.add_boundary_faces();
-        let (_, bdy_ids) = mesh.boundary();
+
         let mut bdy_flag = vec![false; mesh.n_verts() as usize];
-        bdy_ids
-            .into_iter()
-            .for_each(|i| bdy_flag[i as usize] = true);
+        for i in mesh.boundary().1 {
+            bdy_flag[i as usize] = true;
+        }
 
         for (i_elem, (e, t)) in mesh.elems().zip(mesh.etags()).enumerate() {
             let u = u[i_elem];
@@ -453,11 +453,10 @@ mod tests {
         );
         // Get the indices of boundary vertices
         surf.add_boundary_faces();
-        let (_, bdy_ids) = surf.boundary();
         let mut bdy_flag = vec![false; surf.n_verts() as usize];
-        bdy_ids
-            .into_iter()
-            .for_each(|i| bdy_flag[i as usize] = true);
+        for i in surf.boundary().1 {
+            bdy_flag[i as usize] = true;
+        }
 
         let (u, v) = compute_curvature_tensor(&surf);
 

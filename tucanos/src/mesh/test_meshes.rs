@@ -125,7 +125,7 @@ impl Geometry<2> for GeomHalfCircle2d {
         Ok(())
     }
 
-    fn project(&self, pt: &mut Point<2>, tag: &crate::TopoTag) -> f64 {
+    fn project(&self, pt: &mut Point<2>, tag: &TopoTag) -> f64 {
         assert!(tag.0 < 2);
         let p: Point<2> = *pt;
         match *tag {

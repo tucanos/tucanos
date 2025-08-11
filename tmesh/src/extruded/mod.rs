@@ -227,7 +227,7 @@ impl DualMesh2d {
                 })
                 .collect::<Vec<_>>();
 
-            let polylines = tmp.iter().map(std::vec::Vec::as_slice).collect::<Vec<_>>();
+            let polylines = tmp.iter().map(Vec::as_slice).collect::<Vec<_>>();
 
             let polygons = merge_polylines(&polylines);
             assert_eq!(polygons.len(), 1);

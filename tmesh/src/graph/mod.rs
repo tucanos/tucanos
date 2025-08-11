@@ -28,7 +28,9 @@ pub fn reindex<const N: usize>(elems: &[[usize; N]]) -> (Vec<[usize; N]>, FxHash
         .iter()
         .map(|&e| {
             let mut res = e;
-            res.iter_mut().for_each(|x| *x = *map.get(x).unwrap());
+            for x in &mut res {
+                *x = *map.get(x).unwrap();
+            }
             res
         })
         .collect();
@@ -55,7 +57,7 @@ impl CSRGraph {
         n_verts: Option<usize>,
     ) -> Self
     where
-        <T as std::convert::TryInto<usize>>::Error: Debug,
+        <T as TryInto<usize>>::Error: Debug,
     {
         let nv = n_verts.unwrap_or_else(|| {
             elems
@@ -132,7 +134,7 @@ impl CSRGraph {
         n_verts: Option<usize>,
     ) -> Self
     where
-        <T as std::convert::TryInto<usize>>::Error: Debug,
+        <T as TryInto<usize>>::Error: Debug,
     {
         let mut res = Self::set_ptr(edgs.clone(), n_verts);
         res.m = res.n();
@@ -175,7 +177,7 @@ impl CSRGraph {
         n_verts: Option<usize>,
     ) -> Self
     where
-        <T as std::convert::TryInto<usize>>::Error: Debug,
+        <T as TryInto<usize>>::Error: Debug,
     {
         let mut res = Self::set_ptr(elems.clone(), n_verts);
         res.m = elems.len();

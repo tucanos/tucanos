@@ -610,7 +610,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                     }
                 }
                 let w = node_vol[i_vert];
-                vals.iter_mut().for_each(|v| *v /= w);
+                for v in vals.iter_mut() {
+                    *v /= w;
+                }
             });
 
         Ok(res)

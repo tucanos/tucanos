@@ -50,7 +50,7 @@ pub(super) struct VtxInfo<const D: usize, M: Metric<D>> {
     /// Metric
     pub(super) m: M,
     /// Elements containing the vertex
-    pub(super) els: sorted_vec::SortedVec<Idx>,
+    pub(super) els: SortedVec<Idx>,
 }
 
 /// Element information

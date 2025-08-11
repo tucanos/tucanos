@@ -581,12 +581,12 @@ where
             if i0 != usize::MAX && i1 != usize::MAX {
                 let t0 = self.etag(i0);
                 let t1 = self.etag(i1);
-                if t0 != t1 {
-                    if let Some(tag) = tagged_faces.get(f) {
-                        let tags = if t0 < t1 { [t0, t1] } else { [t1, t0] };
-                        if let Some(tmp) = res.get(&tags) {
-                            assert_eq!(tag, tmp);
-                        }
+                if t0 != t1
+                    && let Some(tag) = tagged_faces.get(f)
+                {
+                    let tags = if t0 < t1 { [t0, t1] } else { [t1, t0] };
+                    if let Some(tmp) = res.get(&tags) {
+                        assert_eq!(tag, tmp);
                     }
                 }
             }
@@ -781,11 +781,15 @@ where
             .for_each(|(i, &new_i)| new_vert_indices[new_i] = i);
         let new_verts = vert_indices.iter().map(|&i| self.vert(i));
         let new_elems = self.elems().map(|mut e| {
-            e.iter_mut().for_each(|idx| *idx = new_vert_indices[*idx]);
+            for idx in &mut e {
+                *idx = new_vert_indices[*idx];
+            }
             e
         });
         let new_faces = self.faces().map(|mut f| {
-            f.iter_mut().for_each(|idx| *idx = new_vert_indices[*idx]);
+            for idx in &mut f {
+                *idx = new_vert_indices[*idx];
+            }
             f
         });
 
@@ -1344,7 +1348,9 @@ where
         res.add_verts(verts.iter().copied());
 
         // add offset to verts
-        edges.iter_mut().for_each(|(_, v)| *v += self.n_verts());
+        for v in edges.values_mut() {
+            *v += self.n_verts();
+        }
 
         // Cells
         match C {
@@ -1478,7 +1484,9 @@ where
 
         for (e, t) in other.elems().zip(other.etags()) {
             if elem_filter(t) {
-                e.iter().for_each(|&i| new_vert_ids[i] = usize::MAX - 1);
+                for &i in &e {
+                    new_vert_ids[i] = usize::MAX - 1;
+                }
             }
         }
 
@@ -1532,7 +1540,9 @@ where
             .filter(|(_, (_, t))| elem_filter(*t))
         {
             added_elems.push(i);
-            e.iter_mut().for_each(|i| *i = new_vert_ids[*i]);
+            for i in &mut e {
+                *i = new_vert_ids[*i];
+            }
             self.add_elems(std::iter::once(e), std::iter::once(t));
             for face in &elem_to_faces {
                 let mut tmp = [0; F];
@@ -1550,12 +1560,16 @@ where
             .enumerate()
             .filter(|(_, (_, t))| face_filter(*t))
             .filter(|&(_, (mut f, _))| {
-                f.iter_mut().for_each(|i| *i = new_vert_ids[*i]);
+                for i in &mut f {
+                    *i = new_vert_ids[*i];
+                }
                 all_added_faces.contains(&f.sorted())
             })
         {
             added_faces.push(i);
-            f.iter_mut().for_each(|i| *i = new_vert_ids[*i]);
+            for i in &mut f {
+                *i = new_vert_ids[*i];
+            }
             self.add_faces(std::iter::once(f), std::iter::once(t));
         }
 
