@@ -98,7 +98,7 @@ mod parry2d {
                 max.coords[d] = mx;
             }
 
-            parry2d_f64::bounding_volume::Aabb::new(min, max)
+            Aabb::new(min, max)
         }
 
         pub fn new<const C: usize, const F: usize, M: Mesh<D, C, F>>(mesh: &M) -> Self
@@ -228,7 +228,7 @@ mod parry3d {
             })
         }
     }
-    impl parry3d_f64::shape::Shape for TetraShape {
+    impl Shape for TetraShape {
         fn compute_local_aabb(&self) -> Aabb {
             todo!()
         }
@@ -237,7 +237,7 @@ mod parry3d {
             todo!()
         }
 
-        fn clone_box(&self) -> Box<dyn parry3d_f64::shape::Shape> {
+        fn clone_box(&self) -> Box<dyn Shape> {
             todo!()
         }
 
@@ -249,7 +249,7 @@ mod parry3d {
             todo!()
         }
 
-        fn as_typed_shape(&self) -> TypedShape {
+        fn as_typed_shape(&'_ self) -> TypedShape<'_> {
             todo!()
         }
 

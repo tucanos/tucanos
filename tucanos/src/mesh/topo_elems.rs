@@ -42,7 +42,7 @@ pub trait Elem:
     /// Type for the element geometry
     type Geom<const D: usize, M: Metric<D>>: GElem<D, M>;
     /// Iterate through the element's vertices
-    fn iter(&self) -> Iter<Idx>;
+    fn iter(&'_ self) -> Iter<'_, Idx>;
     /// Create from a slice containing the element connectivity
     fn from_slice(s: &[Idx]) -> Self;
     /// Create from a iterator containing the element connectivity
@@ -118,7 +118,7 @@ impl Elem for Tetrahedron {
     type Face = Triangle;
     type Geom<const D: usize, M: Metric<D>> = GTetrahedron<D, M>;
 
-    fn iter(&self) -> Iter<Idx> {
+    fn iter(&'_ self) -> Iter<'_, Idx> {
         self.0.iter()
     }
 
@@ -213,7 +213,7 @@ impl Elem for Triangle {
     type Face = Edge;
     type Geom<const D: usize, M: Metric<D>> = GTriangle<D, M>;
 
-    fn iter(&self) -> Iter<Idx> {
+    fn iter(&'_ self) -> Iter<'_, Idx> {
         self.0.iter()
     }
 
@@ -302,7 +302,7 @@ impl Elem for Edge {
     type Face = Vertex;
     type Geom<const D: usize, M: Metric<D>> = GEdge<D, M>;
 
-    fn iter(&self) -> Iter<Idx> {
+    fn iter(&'_ self) -> Iter<'_, Idx> {
         self.0.iter()
     }
 
@@ -383,7 +383,7 @@ impl Elem for Vertex {
     type Face = Self;
     type Geom<const D: usize, M: Metric<D>> = GVertex<D, M>;
 
-    fn iter(&self) -> Iter<Idx> {
+    fn iter(&'_ self) -> Iter<'_, Idx> {
         self.0.iter()
     }
 

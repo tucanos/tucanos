@@ -221,9 +221,10 @@ mod tests {
         let hess = mesh.hessian_l2proj(&grad)?;
 
         // flag the internal vertices, that don't belong to a cell that touches the boundary
-        let (_, bdy_ids) = mesh.boundary();
         let mut flg = vec![0; mesh.n_verts() as usize];
-        bdy_ids.iter().for_each(|&i| flg[i as usize] = 1);
+        for i in mesh.boundary().1 {
+            flg[i as usize] = 1;
+        }
         mesh.elems().for_each(|e| {
             if e.iter().any(|&i| flg[i as usize] == 1) {
                 for &i in e.iter() {

@@ -1,5 +1,3 @@
-extern crate cbindgen;
-
 use std::{env, path::PathBuf};
 #[cfg(feature = "64bit-tags")]
 const TUCANOS_TAG: Option<&str> = Some("#define TUCANOS_TAG_64");
@@ -11,7 +9,7 @@ const TUCANOS_TAG: Option<&str> = None;
 fn main() {
     println!("cargo:rerun-if-env-changed=DEP_TUCANOS_RPATH");
     println!("cargo:rerun-if-changed=src");
-    if let Ok(rpath) = std::env::var("DEP_TUCANOS_RPATH") {
+    if let Ok(rpath) = env::var("DEP_TUCANOS_RPATH") {
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         println!("cargo:rustc-link-arg=-Wl,-rpath,{rpath}");
     }
@@ -24,7 +22,7 @@ fn main() {
         usize_is_size_t: true,
         language: cbindgen::Language::C,
         style: cbindgen::Style::Both,
-        after_includes: TUCANOS_TAG.map(std::convert::Into::into),
+        after_includes: TUCANOS_TAG.map(Into::into),
         ..Default::default()
     };
     cbindgen::Builder::new()

@@ -296,7 +296,7 @@ where
     fn scale_aniso(&mut self, s: f64);
 }
 
-impl fmt::Display for AnisoMetric3d {
+impl Display for AnisoMetric3d {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mat = self.as_mat();
         writeln!(f, "M = {mat:?}")?;
@@ -626,7 +626,7 @@ impl Index<usize> for AnisoMetric2d {
     }
 }
 
-impl fmt::Display for AnisoMetric2d {
+impl Display for AnisoMetric2d {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mat = self.as_mat();
         writeln!(f, "M = {mat:?}")?;
