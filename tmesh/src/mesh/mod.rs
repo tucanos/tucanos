@@ -355,8 +355,7 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
 
                 if let Some(existing) = slot.replace(i_elem) {
                     panic!(
-                        "Non-manifold mesh: Face {:?} shared by >2 elements ({}, {}, {})",
-                        key, existing, i_elem, entry.0
+                        "Non-manifold mesh / invalid orientation: face {key:?} belongs to 2 elements ({existing} and {i_elem}) with incompatible orientations"
                     );
                 }
             }
