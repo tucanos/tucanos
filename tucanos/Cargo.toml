@@ -28,5 +28,8 @@ metis = ["tmesh/metis"]
 [[example]]
 name = "adapt_ellipse"
 
+[[bin]]
+name = "debug"
+
 [lints]
 workspace = true
