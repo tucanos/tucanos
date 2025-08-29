@@ -43,7 +43,7 @@ impl ExtrudedMesh2d {
     /// Extrude a `Mesh2d` by a distance `h` along direction `z`
     #[must_use]
     pub fn from_mesh2d(msh: &Mesh2d, h: f64) -> Self {
-        assert!(h > 0.0);
+        // assert!(h > 0.0);
 
         let n = msh.n_verts();
         let mut verts = msh
@@ -52,10 +52,16 @@ impl ExtrudedMesh2d {
             .collect::<Vec<_>>();
         verts.extend(msh.verts().map(|v| Vert3d::new(v[0], v[1], h)));
 
-        let elems = msh
-            .elems()
-            .map(|tri| [tri[0], tri[1], tri[2], tri[0] + n, tri[1] + n, tri[2] + n])
-            .collect::<Vec<_>>();
+        let elems =
+            if h > 0.0 { msh
+                .elems()
+                .map(|tri| [tri[0], tri[1], tri[2], tri[0] + n, tri[1] + n, tri[2] + n])
+                .collect::<Vec<_>>()
+            } else { msh
+                .elems()
+                .map(|tri| [tri[0], tri[2], tri[1], tri[0] + n, tri[2] + n, tri[1] + n])
+                .collect::<Vec<_>>()
+            };
         let etags = msh.etags().collect::<Vec<_>>();
 
         let mut tris = msh.elems().collect::<Vec<_>>();
