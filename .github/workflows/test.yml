@@ -43,7 +43,7 @@ jobs:
     - uses: olix0r/cargo-action-fmt/setup@v2
     - run: cargo check -q --all --message-format=json | cargo-action-fmt
     - name: Run clippy
-      uses: clechasseur/rs-clippy-check@v4
+      uses: clechasseur/rs-clippy-check@v5
     - name: Run cargo test
       uses: clechasseur/rs-cargo@v4
       with:
@@ -134,7 +134,7 @@ jobs:
         ruff check
         ruff format --check
     - name: Run clippy (pytmesh)
-      uses: clechasseur/rs-clippy-check@v4
+      uses: clechasseur/rs-clippy-check@v5
       with:
         args: -p pytmesh
     - name: Test pytmesh
@@ -148,7 +148,7 @@ jobs:
         pip install -C metis=true -e .
         python -c "import pytmesh; assert(pytmesh.HAVE_METIS)"
     - name: Run clippy (pytucanos)
-      uses: clechasseur/rs-clippy-check@v4
+      uses: clechasseur/rs-clippy-check@v5
       with:
         args: -p pytucanos
     - name: Test pytucanos
