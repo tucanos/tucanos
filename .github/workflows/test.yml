@@ -45,32 +45,32 @@ jobs:
     - name: Run clippy
       uses: clechasseur/rs-clippy-check@v4
     - name: Run cargo test
-      uses: clechasseur/rs-cargo@v3
+      uses: clechasseur/rs-cargo@v4
       with:
         command: test
         args: --features=metis,nlopt
     - name: Run cargo test --release
-      uses: clechasseur/rs-cargo@v3
+      uses: clechasseur/rs-cargo@v4
       with:
         command: test
         args: --release --features=metis,nlopt
     - name: Run example/adapt_ellipse
-      uses: clechasseur/rs-cargo@v3
+      uses: clechasseur/rs-cargo@v4
       with:
         command: run
         args: --example adapt_ellipse --features=metis --release
     - name: Run example/dual_mesh_2d
-      uses: clechasseur/rs-cargo@v3
+      uses: clechasseur/rs-cargo@v4
       with:
         command: run
         args: --example dual_mesh_2d --release
     - name: Run example/partition_3d
-      uses: clechasseur/rs-cargo@v3
+      uses: clechasseur/rs-cargo@v4
       with:
         command: run
         args: --example partition_3d --features=metis --release
     - name: Run example/dual_mesh_3d
-      uses: clechasseur/rs-cargo@v3
+      uses: clechasseur/rs-cargo@v4
       with:
         command: run
         args: --example dual_mesh_3d --release
