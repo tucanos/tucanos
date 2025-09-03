@@ -5,6 +5,7 @@ use crate::{
     io::{VTUEncoding, VTUFile},
     mesh::{Mesh, Mesh2d, Prism, Quadrangle, Triangle},
 };
+use std::iter;
 
 /// Extrusion of a `Mesh2d` along `z`
 pub struct ExtrudedMesh2d {
@@ -43,46 +44,39 @@ impl ExtrudedMesh2d {
     /// Extrude a `Mesh2d` by a distance `h` along direction `z`
     #[must_use]
     pub fn from_mesh2d(msh: &Mesh2d, h: f64) -> Self {
-        // assert!(h > 0.0);
-
         let n = msh.n_verts();
-        let mut verts = msh
+        let verts = msh
             .verts()
-            .map(|v| Vert3d::new(v[0], v[1], 0.0))
-            .collect::<Vec<_>>();
-        verts.extend(msh.verts().map(|v| Vert3d::new(v[0], v[1], h)));
-
-        let elems =
-            if h > 0.0 { msh
-                .elems()
-                .map(|tri| [tri[0], tri[1], tri[2], tri[0] + n, tri[1] + n, tri[2] + n])
-                .collect::<Vec<_>>()
-            } else { msh
-                .elems()
-                .map(|tri| [tri[0], tri[2], tri[1], tri[0] + n, tri[2] + n, tri[1] + n])
-                .collect::<Vec<_>>()
-            };
-        let etags = msh.etags().collect::<Vec<_>>();
-
-        let mut tris = msh.elems().collect::<Vec<_>>();
-        tris.extend(msh.elems().map(|tri| [tri[0] + n, tri[2] + n, tri[1] + n]));
-        let mut tri_tags = vec![Tag::MAX; msh.n_elems()];
-        tri_tags.resize(2 * msh.n_elems(), Tag::MAX - 1);
-
+            .map(|v| Vert3d::new(v[0], v[1], 0.))
+            .chain(msh.verts().map(|v| Vert3d::new(v[0], v[1], h)))
+            .collect();
+        // Determine prism vertex order based on extrusion direction to have a valid orientation.
+        let (i1, i2) = if h > 0.0 { (1, 2) } else { (2, 1) };
+        let prisms = msh
+            .elems()
+            .map(|t| [t[0], t[i1], t[i2], t[0] + n, t[i1] + n, t[i2] + n])
+            .collect();
+        let tris = msh
+            .elems()
+            .chain(msh.elems().map(|tri| [tri[0] + n, tri[2] + n, tri[1] + n]))
+            .collect();
+        // Assign distinct tags to bottom and top triangles.
+        let n_elems = msh.n_elems();
+        let tri_tags = iter::repeat_n(Tag::MAX, n_elems)
+            .chain(iter::repeat_n(Tag::MAX - 1, n_elems))
+            .collect();
         let quads = msh
             .faces()
             .map(|edg| [edg[0], edg[1], edg[1] + n, edg[0] + n])
-            .collect::<Vec<_>>();
-        let quad_tags = msh.ftags().collect::<Vec<_>>();
-
+            .collect();
         Self {
             verts,
-            prisms: elems,
-            prism_tags: etags,
+            prisms,
+            prism_tags: msh.etags().collect(),
             tris,
             tri_tags,
             quads,
-            quad_tags,
+            quad_tags: msh.ftags().collect(),
         }
     }
 
