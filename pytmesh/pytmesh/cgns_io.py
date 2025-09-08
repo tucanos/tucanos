@@ -141,14 +141,26 @@ def load_cgns(fname, cls=None):
                         raise NotImplementedError(
                             f"Unknown element type {cgns_elem_name(etype)} / {etype}"
                         )
+                if cell_dim == 2:
+                    if etype == CGK.BAR_2:
+                        msh.add_faces(econn, tags)
+                    elif etype == CGK.TRI_3:
+                        msh.add_elems(econn, tags)
+                    elif etype == CGK.QUAD_4:
+                        msh.add_quadrangles(econn, tags)
                 else:
                     raise NotImplementedError()
 
             bdy, ifc = msh.fix()
-            assert len(ifc) == 0
+            if cell_dim == 3:
+                assert len(ifc) == 0
+
             for _, i in bdy.items():
                 logging.debug(f"Tagging untagged faces with {i}")
                 tags_to_be_removed.append(i)
+            for (t0, t1), i in ifc.items():
+                logging.info(f"Tagging faces between {t0} and {t1} with {i}")
+            #     tags_to_be_removed.append(i)
 
             if res is None:
                 res = msh
@@ -166,7 +178,7 @@ def load_cgns(fname, cls=None):
     faces = np.ascontiguousarray(faces[flg, :])
     ftags = np.ascontiguousarray(ftags[flg])
     res.clear_faces()
-    res.add_faces(faces, ftags)
+    res.add_faces(faces, np.abs(ftags))
 
     bdy, ifc = res.fix()
     assert len(bdy) == 0
