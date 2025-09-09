@@ -1601,6 +1601,9 @@ where
     Cell<C>: Simplex<C>,
     Cell<F>: Simplex<F>,
 {
+    /// Set the i-th vertex
+    fn set_vert(&mut self, i: usize, v: Vertex<D>);
+
     /// Sequential iterator over the vertices
     fn verts_mut(&mut self) -> impl ExactSizeIterator<Item = &mut Vertex<D>> + '_;
 
@@ -1787,6 +1790,10 @@ where
     Cell<C>: Simplex<C>,
     Face<F>: Simplex<F>,
 {
+    fn set_vert(&mut self, i: usize, v: Vertex<D>) {
+        self.verts[i] = v;
+    }
+
     fn verts_mut(&mut self) -> impl ExactSizeIterator<Item = &mut Vertex<D>> + '_ {
         self.verts.iter_mut()
     }

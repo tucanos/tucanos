@@ -2,6 +2,7 @@
 use core::fmt;
 use nalgebra::SVector;
 
+pub mod deform;
 pub mod dual;
 pub mod extruded;
 pub mod graph;
