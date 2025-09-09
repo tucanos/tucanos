@@ -29,7 +29,7 @@ impl<const D: usize> FromNativePointer for crate::mesh::Point<D> {
     type PointerType = f64;
     const SIZE: usize = D;
     fn from_ptr(ptr: *const Self::PointerType) -> Self {
-        let s = unsafe { std::slice::from_raw_parts(ptr, 3) };
+        let s = unsafe { std::slice::from_raw_parts(ptr, D) };
         Self::from_row_slice(s)
     }
 }

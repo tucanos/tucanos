@@ -1,54 +1,42 @@
-#![allow(non_upper_case_globals)]
-#![allow(non_camel_case_types)]
-#![allow(non_snake_case)]
-#![allow(clippy::missing_safety_doc)]
-#![allow(clippy::doc_markdown)]
 use log::warn;
 use tucanos::{
     geometry::LinearGeometry,
-    mesh::{Elem, SimplexMesh, Tetrahedron, Triangle},
-    metric::{AnisoMetric3d, IsoMetric, Metric},
+    mesh::{Edge, Elem, SimplexMesh, Triangle},
+    metric::{AnisoMetric2d, IsoMetric},
     remesher::{Remesher, RemesherParams},
 };
 
-mod ffi2d;
+use crate::{new_metric, tucanos_tag_t};
 
-pub struct tucanos_remesher3diso_t {
-    implem: Remesher<3, Tetrahedron, IsoMetric<3>>,
+pub struct tucanos_remesher2diso_t {
+    implem: Remesher<2, Triangle, IsoMetric<2>>,
 }
 
-pub struct tucanos_remesher3daniso_t {
-    implem: Remesher<3, Tetrahedron, AnisoMetric3d>,
+pub struct tucanos_remesher2daniso_t {
+    implem: Remesher<2, Triangle, AnisoMetric2d>,
 }
 
-pub struct tucanos_mesh33_t {
-    implem: SimplexMesh<3, Tetrahedron>,
+pub struct tucanos_mesh22_t {
+    implem: SimplexMesh<2, Triangle>,
 }
 
-pub struct tucanos_mesh32_t {
-    implem: SimplexMesh<3, Triangle>,
+pub struct tucanos_mesh21_t {
+    implem: SimplexMesh<2, Edge>,
 }
 
-pub struct tucanos_geom3d_t {
-    implem: LinearGeometry<3, Triangle>,
+pub struct tucanos_geom2d_t {
+    implem: LinearGeometry<2, Edge>,
 }
 
-#[cfg(feature = "64bit-tags")]
-pub type tucanos_tag_t = i64;
-#[cfg(feature = "32bit-tags")]
-pub type tucanos_tag_t = i32;
-#[cfg(not(any(feature = "32bit-tags", feature = "64bit-tags")))]
-pub type tucanos_tag_t = i16;
-
-/// @brief Create a geometry for a tucanos_mesh33_t
+/// @brief Create a geometry for a tucanos_mesh22_t
 ///
 /// @param mesh The mesh for which the geometry is to be created
 /// @param boundary A mesh representing the boundary faces of `mesh`. This function consume and free the boundary.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tucanos_geom3d_new(
-    mesh: *mut tucanos_mesh33_t,
-    boundary: *mut tucanos_mesh32_t,
-) -> *mut tucanos_geom3d_t {
+pub unsafe extern "C" fn tucanos_geom2d_new(
+    mesh: *mut tucanos_mesh22_t,
+    boundary: *mut tucanos_mesh21_t,
+) -> *mut tucanos_geom2d_t {
     unsafe {
         let mesh = &mut (*mesh).implem;
         if mesh.get_topology().is_err() {
@@ -56,41 +44,31 @@ pub unsafe extern "C" fn tucanos_geom3d_new(
         }
         let boundary = Box::from_raw(boundary).implem;
         LinearGeometry::new(mesh, boundary).map_or(std::ptr::null_mut(), |implem| {
-            Box::into_raw(Box::new(tucanos_geom3d_t { implem }))
+            Box::into_raw(Box::new(tucanos_geom2d_t { implem }))
         })
     }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tucanos_geom3d_delete(geom: *mut tucanos_geom3d_t) {
+pub unsafe extern "C" fn tucanos_geom2d_delete(geom: *mut tucanos_geom2d_t) {
     unsafe {
         let _ = Box::from_raw(geom);
     }
 }
 
-unsafe fn new_metric<const D: usize, MT: Metric<D>>(
-    metric: *const f64,
-    num_points: u32,
-) -> impl ExactSizeIterator<Item = MT> {
-    unsafe {
-        let metric = std::slice::from_raw_parts(metric, num_points as usize * MT::N);
-        metric.chunks(MT::N).map(MT::from_slice)
-    }
-}
-
 /// @brief Create a remesher from a mesh, an isotropic metric and a geometry
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tucanos_remesher3diso_new(
-    mesh: *const tucanos_mesh33_t,
+pub unsafe extern "C" fn tucanos_remesher2diso_new(
+    mesh: *const tucanos_mesh22_t,
     metric: *const f64,
-    geom: *const tucanos_geom3d_t,
-) -> *mut tucanos_remesher3diso_t {
+    geom: *const tucanos_geom2d_t,
+) -> *mut tucanos_remesher2diso_t {
     unsafe {
         let mesh = &(*mesh).implem;
         let metric = new_metric(metric, mesh.n_verts());
         let geom = &(*geom).implem;
         match Remesher::new_with_iter(mesh, metric, geom) {
-            Ok(implem) => Box::into_raw(Box::new(tucanos_remesher3diso_t { implem })),
+            Ok(implem) => Box::into_raw(Box::new(tucanos_remesher2diso_t { implem })),
             Err(e) => {
                 warn!("{e:?}");
                 std::ptr::null_mut()
@@ -100,37 +78,37 @@ pub unsafe extern "C" fn tucanos_remesher3diso_new(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tucanos_remesher3diso_delete(remesher: *mut tucanos_remesher3diso_t) {
+pub unsafe extern "C" fn tucanos_remesher2diso_delete(remesher: *mut tucanos_remesher2diso_t) {
     unsafe {
         let _ = Box::from_raw(remesher);
     }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tucanos_remesher3diso_tomesh(
-    remesher: *mut tucanos_remesher3diso_t,
+pub unsafe extern "C" fn tucanos_remesher2diso_tomesh(
+    remesher: *mut tucanos_remesher2diso_t,
     only_bdy_faces: bool,
-) -> *mut tucanos_mesh33_t {
+) -> *mut tucanos_mesh22_t {
     unsafe {
         let remesher = &mut (*remesher).implem;
         let implem = remesher.to_mesh(only_bdy_faces);
-        Box::into_raw(Box::new(tucanos_mesh33_t { implem }))
+        Box::into_raw(Box::new(tucanos_mesh22_t { implem }))
     }
 }
 
 /// @brief Create a remesher from a mesh, an anisotropic metric and a geometry
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tucanos_remesher3daniso_new(
-    mesh: *const tucanos_mesh33_t,
+pub unsafe extern "C" fn tucanos_remesher2daniso_new(
+    mesh: *const tucanos_mesh22_t,
     metric: *const f64,
-    geom: *const tucanos_geom3d_t,
-) -> *mut tucanos_remesher3daniso_t {
+    geom: *const tucanos_geom2d_t,
+) -> *mut tucanos_remesher2daniso_t {
     unsafe {
         let mesh = &(*mesh).implem;
         let metric = new_metric(metric, mesh.n_verts());
         let geom = &(*geom).implem;
         match Remesher::new_with_iter(mesh, metric, geom) {
-            Ok(implem) => Box::into_raw(Box::new(tucanos_remesher3daniso_t { implem })),
+            Ok(implem) => Box::into_raw(Box::new(tucanos_remesher2daniso_t { implem })),
             Err(e) => {
                 warn!("{e:?}");
                 std::ptr::null_mut()
@@ -140,16 +118,16 @@ pub unsafe extern "C" fn tucanos_remesher3daniso_new(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tucanos_remesher3daniso_delete(remesher: *mut tucanos_remesher3daniso_t) {
+pub unsafe extern "C" fn tucanos_remesher2daniso_delete(remesher: *mut tucanos_remesher2daniso_t) {
     unsafe {
         let _ = Box::from_raw(remesher);
     }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tucanos_remesher3diso_remesh(
-    remesher: *mut tucanos_remesher3diso_t,
-    geom: *const tucanos_geom3d_t,
+pub unsafe extern "C" fn tucanos_remesher2diso_remesh(
+    remesher: *mut tucanos_remesher2diso_t,
+    geom: *const tucanos_geom2d_t,
 ) -> bool {
     unsafe {
         assert!(!remesher.is_null());
@@ -161,9 +139,9 @@ pub unsafe extern "C" fn tucanos_remesher3diso_remesh(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tucanos_remesher3daniso_remesh(
-    remesher: *mut tucanos_remesher3daniso_t,
-    geom: *const tucanos_geom3d_t,
+pub unsafe extern "C" fn tucanos_remesher2daniso_remesh(
+    remesher: *mut tucanos_remesher2daniso_t,
+    geom: *const tucanos_geom2d_t,
 ) -> bool {
     unsafe {
         assert!(!remesher.is_null());
@@ -175,24 +153,24 @@ pub unsafe extern "C" fn tucanos_remesher3daniso_remesh(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tucanos_remesher3daniso_tomesh(
-    remesher: *mut tucanos_remesher3daniso_t,
+pub unsafe extern "C" fn tucanos_remesher2daniso_tomesh(
+    remesher: *mut tucanos_remesher2daniso_t,
     only_bdy_faces: bool,
-) -> *mut tucanos_mesh33_t {
+) -> *mut tucanos_mesh22_t {
     unsafe {
         let remesher = &mut (*remesher).implem;
         let implem = remesher.to_mesh(only_bdy_faces);
-        Box::into_raw(Box::new(tucanos_mesh33_t { implem }))
+        Box::into_raw(Box::new(tucanos_mesh22_t { implem }))
     }
 }
 
-/// Create a new 3D mesh containing tetrahedrons
+/// Create a new 2D mesh containing tetrahedrons
 ///
 /// The numbering convention of the elements is the one Of VTK or CGNS:
 /// - <https://docs.vtk.org/en/latest/design_documents/VTKFileFormats.html>
 /// - <https://cgns.github.io/standard/SIDS/convention.html>
 #[unsafe(no_mangle)]
-pub extern "C" fn tucanos_mesh33_new(
+pub extern "C" fn tucanos_mesh22_new(
     num_verts: usize,
     verts: *const f64,
     num_elements: usize,
@@ -201,7 +179,7 @@ pub extern "C" fn tucanos_mesh33_new(
     num_faces: usize,
     faces: *const u32,
     ftags: *const tucanos_tag_t,
-) -> *mut tucanos_mesh33_t {
+) -> *mut tucanos_mesh22_t {
     let implem = SimplexMesh::new_with_vector(
         (verts, num_verts).into(),
         (elems, num_elements).into(),
@@ -209,22 +187,22 @@ pub extern "C" fn tucanos_mesh33_new(
         (faces, num_faces).into(),
         (ftags, num_faces).into(),
     );
-    Box::into_raw(Box::new(tucanos_mesh33_t { implem }))
+    Box::into_raw(Box::new(tucanos_mesh22_t { implem }))
 }
 
 #[unsafe(no_mangle)]
-pub const unsafe extern "C" fn tucanos_mesh33_num_verts(m: *const tucanos_mesh33_t) -> u32 {
+pub const unsafe extern "C" fn tucanos_mesh22_num_verts(m: *const tucanos_mesh22_t) -> u32 {
     unsafe { (*m).implem.n_verts() }
 }
 
 #[unsafe(no_mangle)]
-pub const unsafe extern "C" fn tucanos_mesh33_num_elems(m: *const tucanos_mesh33_t) -> u32 {
+pub const unsafe extern "C" fn tucanos_mesh22_num_elems(m: *const tucanos_mesh22_t) -> u32 {
     unsafe { (*m).implem.n_elems() }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tucanos_mesh33_verts(
-    m: *const tucanos_mesh33_t,
+pub unsafe extern "C" fn tucanos_mesh22_verts(
+    m: *const tucanos_mesh22_t,
     out: *mut f64,
     first: u32,
     last: u32,
@@ -241,15 +219,15 @@ pub unsafe extern "C" fn tucanos_mesh33_verts(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tucanos_mesh33_elems(
-    m: *const tucanos_mesh33_t,
+pub unsafe extern "C" fn tucanos_mesh22_elems(
+    m: *const tucanos_mesh22_t,
     out: *mut u32,
     first: u32,
     last: u32,
 ) {
     unsafe {
         let m = &((*m).implem);
-        let slice_size = (last - first) as usize * Tetrahedron::N_VERTS as usize;
+        let slice_size = (last - first) as usize * Triangle::N_VERTS as usize;
         let out = std::slice::from_raw_parts_mut(out, slice_size);
         let mut k = 0;
         for i in first..last {
@@ -262,27 +240,19 @@ pub unsafe extern "C" fn tucanos_mesh33_elems(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tucanos_mesh33_boundary(
-    m: *const tucanos_mesh33_t,
-) -> *mut tucanos_mesh32_t {
+pub unsafe extern "C" fn tucanos_mesh22_boundary(
+    m: *const tucanos_mesh22_t,
+) -> *mut tucanos_mesh21_t {
     unsafe {
         let m = &*m;
         let (implem, _) = m.implem.boundary();
-        Box::into_raw(Box::new(tucanos_mesh32_t { implem }))
+        Box::into_raw(Box::new(tucanos_mesh21_t { implem }))
     }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tucanos_mesh33_delete(m: *mut tucanos_mesh33_t) {
+pub unsafe extern "C" fn tucanos_mesh22_delete(m: *mut tucanos_mesh22_t) {
     unsafe {
         let _ = Box::from_raw(m);
     }
-}
-
-/// @brief Enable Rust logger
-///
-/// See <https://docs.rs/env_logger/latest/env_logger/#enabling-logging> for details
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tucanos_init_log() {
-    tucanos::init_log("warn");
 }
