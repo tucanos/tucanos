@@ -9,6 +9,25 @@ use core::fmt;
 use log::trace;
 use std::cmp::{Ordering, min};
 
+/// Intersect two sorted slices
+pub(crate) fn intersection(a: &[Idx], b: &[Idx]) -> Vec<Idx> {
+    let mut result = Vec::with_capacity(min(a.len(), b.len()));
+    let mut i = 0;
+    let mut j = 0;
+    while i < a.len() && j < b.len() {
+        match a[i].cmp(&b[j]) {
+            Ordering::Equal => {
+                result.push(a[i]);
+                i += 1;
+                j += 1;
+            }
+            Ordering::Less => i += 1,
+            Ordering::Greater => j += 1,
+        }
+    }
+    result
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(super) enum Seed {
     No,
@@ -120,27 +139,8 @@ impl<const D: usize, E: Elem, M: Metric<D>> Cavity<D, E, M> {
         }
     }
 
-    /// Intersect two sorted slices
-    fn intersection(a: &[Idx], b: &[Idx]) -> Vec<Idx> {
-        let mut result = Vec::with_capacity(min(a.len(), b.len()));
-        let mut i = 0;
-        let mut j = 0;
-        while i < a.len() && j < b.len() {
-            match a[i].cmp(&b[j]) {
-                Ordering::Equal => {
-                    result.push(a[i]);
-                    i += 1;
-                    j += 1;
-                }
-                Ordering::Less => i += 1,
-                Ordering::Greater => j += 1,
-            }
-        }
-        result
-    }
-
     pub fn init_from_edge(&mut self, edg: [Idx; 2], r: &Remesher<D, E, M>) {
-        let global_elems = Self::intersection(r.vertex_elements(edg[0]), r.vertex_elements(edg[1]));
+        let global_elems = intersection(r.vertex_elements(edg[0]), r.vertex_elements(edg[1]));
         assert!(
             !global_elems.is_empty(),
             "Empty edge cavity: edg = {edg:?} ({})--> elements = {:?} & {:?}",

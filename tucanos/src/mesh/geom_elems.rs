@@ -3,32 +3,33 @@ use crate::{
     mesh::Point,
     metric::{AnisoMetric, AnisoMetric2d, AnisoMetric3d, Metric},
 };
-use nalgebra::{Matrix2, Matrix3, Matrix4, Vector1, Vector2, Vector3, Vector4};
+use nalgebra::{Matrix2, Matrix3};
 use std::fmt::Debug;
+use tmesh::mesh::Simplex;
 
 pub trait AsSliceF64 {
     fn as_slice_f64(&self) -> &[f64];
 }
 
-impl AsSliceF64 for Vector4<f64> {
+impl AsSliceF64 for [f64; 4] {
     fn as_slice_f64(&self) -> &[f64] {
         self.as_slice()
     }
 }
 
-impl AsSliceF64 for Vector3<f64> {
+impl AsSliceF64 for [f64; 3] {
     fn as_slice_f64(&self) -> &[f64] {
         self.as_slice()
     }
 }
 
-impl AsSliceF64 for Vector2<f64> {
+impl AsSliceF64 for [f64; 2] {
     fn as_slice_f64(&self) -> &[f64] {
         self.as_slice()
     }
 }
 
-impl AsSliceF64 for Vector1<f64> {
+impl AsSliceF64 for [f64; 1] {
     fn as_slice_f64(&self) -> &[f64] {
         self.as_slice()
     }
@@ -112,6 +113,15 @@ pub trait GElem<const D: usize, M: Metric<D>>: Clone + Copy + Debug + Send {
 
     /// Get the i-th geometric face
     fn gface(&self, i: Idx) -> Self::Face;
+
+    /// Project oa point on the simplex
+    fn project(&self, v: &Point<D>) -> Point<D>;
+
+    /// Distance from a point to the simplex
+    fn distance(&self, v: &Point<D>) -> f64 {
+        let pt = self.project(v);
+        (v - pt).norm()
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -170,7 +180,7 @@ impl<const D: usize, M: Metric<D>> GTetrahedron<D, M> {
 
 impl<const D: usize, M: Metric<D>> GElem<D, M> for GTetrahedron<D, M> {
     type Face = GTriangle<D, M>;
-    type BCoords = Vector4<f64>;
+    type BCoords = [f64; 4];
     const IDEAL_VOL: f64 = 1.0 / (6.0 * std::f64::consts::SQRT_2);
 
     fn vert(&self, i: Idx) -> Point<D> {
@@ -251,27 +261,7 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GTetrahedron<D, M> {
     }
 
     fn bcoords(&self, p: &Point<D>) -> Self::BCoords {
-        let a = Matrix4::new(
-            1.0,
-            1.0,
-            1.0,
-            1.0,
-            self.points[0][0],
-            self.points[1][0],
-            self.points[2][0],
-            self.points[3][0],
-            self.points[0][1],
-            self.points[1][1],
-            self.points[2][1],
-            self.points[3][1],
-            self.points[0][2],
-            self.points[1][2],
-            self.points[2][2],
-            self.points[3][2],
-        );
-        let b = Vector4::new(1., p[0], p[1], p[2]);
-        let decomp = a.lu();
-        decomp.solve(&b).unwrap()
+        tmesh::mesh::Tetrahedron::bcoords(&self.points, p)
     }
 
     fn scaled_normal(&self) -> Point<D> {
@@ -298,6 +288,10 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GTetrahedron<D, M> {
             },
             _ => unreachable!(),
         }
+    }
+
+    fn project(&self, v: &Point<D>) -> Point<D> {
+        tmesh::mesh::Tetrahedron::project(&self.points, v)
     }
 }
 
@@ -361,7 +355,7 @@ impl<const D: usize, M: Metric<D>> GTriangle<D, M> {
 
 impl<const D: usize, M: Metric<D>> GElem<D, M> for GTriangle<D, M> {
     type Face = GEdge<D, M>;
-    type BCoords = Vector3<f64>;
+    type BCoords = [f64; 3];
     const IDEAL_VOL: f64 = SQRT_3 / 4.;
 
     fn vert(&self, i: Idx) -> Point<D> {
@@ -433,25 +427,7 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GTriangle<D, M> {
     }
 
     fn bcoords(&self, point: &Point<D>) -> Self::BCoords {
-        let p0 = &self.points[0];
-        let p1 = &self.points[1];
-        let p2 = &self.points[2];
-
-        if D == 2 {
-            let a = Matrix3::new(1.0, 1.0, 1.0, p0[0], p1[0], p2[0], p0[1], p1[1], p2[1]);
-            let b = Vector3::new(1., point[0], point[1]);
-            let decomp = a.lu();
-            decomp.solve(&b).unwrap()
-        } else {
-            let u = p1 - p0;
-            let v = p2 - p0;
-            let n = u.cross(&v);
-            let w = point - p0;
-            let nrm = n.norm_squared();
-            let gamma = u.cross(&w).dot(&n) / nrm;
-            let beta = w.cross(&v).dot(&n) / nrm;
-            Vector3::new(1.0 - beta - gamma, beta, gamma)
-        }
+        tmesh::mesh::Triangle::bcoords(&self.points, point)
     }
 
     fn scaled_normal(&self) -> Point<D> {
@@ -481,6 +457,10 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GTriangle<D, M> {
             _ => unreachable!(),
         }
     }
+
+    fn project(&self, v: &Point<D>) -> Point<D> {
+        tmesh::mesh::Triangle::project(&self.points, v)
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -495,7 +475,7 @@ impl<const D: usize, M: Metric<D>> GEdge<D, M> {
 
 impl<const D: usize, M: Metric<D>> GElem<D, M> for GEdge<D, M> {
     type Face = GVertex<D, M>;
-    type BCoords = Vector2<f64>;
+    type BCoords = [f64; 2];
     const IDEAL_VOL: f64 = 1.0;
 
     fn vert(&self, i: Idx) -> Point<D> {
@@ -542,8 +522,8 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GEdge<D, M> {
         }
     }
 
-    fn bcoords(&self, _: &Point<D>) -> Self::BCoords {
-        unreachable!();
+    fn bcoords(&self, v: &Point<D>) -> Self::BCoords {
+        tmesh::mesh::Edge::bcoords(&self.points, v)
     }
 
     fn scaled_normal(&self) -> Point<D> {
@@ -561,6 +541,10 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GEdge<D, M> {
     fn gface(&self, _i: Idx) -> Self::Face {
         unreachable!();
     }
+
+    fn project(&self, v: &Point<D>) -> Point<D> {
+        tmesh::mesh::Edge::project(&self.points, v)
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -575,7 +559,7 @@ impl<const D: usize, M: Metric<D>> GVertex<D, M> {
 
 impl<const D: usize, M: Metric<D>> GElem<D, M> for GVertex<D, M> {
     type Face = Self;
-    type BCoords = Vector1<f64>;
+    type BCoords = [f64; 1];
     const IDEAL_VOL: f64 = 1.0;
 
     fn vert(&self, i: Idx) -> Point<D> {
@@ -612,8 +596,8 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GVertex<D, M> {
         unreachable!()
     }
 
-    fn bcoords(&self, _p: &Point<D>) -> Self::BCoords {
-        unreachable!();
+    fn bcoords(&self, p: &Point<D>) -> Self::BCoords {
+        tmesh::mesh::Node::bcoords(&self.points, p)
     }
 
     fn scaled_normal(&self) -> Point<D> {
@@ -622,6 +606,10 @@ impl<const D: usize, M: Metric<D>> GElem<D, M> for GVertex<D, M> {
 
     fn gface(&self, _i: Idx) -> Self::Face {
         unreachable!();
+    }
+
+    fn project(&self, p: &Point<D>) -> Point<D> {
+        tmesh::mesh::Node::project(&self.points, p)
     }
 }
 

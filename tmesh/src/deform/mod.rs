@@ -33,15 +33,17 @@ impl<const D: usize> MeshDeformation<D> {
 
     pub fn new<I: ExactSizeIterator<Item = (Vertex<D>, Vertex<D>)> + Clone>(
         constraints: &I,
+        a: Option<f64>,
     ) -> Self {
         let n = constraints.len();
         assert_ne!(n, 0);
         debug!("Compute mesh deformation with {n} constraints");
-        let a = 4.0
-            * constraints
+        let a = a.unwrap_or_else(|| {
+            4.0 * constraints
                 .clone()
                 .map(|(_, x)| x.norm())
-                .fold(0.0, f64::max);
+                .fold(0.0, f64::max)
+        });
         let verts = constraints.clone().map(|(x, _)| x).collect::<Vec<_>>();
 
         let mut mat = DMatrix::<f64>::zeros(n, n);
@@ -55,6 +57,7 @@ impl<const D: usize> MeshDeformation<D> {
                 *mat.index_mut((j, i)) = val;
             }
         }
+
         debug!("Compute the Cholesky decomposition");
         let chol = mat.cholesky().unwrap();
         let mut weights = DMatrix::<f64>::zeros(n, D);
@@ -78,7 +81,7 @@ impl<const D: usize> MeshDeformation<D> {
         Cell<F>: Simplex<F>,
     {
         let constraints = msh.verts().zip(deform.iter().copied());
-        Self::new(&constraints)
+        Self::new(&constraints, None)
     }
 
     #[must_use]
@@ -184,7 +187,7 @@ where
         });
 
         // Compute the deformation
-        let deform = MeshDeformation::new(&constraints);
+        let deform = MeshDeformation::new(&constraints, None);
 
         // Get the vertex to be deformed
         let idx_verts = elems
@@ -243,7 +246,7 @@ mod tests {
                 (x, Vert2d::zeros())
             }
         });
-        let deform = MeshDeformation::new(&constraints);
+        let deform = MeshDeformation::new(&constraints, None);
         mesh.verts_mut().for_each(|x| *x += deform.deform(x));
 
         let faces = mesh.all_faces();
@@ -318,12 +321,26 @@ mod tests {
                 (x, Vert3d::zeros())
             }
         });
-        let deform = MeshDeformation::new(&constraints);
+        let deform = MeshDeformation::new(&constraints, None);
         mesh.verts_mut().for_each(|x| *x += deform.deform(x));
 
         let faces = mesh.all_faces();
         mesh.check(&faces).unwrap();
 
         // mesh.write_vtk("deform3d.vtu").unwrap();
+    }
+
+    #[test]
+    fn test_local_deform_3d() {
+        let mut mesh = box_mesh::<Mesh3d>(1.0, 9, 1.0, 9, 1.0, 9);
+
+        let all_faces = mesh.all_faces();
+        let v2e = mesh.vertex_to_elems();
+        let d = Vert3d::new(0.0, 0.25, 0.0);
+
+        assert!(deform_mesh_local(&mut mesh, &all_faces, &v2e, 4, &d, 1));
+
+        let faces = mesh.all_faces();
+        mesh.check(&faces).unwrap();
     }
 }
