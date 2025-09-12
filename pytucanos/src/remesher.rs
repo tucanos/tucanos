@@ -357,8 +357,9 @@ impl PyRemesherParams {
     }
 
     #[classmethod]
-    fn default(_cls: &Bound<'_, PyType>) -> Self {
-        Self::from(&RemesherParams::default())
+    #[pyo3(signature = (max_angle=25.0, n_steps=4))]
+    fn default(_cls: &Bound<'_, PyType>, max_angle: f64, n_steps: Idx) -> Self {
+        Self::from(&RemesherParams::new(max_angle, n_steps))
     }
 }
 
