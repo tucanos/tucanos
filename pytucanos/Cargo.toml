@@ -1,6 +1,6 @@
 [package]
 name = "pytucanos"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 
 [lib]
@@ -15,8 +15,8 @@ pyo3 = { version = "0.25.0", features = ["extension-module", "multiple-pymethods
 pyo3-log = "0.12"
 rayon = "1.10.0"
 affinity = "0.1.2"
-pytmesh = { version = "0.1.0", path = "../pytmesh" }
-tmesh = { version = "0.1.0", path = "../tmesh" }
+pytmesh = { path = "../pytmesh" }
+tmesh = { path = "../tmesh" }
 
 [features]
 nlopt = ["tucanos/nlopt"]
