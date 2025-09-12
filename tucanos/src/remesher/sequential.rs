@@ -101,27 +101,38 @@ pub struct RemesherParams {
     pub debug: bool,
 }
 
-impl Default for RemesherParams {
-    fn default() -> Self {
+impl RemesherParams {
+    #[must_use]
+    pub fn new(max_angle: f64, n_steps: Idx) -> Self {
         let mut steps = Vec::new();
-        for _ in 0..4 {
-            steps.push(RemeshingStep::Collapse(CollapseParams::default()));
+        for _ in 0..n_steps {
+            steps.push(RemeshingStep::Collapse(CollapseParams {
+                max_angle,
+                ..CollapseParams::default()
+            }));
             steps.push(RemeshingStep::Split(SplitParams::default()));
             steps.push(RemeshingStep::Swap(SwapParams {
+                max_angle,
                 q: 0.4,
                 ..SwapParams::default()
             }));
             steps.push(RemeshingStep::Swap(SwapParams {
+                max_angle,
                 q: 0.8,
                 ..SwapParams::default()
             }));
-            steps.push(RemeshingStep::Smooth(SmoothParams::default()));
+            steps.push(RemeshingStep::Smooth(SmoothParams {
+                max_angle,
+                ..SmoothParams::default()
+            }));
         }
         steps.push(RemeshingStep::Swap(SwapParams {
+            max_angle,
             q: 0.4,
             ..SwapParams::default()
         }));
         steps.push(RemeshingStep::Swap(SwapParams {
+            max_angle,
             q: 0.8,
             ..SwapParams::default()
         }));
@@ -129,6 +140,12 @@ impl Default for RemesherParams {
             steps,
             debug: false,
         }
+    }
+}
+
+impl Default for RemesherParams {
+    fn default() -> Self {
+        Self::new(25.0, 4)
     }
 }
 
