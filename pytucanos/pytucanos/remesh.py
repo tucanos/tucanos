@@ -26,11 +26,11 @@ from .mesh import Mesh22, Mesh33
 from .geometry import LinearGeometry2d, LinearGeometry3d
 
 
-def print_params(params):
+def print_params(params, print_fn=print):
     for i, step in enumerate(params.steps):
         step = step._0
         if isinstance(step, PyCollapseParams):
-            print(f"{i} - Collapse")
+            print_fn(f"{i} - Collapse")
             attrs = [
                 "l",
                 "max_iter",
@@ -41,9 +41,9 @@ def print_params(params):
                 "max_angle",
             ]
             for attr in attrs:
-                print(f"  {attr} = {getattr(step, attr)}")
+                print_fn(f"  {attr} = {getattr(step, attr)}")
         elif isinstance(step, PySplitParams):
-            print(f"{i} - Split")
+            print_fn(f"{i} - Split")
             attrs = [
                 "l",
                 "max_iter",
@@ -54,9 +54,9 @@ def print_params(params):
                 "min_q_abs",
             ]
             for attr in attrs:
-                print(f"  {attr} = {getattr(step, attr)}")
+                print_fn(f"  {attr} = {getattr(step, attr)}")
         elif isinstance(step, PySwapParams):
-            print(f"{i} - Swap")
+            print_fn(f"{i} - Swap")
             attrs = [
                 "q",
                 "max_iter",
@@ -67,9 +67,9 @@ def print_params(params):
                 "max_angle",
             ]
             for attr in attrs:
-                print(f"  {attr} = {getattr(step, attr)}")
+                print_fn(f"  {attr} = {getattr(step, attr)}")
         elif isinstance(step, PySmoothParams):
-            print(f"{i} - Smooth")
+            print_fn(f"{i} - Smooth")
             attrs = [
                 "n_iter",
                 "method",
@@ -78,7 +78,7 @@ def print_params(params):
                 "max_angle",
             ]
             for attr in attrs:
-                print(f"  {attr} = {getattr(step, attr)}")
+                print_fn(f"  {attr} = {getattr(step, attr)}")
         else:
             raise RuntimeError()
 
