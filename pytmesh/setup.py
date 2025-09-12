@@ -22,7 +22,7 @@ class BuildRustCommand(build_rust):
 
 setuptools.setup(
     name="pytmesh",
-    version="0.1.0",
+    version="0.2.0",
     packages=["pytmesh"],
     install_requires=["numpy"],
     extras_require={"test": ["vtk==9.3"]},
