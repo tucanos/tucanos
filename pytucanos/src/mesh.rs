@@ -28,7 +28,6 @@ use tmesh::{
 use tucanos::{
     Idx, Tag,
     mesh::{Edge, GElem, SimplexMesh, Tetrahedron, Triangle},
-    metric::Metric,
 };
 
 macro_rules! create_mesh {
@@ -367,7 +366,7 @@ impl Mesh33 {
     ///    implied metric
     ///  - if a normal size array is not provided, the minimum of the tangential sizes is used.
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature = (geom, r_h, beta, t=1.0/8.0, h_min=None, h_max=None, h_n=None, h_n_tags=None))]
+    #[pyo3(signature = (geom, r_h, beta, t=1.0, h_min=None, h_max=None, h_n=None, h_n_tags=None))]
     pub fn curvature_metric<'py>(
         &self,
         py: Python<'py>,
@@ -458,7 +457,7 @@ impl Mesh22 {
     ///  - the metric is entended into the volume with gradation beta
     ///  - if a normal size array is not provided, the minimum of the tangential sizes is used.
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature = (geom, r_h, beta, t=1.0/8.0, h_min=None, h_n=None, h_n_tags=None))]
+    #[pyo3(signature = (geom, r_h, beta, t=1.0, h_min=None, h_max=None, h_n=None, h_n_tags=None))]
     pub fn curvature_metric<'py>(
         &self,
         py: Python<'py>,
@@ -467,6 +466,7 @@ impl Mesh22 {
         beta: f64,
         t: f64,
         h_min: Option<f64>,
+        h_max: Option<f64>,
         h_n: Option<PyReadonlyArray1<f64>>,
         h_n_tags: Option<PyReadonlyArray1<Tag>>,
     ) -> PyResult<Bound<'py, PyArray2<f64>>> {
@@ -477,25 +477,26 @@ impl Mesh22 {
             }
             let h_n_tags = h_n_tags.unwrap();
             let h_n_tags = h_n_tags.as_slice()?;
-            self.0
-                .curvature_metric(&geom.geom, r_h, beta, t, Some(h_n), Some(h_n_tags))
+            self.0.curvature_metric(
+                &geom.geom,
+                r_h,
+                beta,
+                t,
+                h_min,
+                h_max,
+                Some(h_n),
+                Some(h_n_tags),
+            )
         } else {
             self.0
-                .curvature_metric(&geom.geom, r_h, beta, t, None, None)
+                .curvature_metric(&geom.geom, r_h, beta, t, h_min, h_max, None, None)
         };
 
         if let Err(res) = res {
             return Err(PyRuntimeError::new_err(res.to_string()));
         }
-        let mut m = res.unwrap();
-
-        if let Some(h_min) = h_min {
-            for x in &mut m {
-                x.scale_with_bounds(1.0, h_min, f64::MAX);
-            }
-        }
-
-        let m: Vec<f64> = m.iter().flat_map(|m| m.into_iter()).collect();
+        let m = res.unwrap();
+        let m = m.iter().flat_map(|m| m.into_iter()).collect();
 
         Ok(to_numpy_2d(py, m, 3))
     }
