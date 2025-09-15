@@ -88,12 +88,15 @@ impl SimplexMesh<2, Triangle> {
     /// - beta: the mesh gradation
     /// - h_n: the normal size, defined at the boundary vertices
     ///   if <0, the min of the tangential sizes is used
+    #[allow(clippy::too_many_arguments)]
     pub fn curvature_metric(
         &self,
         geom: &LinearGeometry<2, Edge>,
         r_h: f64,
         beta: f64,
         t: f64,
+        h_min: Option<f64>,
+        h_max: Option<f64>,
         h_n: Option<&[f64]>,
         h_n_tags: Option<&[Tag]>,
     ) -> Result<Vec<AnisoMetric2d>> {
@@ -117,11 +120,19 @@ impl SimplexMesh<2, Triangle> {
                 .for_each(|(i_bdy_vert, i_vert)| {
                     let pt = self.vert(i_vert);
                     let (mut u, _) = geom.curvature(&pt, tag).unwrap();
-                    let hu = 1. / (r_h * u.norm());
+                    let mut hu = 1. / (r_h * u.norm());
                     let mut hn = hu;
                     if use_h_n && let Some(h_n) = h_n {
                         assert!(h_n[i_bdy_vert as usize] > 0.0);
                         hn = h_n[i_bdy_vert as usize].min(hn);
+                    }
+                    if let Some(h_min) = h_min {
+                        hu = hu.max(h_min);
+                        hn = hn.max(h_min);
+                    }
+                    if let Some(h_max) = h_max {
+                        hu = hu.min(h_max);
+                        hn = hn.min(h_max);
                     }
                     u.normalize_mut();
 
