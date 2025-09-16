@@ -8,8 +8,8 @@ links = "tucanos"
 nalgebra = { version = "0.34", features = ["rand"] }
 env_logger = "0.11.5"
 log = "0.4.22"
-serde_json = "1.0"
-serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.145"
+serde = { version = "1.0.225", features = ["derive"] }
 nlopt = { version="0.8.0", optional = true}
 rustc-hash = "2.0.0"
 sorted-vec = "0.8.6"
@@ -17,7 +17,7 @@ rand = "0.9.1"
 rayon = "1.10"
 typenum = { version ="1.17", features = ["const-generics"] }
 num = "0.4.3"
-tempfile = "3.14"
+tempfile = "3.22.0"
 tmesh = {path = "../tmesh"}
 
 [features]
