@@ -10,9 +10,9 @@ crate-type = ["lib", "cdylib"]
 [dependencies]
 log = "0.4.27"
 tmesh = { path="../tmesh" }
-numpy = "0.25.0"
-pyo3 = { version = "0.25.0", features = ["extension-module", "multiple-pymethods"] }
-pyo3-log = "0.12"
+numpy = "0.26.0"
+pyo3 = { version = "0.26.0", features = ["extension-module", "multiple-pymethods"] }
+pyo3-log = "0.13.0"
 
 [features]
 32bit-tags = ["tmesh/32bit-tags"]

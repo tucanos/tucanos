@@ -115,7 +115,7 @@ macro_rules! create_parallel_remesher {
                     .map(|x| $metric::from_slice(x))
                     .collect();
 
-                let (mesh, info, m) = py.allow_threads(|| {
+                let (mesh, info, m) = py.detach(|| {
                     self.dd
                         .remesh(&m, &geometry.geom, params.to(), &parallel_params.to())
                         .unwrap()
