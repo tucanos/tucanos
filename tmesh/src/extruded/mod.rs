@@ -110,7 +110,11 @@ impl ExtrudedMesh2d {
         let faces = self.quads.iter().map(|p| [p[0], p[1]]).collect::<Vec<_>>();
         let ftags = self.quad_tags.clone();
 
-        Ok(Mesh2d::new(&verts, &elems, &etags, &faces, &ftags))
+        let mut msh2d = Mesh2d::new(&verts, &elems, &etags, &faces, &ftags);
+        msh2d.fix_elems_orientation();
+        msh2d.fix_faces_orientation(&msh2d.all_faces());
+
+        Ok(msh2d)
     }
 
     /// Number of vertices
