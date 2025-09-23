@@ -67,22 +67,33 @@ pub trait Simplex<const C: usize>: Sized {
     /// Barycentric coordinates
     fn bcoords<const D: usize>(ge: &[Vertex<D>; C], v: &Vertex<D>) -> [f64; C];
 
+    /// Vertex from barycentric coordinates
+    fn vert<const D: usize>(ge: &[Vertex<D>; C], bcoords: [f64; C]) -> Vertex<D>;
+
     /// Gamma quality measure, ratio of inscribed radius to circumradius
     /// normalized to be between 0 and 1
     fn gamma<const D: usize>(ge: &[Vertex<D>; C]) -> f64;
-}
 
-fn is_circ_perm<const N: usize>(a: &[usize; N], b: &[usize; N]) -> bool {
-    let mut tmp = *b;
-    for i in 0..N {
-        if tmp == *a {
-            return true;
-        }
-        if i != N - 1 {
-            tmp.rotate_right(1);
+    /// Project a point on the simplex
+    fn project<const D: usize>(ge: &[Vertex<D>; C], v: &Vertex<D>) -> Vertex<D>;
+
+    /// Try to project a point inside the simplex
+    #[must_use]
+    fn project_inside<const D: usize>(ge: &[Vertex<D>; C], v: &Vertex<D>) -> Option<Vertex<D>> {
+        let bcoords = Self::bcoords(ge, v);
+        if bcoords.iter().copied().all(|x| x > 0.0) {
+            Some(Self::vert(ge, bcoords))
+        } else {
+            None
         }
     }
-    false
+
+    /// Distance from a point to the simplex
+    #[must_use]
+    fn distance<const D: usize>(ge: &[Vertex<D>; C], v: &Vertex<D>) -> f64 {
+        let pt = Self::project::<D>(ge, v);
+        (v - pt).norm()
+    }
 }
 
 impl Simplex<0> for [usize; 0] {
@@ -132,7 +143,15 @@ impl Simplex<0> for [usize; 0] {
         unreachable!()
     }
 
+    fn vert<const D: usize>(_ge: &[Vertex<D>; 0], _bcoords: [f64; 0]) -> Vertex<D> {
+        unreachable!()
+    }
+
     fn gamma<const D: usize>(_ge: &[Vertex<D>; 0]) -> f64 {
+        unreachable!()
+    }
+
+    fn project<const D: usize>(_ge: &[Vertex<D>; 0], _v: &Vertex<D>) -> Vertex<D> {
         unreachable!()
     }
 }
@@ -184,8 +203,16 @@ impl Simplex<1> for Node {
         unreachable!()
     }
 
+    fn vert<const D: usize>(_ge: &[Vertex<D>; 1], _bcoords: [f64; 1]) -> Vertex<D> {
+        unreachable!()
+    }
+
     fn gamma<const D: usize>(_ge: &[Vertex<D>; 1]) -> f64 {
         1.0
+    }
+
+    fn project<const D: usize>(ge: &[Vertex<D>; 1], _v: &Vertex<D>) -> Vertex<D> {
+        ge[0]
     }
 }
 
@@ -250,19 +277,41 @@ impl Simplex<2> for Edge {
     }
 
     fn is_same(&self, other: &Self) -> bool {
-        is_circ_perm(self, other)
+        *self == *other
     }
 
     fn invert(&mut self) {
         self.swap(1, 0);
     }
 
-    fn bcoords<const D: usize>(_ge: &[Vertex<D>; 2], _v: &Vertex<D>) -> [f64; 2] {
-        unreachable!()
+    fn bcoords<const D: usize>(ge: &[Vertex<D>; 2], v: &Vertex<D>) -> [f64; 2] {
+        let ab = ge[1] - ge[0];
+        let ap = v - ge[0];
+
+        let ab_squared_magnitude = ab.norm_squared();
+        let t = ap.dot(&ab) / ab_squared_magnitude;
+        [1.0 - t, t]
+    }
+
+    fn vert<const D: usize>(ge: &[Vertex<D>; 2], bcoords: [f64; 2]) -> Vertex<D> {
+        bcoords[0] * ge[0] + bcoords[1] * ge[1]
     }
 
     fn gamma<const D: usize>(_ge: &[Vertex<D>; 2]) -> f64 {
         1.0
+    }
+
+    fn project<const D: usize>(ge: &[Vertex<D>; 2], v: &Vertex<D>) -> Vertex<D> {
+        Self::project_inside(ge, v).map_or_else(
+            || {
+                let p0 = Node::project(&[ge[0]], v);
+                let d0 = (v - p0).norm_squared();
+                let p1 = Node::project(&[ge[1]], v);
+                let d1 = (v - p1).norm_squared();
+                if d0 < d1 { p0 } else { p1 }
+            },
+            |pt| pt,
+        )
     }
 }
 
@@ -343,7 +392,8 @@ impl Simplex<3> for Triangle {
     }
 
     fn is_same(&self, other: &Self) -> bool {
-        is_circ_perm(self, other)
+        let [i0, i1, i2] = *self;
+        *other == *self || *other == [i1, i2, i0] || *other == [i2, i0, i1]
     }
 
     fn invert(&mut self) {
@@ -360,15 +410,19 @@ impl Simplex<3> for Triangle {
             let x = decomp.solve(&b).unwrap();
             [x[0], x[1], x[2]]
         } else {
-            let u = ge[1] - ge[0];
-            let v = ge[2] - ge[0];
-            let n = u.cross(&v);
+            let e0 = ge[1] - ge[0];
+            let e1 = ge[2] - ge[0];
+            let n = e0.cross(&e1);
             let w = v - ge[0];
             let nrm = n.norm_squared();
-            let gamma = u.cross(&w).dot(&n) / nrm;
-            let beta = w.cross(&v).dot(&n) / nrm;
+            let gamma = e0.cross(&w).dot(&n) / nrm;
+            let beta = w.cross(&e1).dot(&n) / nrm;
             [1.0 - beta - gamma, beta, gamma]
         }
+    }
+
+    fn vert<const D: usize>(ge: &[Vertex<D>; 3], bcoords: [f64; 3]) -> Vertex<D> {
+        ge[0] * bcoords[0] + ge[1] * bcoords[1] + ge[2] * bcoords[2]
     }
 
     fn gamma<const D: usize>(ge: &[Vertex<D>; 3]) -> f64 {
@@ -398,6 +452,27 @@ impl Simplex<3> for Triangle {
         } else {
             4.0 * sina * sinb * sinc / tmp
         }
+    }
+
+    fn project<const D: usize>(ge: &[Vertex<D>; 3], v: &Vertex<D>) -> Vertex<D> {
+        Self::project_inside(ge, v).map_or_else(
+            || {
+                let p0 = Edge::project(&[ge[TRIANGLE_FACES[0][0]], ge[TRIANGLE_FACES[0][1]]], v);
+                let d0 = (v - p0).norm_squared();
+                let p1 = Edge::project(&[ge[TRIANGLE_FACES[1][0]], ge[TRIANGLE_FACES[1][1]]], v);
+                let d1 = (v - p1).norm_squared();
+                let p2 = Edge::project(&[ge[TRIANGLE_FACES[2][0]], ge[TRIANGLE_FACES[2][1]]], v);
+                let d2 = (v - p2).norm_squared();
+                if d0 < d1 && d0 < d2 {
+                    p0
+                } else if d1 < d2 {
+                    p1
+                } else {
+                    p2
+                }
+            },
+            |pt| pt,
+        )
     }
 }
 
@@ -448,8 +523,13 @@ impl Simplex<4> for Tetrahedron {
         unreachable!()
     }
 
-    fn radius<const D: usize>(_v: &[Vertex<D>; 4]) -> f64 {
-        unimplemented!()
+    fn radius<const D: usize>(v: &[Vertex<D>; 4]) -> f64 {
+        let a0 = Triangle::vol(&[v[0], v[1], v[2]]);
+        let a1 = Triangle::vol(&[v[0], v[1], v[3]]);
+        let a2 = Triangle::vol(&[v[1], v[2], v[3]]);
+        let a3 = Triangle::vol(&[v[2], v[0], v[3]]);
+        let v = Self::vol(v);
+        3.0 * v / (a0 + a1 + a2 + a3)
     }
 
     fn quadrature() -> (Vec<f64>, Vec<Vec<f64>>) {
@@ -469,8 +549,17 @@ impl Simplex<4> for Tetrahedron {
         tmp
     }
 
+    #[allow(clippy::unnecessary_map_or)]
     fn is_same(&self, other: &Self) -> bool {
-        is_circ_perm(self, other)
+        let f = [self[1], self[2], self[3]];
+        other.iter().position(|&x| x == self[0]).map_or(false, |i| {
+            let o = [
+                other[TETRA_FACES[i][0]],
+                other[TETRA_FACES[i][1]],
+                other[TETRA_FACES[i][2]],
+            ];
+            f.is_same(&o)
+        })
     }
 
     fn invert(&mut self) {
@@ -486,6 +575,10 @@ impl Simplex<4> for Tetrahedron {
         let decomp = a.lu();
         let x = decomp.solve(&b).unwrap();
         [x[0], x[1], x[2], x[3]]
+    }
+
+    fn vert<const D: usize>(ge: &[Vertex<D>; 4], bcoords: [f64; 4]) -> Vertex<D> {
+        ge[0] * bcoords[0] + ge[1] * bcoords[1] + ge[2] * bcoords[2] + ge[3] * bcoords[3]
     }
 
     fn gamma<const D: usize>(ge: &[Vertex<D>; 4]) -> f64 {
@@ -550,6 +643,59 @@ impl Simplex<4> for Tetrahedron {
 
         rho / r
     }
+
+    fn project<const D: usize>(ge: &[Vertex<D>; 4], v: &Vertex<D>) -> Vertex<D> {
+        Self::project_inside(ge, v).map_or_else(
+            || {
+                let p0 = Triangle::project(
+                    &[
+                        ge[TETRA_FACES[0][0]],
+                        ge[TETRA_FACES[0][1]],
+                        ge[TETRA_FACES[0][2]],
+                    ],
+                    v,
+                );
+                let d0 = (v - p0).norm_squared();
+                let p1 = Triangle::project(
+                    &[
+                        ge[TETRA_FACES[1][0]],
+                        ge[TETRA_FACES[1][1]],
+                        ge[TETRA_FACES[1][2]],
+                    ],
+                    v,
+                );
+                let d1 = (v - p1).norm_squared();
+                let p2 = Triangle::project(
+                    &[
+                        ge[TETRA_FACES[2][0]],
+                        ge[TETRA_FACES[2][1]],
+                        ge[TETRA_FACES[2][2]],
+                    ],
+                    v,
+                );
+                let d2 = (v - p2).norm_squared();
+                let p3 = Triangle::project(
+                    &[
+                        ge[TETRA_FACES[3][0]],
+                        ge[TETRA_FACES[3][1]],
+                        ge[TETRA_FACES[3][2]],
+                    ],
+                    v,
+                );
+                let d3 = (v - p3).norm_squared();
+                if d0 < d1 && d0 < d2 && d0 < d3 {
+                    p0
+                } else if d1 < d2 && d1 < d3 {
+                    p1
+                } else if d2 < d3 {
+                    p2
+                } else {
+                    p3
+                }
+            },
+            |pt| pt,
+        )
+    }
 }
 
 /// Compute a `FxHashMap` that maps face-to-vertex connectivity (sorted) to a vector of element indices
@@ -580,4 +726,140 @@ where
     }
 
     map
+}
+
+#[cfg(test)]
+mod tests {
+    use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
+
+    use crate::{
+        Vert2d, Vert3d,
+        mesh::{Simplex, Tetrahedron, Triangle},
+    };
+
+    #[test]
+    fn test_is_same() {
+        let e = [10, 12];
+        let o = [10, 10];
+        assert!(!e.is_same(&o));
+        let o = [12, 10];
+        assert!(!e.is_same(&o));
+        let o = [10, 12];
+        assert!(e.is_same(&o));
+
+        let pts = [
+            Vert3d::new(0.0, 0.0, 0.0),
+            Vert3d::new(1.0, 0.0, 0.0),
+            Vert3d::new(0.0, 1.0, 0.0),
+            Vert3d::new(0.0, 0.0, 1.0),
+        ];
+
+        let gt = |e: &Triangle| [pts[e[0]], pts[e[1]], pts[e[2]]];
+        let e = [0, 1, 2];
+        let mut o = e;
+
+        let mut rng = StdRng::seed_from_u64(1234);
+        for _ in 0..10 {
+            o.shuffle(&mut rng);
+            let is_same = e.is_same(&o);
+            let n = Triangle::normal(&gt(&o));
+            if is_same {
+                assert!(n[2] > 0.0);
+            } else {
+                assert!(n[2] < 0.0);
+            }
+        }
+
+        let gt = |e: &Tetrahedron| [pts[e[0]], pts[e[1]], pts[e[2]], pts[e[3]]];
+        let e = [0, 1, 2, 3];
+        let mut o = e;
+
+        for _ in 0..10 {
+            o.shuffle(&mut rng);
+            let is_same = e.is_same(&o);
+            let n = Tetrahedron::vol(&gt(&o));
+            if is_same {
+                assert!(n > 0.0);
+            } else {
+                assert!(n < 0.0);
+            }
+        }
+    }
+
+    #[test]
+    fn test_project_triangle() {
+        let p0 = Vert3d::new(0.0, 0.0, 0.0);
+        let p1 = Vert3d::new(1.0, 0.0, 0.0);
+        let p2 = Vert3d::new(0.0, 1.0, 0.0);
+
+        let ge = [p0, p1, p2];
+
+        let p = Vert3d::new(-1.0, -1.0, 1.0);
+        let proj = Triangle::project(&ge, &p);
+        assert!((proj - Vert3d::new(0.0, 0.0, 0.0)).norm() < 1e-12);
+
+        let p = Vert3d::new(2.0, -1.0, 1.0);
+        let proj = Triangle::project(&ge, &p);
+        assert!((proj - Vert3d::new(1.0, 0.0, 0.0)).norm() < 1e-12);
+
+        let p = Vert3d::new(-2.0, 3.0, -1.0);
+        let proj = Triangle::project(&ge, &p);
+        assert!((proj - Vert3d::new(0.0, 1.0, 0.0)).norm() < 1e-12);
+
+        let p = Vert3d::new(0.5, -2.0, -1.0);
+        let proj = Triangle::project(&ge, &p);
+        assert!((proj - Vert3d::new(0.5, 0.0, 0.0)).norm() < 1e-12);
+
+        let p = Vert3d::new(-10.0, 0.2, 1.0);
+        let proj = Triangle::project(&ge, &p);
+        assert!((proj - Vert3d::new(0.0, 0.2, 0.0)).norm() < 1e-12);
+
+        let p = Vert3d::new(1.2, 0.6, 3.0);
+        let proj = Triangle::project(&ge, &p);
+        assert!((proj - Vert3d::new(0.8, 0.2, 0.0)).norm() < 1e-12);
+
+        let p = 0.1 * p0 + 0.2 * p1 + 0.7 * p2;
+        let proj = Triangle::project(&ge, &p);
+        assert!((proj - p).norm() < 1e-12);
+
+        let proj = Triangle::project(&ge, &(p + Vert3d::new(0.0, 0.0, 2.0)));
+        assert!((proj - p).norm() < 1e-12);
+    }
+
+    #[test]
+    fn test_project_triangle_2d() {
+        let p0 = Vert2d::new(0.0, 0.0);
+        let p1 = Vert2d::new(1.0, 0.0);
+        let p2 = Vert2d::new(0.0, 1.0);
+
+        let ge = [p0, p1, p2];
+
+        let p = Vert2d::new(-1.0, -1.0);
+        let proj = Triangle::project(&ge, &p);
+        assert!((proj - Vert2d::new(0.0, 0.0)).norm() < 1e-12);
+
+        let p = Vert2d::new(2.0, -1.0);
+        let proj = Triangle::project(&ge, &p);
+        assert!((proj - Vert2d::new(1.0, 0.0)).norm() < 1e-12);
+
+        let p = Vert2d::new(-2.0, 3.0);
+        let proj = Triangle::project(&ge, &p);
+        assert!((proj - Vert2d::new(0.0, 1.0)).norm() < 1e-12);
+
+        let p = Vert2d::new(0.5, -2.0);
+        let proj = Triangle::project(&ge, &p);
+        assert!((proj - Vert2d::new(0.5, 0.0)).norm() < 1e-12);
+
+        let p = Vert2d::new(-10.0, 0.2);
+        let proj = Triangle::project(&ge, &p);
+        assert!((proj - Vert2d::new(0.0, 0.2)).norm() < 1e-12);
+
+        let p = Vert2d::new(1.2, 0.6);
+        let proj = Triangle::project(&ge, &p);
+        assert!((proj - Vert2d::new(0.8, 0.2)).norm() < 1e-12);
+
+        let p = 0.1 * p0 + 0.2 * p1 + 0.7 * p2;
+        let proj = Triangle::project(&ge, &p);
+        assert!((proj - p).norm() < 1e-12);
+    }
 }
