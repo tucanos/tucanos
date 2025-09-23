@@ -105,9 +105,9 @@ impl CSRGraph {
             let start = self.ptr[i];
             let end = self.ptr[i + 1];
             self.indices[start..end].sort_unstable();
-            for j in start + 1..end {
-                assert_ne!(self.indices[j], self.indices[j - 1]);
-            }
+            // for j in start + 1..end {
+            //     assert_ne!(self.indices[j], self.indices[j - 1]);
+            // }
         }
     }
 

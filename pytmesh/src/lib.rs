@@ -9,6 +9,7 @@ pub use mesh::PyPartitionerType;
 use pyo3::{
     Bound, PyResult, Python, pymodule,
     types::{PyModule, PyModuleMethods},
+    wrap_pyfunction,
 };
 
 /// Python bindings for tmesh
@@ -32,5 +33,8 @@ pub fn pymeshb(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add("HAVE_METIS", false)?;
     #[cfg(feature = "metis")]
     m.add("HAVE_METIS", true)?;
+    m.add_function(wrap_pyfunction!(mesh::simplify_hexas, m)?)?;
+    m.add_function(wrap_pyfunction!(mesh::simplify_quads, m)?)?;
+
     Ok(())
 }

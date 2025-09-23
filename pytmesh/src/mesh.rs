@@ -9,7 +9,7 @@ use numpy::{
 use pyo3::{
     Bound, PyResult, Python,
     exceptions::{PyRuntimeError, PyValueError},
-    pyclass, pymethods,
+    pyclass, pyfunction, pymethods,
     types::{PyDict, PyDictMethods, PyType},
 };
 #[cfg(feature = "metis")]
@@ -18,8 +18,8 @@ use tmesh::{
     Tag, Vertex,
     interpolate::{InterpolationMethod, Interpolator},
     mesh::{
-        BoundaryMesh2d, BoundaryMesh3d, Mesh, Mesh2d, Mesh3d, nonuniform_box_mesh,
-        nonuniform_rectangle_mesh,
+        BoundaryMesh2d, BoundaryMesh3d, Hexahedron, Mesh, Mesh2d, Mesh3d, Quadrangle,
+        nonuniform_box_mesh, nonuniform_rectangle_mesh,
         partition::{
             HilbertPartitioner, KMeansPartitioner2d, KMeansPartitioner3d, PartitionType,
             RCMPartitioner,
@@ -650,4 +650,141 @@ impl PyMesh3d {
         let (bdy, ids) = self.0.boundary();
         (PyBoundaryMesh3d(bdy), PyArray1::from_vec(py, ids))
     }
+}
+
+#[pyfunction]
+#[allow(clippy::type_complexity)]
+pub fn simplify_hexas<'py>(
+    py: Python<'py>,
+    hexs: PyReadonlyArray2<usize>,
+    hex_tags: PyReadonlyArray1<Tag>,
+) -> (
+    Bound<'py, PyArray2<usize>>,
+    Bound<'py, PyArray1<Tag>>,
+    Bound<'py, PyArray1<usize>>,
+    Bound<'py, PyArray2<usize>>,
+    Bound<'py, PyArray1<Tag>>,
+    Bound<'py, PyArray1<usize>>,
+    Bound<'py, PyArray1<usize>>,
+) {
+    let hexs: Vec<Hexahedron> = hexs
+        .as_slice()
+        .unwrap()
+        .chunks(8)
+        .map(|x| x.try_into().unwrap())
+        .collect::<Vec<_>>();
+    let hex_tags = hex_tags.as_slice().unwrap();
+
+    let (
+        new_hexs,
+        new_hex_tags,
+        new_hex_ids,
+        new_pris,
+        new_pri_tags,
+        new_pri_ids,
+        mut unused_verts,
+    ) = tmesh::mesh::simplify_hexas(&hexs, hex_tags);
+
+    unused_verts.sort_unstable();
+
+    let new_hexs = PyArray::from_vec(py, new_hexs.iter().flatten().copied().collect())
+        .reshape([new_hexs.len(), 8])
+        .unwrap();
+    let new_hex_tags = PyArray::from_vec(py, new_hex_tags);
+    let new_hex_ids = PyArray::from_vec(py, new_hex_ids);
+
+    let new_pris = PyArray::from_vec(py, new_pris.iter().flatten().copied().collect())
+        .reshape([new_pris.len(), 6])
+        .unwrap();
+    let new_pri_tags = PyArray::from_vec(py, new_pri_tags);
+    let new_pri_ids = PyArray::from_vec(py, new_pri_ids);
+
+    let unused_verts = PyArray::from_vec(py, unused_verts);
+    (
+        new_hexs,
+        new_hex_tags,
+        new_hex_ids,
+        new_pris,
+        new_pri_tags,
+        new_pri_ids,
+        unused_verts,
+    )
+}
+
+#[pyfunction]
+#[allow(clippy::type_complexity)]
+pub fn simplify_quads<'py>(
+    py: Python<'py>,
+    quas: PyReadonlyArray2<usize>,
+    qua_tags: PyReadonlyArray1<Tag>,
+    unused_verts: PyReadonlyArray1<usize>,
+) -> (
+    Bound<'py, PyArray2<usize>>,
+    Bound<'py, PyArray1<Tag>>,
+    Bound<'py, PyArray1<usize>>,
+    Bound<'py, PyArray2<usize>>,
+    Bound<'py, PyArray1<Tag>>,
+    Bound<'py, PyArray1<usize>>,
+) {
+    let quas: Vec<Quadrangle> = quas
+        .as_slice()
+        .unwrap()
+        .chunks(4)
+        .map(|x| x.try_into().unwrap())
+        .collect::<Vec<_>>();
+    let qua_tags = qua_tags.as_slice().unwrap();
+    let unused_verts = unused_verts.as_slice().unwrap();
+
+    let mut new_quas = Vec::with_capacity(quas.len());
+    let mut new_qua_tags = Vec::with_capacity(quas.len());
+    let mut new_qua_ids = Vec::with_capacity(quas.len());
+
+    let mut new_tris = Vec::new();
+    let mut new_tri_tags = Vec::new();
+    let mut new_tri_ids = Vec::new();
+
+    for (i_qua, (&qua, &tag)) in quas.iter().zip(qua_tags.iter()).enumerate() {
+        if unused_verts.binary_search(&qua[0]).is_ok() {
+            new_tris.push([qua[1], qua[2], qua[3]]);
+            new_tri_tags.push(tag);
+            new_tri_ids.push(i_qua);
+        } else if unused_verts.binary_search(&qua[1]).is_ok() {
+            new_tris.push([qua[2], qua[3], qua[0]]);
+            new_tri_tags.push(tag);
+            new_tri_ids.push(i_qua);
+        } else if unused_verts.binary_search(&qua[2]).is_ok() {
+            new_tris.push([qua[3], qua[0], qua[1]]);
+            new_tri_tags.push(tag);
+            new_tri_ids.push(i_qua);
+        } else if unused_verts.binary_search(&qua[3]).is_ok() {
+            new_tris.push([qua[0], qua[1], qua[2]]);
+            new_tri_tags.push(tag);
+            new_tri_ids.push(i_qua);
+        } else {
+            new_quas.push(qua);
+            new_qua_tags.push(tag);
+            new_qua_ids.push(i_qua);
+        }
+    }
+
+    let new_quas = PyArray::from_vec(py, new_quas.iter().flatten().copied().collect())
+        .reshape([new_quas.len(), 4])
+        .unwrap();
+    let new_qua_tags = PyArray::from_vec(py, new_qua_tags);
+    let new_qua_ids = PyArray::from_vec(py, new_qua_ids);
+
+    let new_tris = PyArray::from_vec(py, new_tris.iter().flatten().copied().collect())
+        .reshape([new_tris.len(), 3])
+        .unwrap();
+    let new_tri_tags = PyArray::from_vec(py, new_tri_tags);
+    let new_tri_ids = PyArray::from_vec(py, new_tri_ids);
+
+    (
+        new_quas,
+        new_qua_tags,
+        new_qua_ids,
+        new_tris,
+        new_tri_tags,
+        new_tri_ids,
+    )
 }

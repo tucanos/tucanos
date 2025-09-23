@@ -1,3 +1,7 @@
+use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
+
+use crate::{Tag, graph::CSRGraph};
+
 use super::{Hexahedron, Prism, Pyramid, Quadrangle, Tetrahedron, Triangle};
 
 // Subdivision of standard elements to triangles and tetrahedra maintaining a consistent mesh. The algorithms are taken from
@@ -268,4 +272,135 @@ pub fn hex2tets(hex: &Hexahedron) -> ([Tetrahedron; 5], Option<Tetrahedron>) {
         tet6[3] = usize2[0];
     }
     ([tet1, tet2, tet3, tet4, tet5], Some(tet6))
+}
+
+#[allow(dead_code)]
+#[must_use]
+#[allow(clippy::too_many_lines)]
+#[allow(clippy::type_complexity)]
+pub fn simplify_hexas(
+    hexs: &[Hexahedron],
+    hex_tags: &[Tag],
+) -> (
+    Vec<Hexahedron>,
+    Vec<Tag>,
+    Vec<usize>,
+    Vec<Prism>,
+    Vec<Tag>,
+    Vec<usize>,
+    Vec<usize>,
+) {
+    let hex2quads = [
+        [0, 1, 2, 3],
+        [4, 5, 6, 7],
+        [0, 1, 5, 4],
+        [1, 2, 6, 5],
+        [2, 3, 7, 6],
+        [3, 0, 4, 7],
+    ];
+    let mut quads = FxHashMap::with_hasher(FxBuildHasher);
+
+    for (i_hex, &hex) in hexs.iter().enumerate() {
+        for &f in &hex2quads {
+            let mut f = f;
+            for i in &mut f {
+                *i = hex[*i];
+            }
+            f.sort_unstable();
+            match quads.entry(f) {
+                std::collections::hash_map::Entry::Occupied(occupied_entry) => {
+                    let [i0, i1] = occupied_entry.into_mut();
+                    assert_eq!(*i1, usize::MAX);
+                    assert_ne!(*i0, i_hex, "{hex:?} {f:?}");
+                    *i1 = i_hex;
+                }
+                std::collections::hash_map::Entry::Vacant(vacant_entry) => {
+                    vacant_entry.insert([i_hex, usize::MAX]);
+                }
+            }
+        }
+        let tmp = hex.iter().copied().collect::<FxHashSet<_>>();
+        assert_eq!(tmp.len(), 8);
+    }
+
+    let edgs = quads
+        .values()
+        .copied()
+        .filter(|&[_, i1]| i1 != usize::MAX)
+        .collect::<Vec<_>>();
+    let hex2hex = CSRGraph::from_edges(edgs.iter().copied(), Some(hexs.len()));
+
+    let mut out_hexs = Vec::with_capacity(hexs.len());
+    let mut out_hex_tags = Vec::with_capacity(hexs.len());
+    let mut out_hex_ids = Vec::with_capacity(hexs.len());
+
+    let mut out_pris = Vec::new();
+    let mut out_pri_tags = Vec::new();
+    let mut out_pri_ids = Vec::new();
+
+    let mut unused_verts = Vec::new();
+    for (i_hex, (hex, tag)) in hexs.iter().zip(hex_tags.iter()).enumerate() {
+        let neighbors = hex2hex.row(i_hex);
+        let n = neighbors.len();
+        let mut count = 0;
+        for i in 0..n - 1 {
+            if neighbors[i] == neighbors[i + 1] {
+                let other = hexs[neighbors[i]];
+                let mut tmp = [0; 8];
+                for &f in &hex2quads {
+                    let mut f2 = f;
+                    for i in &mut f2 {
+                        *i = hex[*i];
+                    }
+                    for (i, j) in f.iter().zip(f2.iter()) {
+                        if other.contains(j) {
+                            tmp[*i] += 1;
+                        }
+                    }
+                }
+                let mut i0 = usize::MAX;
+                let mut i1 = usize::MAX;
+                for (i, &c) in tmp.iter().enumerate() {
+                    if c == 0 {
+                        if i0 == usize::MAX {
+                            i0 = i;
+                        } else {
+                            assert_eq!(i1, usize::MAX);
+                            i1 = i;
+                        }
+                    } else {
+                        assert_eq!(c, 3);
+                    }
+                }
+                if i0 == 0 && i1 == 4 {
+                    out_pris.push([hex[0], hex[1], hex[3], hex[4], hex[5], hex[7]]);
+                    unused_verts.push(hex[2]);
+                    unused_verts.push(hex[6]);
+                } else if i0 == 1 && i1 == 5 {
+                    out_pris.push([hex[0], hex[1], hex[2], hex[4], hex[5], hex[6]]);
+                    unused_verts.push(hex[3]);
+                    unused_verts.push(hex[7]);
+                }
+                out_pri_tags.push(*tag);
+                out_pri_ids.push(i_hex);
+                count += 1;
+            }
+        }
+        if count == 0 {
+            out_hexs.push(*hex);
+            out_hex_tags.push(*tag);
+            out_hex_ids.push(i_hex);
+        }
+
+        assert!(count < 2);
+    }
+    (
+        out_hexs,
+        out_hex_tags,
+        out_hex_ids,
+        out_pris,
+        out_pri_tags,
+        out_pri_ids,
+        unused_verts,
+    )
 }

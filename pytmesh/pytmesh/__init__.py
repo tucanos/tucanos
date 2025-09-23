@@ -10,4 +10,5 @@ from .pytmesh import PyPolyMesh2d as PolyMesh2d  # noqa: F401
 from .pytmesh import PyPolyMesh3d as PolyMesh3d  # noqa: F401
 from .pytmesh import PyExtrudedMesh2d as ExtrudedMesh2d  # noqa: F401
 from .pytmesh import HAVE_METIS  # noqa: F401
+from .pytmesh import simplify_hexas, simplify_quads  # noqa: F401
 from .cgns_io import load_cgns, write_cgns  # noqa: F401
