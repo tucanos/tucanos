@@ -250,7 +250,7 @@ impl Simplex<2> for Edge {
     }
 
     fn is_same(&self, other: &Self) -> bool {
-        is_circ_perm(self, other)
+        self[0] == other[0] && self[1] == other[1]
     }
 
     fn invert(&mut self) {
