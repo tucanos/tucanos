@@ -33,7 +33,7 @@ def cgns_elem_name(etype):
             return name
 
 
-def load_cgns(fname, cls=None):
+def load_cgns(fname, cls=None, xy=True):
     """
     Load a tmesh mesh from a .cgns file
     Bases / zones are merged together, with a single element tag
@@ -63,7 +63,11 @@ def load_cgns(fname, cls=None):
                 z = CGU.getValue(n)
                 coords = np.stack([x, y, z], axis=-1, dtype=np.float64)
             else:
-                coords = np.stack([x, y], axis=-1, dtype=np.float64)
+                if xy:
+                    coords = np.stack([x, y], axis=-1, dtype=np.float64)
+                else:
+                    z = CGU.getValue(n)
+                    coords = np.stack([x, z], axis=-1, dtype=np.float64)
 
             if cls is None:
                 msh = get_empty_mesh(phys_dim, cell_dim)
@@ -148,6 +152,9 @@ def load_cgns(fname, cls=None):
                         msh.add_elems(econn, tags)
                     elif etype == CGK.QUAD_4:
                         msh.add_quadrangles(econn, tags)
+                if cell_dim == 1:
+                    if etype == CGK.BAR_2:
+                        msh.add_elems(econn, tags)
                 else:
                     raise NotImplementedError()
 
