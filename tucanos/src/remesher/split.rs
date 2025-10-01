@@ -146,9 +146,10 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                         n_splits += 1;
                     } else if matches!(status, CavityCheckStatus::Invalid)
                         && cavity.elems.len() == 1
-                        && tag.0 < E::DIM as Dim
+                        && tag.0 < 3
+                        && E::DIM == 3
                     {
-                        // If the cavity contains one element with two (1 in 2D) tagged faces with the same tag
+                        // If the cavity contains one element with two tagged faces with the same tag
                         // then we remove the element from the mesh
 
                         let e = cavity.global_elem(&cavity.elems[0]);
