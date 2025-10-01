@@ -3,6 +3,7 @@ use super::smooth::SmoothParams;
 use super::split::SplitParams;
 use super::stats::{InitStats, Stats, StepStats};
 use super::swap::SwapParams;
+use crate::mesh::HasTmeshImpl;
 use crate::{
     Dim, Error, Idx, Result, Tag, TopoTag,
     geometry::Geometry,
@@ -65,7 +66,10 @@ pub(super) struct ElemInfo<E: Elem> {
 }
 
 /// Remesher for simplex meshes of elements E in dimension D
-pub struct Remesher<const D: usize, E: Elem, M: Metric<D>> {
+pub struct Remesher<const D: usize, E: Elem, M: Metric<D>>
+where
+    SimplexMesh<D, E>: HasTmeshImpl<D, E>,
+{
     /// The topology information
     pub(super) topo: Topology,
     /// Vertices
@@ -162,7 +166,10 @@ impl RemesherParams {
     }
 }
 
-impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
+impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M>
+where
+    SimplexMesh<D, E>: HasTmeshImpl<D, E>,
+{
     /// Initialize the remesher
     pub fn new<G: Geometry<D>>(mesh: &SimplexMesh<D, E>, m: &[M], geom: &G) -> Result<Self> {
         Self::new_with_iter(mesh, m.iter().copied(), geom)
@@ -561,15 +568,23 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
     }
 
     /// Get the geometrical element corresponding to elem
-    fn gelem(&self, elem: &E) -> E::Geom<D, M> {
+    pub(super) fn gelem(&self, elem: &E) -> E::Geom<D, M> {
         E::Geom::from_verts(elem.iter().map(|j| {
             let pt = self.verts.get(j).unwrap();
             (pt.vx, pt.m)
         }))
     }
 
+    /// Get the geometrical face corresponding to face
+    pub(super) fn gface(&self, face: &E::Face) -> <E::Geom<D, M> as GElem<D, M>>::Face {
+        <E::Geom<D, M> as GElem<D, M>>::Face::from_verts(face.iter().map(|j| {
+            let pt = self.verts.get(j).unwrap();
+            (pt.vx, pt.m)
+        }))
+    }
+
     /// Return the tag of a face
-    pub fn face_tag(&self, face: &E::Face) -> Option<Tag> {
+    pub(super) fn face_tag(&self, face: &E::Face) -> Option<Tag> {
         let face = face.sorted();
         self.tagged_faces.get(&face).copied()
     }
@@ -953,8 +968,10 @@ mod tests {
         mesh::{
             Edge, Elem, GElem, Point, SimplexMesh, Tetrahedron, Triangle,
             test_meshes::{
-                GeomHalfCircle2d, SphereGeometry, h_2d, h_3d, sphere_mesh, test_mesh_2d,
-                test_mesh_3d, test_mesh_3d_single_tet, test_mesh_3d_two_tets, test_mesh_moon_2d,
+                ConcentricCircles, ConcentricSpheres, GeomHalfCircle2d, SphereGeometry,
+                concentric_circles_mesh, concentric_spheres_mesh, h_2d, h_3d, sphere_mesh,
+                test_mesh_2d, test_mesh_3d, test_mesh_3d_single_tet, test_mesh_3d_two_tets,
+                test_mesh_moon_2d,
             },
         },
         metric::{AnisoMetric, AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
@@ -1974,6 +1991,68 @@ mod tests {
         let mesh = remesher.to_mesh(false);
         // mesh.write_meshb("aniso3d.meshb")?;
         assert_eq!(mesh.n_verts(), 60);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_split_boundary() -> Result<()> {
+        let mut msh = concentric_circles_mesh(4);
+        // msh.write_vtk("debug.vtu")?;
+
+        msh.compute_topology();
+
+        let h: Vec<_> = msh.verts().map(|_| IsoMetric::<2>::from(0.1)).collect();
+        let geom = ConcentricCircles;
+        let mut remesher = Remesher::new(&msh, &h, &geom)?;
+        remesher.check()?;
+
+        // init_log("debug");
+        let params = SplitParams {
+            max_iter: 10,
+            min_q_abs: 0.01,
+            ..Default::default()
+        };
+        let n_iter = remesher.split(&params, &geom, true)?;
+        assert!(n_iter < 10);
+
+        remesher.check()?;
+
+        let _msh = remesher.to_mesh(true);
+        // msh.write_vtk("output.vtu")?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_split_boundary_3d() -> Result<()> {
+        // use crate::init_log;
+
+        let mut msh = concentric_spheres_mesh(4);
+
+        msh.check(&msh.all_faces())?;
+        // msh.write_vtk("debug.vtu")?;
+
+        msh.compute_topology();
+
+        let h: Vec<_> = msh.verts().map(|_| IsoMetric::<3>::from(0.1)).collect();
+        let geom = ConcentricSpheres;
+        let mut remesher = Remesher::new(&msh, &h, &geom)?;
+        remesher.check()?;
+
+        // init_log("debug");
+        let params = SplitParams {
+            max_iter: 2,
+            min_q_abs: 0.01,
+            ..Default::default()
+        };
+        let n_iter = remesher.split(&params, &geom, true)?;
+        assert!(n_iter < 10);
+
+        remesher.check()?;
+
+        let _msh = remesher.to_mesh(true);
+        // msh.write_vtk("output.vtu")?;
 
         Ok(())
     }
