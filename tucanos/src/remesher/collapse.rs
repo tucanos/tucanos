@@ -2,7 +2,7 @@ use super::Remesher;
 use crate::{
     Result,
     geometry::Geometry,
-    mesh::Elem,
+    mesh::{Elem, HasTmeshImpl, SimplexMesh},
     metric::Metric,
     remesher::{
         cavity::{Cavity, CavityCheckStatus, FilledCavity, FilledCavityType},
@@ -44,7 +44,10 @@ impl Default for CollapseParams {
     }
 }
 
-impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
+impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M>
+where
+    SimplexMesh<D, E>: HasTmeshImpl<D, E>,
+{
     /// Loop over the edges and collapse them if
     /// - their length is smaller that 1/sqrt(2)
     /// - no edge larger than

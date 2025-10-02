@@ -1,8 +1,8 @@
 use super::Remesher;
 use crate::{
-    Dim, Idx, Result,
+    Dim, Result,
     geometry::Geometry,
-    mesh::Elem,
+    mesh::{Elem, GElem, HasTmeshImpl, SimplexMesh},
     metric::Metric,
     remesher::{
         cavity::{Cavity, CavityCheckStatus, FilledCavity, FilledCavityType, Seed},
@@ -28,6 +28,8 @@ pub struct SplitParams {
     pub min_q_rel_bdy: f64,
     /// Constraint the quality of the newly created elements to be > split_min_q_abs during split
     pub min_q_abs: f64,
+    /// Max # of cavity extensions
+    pub max_extensions: usize,
 }
 
 impl Default for SplitParams {
@@ -40,11 +42,15 @@ impl Default for SplitParams {
             min_q_rel: 0.8,
             min_q_rel_bdy: 0.5,
             min_q_abs: 0.3,
+            max_extensions: 20,
         }
     }
 }
 
-impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
+impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M>
+where
+    SimplexMesh<D, E>: HasTmeshImpl<D, E>,
+{
     /// Loop over the edges and split them if
     /// - their length is larger that `l_0`
     /// - no edge smaller than
@@ -83,12 +89,16 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
 
             let mut n_splits = 0;
             let mut n_fails = 0;
-            let mut n_removed = 0;
+            let mut n_extended = 0;
+            let mut n_extension_failed = 0;
             for i_edge in indices {
                 let edg = edges[i_edge];
                 let length = dims_and_lengths[i_edge].1;
                 if length > params.l {
                     trace!("Try to split edge {edg:?}, l = {length}");
+                    if !self.edges.contains_key(&edg) {
+                        continue;
+                    }
                     cavity.init_from_edge(edg, self);
                     // TODO: move to Cavity?
                     let Seed::Edge(local_edg) = cavity.seed else {
@@ -144,46 +154,83 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                             self.add_tagged_face(E::Face::from_vertex_and_face(ip, &b), t)?;
                         }
                         n_splits += 1;
-                    } else if matches!(status, CavityCheckStatus::Invalid)
-                        && cavity.elems.len() == 1
-                        && tag.0 < 3
-                        && E::DIM == 3
+                    } else if matches!(status, CavityCheckStatus::Invalid) && tag.0 < E::DIM as Dim
                     {
-                        // If the cavity contains one element with two tagged faces with the same tag
-                        // then we remove the element from the mesh
-
-                        let e = cavity.global_elem(&cavity.elems[0]);
-                        let mut tags = vec![0; E::N_FACES as usize];
-                        let mut face_tag = 0;
-                        let mut n_tagged = 0;
-                        let mut same_tags = true;
-                        for i in 0..E::N_FACES {
-                            let f = e.face(i);
-                            let f = f.sorted();
-                            let tag = self.tagged_faces.get(&f);
-                            if let Some(tag) = tag {
-                                tags[i as usize] = *tag;
-                                n_tagged += 1;
-                                if face_tag == 0 {
-                                    face_tag = *tag;
-                                } else if *tag != face_tag {
-                                    same_tags = false;
+                        // Extend the cavity until it can be filled
+                        let mut cavity_extension_ok = false;
+                        trace!("Cavity extension {edg:?} - {edge_center:?}");
+                        for _ in 0..params.max_extensions {
+                            let mut tmp = Vec::new();
+                            for (face, tag) in cavity.faces() {
+                                let f = cavity.global_elem(&face);
+                                let gf = self.gface(&f);
+                                let ge =
+                                    E::Geom::from_vert_and_face(&edge_center, &new_metric, &gf);
+                                if ge.vol() <= 0.0 {
+                                    trace!("f = {gf:?}, vol < 0");
+                                    tmp.push((face, tag));
                                 }
                             }
+
+                            if tmp.is_empty() {
+                                cavity_extension_ok = true;
+                                break;
+                            }
+
+                            let mut failed = false;
+                            for &(face, tag) in &tmp {
+                                if !cavity.extend(self, face, tag) {
+                                    // let msh = cavity.to_mesh();
+                                    // msh.vtu_writer().export("cavity.vtu")?;
+                                    // msh.bdy_vtu_writer().export("cavity_bdy.vtu")?;
+                                    failed = true;
+                                    break;
+                                }
+                            }
+
+                            if failed {
+                                trace!("failed to extend");
+                                break;
+                            }
+                            trace!("extended by {} elems", tmp.len());
                         }
 
-                        if n_tagged == E::Face::DIM && same_tags {
-                            // remove the element
-                            self.remove_elem(cavity.global_elem_ids[0])?;
-                            for (i, &t) in tags.iter().enumerate() {
-                                let f = e.face(i as Idx);
-                                if t == face_tag {
-                                    self.remove_tagged_face(f)?;
-                                } else {
-                                    self.add_tagged_face(f, face_tag)?;
+                        if cavity_extension_ok {
+                            let filled_cavity = FilledCavity::new(&cavity, ftype);
+                            let status = filled_cavity.check(l_min, f64::MAX, q_min);
+                            if let CavityCheckStatus::Ok(_) = status {
+                                trace!("Edge split");
+                                for i in &cavity.global_elem_ids {
+                                    self.remove_elem(*i)?;
                                 }
+                                let ip = self.insert_vertex(edge_center, &tag, new_metric);
+                                for (face, tag) in filled_cavity.faces() {
+                                    let f = cavity.global_elem(&face);
+                                    assert!(!f.contains_edge(edg));
+                                    let e = E::from_vertex_and_face(ip, &f);
+                                    self.insert_elem(e, tag)?;
+                                }
+                                for (f, _) in cavity.global_tagged_faces() {
+                                    self.remove_tagged_face(f)?;
+                                }
+
+                                for (b, t) in filled_cavity.tagged_faces_boundary_global() {
+                                    self.add_tagged_face(E::Face::from_vertex_and_face(ip, &b), t)?;
+                                }
+                                for i in cavity.global_internal_vertices() {
+                                    let v = self.verts.get(&i).unwrap();
+                                    assert!(v.els.is_empty());
+                                    self.verts.remove(&i);
+                                }
+                                n_splits += 1;
+                                n_extended += 1;
+                            } else {
+                                trace!("Cannot split: {status:?}");
+                                n_fails += 1;
                             }
-                            n_removed += 1;
+                        } else {
+                            n_fails += 1;
+                            n_extension_failed += 1;
                         }
                     } else {
                         n_fails += 1;
@@ -191,9 +238,10 @@ impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
                 }
             }
 
-            debug!(
-                "Iteration {n_iter}: {n_splits} edges split ({n_fails} failed - {n_removed} elements removed)"
-            );
+            debug!("Iteration {n_iter}: {n_splits} edges split ({n_fails} failed)");
+            if n_extended > 0 || n_extension_failed > 0 {
+                debug!("{n_extended} cavity extended, {n_extension_failed} extension failed");
+            }
             self.stats
                 .push(StepStats::Split(SplitStats::new(n_splits, n_fails, self)));
 
