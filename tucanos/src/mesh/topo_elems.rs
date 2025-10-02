@@ -10,6 +10,7 @@ use rustc_hash::FxHashMap;
 use std::fmt::Debug;
 use std::ops::Index;
 use std::{array::IntoIter, ops::IndexMut};
+use tmesh::mesh::TETRA_FACES;
 
 /// Topological elements (i.e. element-to-vertex connectivity)
 /// Only usable for simplices
@@ -95,6 +96,9 @@ pub trait Elem:
     }
 
     fn invert(&mut self);
+
+    /// Check if two elements are identical (vertex order may differ)
+    fn is_same(&self, other: &Self) -> bool;
 }
 
 /// Tetrahedron
@@ -143,13 +147,12 @@ impl Elem for Tetrahedron {
     #[inline]
     fn face(&self, i: Idx) -> Self::Face {
         debug_assert!(i < Self::N_FACES);
-        match i {
-            0 => Triangle([self.0[1], self.0[2], self.0[3]]),
-            1 => Triangle([self.0[2], self.0[0], self.0[3]]),
-            2 => Triangle([self.0[0], self.0[1], self.0[3]]),
-            3 => Triangle([self.0[0], self.0[2], self.0[1]]),
-            _ => Triangle([0, 0, 0]),
-        }
+        let i = i as usize;
+        Triangle([
+            self.0[TETRA_FACES[i][0]],
+            self.0[TETRA_FACES[i][1]],
+            self.0[TETRA_FACES[i][2]],
+        ])
     }
 
     fn edge(&self, i: Idx) -> [Idx; 2] {
@@ -167,6 +170,19 @@ impl Elem for Tetrahedron {
 
     fn invert(&mut self) {
         self.0.swap(0, 1);
+    }
+
+    #[allow(clippy::unnecessary_map_or)]
+    fn is_same(&self, other: &Self) -> bool {
+        let f = Triangle::new(self[1], self[2], self[3]);
+        other.iter().position(|&x| x == self[0]).map_or(false, |i| {
+            let o = Triangle::new(
+                other[TETRA_FACES[i][0]],
+                other[TETRA_FACES[i][1]],
+                other[TETRA_FACES[i][2]],
+            );
+            f.is_same(&o)
+        })
     }
 }
 
@@ -259,6 +275,12 @@ impl Elem for Triangle {
     fn invert(&mut self) {
         self.0.swap(0, 1);
     }
+
+    fn is_same(&self, other: &Self) -> bool {
+        let [i0, i1, i2] = self.0;
+        let other = &other.0;
+        *other == [i0, i1, i2] || *other == [i1, i2, i0] || *other == [i2, i0, i1]
+    }
 }
 
 impl IntoIterator for Triangle {
@@ -345,6 +367,10 @@ impl Elem for Edge {
     fn invert(&mut self) {
         self.0.swap(0, 1);
     }
+
+    fn is_same(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
 }
 
 impl IntoIterator for Edge {
@@ -415,6 +441,10 @@ impl Elem for Vertex {
 
     fn invert(&mut self) {
         unreachable!();
+    }
+
+    fn is_same(&self, other: &Self) -> bool {
+        self.0[0] == other.0[0]
     }
 }
 
