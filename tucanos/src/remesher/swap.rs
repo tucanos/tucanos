@@ -2,7 +2,7 @@ use super::Remesher;
 use crate::{
     Dim, Idx, Result,
     geometry::Geometry,
-    mesh::Elem,
+    mesh::{Elem, HasTmeshImpl, SimplexMesh},
     metric::Metric,
     remesher::{
         cavity::{Cavity, CavityCheckStatus, FilledCavity, FilledCavityType, Seed},
@@ -50,7 +50,10 @@ impl Default for SwapParams {
     }
 }
 
-impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
+impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M>
+where
+    SimplexMesh<D, E>: HasTmeshImpl<D, E>,
+{
     /// Try to swap an edge if
     ///   - one of the elements in its cavity has a quality < qmin
     ///   - no edge smaller that `l_min` or longer that `l_max` is created

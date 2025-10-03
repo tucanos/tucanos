@@ -52,7 +52,12 @@ def load_cgns(fname, cls=None, xy=True):
     tags_to_be_removed = []
 
     for base in CGU.hasChildType(tree, CGK.CGNSBase_ts):
-        cell_dim, phys_dim = CGU.getValue(base)
+        if cls is not None:
+            tmp = cls.empty()
+            cell_dim = tmp.get_elems().shape[1] - 1
+            phys_dim = tmp.get_verts().shape[1]
+        else:
+            cell_dim, phys_dim = CGU.getValue(base)
         for zone in CGU.hasChildType(base, CGK.Zone_ts):
             logging.info(f"Reading {base[0]}/{zone[0]}")
             cg = CGU.hasChildName(zone, CGK.GridCoordinates_s)

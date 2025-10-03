@@ -49,7 +49,7 @@ use least_squares::LeastSquaresGradient;
 pub use mesh_2d::{Mesh2d, nonuniform_rectangle_mesh, rectangle_mesh};
 pub use mesh_3d::{Mesh3d, box_mesh, nonuniform_box_mesh};
 use partition::Partitioner;
-pub(crate) use simplices::{EDGE_FACES, TETRA_FACES, TRIANGLE_FACES};
+pub use simplices::{EDGE_FACES, TETRA_FACES, TRIANGLE_FACES};
 pub use simplices::{Simplex, get_face_to_elem};
 use split::{split_edgs, split_tets, split_tris};
 pub use to_simplices::{hex2tets, pri2tets, pyr2tets, qua2tris};
@@ -60,7 +60,7 @@ use crate::{
     io::{VTUEncoding, VTUFile},
     spatialindex::PointIndex,
 };
-use log::debug;
+use log::{debug, warn};
 use minimeshb::{reader::MeshbReader, writer::MeshbWriter};
 use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
 use rayon::prelude::{
@@ -959,6 +959,7 @@ where
                 tmp.copy_from_slice(&e);
                 (tmp, t as Tag)
             })),
+            1 => warn!("not reading faces when elements are edges"),
             _ => unimplemented!(),
         }
 
@@ -1024,6 +1025,11 @@ where
                 }),
                 self.ftags().map(|x| x.try_into().unwrap()),
             )?,
+            1 => {
+                if self.n_faces() != 0 {
+                    warn!("skip faces in meshb export");
+                }
+            }
             _ => unimplemented!(),
         }
 

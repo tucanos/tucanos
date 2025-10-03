@@ -1,10 +1,11 @@
-use tmesh::mesh::Mesh;
+use tmesh::mesh::{Mesh, pri2tets};
 
 use crate::geometry::Geometry;
-use crate::mesh::{Edge, Point, SimplexMesh, Tetrahedron, Triangle};
-use crate::{Dim, Error, Result, TopoTag};
+use crate::mesh::{Edge, Elem, Point, SimplexMesh, Tetrahedron, Triangle};
+use crate::{Dim, Error, Idx, Result, TopoTag};
 use std::fs::File;
 use std::io::Write;
+use std::iter::{once, repeat_n};
 
 /// Build a 2d mesh of a square with 2 triangles tagged differently
 /// WARNING: the mesh tags are not valid as the diagonal (0, 2) is between
@@ -453,4 +454,166 @@ pub fn sphere_mesh(level: usize) -> SimplexMesh<3, Tetrahedron> {
         geom.project_vertices(&mut grid);
     }
     grid
+}
+
+pub struct ConcentricCircles;
+
+impl Geometry<2> for ConcentricCircles {
+    fn check(&self, _topo: &super::Topology) -> Result<()> {
+        Ok(())
+    }
+
+    fn project(&self, pt: &mut Point<2>, tag: &TopoTag) -> f64 {
+        assert_eq!(tag.0, 1);
+        let nrm = pt.norm();
+        *pt *= 1.0 / nrm;
+        match tag.1 {
+            1 => {
+                *pt *= 0.5;
+                (nrm - 0.5).abs()
+            }
+            2 => (nrm - 1.0).abs(),
+            _ => unreachable!(),
+        }
+    }
+
+    fn angle(&self, pt: &Point<2>, n: &Point<2>, tag: &TopoTag) -> f64 {
+        assert_eq!(tag.0, 1);
+        let mut n_ref = pt.normalize();
+        match tag.1 {
+            1 => {
+                n_ref *= -1.0;
+            }
+            2 => {}
+            _ => unreachable!(),
+        }
+        let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
+        f64::acos(cos_a).to_degrees()
+    }
+}
+
+#[must_use]
+pub fn concentric_circles_mesh(nr: usize) -> SimplexMesh<2, Triangle> {
+    assert!(nr >= 2);
+    let dr = 0.5 / (nr as f64 - 1.0);
+    let mut verts = Vec::new();
+    for i in 0..nr {
+        let r = 0.5 + (i as f64) * dr;
+        verts.push(Point::<2>::new(r, 0.0));
+        verts.push(Point::<2>::new(0.0, r));
+        verts.push(Point::<2>::new(-r, 0.0));
+        verts.push(Point::<2>::new(0.0, -r));
+    }
+
+    let idx = |i, j| (4 * i + j) as Idx;
+    let mut elems = Vec::new();
+    let mut etags = Vec::new();
+    for i in 0..nr - 1 {
+        for (j0, j1) in [(0, 1), (1, 2), (2, 3), (3, 0)] {
+            elems.push(Triangle::new(idx(i, j0), idx(i + 1, j0), idx(i, j1)));
+            etags.push(1);
+            elems.push(Triangle::new(idx(i, j1), idx(i + 1, j0), idx(i + 1, j1)));
+            etags.push(1);
+        }
+    }
+
+    let mut faces = Vec::new();
+    let mut ftags = Vec::new();
+    for (j0, j1) in [(0, 1), (1, 2), (2, 3), (3, 0)] {
+        faces.push(Edge::new(idx(0, j0), idx(0, j1)));
+        ftags.push(1);
+        faces.push(Edge::new(idx(nr - 1, j0), idx(nr - 1, j1)));
+        ftags.push(2);
+    }
+
+    SimplexMesh::new(verts, elems, etags, faces, ftags)
+}
+
+pub struct ConcentricSpheres;
+
+impl Geometry<3> for ConcentricSpheres {
+    fn check(&self, _topo: &super::Topology) -> Result<()> {
+        Ok(())
+    }
+
+    fn project(&self, pt: &mut Point<3>, tag: &TopoTag) -> f64 {
+        assert_eq!(tag.0, 2);
+        let nrm = pt.norm();
+        *pt *= 1.0 / nrm;
+        match tag.1 {
+            1 => {
+                *pt *= 0.5;
+                (nrm - 0.5).abs()
+            }
+            2 => (nrm - 1.0).abs(),
+            _ => unreachable!(),
+        }
+    }
+
+    fn angle(&self, pt: &Point<3>, n: &Point<3>, tag: &TopoTag) -> f64 {
+        assert_eq!(tag.0, 1);
+        let mut n_ref = pt.normalize();
+        match tag.1 {
+            1 => {
+                n_ref *= -1.0;
+            }
+            2 => {}
+            _ => unreachable!(),
+        }
+        let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
+        f64::acos(cos_a).to_degrees()
+    }
+}
+
+#[must_use]
+pub fn concentric_spheres_mesh(nr: usize) -> SimplexMesh<3, Tetrahedron> {
+    assert!(nr >= 2);
+    let dr = 0.5 / (nr as f64 - 1.0);
+
+    let surf = sphere_mesh_surf(0);
+    let n = surf.n_verts() as usize;
+
+    let mut res = SimplexMesh::empty();
+
+    for v in surf.verts() {
+        let nrm = v.norm();
+        res.add_verts(once(0.5 / nrm * v));
+    }
+
+    for i in 0..nr - 1 {
+        let offset = i * n;
+        for v in surf.verts() {
+            let nrm = v.norm();
+            res.add_verts(once((0.5 + (i as f64 + 1.0) * dr / nrm) * v));
+        }
+        for f in surf.elems() {
+            let pri = [
+                f[0] as usize + offset,
+                f[1] as usize + offset,
+                f[2] as usize + offset,
+                f[0] as usize + offset + n,
+                f[1] as usize + offset + n,
+                f[2] as usize + offset + n,
+            ];
+            let tets = pri2tets(&pri);
+            res.add_elems(tets.iter().copied(), repeat_n(1, 3));
+        }
+    }
+
+    for mut f in surf.elems() {
+        f.invert();
+        res.add_faces(once([f[0] as usize, f[1] as usize, f[2] as usize]), once(1));
+        f.invert();
+        let offset = (nr - 1) * n;
+        res.add_faces(
+            once([
+                f[0] as usize + offset,
+                f[1] as usize + offset,
+                f[2] as usize + offset,
+            ]),
+            once(2),
+        );
+    }
+
+    res
 }

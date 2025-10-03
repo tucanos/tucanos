@@ -212,6 +212,11 @@ macro_rules! impl_mesh {
                 VTUFile::from_mesh(self, VTUEncoding::Binary)
             }
 
+            fn bdy_vtu_writer(&self) -> VTUFile {
+                let bdy = self.boundary().0;
+                VTUFile::from_mesh(&bdy, VTUEncoding::Binary)
+            }
+
             fn partition_simple(&mut self, ptype: PartitionType) -> Result<(f64, f64)> {
                 match ptype {
                     PartitionType::Hilbert(n) => self.partition::<HilbertPartitioner>(n, None),
