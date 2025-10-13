@@ -145,14 +145,14 @@ def load_cgns(fname, cls=None, xy=True):
                         raise NotImplementedError(
                             f"Unknown element type {cgns_elem_name(etype)} / {etype}"
                         )
-                if cell_dim == 2:
+                elif cell_dim == 2:
                     if etype == CGK.BAR_2:
                         msh.add_faces(econn, tags)
                     elif etype == CGK.TRI_3:
                         msh.add_elems(econn, tags)
                     elif etype == CGK.QUAD_4:
                         msh.add_quadrangles(econn, tags)
-                if cell_dim == 1:
+                elif cell_dim == 1:
                     if etype == CGK.BAR_2:
                         msh.add_elems(econn, tags)
                 else:
