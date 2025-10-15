@@ -5,7 +5,10 @@ use tmesh::{
     io::{VTUEncoding, VTUFile},
     mesh::{
         Cell, Face, Mesh,
-        partition::{HilbertPartitioner, PartitionType},
+        partition::{
+            BFSPartitionner, BFSWRPartitionner, HilbertBallPartitioner, HilbertPartitioner,
+            PartitionType,
+        },
     },
     spatialindex::ObjectIndex,
 };
@@ -215,8 +218,14 @@ macro_rules! impl_mesh {
             fn partition_simple(&mut self, ptype: PartitionType) -> Result<(f64, f64)> {
                 match ptype {
                     PartitionType::Hilbert(n) => self.partition::<HilbertPartitioner>(n, None),
+                    PartitionType::HilbertBall(n) => {
+                        self.partition::<HilbertBallPartitioner>(n, None)
+                    }
+                    PartitionType::BFS(n) => self.partition::<BFSPartitionner>(n, None),
+                    PartitionType::BFSWR(n) => self.partition::<BFSWRPartitionner>(n, None),
                     PartitionType::RCM(_) => unimplemented!(),
                     PartitionType::KMeans(_) => unimplemented!(),
+
                     #[cfg(feature = "metis")]
                     PartitionType::MetisRecursive(n) => {
                         self.partition::<MetisPartitioner<MetisRecursive>>(n, None)
