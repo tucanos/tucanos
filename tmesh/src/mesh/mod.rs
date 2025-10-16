@@ -50,7 +50,7 @@ pub use mesh_2d::{Mesh2d, nonuniform_rectangle_mesh, rectangle_mesh};
 pub use mesh_3d::{Mesh3d, box_mesh, nonuniform_box_mesh};
 use partition::Partitioner;
 pub use simplices::{EDGE_FACES, TETRA_FACES, TRIANGLE_FACES};
-pub use simplices::{Simplex, get_face_to_elem};
+pub use simplices::{LinearSimplex, Simplex, get_face_to_elem};
 use split::{split_edgs, split_tets, split_tris};
 pub use to_simplices::{hex2tets, pri2tets, pyr2tets, qua2tris};
 
@@ -398,7 +398,7 @@ where
                     tmp[i] = e[j];
                 }
                 let f = tmp;
-                    tmp.sort_unstable();
+                tmp.sort_unstable();
                 if F > 1 {
                     let i = if f.is_same(&tmp) { 1 } else { 2 };
                     match res.entry(tmp) {
@@ -426,15 +426,15 @@ where
                         std::collections::hash_map::Entry::Occupied(occupied_entry) => {
                             let arr = occupied_entry.into_mut();
                             if arr[1] == usize::MAX {
-                            arr[1] = i_elem;
-                        } else {
-                            assert_eq!(arr[2], usize::MAX);
-                            arr[2] = i_elem;
-                        }
+                                arr[1] = i_elem;
+                            } else {
+                                assert_eq!(arr[2], usize::MAX);
+                                arr[2] = i_elem;
+                            }
                         }
                         std::collections::hash_map::Entry::Vacant(vacant_entry) => {
                             let arr = [idx, i_elem, usize::MAX];
-                        idx += 1;
+                            idx += 1;
                             vacant_entry.insert(arr);
                         }
                     }
@@ -490,44 +490,66 @@ where
         n
     }
 
+    /// Get the oriented face of an element that corresponds to a sorted face
+    #[must_use]
+    fn get_face(e: Cell<C>, f_sorted: &Face<F>, elem_to_faces: &[Face<F>]) -> Face<F> {
+        for mut ef in elem_to_faces.iter().copied() {
+            for i in &mut ef {
+                *i = e[*i];
+            }
+            let ef_sorted = ef.sorted();
+            if ef_sorted == *f_sorted {
+                return ef;
+            }
+        }
+        unreachable!();
+    }
+
     /// Fix the orientation
-    /// - of boundary faces to be oriented outwards (if possible)
+    /// - of boundary faces to be oriented outwards
     /// - of internal faces to be oriented from the lower to the higher element tag
     fn fix_faces_orientation(&mut self, all_faces: &FxHashMap<Face<F>, [usize; 3]>) -> usize {
-        if Self::faces_are_oriented() {
-            let flg = self
-                .faces()
-                .map(|f| {
-                    let gf = self.gface(&f);
-                    let fc = cell_center(&gf);
-                    let normal = Face::<F>::normal(&gf);
-
-                    let [_, i0, i1] = all_faces.get(&f.sorted()).unwrap();
-                    let i = if *i0 == usize::MAX || *i1 == usize::MAX {
-                        if *i1 == usize::MAX { *i0 } else { *i1 }
-                    } else {
-                        let t0 = self.etag(*i0);
-                        let t1 = self.etag(*i1);
-                        assert_ne!(t0, t1);
-                        if t0 < t1 { *i0 } else { *i1 }
-                    };
-                    let ge = self.gelem(&self.elem(i));
-                    let ec = cell_center(&ge);
-
-                    normal.dot(&(fc - ec)) < 0.0
-                })
-                .collect::<Vec<_>>();
-
-            let n = flg
-                .iter()
-                .enumerate()
-                .filter(|(_, f)| **f)
-                .map(|(i, _)| self.invert_face(i))
-                .count();
-            debug!("{n} faces reoriented");
-            return n;
+        if F < 2 {
+            return 0;
         }
-        0
+
+        let elem_to_faces = Self::elem_to_faces();
+
+        let flg = self
+            .faces()
+            .map(|f| {
+                let tmp = f.sorted();
+                let &[_, i0, i1] = all_faces.get(&tmp).unwrap();
+                if i0 == usize::MAX {
+                    let e = self.elem(i1);
+                    let ef = Self::get_face(e, &tmp, &elem_to_faces);
+                    return !f.is_same(&ef);
+                } else if i1 == usize::MAX {
+                    let e = self.elem(i0);
+                    let ef = Self::get_face(e, &tmp, &elem_to_faces);
+                    return !f.is_same(&ef);
+                }
+                let t0 = self.etag(i0);
+                let t1 = self.etag(i1);
+                let e = self.elem(i0);
+                let ef = Self::get_face(e, &tmp, &elem_to_faces);
+                if t0 < t1 {
+                    return !f.is_same(&ef);
+                } else if t0 > t1 {
+                    return f.is_same(&ef);
+                }
+                panic!("face {f:?} - t0 = {t0}, t1 = {t1}");
+            })
+            .collect::<Vec<_>>();
+
+        let n = flg
+            .iter()
+            .enumerate()
+            .filter(|(_, f)| **f)
+            .map(|(i, _)| self.invert_face(i))
+            .count();
+        debug!("{n} faces reoriented");
+        n
     }
 
     /// Compute the faces that are connected to only one element and that are not already tagged
@@ -621,6 +643,8 @@ where
             }
         }
 
+        self.fix_faces_orientation(all_faces);
+
         res
     }
 
@@ -679,52 +703,80 @@ where
             }
         }
 
-        for f in self.faces() {
-            let gf = self.gface(&f);
-            let fc = cell_center(&gf);
-            let tmp = f.sorted();
-            let [_, i0, i1] = all_faces.get(&tmp).unwrap();
-            if *i0 != usize::MAX && *i1 != usize::MAX && self.etag(*i0) == self.etag(*i1) {
-                return Err(Error::from(&format!(
-                    "Tagged face inside the domain: center = {fc:?}",
-                )));
-            } else if *i0 == usize::MAX || *i1 == usize::MAX {
-                let i = if *i1 == usize::MAX { *i0 } else { *i1 };
-                let ge = self.gelem(&self.elem(i));
-                let ec = cell_center(&ge);
-                if Self::faces_are_oriented() {
-                    let n = Face::<F>::normal(&gf);
-                    if n.dot(&(fc - ec)) < 0.0 {
+        let elem_to_faces = Self::elem_to_faces();
+
+        if F > 1 {
+            for f in self.faces() {
+                let tmp = f.sorted();
+                let &[_, i0, i1] = all_faces.get(&tmp).unwrap();
+                if i0 == usize::MAX {
+                    let e = self.elem(i1);
+                    let ef = Self::get_face(e, &tmp, &elem_to_faces);
+                    if !f.is_same(&ef) {
                         return Err(Error::from(&format!(
-                            "Invalid face orientation: center = {fc:?}, normal = {n:?}, face = {f:?}"
+                            "Invalid boundary face orientation: face = {f:?}"
+                        )));
+                    }
+                } else if i1 == usize::MAX {
+                    let e = self.elem(i0);
+                    let ef = Self::get_face(e, &tmp, &elem_to_faces);
+                    if !f.is_same(&ef) {
+                        return Err(Error::from(&format!(
+                            "Invalid boundary face orientation: face = {f:?}"
+                        )));
+                    }
+                } else if i0 != usize::MAX && i1 != usize::MAX {
+                    let t0 = self.etag(i0);
+                    let t1 = self.etag(i1);
+                    let e = self.elem(i0);
+                    let ef = Self::get_face(e, &tmp, &elem_to_faces);
+
+                    #[allow(clippy::comparison_chain)]
+                    if t0 < t1 {
+                        if !f.is_same(&ef) {
+                            return Err(Error::from(&format!(
+                                "Invalid internal face orientation: face = {f:?}, elems = {e:?} / {t0} and {:?} / {t1}",
+                                self.elem(i1)
+                            )));
+                        }
+                    } else if t0 > t1 {
+                        if f.is_same(&ef) {
+                            return Err(Error::from(&format!(
+                                "Invalid internal face orientation: face = {f:?}, elems = {e:?} / {t0} and {:?} / {t1}",
+                                self.elem(i1)
+                            )));
+                        }
+                    } else {
+                        return Err(Error::from(&format!(
+                            "Tagged face inside the domain: center = {f:?}",
                         )));
                     }
                 }
             }
         }
 
-        // volumes
-        if Self::faces_are_oriented() {
-            let vol = self.par_gelems().map(|ge| Cell::<C>::vol(&ge)).sum::<f64>();
-            let vol2 = self
-                .par_faces()
-                .filter(|f| {
-                    let f = f.sorted();
-                    let [_, i0, i1] = all_faces.get(&f).unwrap();
-                    *i0 == usize::MAX || *i1 == usize::MAX
-                })
-                .map(|f| {
-                    let gf = self.gface(&f);
-                    cell_center(&gf).dot(&Face::<F>::normal(&gf))
-                })
-                .sum::<f64>()
-                / D as f64;
-            if (vol - vol2).abs() > 1e-10 * vol {
-                return Err(Error::from(&format!(
-                    "Invalid volume : {vol} from elements, {vol2} from boundary faces"
-                )));
-            }
-        }
+        // // volumes
+        // if Self::faces_are_oriented() {
+        //     let vol = self.par_gelems().map(|ge| Cell::<C>::vol(&ge)).sum::<f64>();
+        //     let vol2 = self
+        //         .par_faces()
+        //         .filter(|f| {
+        //             let f = f.sorted();
+        //             let [_, i0, i1] = all_faces.get(&f).unwrap();
+        //             *i0 == usize::MAX || *i1 == usize::MAX
+        //         })
+        //         .map(|f| {
+        //             let gf = self.gface(&f);
+        //             cell_center(&gf).dot(&Face::<F>::normal(&gf))
+        //         })
+        //         .sum::<f64>()
+        //         / D as f64;
+        //     if (vol - vol2).abs() > 1e-10 * vol {
+        //         return Err(Error::from(&format!(
+        //             "Invalid volume : {vol} from elements, {vol2} from boundary faces"
+        //         )));
+        //     }
+        // }
         Ok(())
     }
 
@@ -1461,13 +1513,6 @@ where
             }
             l_max / l_min
         })
-    }
-
-    /// Compute the ratio of inscribed radius to circumradius
-    /// (normalized to be between 0 and 1) for all the elements in the mesh
-    #[must_use]
-    fn elem_gammas(&self) -> impl ExactSizeIterator<Item = f64> + '_ {
-        self.gelems().map(|ge| Cell::<C>::gamma(&ge))
     }
 
     /// Get the bounding box

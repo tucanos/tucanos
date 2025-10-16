@@ -257,7 +257,6 @@ fn main() -> Result<()> {
     // Save the input mesh in .vtu format
     let mut writer = mesh.vtu_writer();
     writer.add_cell_data("edge_ratio", 1, mesh.edge_length_ratios());
-    writer.add_cell_data("gamma", 1, mesh.elem_gammas());
     let mut skewness = vec![0.0_f64; mesh.n_elems() as usize];
     for (i0, i1, s) in mesh.face_skewnesses(&mesh.all_faces()) {
         skewness[i0] = skewness[i0].max(s);

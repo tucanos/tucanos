@@ -2,7 +2,9 @@
 use super::{DualCellCenter, DualMesh, DualType, PolyMesh, PolyMeshType, circumcenter_bcoords};
 use crate::{
     Tag, Vert2d,
-    mesh::{Edge, Mesh, Simplex, Triangle, cell_center, cell_vertex, sort_elem_min_ids},
+    mesh::{
+        Edge, LinearSimplex, Mesh, Simplex, Triangle, cell_center, cell_vertex, sort_elem_min_ids,
+    },
 };
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rustc_hash::FxHashMap;
@@ -345,7 +347,7 @@ mod tests {
     use crate::{
         Vert2d,
         dual::{DualMesh, DualMesh2d, DualType, PolyMesh},
-        mesh::{Edge, Mesh, Mesh2d, Simplex, rectangle_mesh},
+        mesh::{Edge, LinearSimplex, Mesh, Mesh2d, rectangle_mesh},
     };
     use rayon::iter::ParallelIterator;
 

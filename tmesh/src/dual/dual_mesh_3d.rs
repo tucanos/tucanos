@@ -3,7 +3,8 @@ use super::{DualCellCenter, DualMesh, DualType, PolyMesh, PolyMeshType, circumce
 use crate::{
     Tag, Vert3d,
     mesh::{
-        Edge, Mesh, Simplex, Tetrahedron, Triangle, cell_center, cell_vertex, sort_elem_min_ids,
+        Edge, LinearSimplex, Mesh, Simplex, Tetrahedron, Triangle, cell_center, cell_vertex,
+        sort_elem_min_ids,
     },
 };
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};

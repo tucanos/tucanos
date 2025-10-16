@@ -143,8 +143,8 @@ mod tests {
     use crate::{
         Vert3d, assert_delta,
         mesh::{
-            BoundaryMesh3d, Mesh, Mesh3d, MutMesh, Simplex, Tetrahedron, Triangle, bandwidth,
-            box_mesh, cell_center,
+            BoundaryMesh3d, LinearSimplex, Mesh, Mesh3d, MutMesh, Simplex, Tetrahedron, Triangle,
+            bandwidth, box_mesh, cell_center,
             partition::{HilbertPartitioner, KMeansPartitioner3d, RCMPartitioner},
         },
     };
@@ -400,7 +400,8 @@ mod tests {
         let mesh = box_mesh::<Mesh3d>(1.0, 3, 1.0, 3, 1.0, 3).random_shuffle();
 
         let (gamma_min, gamma_max) = mesh
-            .elem_gammas()
+            .gelems()
+            .map(|ge| Tetrahedron::gamma(&ge))
             .fold((f64::INFINITY, f64::NEG_INFINITY), |a, b| {
                 (a.0.min(b), a.1.max(b))
             });

@@ -7,22 +7,13 @@ use rustc_hash::FxHashMap;
 /// Simplex elements
 pub trait Simplex<const C: usize>: Sized {
     /// Get the dimension
-    #[must_use]
-    fn dim() -> usize {
-        C - 1
-    }
+    fn dim() -> usize;
 
     /// Get the number of edges
-    #[must_use]
-    fn n_edges() -> usize {
-        C * (C - 1) / 2
-    }
+    fn n_edges() -> usize;
 
     /// Get the number of faces
-    #[must_use]
-    fn n_faces() -> usize {
-        C
-    }
+    fn n_faces() -> usize;
 
     /// Get the edges for the simplex `(0, .., C-1)`
     fn edges() -> Vec<Edge>;
@@ -45,19 +36,6 @@ pub trait Simplex<const C: usize>: Sized {
         D == C
     }
 
-    /// Normal to the vertex
-    fn normal<const D: usize>(v: &[Vertex<D>; C]) -> Vertex<D>;
-
-    /// Radius (=diameter of the inner circle / sphere)
-    fn radius<const D: usize>(v: &[Vertex<D>; C]) -> f64;
-
-    /// Get a quadrature (weights and points)
-    fn quadrature() -> (Vec<f64>, Vec<Vec<f64>>);
-
-    /// Sort the vertex indices
-    #[must_use]
-    fn sorted(&self) -> Self;
-
     /// Check of two elements are the same (allowing circular permutation)
     fn is_same(&self, other: &Self) -> bool;
 
@@ -69,10 +47,6 @@ pub trait Simplex<const C: usize>: Sized {
 
     /// Vertex from barycentric coordinates
     fn vert<const D: usize>(ge: &[Vertex<D>; C], bcoords: [f64; C]) -> Vertex<D>;
-
-    /// Gamma quality measure, ratio of inscribed radius to circumradius
-    /// normalized to be between 0 and 1
-    fn gamma<const D: usize>(ge: &[Vertex<D>; C]) -> f64;
 
     /// Project a point on the simplex
     fn project<const D: usize>(ge: &[Vertex<D>; C], v: &Vertex<D>) -> Vertex<D>;
@@ -94,9 +68,41 @@ pub trait Simplex<const C: usize>: Sized {
         let pt = Self::project::<D>(ge, v);
         (v - pt).norm()
     }
+
+    /// Get a quadrature (weights and points)
+    fn quadrature() -> (Vec<f64>, Vec<Vec<f64>>);
+
+    /// Sort the vertex indices
+    #[must_use]
+    fn sorted(&self) -> Self;
+}
+
+/// Simplex elements
+pub trait LinearSimplex<const C: usize>: Sized + Simplex<C> {
+    /// Normal to the vertex
+    fn normal<const D: usize>(v: &[Vertex<D>; C]) -> Vertex<D>;
+
+    /// Radius (=diameter of the inner circle / sphere)
+    fn radius<const D: usize>(v: &[Vertex<D>; C]) -> f64;
+
+    /// Gamma quality measure, ratio of inscribed radius to circumradius
+    /// normalized to be between 0 and 1
+    fn gamma<const D: usize>(ge: &[Vertex<D>; C]) -> f64;
 }
 
 impl Simplex<0> for [usize; 0] {
+    fn dim() -> usize {
+        unreachable!()
+    }
+
+    fn n_edges() -> usize {
+        unreachable!()
+    }
+
+    fn n_faces() -> usize {
+        unreachable!()
+    }
+
     fn edges() -> Vec<Edge> {
         unreachable!()
     }
@@ -114,14 +120,6 @@ impl Simplex<0> for [usize; 0] {
     }
 
     fn vol<const D: usize>(_v: &[Vertex<D>; 0]) -> f64 {
-        unreachable!()
-    }
-
-    fn normal<const D: usize>(_v: &[Vertex<D>; 0]) -> Vertex<D> {
-        unreachable!()
-    }
-
-    fn radius<const D: usize>(_v: &[Vertex<D>; 0]) -> f64 {
         unreachable!()
     }
 
@@ -147,16 +145,38 @@ impl Simplex<0> for [usize; 0] {
         unreachable!()
     }
 
-    fn gamma<const D: usize>(_ge: &[Vertex<D>; 0]) -> f64 {
-        unreachable!()
-    }
-
     fn project<const D: usize>(_ge: &[Vertex<D>; 0], _v: &Vertex<D>) -> Vertex<D> {
         unreachable!()
     }
 }
 
+impl LinearSimplex<0> for [usize; 0] {
+    fn normal<const D: usize>(_v: &[Vertex<D>; 0]) -> Vertex<D> {
+        unreachable!()
+    }
+
+    fn radius<const D: usize>(_v: &[Vertex<D>; 0]) -> f64 {
+        unreachable!()
+    }
+
+    fn gamma<const D: usize>(_ge: &[Vertex<D>; 0]) -> f64 {
+        unreachable!()
+    }
+}
+
 impl Simplex<1> for Node {
+    fn dim() -> usize {
+        unreachable!()
+    }
+
+    fn n_edges() -> usize {
+        unreachable!()
+    }
+
+    fn n_faces() -> usize {
+        unreachable!()
+    }
+
     fn edges() -> Vec<Edge> {
         unreachable!()
     }
@@ -174,14 +194,6 @@ impl Simplex<1> for Node {
     }
 
     fn vol<const D: usize>(_v: &[Vertex<D>; 1]) -> f64 {
-        unreachable!()
-    }
-
-    fn normal<const D: usize>(_v: &[Vertex<D>; 1]) -> Vertex<D> {
-        unreachable!()
-    }
-
-    fn radius<const D: usize>(_v: &[Vertex<D>; 1]) -> f64 {
         unreachable!()
     }
 
@@ -207,18 +219,40 @@ impl Simplex<1> for Node {
         unreachable!()
     }
 
-    fn gamma<const D: usize>(_ge: &[Vertex<D>; 1]) -> f64 {
-        1.0
-    }
-
     fn project<const D: usize>(ge: &[Vertex<D>; 1], _v: &Vertex<D>) -> Vertex<D> {
         ge[0]
+    }
+}
+
+impl LinearSimplex<1> for Node {
+    fn normal<const D: usize>(_v: &[Vertex<D>; 1]) -> Vertex<D> {
+        unreachable!()
+    }
+
+    fn radius<const D: usize>(_v: &[Vertex<D>; 1]) -> f64 {
+        unreachable!()
+    }
+
+    fn gamma<const D: usize>(_ge: &[Vertex<D>; 1]) -> f64 {
+        unreachable!()
     }
 }
 
 pub const EDGE_FACES: [Node; 2] = [[0], [1]];
 
 impl Simplex<2> for Edge {
+    fn dim() -> usize {
+        1
+    }
+
+    fn n_edges() -> usize {
+        1
+    }
+
+    fn n_faces() -> usize {
+        2
+    }
+
     fn edges() -> Vec<Edge> {
         vec![[0, 1]]
     }
@@ -246,18 +280,6 @@ impl Simplex<2> for Edge {
 
     fn vol<const D: usize>(v: &[Vertex<D>; 2]) -> f64 {
         (v[1] - v[0]).norm()
-    }
-
-    fn normal<const D: usize>(v: &[Vertex<D>; 2]) -> Vertex<D> {
-        if Self::has_normal::<D>() {
-            Vertex::<D>::from_column_slice(&[v[1][1] - v[0][1], v[0][0] - v[1][0]])
-        } else {
-            unreachable!()
-        }
-    }
-
-    fn radius<const D: usize>(v: &[Vertex<D>; 2]) -> f64 {
-        0.5 * (v[1] - v[0]).norm()
     }
 
     fn quadrature() -> (Vec<f64>, Vec<Vec<f64>>) {
@@ -297,10 +319,6 @@ impl Simplex<2> for Edge {
         bcoords[0] * ge[0] + bcoords[1] * ge[1]
     }
 
-    fn gamma<const D: usize>(_ge: &[Vertex<D>; 2]) -> f64 {
-        1.0
-    }
-
     fn project<const D: usize>(ge: &[Vertex<D>; 2], v: &Vertex<D>) -> Vertex<D> {
         Self::project_inside(ge, v).map_or_else(
             || {
@@ -315,9 +333,39 @@ impl Simplex<2> for Edge {
     }
 }
 
+impl LinearSimplex<2> for Edge {
+    fn normal<const D: usize>(v: &[Vertex<D>; 2]) -> Vertex<D> {
+        if Self::has_normal::<D>() {
+            Vertex::<D>::from_column_slice(&[v[1][1] - v[0][1], v[0][0] - v[1][0]])
+        } else {
+            unreachable!()
+        }
+    }
+
+    fn radius<const D: usize>(v: &[Vertex<D>; 2]) -> f64 {
+        0.5 * (v[1] - v[0]).norm()
+    }
+
+    fn gamma<const D: usize>(_ge: &[Vertex<D>; 2]) -> f64 {
+        1.0
+    }
+}
+
 pub const TRIANGLE_FACES: [Edge; 3] = [[0, 1], [1, 2], [2, 0]];
 
 impl Simplex<3> for Triangle {
+    fn dim() -> usize {
+        2
+    }
+
+    fn n_edges() -> usize {
+        3
+    }
+
+    fn n_faces() -> usize {
+        3
+    }
+
     fn edges() -> Vec<Edge> {
         vec![[0, 1], [1, 2], [2, 0]]
     }
@@ -355,24 +403,6 @@ impl Simplex<3> for Triangle {
 
             0.5 * (e1[0] * e2[1] - e1[1] * e2[0])
         }
-    }
-
-    fn normal<const D: usize>(v: &[Vertex<D>; 3]) -> Vertex<D> {
-        if Self::has_normal::<D>() {
-            let e1 = v[1] - v[0];
-            let e2 = v[2] - v[0];
-            0.5 * e1.cross(&e2)
-        } else {
-            unreachable!()
-        }
-    }
-
-    fn radius<const D: usize>(v: &[Vertex<D>; 3]) -> f64 {
-        let a = (v[2] - v[1]).norm();
-        let b = (v[2] - v[0]).norm();
-        let c = (v[1] - v[0]).norm();
-        let s = 0.5 * (a + b + c);
-        ((s - a) * (s - b) * (s - c) / s).sqrt()
     }
 
     fn quadrature() -> (Vec<f64>, Vec<Vec<f64>>) {
@@ -425,6 +455,46 @@ impl Simplex<3> for Triangle {
         ge[0] * bcoords[0] + ge[1] * bcoords[1] + ge[2] * bcoords[2]
     }
 
+    fn project<const D: usize>(ge: &[Vertex<D>; 3], v: &Vertex<D>) -> Vertex<D> {
+        Self::project_inside(ge, v).map_or_else(
+            || {
+                let p0 = Edge::project(&[ge[TRIANGLE_FACES[0][0]], ge[TRIANGLE_FACES[0][1]]], v);
+                let d0 = (v - p0).norm_squared();
+                let p1 = Edge::project(&[ge[TRIANGLE_FACES[1][0]], ge[TRIANGLE_FACES[1][1]]], v);
+                let d1 = (v - p1).norm_squared();
+                let p2 = Edge::project(&[ge[TRIANGLE_FACES[2][0]], ge[TRIANGLE_FACES[2][1]]], v);
+                let d2 = (v - p2).norm_squared();
+                if d0 < d1 && d0 < d2 {
+                    p0
+                } else if d1 < d2 {
+                    p1
+                } else {
+                    p2
+                }
+            },
+            |pt| pt,
+        )
+    }
+}
+
+impl LinearSimplex<3> for Triangle {
+    fn normal<const D: usize>(v: &[Vertex<D>; 3]) -> Vertex<D> {
+        if Self::has_normal::<D>() {
+            let e1 = v[1] - v[0];
+            let e2 = v[2] - v[0];
+            0.5 * e1.cross(&e2)
+        } else {
+            unreachable!()
+        }
+    }
+
+    fn radius<const D: usize>(v: &[Vertex<D>; 3]) -> f64 {
+        let a = (v[2] - v[1]).norm();
+        let b = (v[2] - v[0]).norm();
+        let c = (v[1] - v[0]).norm();
+        let s = 0.5 * (a + b + c);
+        ((s - a) * (s - b) * (s - c) / s).sqrt()
+    }
     fn gamma<const D: usize>(ge: &[Vertex<D>; 3]) -> f64 {
         let mut a = ge[2] - ge[1];
         let mut b = ge[0] - ge[2];
@@ -453,31 +523,22 @@ impl Simplex<3> for Triangle {
             4.0 * sina * sinb * sinc / tmp
         }
     }
-
-    fn project<const D: usize>(ge: &[Vertex<D>; 3], v: &Vertex<D>) -> Vertex<D> {
-        Self::project_inside(ge, v).map_or_else(
-            || {
-                let p0 = Edge::project(&[ge[TRIANGLE_FACES[0][0]], ge[TRIANGLE_FACES[0][1]]], v);
-                let d0 = (v - p0).norm_squared();
-                let p1 = Edge::project(&[ge[TRIANGLE_FACES[1][0]], ge[TRIANGLE_FACES[1][1]]], v);
-                let d1 = (v - p1).norm_squared();
-                let p2 = Edge::project(&[ge[TRIANGLE_FACES[2][0]], ge[TRIANGLE_FACES[2][1]]], v);
-                let d2 = (v - p2).norm_squared();
-                if d0 < d1 && d0 < d2 {
-                    p0
-                } else if d1 < d2 {
-                    p1
-                } else {
-                    p2
-                }
-            },
-            |pt| pt,
-        )
-    }
 }
 
 pub const TETRA_FACES: [Triangle; 4] = [[1, 2, 3], [2, 0, 3], [0, 1, 3], [0, 2, 1]];
 impl Simplex<4> for Tetrahedron {
+    fn dim() -> usize {
+        3
+    }
+
+    fn n_edges() -> usize {
+        6
+    }
+
+    fn n_faces() -> usize {
+        4
+    }
+
     fn edges() -> Vec<Edge> {
         vec![[0, 1], [1, 2], [2, 0], [0, 3], [1, 3], [2, 3]]
     }
@@ -517,19 +578,6 @@ impl Simplex<4> for Tetrahedron {
         let e3 = v[3] - v[0];
 
         e3.dot(&e1.cross(&e2)) / 6.0
-    }
-
-    fn normal<const D: usize>(_v: &[Vertex<D>; 4]) -> Vertex<D> {
-        unreachable!()
-    }
-
-    fn radius<const D: usize>(v: &[Vertex<D>; 4]) -> f64 {
-        let a0 = Triangle::vol(&[v[0], v[1], v[2]]);
-        let a1 = Triangle::vol(&[v[0], v[1], v[3]]);
-        let a2 = Triangle::vol(&[v[1], v[2], v[3]]);
-        let a3 = Triangle::vol(&[v[2], v[0], v[3]]);
-        let v = Self::vol(v);
-        3.0 * v / (a0 + a1 + a2 + a3)
     }
 
     fn quadrature() -> (Vec<f64>, Vec<Vec<f64>>) {
@@ -578,6 +626,74 @@ impl Simplex<4> for Tetrahedron {
 
     fn vert<const D: usize>(ge: &[Vertex<D>; 4], bcoords: [f64; 4]) -> Vertex<D> {
         ge[0] * bcoords[0] + ge[1] * bcoords[1] + ge[2] * bcoords[2] + ge[3] * bcoords[3]
+    }
+
+    fn project<const D: usize>(ge: &[Vertex<D>; 4], v: &Vertex<D>) -> Vertex<D> {
+        Self::project_inside(ge, v).map_or_else(
+            || {
+                let p0 = Triangle::project(
+                    &[
+                        ge[TETRA_FACES[0][0]],
+                        ge[TETRA_FACES[0][1]],
+                        ge[TETRA_FACES[0][2]],
+                    ],
+                    v,
+                );
+                let d0 = (v - p0).norm_squared();
+                let p1 = Triangle::project(
+                    &[
+                        ge[TETRA_FACES[1][0]],
+                        ge[TETRA_FACES[1][1]],
+                        ge[TETRA_FACES[1][2]],
+                    ],
+                    v,
+                );
+                let d1 = (v - p1).norm_squared();
+                let p2 = Triangle::project(
+                    &[
+                        ge[TETRA_FACES[2][0]],
+                        ge[TETRA_FACES[2][1]],
+                        ge[TETRA_FACES[2][2]],
+                    ],
+                    v,
+                );
+                let d2 = (v - p2).norm_squared();
+                let p3 = Triangle::project(
+                    &[
+                        ge[TETRA_FACES[3][0]],
+                        ge[TETRA_FACES[3][1]],
+                        ge[TETRA_FACES[3][2]],
+                    ],
+                    v,
+                );
+                let d3 = (v - p3).norm_squared();
+                if d0 < d1 && d0 < d2 && d0 < d3 {
+                    p0
+                } else if d1 < d2 && d1 < d3 {
+                    p1
+                } else if d2 < d3 {
+                    p2
+                } else {
+                    p3
+                }
+            },
+            |pt| pt,
+        )
+    }
+}
+
+impl LinearSimplex<4> for Tetrahedron {
+    fn normal<const D: usize>(_v: &[Vertex<D>; 4]) -> Vertex<D> {
+        unreachable!()
+    }
+
+    fn radius<const D: usize>(v: &[Vertex<D>; 4]) -> f64 {
+        let a0 = Triangle::vol(&[v[0], v[1], v[2]]);
+        let a1 = Triangle::vol(&[v[0], v[1], v[3]]);
+        let a2 = Triangle::vol(&[v[1], v[2], v[3]]);
+        let a3 = Triangle::vol(&[v[2], v[0], v[3]]);
+        let v = Self::vol(v);
+        3.0 * v / (a0 + a1 + a2 + a3)
     }
 
     fn gamma<const D: usize>(ge: &[Vertex<D>; 4]) -> f64 {
@@ -642,59 +758,6 @@ impl Simplex<4> for Tetrahedron {
 
         rho / r
     }
-
-    fn project<const D: usize>(ge: &[Vertex<D>; 4], v: &Vertex<D>) -> Vertex<D> {
-        Self::project_inside(ge, v).map_or_else(
-            || {
-                let p0 = Triangle::project(
-                    &[
-                        ge[TETRA_FACES[0][0]],
-                        ge[TETRA_FACES[0][1]],
-                        ge[TETRA_FACES[0][2]],
-                    ],
-                    v,
-                );
-                let d0 = (v - p0).norm_squared();
-                let p1 = Triangle::project(
-                    &[
-                        ge[TETRA_FACES[1][0]],
-                        ge[TETRA_FACES[1][1]],
-                        ge[TETRA_FACES[1][2]],
-                    ],
-                    v,
-                );
-                let d1 = (v - p1).norm_squared();
-                let p2 = Triangle::project(
-                    &[
-                        ge[TETRA_FACES[2][0]],
-                        ge[TETRA_FACES[2][1]],
-                        ge[TETRA_FACES[2][2]],
-                    ],
-                    v,
-                );
-                let d2 = (v - p2).norm_squared();
-                let p3 = Triangle::project(
-                    &[
-                        ge[TETRA_FACES[3][0]],
-                        ge[TETRA_FACES[3][1]],
-                        ge[TETRA_FACES[3][2]],
-                    ],
-                    v,
-                );
-                let d3 = (v - p3).norm_squared();
-                if d0 < d1 && d0 < d2 && d0 < d3 {
-                    p0
-                } else if d1 < d2 && d1 < d3 {
-                    p1
-                } else if d2 < d3 {
-                    p2
-                } else {
-                    p3
-                }
-            },
-            |pt| pt,
-        )
-    }
 }
 
 /// Compute a `FxHashMap` that maps face-to-vertex connectivity (sorted) to a vector of element indices
@@ -733,7 +796,7 @@ mod tests {
 
     use crate::{
         Vert2d, Vert3d,
-        mesh::{Simplex, Tetrahedron, Triangle},
+        mesh::{LinearSimplex, Simplex, Tetrahedron, Triangle},
     };
 
     #[test]

@@ -682,50 +682,48 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let mut internal_faces_tags: HashMap<Tag, Vec<Tag>> = HashMap::new();
 
         for (k, v) in f2e {
+            if v.len() == 2 && self.etag(v[0]) == self.etag(v[1]) {
+                continue;
+            }
+            let elem = self.elems.index(v[0]);
+            let mut f = elem.face(0);
+            let mut ok = false;
+            for i_face in 0..E::N_FACES {
+                f = elem.face(i_face);
+                if f.sorted() == *k {
+                    ok = true;
+                    break;
+                }
+            }
+            assert!(ok);
+
             if v.len() == 1 {
                 // This is a boundary face
-                let elem = self.elems.index(v[0]);
-                let mut ok = false;
-                for i_face in 0..E::N_FACES {
-                    let mut f = elem.face(i_face);
-                    f.sort();
-                    let is_same = !f.iter().zip(k.iter()).any(|(x, y)| x != y);
-                    if is_same {
-                        // face k is the i_face-th face of elem: use its orientation
-                        #[allow(clippy::option_if_let_else)]
-                        let tag = if let Some(tag) = tagged_faces.get(&f) {
-                            *tag
-                        } else {
-                            let etag = self.etags.index(v[0]);
-                            if let Some(tag) = boundary_faces_tags.get(&etag) {
-                                *tag
-                            } else {
-                                boundary_faces_tags.insert(etag, next_boundary_tag);
-                                next_boundary_tag += 1;
-                                next_boundary_tag - 1
-                            }
-                        };
-                        let f = elem.face(i_face);
-                        bdy.push(f);
-                        bdy_tags.push(tag);
-                        ok = true;
-                        break;
+                #[allow(clippy::option_if_let_else)]
+                let tag = if let Some(tag) = tagged_faces.get(k) {
+                    *tag
+                } else {
+                    let etag = self.etags.index(v[0]);
+                    if let Some(tag) = boundary_faces_tags.get(&etag) {
+                        *tag
+                    } else {
+                        boundary_faces_tags.insert(etag, next_boundary_tag);
+                        next_boundary_tag += 1;
+                        next_boundary_tag - 1
                     }
-                }
-                assert!(ok);
+                };
+                bdy.push(f);
+                bdy_tags.push(tag);
             } else {
                 // TODO: check all internal faces if the elems are tagged differently
-                let tag = tagged_faces.get(k);
-                if let Some(tag) = tag {
-                    // This is a tagged internal face
-                    bdy_tags.push(*tag);
-                    bdy.push(*k);
-                    let mut etags = v
-                        .iter()
-                        .copied()
-                        .map(|i| self.etags.index(i))
-                        .collect::<Vec<_>>();
-                    etags.sort_unstable();
+                let mut etags = v
+                    .iter()
+                    .copied()
+                    .map(|i| self.etags.index(i))
+                    .collect::<Vec<_>>();
+                etags.sort_unstable();
+
+                let tag = if let Some(tag) = tagged_faces.get(k) {
                     if let Some(etags_ref) = internal_faces_tags.get(tag) {
                         // Check that the tags are the same
                         let mut is_ok = etags.len() == etags_ref.len();
@@ -738,15 +736,11 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                             )));
                         }
                     } else {
-                        internal_faces_tags.insert(*tag, etags);
+                        internal_faces_tags.insert(*tag, etags.clone());
                     }
+                    *tag
                 } else {
-                    let mut etags = v
-                        .iter()
-                        .copied()
-                        .map(|i| self.etags.index(i))
-                        .collect::<Vec<_>>();
-                    etags.sort_unstable();
+                    let mut res = Tag::MAX;
                     if etags.len() > 2 || etags[0] != etags[1] {
                         let mut new_tag = true;
                         for (tag, etags_ref) in &internal_faces_tags {
@@ -756,19 +750,24 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                             }
                             if is_same {
                                 new_tag = false;
-                                bdy_tags.push(*tag);
-                                bdy.push(*k);
+                                res = *tag;
                                 break;
                             }
                         }
                         if new_tag {
-                            internal_faces_tags.insert(next_internal_tag, etags);
-                            bdy_tags.push(next_internal_tag);
-                            bdy.push(*k);
+                            internal_faces_tags.insert(next_internal_tag, etags.clone());
+                            res = next_internal_tag;
                             next_internal_tag += 1;
                         }
                     }
+                    res
+                };
+
+                if etags.len() == 2 && etags[0] > etags[1] {
+                    f.invert();
                 }
+                bdy.push(f);
+                bdy_tags.push(tag);
             }
         }
 
@@ -918,7 +917,7 @@ pub trait HasTmeshImpl<const D: usize, E: Elem> {
     fn vtu_writer(&self) -> VTUFile;
 
     fn bdy_vtu_writer(&self) -> VTUFile;
-    
+
     fn partition_simple(&mut self, ptype: PartitionType) -> Result<(f64, f64)>;
 
     fn boundary_flag(&self) -> Vec<bool>;

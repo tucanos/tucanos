@@ -407,27 +407,29 @@ where
             let face = E::Face::from_iter(face.iter().map(|&i| *vidx.get(&i).unwrap()));
             let face = face.sorted();
             let iels = f2e.get(&face).unwrap();
-            if iels.len() == 1 {
-                // Orient the face outwards
-                let elem = elems[iels[0] as usize];
-                let mut ok = false;
-                for i_face in 0..E::N_FACES {
-                    let mut f = elem.face(i_face);
-                    f.sort();
-                    let is_same = !f.iter().zip(face.iter()).any(|(x, y)| x != y);
-                    if is_same {
-                        let f = elem.face(i_face);
-                        faces.push(f);
-                        ftags.push(ftag);
-                        ok = true;
-                        break;
-                    }
-                }
-                assert!(ok);
-            } else if !only_bdy_faces {
-                faces.push(face);
-                ftags.push(ftag);
+            if iels.len() > 1 && only_bdy_faces {
+                continue;
             }
+            // Orient the face outwards
+            let elem = elems[iels[0] as usize];
+            let mut ok = false;
+
+            let mut f = elem.face(0);
+            for i_face in 0..E::N_FACES {
+                f = elem.face(i_face);
+                if face == f.sorted() {
+                    ok = true;
+                    break;
+                }
+            }
+            assert!(ok);
+
+            if iels.len() == 2 && etags[iels[0] as usize] > etags[iels[1] as usize] {
+                f.invert();
+            }
+
+            faces.push(f);
+            ftags.push(ftag);
         }
 
         SimplexMesh::<D, E>::new(verts, elems, etags, faces, ftags)

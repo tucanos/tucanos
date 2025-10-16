@@ -9,7 +9,7 @@
 use super::PolyMesh;
 use crate::{
     Error, Result, Tag, Vertex,
-    mesh::{Cell, Face, Mesh, Simplex, cell_center},
+    mesh::{Cell, Face, LinearSimplex, Mesh, cell_center},
 };
 use nalgebra::{DMatrix, DVector};
 use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
@@ -38,8 +38,8 @@ pub enum DualCellCenter<const D: usize, const F: usize> {
 /// Dual of a `Mesh<D, C, F>`
 pub trait DualMesh<const D: usize, const C: usize, const F: usize>: PolyMesh<D>
 where
-    Cell<C>: Simplex<C>,
-    Cell<F>: Simplex<F>,
+    Cell<C>: LinearSimplex<C>,
+    Cell<F>: LinearSimplex<F>,
 {
     /// Compute the dual of `mesh`
     fn new<M: Mesh<D, C, F>>(msh: &M, t: DualType) -> Self;
@@ -287,8 +287,8 @@ where
         filter: G,
     ) -> (M, Vec<usize>)
     where
-        Cell<C2>: Simplex<C2>,
-        Cell<F2>: Simplex<F2>,
+        Cell<C2>: LinearSimplex<C2>,
+        Cell<F2>: LinearSimplex<F2>,
     {
         assert_eq!(C2, C - 1);
         assert_eq!(F2, F - 1);
@@ -339,8 +339,8 @@ where
     /// Return a `Mesh<D, C2, F2>` containing all the boundary faces.
     fn boundary<const C2: usize, const F2: usize, M: Mesh<D, C2, F2>>(&self) -> (M, Vec<usize>)
     where
-        Cell<C2>: Simplex<C2>,
-        Cell<F2>: Simplex<F2>,
+        Cell<C2>: LinearSimplex<C2>,
+        Cell<F2>: LinearSimplex<F2>,
     {
         self.extract_faces(|t| t > 0)
     }

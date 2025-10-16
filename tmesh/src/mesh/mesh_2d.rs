@@ -75,8 +75,8 @@ mod tests {
     use crate::{
         Vert2d, assert_delta,
         mesh::{
-            BoundaryMesh2d, Edge, Mesh, Mesh2d, Simplex, Triangle, bandwidth, cell_center,
-            rectangle_mesh,
+            BoundaryMesh2d, Edge, LinearSimplex, Mesh, Mesh2d, Simplex, Triangle, bandwidth,
+            cell_center, rectangle_mesh,
         },
     };
     use rayon::iter::ParallelIterator;
@@ -284,7 +284,8 @@ mod tests {
         let mesh = rectangle_mesh::<Mesh2d>(1.0, 3, 1.0, 3).random_shuffle();
 
         let count = mesh
-            .elem_gammas()
+            .gelems()
+            .map(|ge| Triangle::gamma(&ge))
             .map(|s| assert!((s - 0.8284).abs() < 1e-4))
             .count();
         assert_eq!(count, 8);
