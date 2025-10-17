@@ -9,14 +9,14 @@ use std::marker::PhantomData;
 pub trait Partitioner: Sized {
     /// Create a new mesh partitionner to partition `msh` into `n_parts`
     /// Element weights can optionally be provided
-    fn new<const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>(
+    fn new<const D: usize, const C: usize, const F: usize, const O: usize, M: Mesh<D, C, F, O>>(
         msh: &M,
         n_parts: usize,
         weights: Option<Vec<f64>>,
     ) -> Result<Self>
     where
-        Cell<C>: Simplex<C>,
-        Face<F>: Simplex<F>;
+        Cell<C>: Simplex<C, O>,
+        Face<F>: Simplex<F, O>;
     /// Compute the element partition
     fn compute(&self) -> Result<Vec<usize>>;
     /// Get the number of partitions
@@ -87,14 +87,14 @@ pub struct HilbertPartitioner {
 }
 
 impl Partitioner for HilbertPartitioner {
-    fn new<const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>(
+    fn new<const D: usize, const C: usize, const F: usize, const O: usize, M: Mesh<D, C, F, O>>(
         msh: &M,
         n_parts: usize,
         weights: Option<Vec<f64>>,
     ) -> Result<Self>
     where
-        Cell<C>: Simplex<C>,
-        Face<F>: Simplex<F>,
+        Cell<C>: Simplex<C, O>,
+        Face<F>: Simplex<F, O>,
     {
         let faces = msh.all_faces();
         let graph = msh.element_pairs(&faces);
@@ -145,14 +145,14 @@ pub struct RCMPartitioner {
 }
 
 impl Partitioner for RCMPartitioner {
-    fn new<const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>(
+    fn new<const D: usize, const C: usize, const F: usize, const O: usize, M: Mesh<D, C, F, O>>(
         msh: &M,
         n_parts: usize,
         weights: Option<Vec<f64>>,
     ) -> Result<Self>
     where
-        Cell<C>: Simplex<C>,
-        Face<F>: Simplex<F>,
+        Cell<C>: Simplex<C, O>,
+        Face<F>: Simplex<F, O>,
     {
         let faces = msh.all_faces();
         let graph = msh.element_pairs(&faces);
@@ -199,14 +199,14 @@ pub struct KMeansPartitioner2d {
     weights: Vec<f64>,
 }
 impl Partitioner for KMeansPartitioner2d {
-    fn new<const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>(
+    fn new<const D: usize, const C: usize, const F: usize, const O: usize, M: Mesh<D, C, F, O>>(
         msh: &M,
         n_parts: usize,
         weights: Option<Vec<f64>>,
     ) -> Result<Self>
     where
-        Cell<C>: Simplex<C>,
-        Face<F>: Simplex<F>,
+        Cell<C>: Simplex<C, O>,
+        Face<F>: Simplex<F, O>,
     {
         match D {
             2 => {
@@ -264,14 +264,14 @@ pub struct KMeansPartitioner3d {
 }
 
 impl Partitioner for KMeansPartitioner3d {
-    fn new<const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>(
+    fn new<const D: usize, const C: usize, const F: usize, const O: usize, M: Mesh<D, C, F, O>>(
         msh: &M,
         n_parts: usize,
         weights: Option<Vec<f64>>,
     ) -> Result<Self>
     where
-        Cell<C>: Simplex<C>,
-        Face<F>: Simplex<F>,
+        Cell<C>: Simplex<C, O>,
+        Face<F>: Simplex<F, O>,
     {
         match D {
             3 => {

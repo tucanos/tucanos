@@ -2,7 +2,7 @@
 use crate::mesh::GenericMesh;
 
 /// Edge mesh in 2d
-pub type BoundaryMesh2d = GenericMesh<2, 2, 1>;
+pub type BoundaryMesh2d = GenericMesh<2, 2, 1, 1>;
 
 #[cfg(test)]
 mod tests {

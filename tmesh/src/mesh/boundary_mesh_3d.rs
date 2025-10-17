@@ -6,10 +6,10 @@ use crate::{
 use std::fs::OpenOptions;
 
 /// Triangle mesh in 3d
-pub type BoundaryMesh3d = GenericMesh<3, 3, 2>;
+pub type BoundaryMesh3d = GenericMesh<3, 3, 2, 1>;
 
 /// Read a stl file
-pub fn read_stl<M: Mesh<3, 3, 2>>(file_name: &str) -> Result<M> {
+pub fn read_stl<M: Mesh<3, 3, 2, 1>>(file_name: &str) -> Result<M> {
     let mut file = OpenOptions::new().read(true).open(file_name).unwrap();
     let stl = stl_io::read_stl(&mut file).unwrap();
 
@@ -48,7 +48,10 @@ mod tests {
         assert_eq!(tags.len(), 12);
         bdy.check(&faces).unwrap();
 
-        let vol = bdy.gelems().map(|ge| Triangle::vol(&ge)).sum::<f64>();
+        let vol = bdy
+            .gelems()
+            .map(|ge| <Triangle as Simplex<3, 1>>::vol(&ge))
+            .sum::<f64>();
         assert_delta!(vol, 10.0, 1e-12);
     }
 
@@ -58,9 +61,9 @@ mod tests {
         let v1 = Vert3d::new(0.5, 0.0, 1.0);
         let v2 = Vert3d::new(0.0, 0.5, 1.0);
         let ge = [v0, v1, v2];
-        assert_delta!(Triangle::vol(&ge), 0.125, 1e-12);
+        assert_delta!(<Triangle as Simplex<3, 1>>::vol(&ge), 0.125, 1e-12);
         let ge = [v1, v0, v2];
-        assert_delta!(Triangle::vol(&ge), 0.125, 1e-12);
+        assert_delta!(<Triangle as Simplex<3, 1>>::vol(&ge), 0.125, 1e-12);
 
         let msh = box_mesh::<Mesh3d>(1.0, 10, 2.0, 15, 1.0, 20);
 

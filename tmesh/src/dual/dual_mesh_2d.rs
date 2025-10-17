@@ -2,9 +2,7 @@
 use super::{DualCellCenter, DualMesh, DualType, PolyMesh, PolyMeshType, circumcenter_bcoords};
 use crate::{
     Tag, Vert2d,
-    mesh::{
-        Edge, LinearSimplex, Mesh, Simplex, Triangle, cell_center, cell_vertex, sort_elem_min_ids,
-    },
+    mesh::{Edge, Mesh, Simplex, Triangle, cell_center, cell_vertex, sort_elem_min_ids},
 };
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rustc_hash::FxHashMap;
@@ -90,7 +88,7 @@ impl PolyMesh<2> for DualMesh2d {
 
 impl DualMesh<2, 3, 2> for DualMesh2d {
     #[allow(clippy::too_many_lines)]
-    fn new<M: Mesh<2, 3, 2>>(msh: &M, t: DualType) -> Self {
+    fn new<M: Mesh<2, 3, 2, 1>>(msh: &M, t: DualType) -> Self {
         // edges
         let all_edges = msh.edges();
         let n_edges = all_edges.len();
@@ -135,7 +133,7 @@ impl DualMesh<2, 3, 2> for DualMesh2d {
         }
 
         // faces and elements
-        let elem_to_edges = Triangle::edges();
+        let elem_to_edges = <Triangle as Simplex<3, 1>>::edges();
 
         let n_poly_faces = 3 * msh.n_elems() + 2 * msh.n_faces();
         let mut faces = Vec::with_capacity(n_poly_faces);
@@ -181,7 +179,7 @@ impl DualMesh<2, 3, 2> for DualMesh2d {
                     n_empty_faces += 1;
                 } else {
                     let gf = [verts[face[0]], verts[face[1]]];
-                    edge_normals[i_edge] += sgn * Edge::normal(&gf);
+                    edge_normals[i_edge] += sgn * Edge::center_normal(&gf);
 
                     let i_new_face = faces.len();
                     faces.push(face);
@@ -226,7 +224,7 @@ impl DualMesh<2, 3, 2> for DualMesh2d {
                 n_empty_faces += 1;
             } else {
                 let gf = [verts[face[0]], verts[face[1]]];
-                bdy_faces.push((f[0], tag, Edge::normal(&gf)));
+                bdy_faces.push((f[0], tag, Edge::center_normal(&gf)));
 
                 let i_new_face = faces.len();
                 faces.push(face);
@@ -245,7 +243,7 @@ impl DualMesh<2, 3, 2> for DualMesh2d {
 
                 let face = [vert_idx_edge(i_edge), vert_ids_bdy(f[1])];
                 let gf = [verts[face[0]], verts[face[1]]];
-                bdy_faces.push((f[0], tag, Edge::normal(&gf)));
+                bdy_faces.push((f[0], tag, Edge::center_normal(&gf)));
 
                 let i_new_face = faces.len();
                 faces.push(face);
@@ -347,7 +345,7 @@ mod tests {
     use crate::{
         Vert2d,
         dual::{DualMesh, DualMesh2d, DualType, PolyMesh},
-        mesh::{Edge, LinearSimplex, Mesh, Mesh2d, rectangle_mesh},
+        mesh::{Edge, Mesh, Mesh2d, Simplex, rectangle_mesh},
     };
     use rayon::iter::ParallelIterator;
 
@@ -366,7 +364,7 @@ mod tests {
 
         let n_empty_faces = dual
             .par_gfaces()
-            .filter(|gf| Edge::normal(gf).norm() < 1e-12)
+            .filter(|gf| Edge::center_normal(gf).norm() < 1e-12)
             .count();
         assert_eq!(n_empty_faces, 0);
     }
@@ -385,7 +383,7 @@ mod tests {
 
         let n_empty_faces = dual
             .par_gfaces()
-            .filter(|gf| Edge::normal(gf).norm() < 1e-10)
+            .filter(|gf| Edge::center_normal(gf).norm() < 1e-10)
             .count();
         assert_eq!(n_empty_faces, 0);
 
@@ -414,7 +412,7 @@ mod tests {
 
         let n_empty_faces = dual
             .par_gfaces()
-            .filter(|gf| Edge::normal(gf).norm() < 1e-10)
+            .filter(|gf| Edge::center_normal(gf).norm() < 1e-10)
             .count();
         assert_eq!(n_empty_faces, 0);
 

@@ -14,10 +14,10 @@ pub enum InterpolationMethod {
 }
 
 /// Interpolator
-pub struct Interpolator<'a, const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>
+pub struct Interpolator<'a, const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F, 1>>
 where
-    Cell<C>: Simplex<C>,
-    Cell<F>: Simplex<F>,
+    Cell<C>: Simplex<C, 1>,
+    Cell<F>: Simplex<F, 1>,
 {
     /// Mesh from which the data in interpolated
     mesh: &'a M,
@@ -29,11 +29,11 @@ where
     elem_index: Option<ObjectIndex<D>>,
 }
 
-impl<'a, const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>
+impl<'a, const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F, 1>>
     Interpolator<'a, D, C, F, M>
 where
-    Cell<C>: Simplex<C>,
-    Cell<F>: Simplex<F>,
+    Cell<C>: Simplex<C, 1>,
+    Cell<F>: Simplex<F, 1>,
 {
     /// Create the interpolator (initialize the indices)
     pub fn new(mesh: &'a M, method: InterpolationMethod) -> Self {
@@ -83,11 +83,11 @@ where
                         let ge = self.mesh.gelem(&e);
                         let x = Cell::<C>::bcoords(&ge, &v);
                         assert!(
-                            x.iter().all(|c| (-tol..1.0 + tol).contains(c)),
+                            x.into_iter().all(|c| (-tol..1.0 + tol).contains(&c)),
                             "{x:?}, bcoords = {x:?}"
                         );
                         (0..m).map(move |j| {
-                            let iter = e.iter().copied().zip(x.iter().copied());
+                            let iter = e.iter().copied().zip(x.into_iter());
                             iter.fold(T::default(), |a, (i, w)| a + f[m * i + j] * w)
                         })
                     })

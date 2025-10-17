@@ -42,6 +42,12 @@ pub type Edge = Cell<2>;
 /// Node
 pub type Node = Cell<1>;
 
+/// Quadratic triangle
+pub type QuadraticTriangle = Cell<6>;
+
+/// Quadratic edge
+pub type QuadraticEdge = Cell<3>;
+
 pub use boundary_mesh_2d::BoundaryMesh2d;
 pub use boundary_mesh_3d::{BoundaryMesh3d, read_stl};
 use hilbert::hilbert_indices;
@@ -50,7 +56,7 @@ pub use mesh_2d::{Mesh2d, nonuniform_rectangle_mesh, rectangle_mesh};
 pub use mesh_3d::{Mesh3d, box_mesh, nonuniform_box_mesh};
 use partition::Partitioner;
 pub use simplices::{EDGE_FACES, TETRA_FACES, TRIANGLE_FACES};
-pub use simplices::{LinearSimplex, Simplex, get_face_to_elem};
+pub use simplices::{Simplex, get_face_to_elem};
 use split::{split_edgs, split_tets, split_tris};
 pub use to_simplices::{hex2tets, pri2tets, pyr2tets, qua2tris};
 
@@ -130,10 +136,15 @@ pub fn collect_elems<
 
 /// Submesh of a `Mesh<D, C, F>`, with information about the vertices, element
 /// and face ids in the parent mesh
-pub struct SubMesh<const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>
-where
-    Cell<C>: Simplex<C>,
-    Cell<F>: Simplex<F>,
+pub struct SubMesh<
+    const D: usize,
+    const C: usize,
+    const F: usize,
+    const O: usize,
+    M: Mesh<D, C, F, O>,
+> where
+    Cell<C>: Simplex<C, O>,
+    Cell<F>: Simplex<F, O>,
 {
     /// Mesh
     pub mesh: M,
@@ -145,10 +156,11 @@ where
     pub parent_face_ids: Vec<usize>,
 }
 
-impl<const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>> SubMesh<D, C, F, M>
+impl<const D: usize, const C: usize, const F: usize, const O: usize, M: Mesh<D, C, F, O>>
+    SubMesh<D, C, F, O, M>
 where
-    Cell<C>: Simplex<C>,
-    Cell<F>: Simplex<F>,
+    Cell<C>: Simplex<C, O>,
+    Cell<F>: Simplex<F, O>,
 {
     /// Extract the elements with a given tag
     pub fn new<G: Fn(Tag) -> bool>(mesh: &M, filter: G) -> Self {
@@ -166,10 +178,11 @@ where
 
 /// D-dimensional mesh containing simplices with C nodes
 /// F = C-1 is given explicitely to be usable with rust stable
-pub trait Mesh<const D: usize, const C: usize, const F: usize>: Send + Sync + Sized
+pub trait Mesh<const D: usize, const C: usize, const F: usize, const O: usize>:
+    Send + Sync + Sized
 where
-    Cell<C>: Simplex<C>,
-    Cell<F>: Simplex<F>,
+    Cell<C>: Simplex<C, O>,
+    Cell<F>: Simplex<F, O>,
 {
     /// Create a new mesh from slices of Vertex, Cell and Face
     #[must_use]
@@ -803,26 +816,18 @@ where
 
     /// Integrate `g(f)` over the mesh, where `f` is a field defined on the mesh vertices
     fn integrate<G: Fn(f64) -> f64 + Send + Sync>(&self, f: &[f64], op: G) -> f64 {
-        let (qw, qp) = Cell::<C>::quadrature();
-        debug_assert!(qp.iter().all(|x| x.len() == C - 1));
+        assert_eq!(O, 1);
 
         self.par_elems()
             .map(|e| {
-                let res = qw
-                    .iter()
-                    .zip(qp.iter())
-                    .map(|(w, pt)| {
-                        let x0 = f[e[0]];
-                        let mut x_pt = x0;
-                        for (&b, &j) in pt.iter().zip(e.iter().skip(1)) {
-                            let mut dx = f[j] - x0;
-                            dx *= b;
-                            x_pt += dx;
-                        }
-                        *w * op(x_pt)
-                    })
-                    .sum::<f64>();
-                Cell::<C>::vol(&self.gelem(&e)) * res
+                let func = |x: &<Cell<C> as Simplex<C, O>>::BCOORDS| {
+                    op(x.into_iter()
+                        .zip(e.iter())
+                        .map(|(b, i)| b * f[*i])
+                        .sum::<f64>())
+                };
+                let ge = self.gelem(&e);
+                Cell::<C>::integrate(&ge, func)
             })
             .sum::<f64>()
     }
@@ -938,7 +943,7 @@ where
     }
 
     /// Get the i-th partition
-    fn get_partition(&self, i: usize) -> SubMesh<D, C, F, Self> {
+    fn get_partition(&self, i: usize) -> SubMesh<D, C, F, O, Self> {
         SubMesh::new(self, |t| t == i as Tag + 1)
     }
 
@@ -1204,13 +1209,13 @@ where
     /// Build a `Mesh<D, C2, F2>` mesh containing faces such that `filter(tag)` is true
     /// Only the required vertices are present
     /// The following must be true: C2 = C - 1 and F2 = F - 1 (rust stable limitation)
-    fn extract_faces<const C2: usize, const F2: usize, M: Mesh<D, C2, F2>, G: Fn(Tag) -> bool>(
+    fn extract_faces<const C2: usize, const F2: usize, M: Mesh<D, C2, F2, O>, G: Fn(Tag) -> bool>(
         &self,
         filter: G,
     ) -> (M, Vec<usize>)
     where
-        Cell<C2>: Simplex<C2>,
-        Cell<F2>: Simplex<F2>,
+        Cell<C2>: Simplex<C2, O>,
+        Cell<F2>: Simplex<F2, O>,
     {
         assert_eq!(C2, C - 1);
         assert_eq!(F2, F - 1);
@@ -1260,10 +1265,10 @@ where
 
     /// Build a `Mesh<D, C2, F2>` mesh containing the boundary faces
     /// The following must be true: C2 = C - 1 and F2 = F - 1 (rust stable limitation)
-    fn boundary<const C2: usize, const F2: usize, M: Mesh<D, C2, F2>>(&self) -> (M, Vec<usize>)
+    fn boundary<const C2: usize, const F2: usize, M: Mesh<D, C2, F2, O>>(&self) -> (M, Vec<usize>)
     where
-        Cell<C2>: Simplex<C2>,
-        Cell<F2>: Simplex<F2>,
+        Cell<C2>: Simplex<C2, O>,
+        Cell<F2>: Simplex<F2, O>,
     {
         self.extract_faces(|_| true)
     }
@@ -1385,7 +1390,7 @@ where
     /// Check that two meshes are equal
     ///   - same vertex coordinates (with tolerance `tol`)
     ///   - same connectivities and tags
-    fn check_equals<M: Mesh<D, C, F>>(&self, other: &M, tol: f64) -> Result<()> {
+    fn check_equals<M: Mesh<D, C, F, O>>(&self, other: &M, tol: f64) -> Result<()> {
         for (i, (v0, v1)) in self.verts().zip(other.verts()).enumerate() {
             if (v0 - v1).norm() > tol {
                 return Err(Error::from(&format!("Vertex {i}: {v0:?} != {v1:?}")));
@@ -1678,10 +1683,11 @@ where
 
 /// D-dimensional mesh containing simplices with C nodes
 /// F = C-1 is given explicitely to be usable with rust stable
-pub trait MutMesh<const D: usize, const C: usize, const F: usize>: Mesh<D, C, F>
+pub trait MutMesh<const D: usize, const C: usize, const F: usize, const O: usize>:
+    Mesh<D, C, F, O>
 where
-    Cell<C>: Simplex<C>,
-    Cell<F>: Simplex<F>,
+    Cell<C>: Simplex<C, O>,
+    Cell<F>: Simplex<F, O>,
 {
     /// Sequential iterator over the vertices
     fn verts_mut(&mut self) -> impl ExactSizeIterator<Item = &mut Vertex<D>> + '_;
@@ -1700,7 +1706,11 @@ where
 }
 
 /// Generic meshes implemented with Vecs
-pub struct GenericMesh<const D: usize, const C: usize, const F: usize> {
+pub struct GenericMesh<const D: usize, const C: usize, const F: usize, const O: usize>
+where
+    Cell<C>: Simplex<C, O>,
+    Face<F>: Simplex<F, O>,
+{
     verts: Vec<Vertex<D>>,
     elems: Vec<Cell<C>>,
     etags: Vec<Tag>,
@@ -1708,10 +1718,11 @@ pub struct GenericMesh<const D: usize, const C: usize, const F: usize> {
     ftags: Vec<Tag>,
 }
 
-impl<const D: usize, const C: usize, const F: usize> Mesh<D, C, F> for GenericMesh<D, C, F>
+impl<const D: usize, const C: usize, const F: usize, const O: usize> Mesh<D, C, F, O>
+    for GenericMesh<D, C, F, O>
 where
-    Cell<C>: Simplex<C>,
-    Face<F>: Simplex<F>,
+    Cell<C>: Simplex<C, O>,
+    Face<F>: Simplex<F, O>,
 {
     fn empty() -> Self {
         Self {
@@ -1864,10 +1875,11 @@ where
     }
 }
 
-impl<const D: usize, const C: usize, const F: usize> MutMesh<D, C, F> for GenericMesh<D, C, F>
+impl<const D: usize, const C: usize, const F: usize, const O: usize> MutMesh<D, C, F, O>
+    for GenericMesh<D, C, F, O>
 where
-    Cell<C>: Simplex<C>,
-    Face<F>: Simplex<F>,
+    Cell<C>: Simplex<C, O>,
+    Face<F>: Simplex<F, O>,
 {
     fn verts_mut(&mut self) -> impl ExactSizeIterator<Item = &mut Vertex<D>> + '_ {
         self.verts.iter_mut()

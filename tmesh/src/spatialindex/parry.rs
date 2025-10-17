@@ -1,6 +1,6 @@
 use crate::{
-    mesh::{Cell, Mesh, Simplex},
     Vertex,
+    mesh::{Cell, Mesh, Simplex},
 };
 use parry2d_f64::math::Point as Point2;
 use parry2d_f64::query::{PointQuery as _, PointQueryWithLocation as _};
@@ -20,7 +20,7 @@ mod parry2d {
         bounding_volume::Aabb,
         math::{Isometry, Point, Real},
         partitioning::{Bvh, BvhBuildStrategy},
-        query::{details::NormalConstraints, PointProjection, PointQueryWithLocation},
+        query::{PointProjection, PointQueryWithLocation, details::NormalConstraints},
         shape::{
             CompositeShape, CompositeShapeRef, Segment, SegmentPointLocation, Shape,
             TypedCompositeShape,
@@ -29,8 +29,8 @@ mod parry2d {
     use std::marker::PhantomData;
 
     use crate::{
-        mesh::{Cell, Mesh, Simplex},
         Vertex,
+        mesh::{Cell, Mesh, Simplex},
     };
 
     pub trait MeshToShape {
@@ -101,10 +101,10 @@ mod parry2d {
             Aabb::new(min, max)
         }
 
-        pub fn new<const C: usize, const F: usize, M: Mesh<D, C, F>>(mesh: &M) -> Self
+        pub fn new<const C: usize, const F: usize, M: Mesh<D, C, F, 1>>(mesh: &M) -> Self
         where
-            Cell<C>: Simplex<C>,
-            Cell<F>: Simplex<F>,
+            Cell<C>: Simplex<C, 1>,
+            Cell<F>: Simplex<F, 1>,
         {
             assert_eq!(D, 2);
             let data = mesh
@@ -193,8 +193,8 @@ mod parry3d {
         math::{Isometry, Point, Real},
         partitioning::{Bvh, BvhBuildStrategy},
         query::{
-            details::NormalConstraints, PointProjection, PointQuery, PointQueryWithLocation, Ray,
-            RayCast, RayIntersection,
+            PointProjection, PointQuery, PointQueryWithLocation, Ray, RayCast, RayIntersection,
+            details::NormalConstraints,
         },
         shape::{
             CompositeShape, CompositeShapeRef, FeatureId, Segment, SegmentPointLocation, Shape,
@@ -204,8 +204,8 @@ mod parry3d {
     use std::marker::PhantomData;
 
     use crate::{
-        mesh::{Cell, Mesh, Simplex},
         Vertex,
+        mesh::{Cell, Mesh, Simplex},
     };
     /// Create a parry Shape from a tucanos Elem
     pub trait MeshToShape {
@@ -360,10 +360,10 @@ mod parry3d {
 
             Aabb::new(min, max)
         }
-        pub fn new<const C: usize, const F: usize, M: Mesh<D, C, F>>(mesh: &M) -> Self
+        pub fn new<const C: usize, const F: usize, M: Mesh<D, C, F, 1>>(mesh: &M) -> Self
         where
-            Cell<C>: Simplex<C>,
-            Cell<F>: Simplex<F>,
+            Cell<C>: Simplex<C, 1>,
+            Cell<F>: Simplex<F, 1>,
         {
             assert_eq!(D, 3);
             let data = mesh
@@ -487,10 +487,10 @@ enum ParryImpl<const D: usize> {
 
 impl<const D: usize> ObjectIndex<D> {
     /// Create a PointIndex from a mesh
-    pub fn new<const C: usize, const F: usize, M: Mesh<D, C, F>>(mesh: &M) -> Self
+    pub fn new<const C: usize, const F: usize, M: Mesh<D, C, F, 1>>(mesh: &M) -> Self
     where
-        Cell<C>: Simplex<C>,
-        Cell<F>: Simplex<F>,
+        Cell<C>: Simplex<C, 1>,
+        Cell<F>: Simplex<F, 1>,
     {
         if D == 3 && C == 3 {
             let coords = mesh

@@ -39,13 +39,19 @@ pub struct VTUFile {
 
 impl VTUFile {
     /// Create a vtu Mesh writer
-    pub fn from_mesh<const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>(
+    pub fn from_mesh<
+        const D: usize,
+        const C: usize,
+        const F: usize,
+        const O: usize,
+        M: Mesh<D, C, F, O>,
+    >(
         mesh: &M,
         encoding: VTUEncoding,
     ) -> Self
     where
-        Cell<C>: Simplex<C>,
-        Face<F>: Simplex<F>,
+        Cell<C>: Simplex<C, O>,
+        Face<F>: Simplex<F, O>,
     {
         Self {
             grid_type: "UnstructuredGrid".to_string(),
@@ -403,13 +409,19 @@ struct Cells {
 }
 
 impl Cells {
-    fn from_elems<const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>(
+    fn from_elems<
+        const D: usize,
+        const C: usize,
+        const F: usize,
+        const O: usize,
+        M: Mesh<D, C, F, O>,
+    >(
         mesh: &M,
         encoding: VTUEncoding,
     ) -> Self
     where
-        Cell<C>: Simplex<C>,
-        Face<F>: Simplex<F>,
+        Cell<C>: Simplex<C, O>,
+        Face<F>: Simplex<F, O>,
     {
         let n = mesh.n_elems();
 
@@ -424,11 +436,14 @@ impl Cells {
         let data = (0..n).map(|i| (C * (i + 1)) as i64);
         let offsets = DataArray::new_i64("offsets", 1, data.len(), data, encoding);
 
-        let cell_type: u8 = match C {
-            4 => 10,
-            3 => 5,
-            2 => 4,
-            _ => unreachable!(),
+        let cell_type: u8 = match O {
+            1 => match C {
+                4 => 10,
+                3 => 5,
+                2 => 4,
+                _ => unreachable!(),
+            },
+            _ => unimplemented!(),
         };
 
         let data = (0..n).map(|_i| cell_type);

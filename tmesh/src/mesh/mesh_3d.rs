@@ -7,7 +7,14 @@ use crate::{
 /// Create a `Mesh<3, 4, 3>` of a `lx` by `ly` by `lz` box by splitting a `nx` by `ny` by `nz`
 /// uniform structured grid
 #[must_use]
-pub fn box_mesh<M: Mesh<3, 4, 3>>(lx: f64, nx: usize, ly: f64, ny: usize, lz: f64, nz: usize) -> M {
+pub fn box_mesh<M: Mesh<3, 4, 3, 1>>(
+    lx: f64,
+    nx: usize,
+    ly: f64,
+    ny: usize,
+    lz: f64,
+    nz: usize,
+) -> M {
     let dx = lx / (nx as f64 - 1.);
     let x_1d = (0..nx).map(|i| i as f64 * dx).collect::<Vec<_>>();
 
@@ -22,7 +29,7 @@ pub fn box_mesh<M: Mesh<3, 4, 3>>(lx: f64, nx: usize, ly: f64, ny: usize, lz: f6
 
 /// Create a `Mesh<2, 3, 2>` of box by splitting a structured grid`
 #[must_use]
-pub fn nonuniform_box_mesh<M: Mesh<3, 4, 3>>(x: &[f64], y: &[f64], z: &[f64]) -> M {
+pub fn nonuniform_box_mesh<M: Mesh<3, 4, 3, 1>>(x: &[f64], y: &[f64], z: &[f64]) -> M {
     let nx = x.len();
     let ny = y.len();
     let nz = z.len();
@@ -136,15 +143,15 @@ pub fn nonuniform_box_mesh<M: Mesh<3, 4, 3>>(x: &[f64], y: &[f64], z: &[f64]) ->
 }
 
 /// Tetrahedron mesh in 3d
-pub type Mesh3d = GenericMesh<3, 4, 3>;
+pub type Mesh3d = GenericMesh<3, 4, 3, 1>;
 
 #[cfg(test)]
 mod tests {
     use crate::{
         Vert3d, assert_delta,
         mesh::{
-            BoundaryMesh3d, LinearSimplex, Mesh, Mesh3d, MutMesh, Simplex, Tetrahedron, Triangle,
-            bandwidth, box_mesh, cell_center,
+            BoundaryMesh3d, Mesh, Mesh3d, MutMesh, Simplex, Tetrahedron, Triangle, bandwidth,
+            box_mesh, cell_center,
             partition::{HilbertPartitioner, KMeansPartitioner3d, RCMPartitioner},
         },
     };
@@ -365,7 +372,10 @@ mod tests {
         assert_eq!(msh.n_elems(), 6 * 8);
 
         let (bdy, _): (BoundaryMesh3d, _) = msh.boundary();
-        let area = bdy.gelems().map(|ge| Triangle::vol(&ge)).sum::<f64>();
+        let area = bdy
+            .gelems()
+            .map(|ge| <Triangle as Simplex<3, 1>>::vol(&ge))
+            .sum::<f64>();
         assert_delta!(area, 6.0, 1e-10);
 
         let vol = msh.gelems().map(|ge| Tetrahedron::vol(&ge)).sum::<f64>();

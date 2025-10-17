@@ -9,7 +9,7 @@
 use super::PolyMesh;
 use crate::{
     Error, Result, Tag, Vertex,
-    mesh::{Cell, Face, LinearSimplex, Mesh, cell_center},
+    mesh::{Cell, Face, Mesh, Simplex, cell_center},
 };
 use nalgebra::{DMatrix, DVector};
 use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
@@ -38,11 +38,11 @@ pub enum DualCellCenter<const D: usize, const F: usize> {
 /// Dual of a `Mesh<D, C, F>`
 pub trait DualMesh<const D: usize, const C: usize, const F: usize>: PolyMesh<D>
 where
-    Cell<C>: LinearSimplex<C>,
-    Cell<F>: LinearSimplex<F>,
+    Cell<C>: Simplex<C, 1>,
+    Cell<F>: Simplex<F, 1>,
 {
     /// Compute the dual of `mesh`
-    fn new<M: Mesh<D, C, F>>(msh: &M, t: DualType) -> Self;
+    fn new<M: Mesh<D, C, F, 1>>(msh: &M, t: DualType) -> Self;
 
     /// Display element `i`
     fn print_elem_info(&self, i: usize) {
@@ -151,7 +151,7 @@ where
                 }
                 self.gface(&f)
             })
-            .map(|gf| cell_center(&gf).dot(&Face::<F>::normal(&gf)))
+            .map(|gf| cell_center(&gf).dot(&Face::<F>::center_normal(&gf)))
             .sum::<f64>()
             / D as f64
     }
@@ -179,7 +179,7 @@ where
                 self.gface(&f)
             })
             .for_each(|gf| {
-                let n = Face::<F>::normal(&gf);
+                let n = Face::<F>::center_normal(&gf);
                 res.iter_mut().zip(n.iter()).for_each(|(x, y)| *x += y);
             });
         res.iter().map(|x| x.abs()).sum::<f64>() < 1e-10
@@ -282,13 +282,13 @@ where
     }
 
     /// Return a `Mesh<D, C2, F2>` containing the faces such that `filter(tag)` is true.
-    fn extract_faces<const C2: usize, const F2: usize, M: Mesh<D, C2, F2>, G: Fn(Tag) -> bool>(
+    fn extract_faces<const C2: usize, const F2: usize, M: Mesh<D, C2, F2, 1>, G: Fn(Tag) -> bool>(
         &self,
         filter: G,
     ) -> (M, Vec<usize>)
     where
-        Cell<C2>: LinearSimplex<C2>,
-        Cell<F2>: LinearSimplex<F2>,
+        Cell<C2>: Simplex<C2, 1>,
+        Cell<F2>: Simplex<F2, 1>,
     {
         assert_eq!(C2, C - 1);
         assert_eq!(F2, F - 1);
@@ -337,10 +337,10 @@ where
     }
 
     /// Return a `Mesh<D, C2, F2>` containing all the boundary faces.
-    fn boundary<const C2: usize, const F2: usize, M: Mesh<D, C2, F2>>(&self) -> (M, Vec<usize>)
+    fn boundary<const C2: usize, const F2: usize, M: Mesh<D, C2, F2, 1>>(&self) -> (M, Vec<usize>)
     where
-        Cell<C2>: LinearSimplex<C2>,
-        Cell<F2>: LinearSimplex<F2>,
+        Cell<C2>: Simplex<C2, 1>,
+        Cell<F2>: Simplex<F2, 1>,
     {
         self.extract_faces(|t| t > 0)
     }

@@ -34,7 +34,7 @@ where
 /// Implement Mesh for simple meshes made of Vec of Vertex, Cell and Faces
 macro_rules! impl_mesh {
     ($name: ident, $dim: expr, $cell_dim: expr, $face_dim: expr) => {
-        impl Mesh<$dim, $cell_dim, $face_dim> for SimplexMesh<$dim, $name> {
+        impl Mesh<$dim, $cell_dim, $face_dim, 1> for SimplexMesh<$dim, $name> {
             fn empty() -> Self {
                 Self::empty()
             }
@@ -235,7 +235,7 @@ macro_rules! impl_mesh {
             }
 
             fn boundary_flag(&self) -> Vec<bool> {
-                <Self as Mesh<$dim, $cell_dim, $face_dim>>::boundary_flag(self)
+                <Self as Mesh<$dim, $cell_dim, $face_dim, 1>>::boundary_flag(self)
             }
 
             fn extract_tags<G: Fn(Tag) -> bool>(&self, filter: G) -> SubSimplexMesh<$dim, $name> {
@@ -254,11 +254,11 @@ macro_rules! impl_mesh {
 
             fn check_simple(&self) -> Result<()> {
                 let all_faces = self.all_faces();
-                <Self as Mesh<$dim, $cell_dim, $face_dim>>::check(self, &all_faces)
+                <Self as Mesh<$dim, $cell_dim, $face_dim, 1>>::check(self, &all_faces)
             }
 
             fn remove_faces<F1: FnMut(Tag) -> bool>(&mut self, face_filter: F1) {
-                <Self as Mesh<$dim, $cell_dim, $face_dim>>::remove_faces(self, face_filter);
+                <Self as Mesh<$dim, $cell_dim, $face_dim, 1>>::remove_faces(self, face_filter);
             }
 
             fn add<F1, F2>(
@@ -272,7 +272,7 @@ macro_rules! impl_mesh {
                 F1: FnMut(Tag) -> bool,
                 F2: FnMut(Tag) -> bool,
             {
-                <Self as Mesh<$dim, $cell_dim, $face_dim>>::add(
+                <Self as Mesh<$dim, $cell_dim, $face_dim, 1>>::add(
                     self,
                     other,
                     elem_filter,

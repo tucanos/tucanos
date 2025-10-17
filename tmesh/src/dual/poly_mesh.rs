@@ -359,10 +359,10 @@ impl<const D: usize> SimplePolyMesh<D> {
     }
 
     /// PolyMesh representation of a `Mesh<D, C, F>`
-    pub fn from_mesh<const C: usize, const F: usize, M: Mesh<D, C, F>>(mesh: &M) -> Self
+    pub fn from_mesh<const C: usize, const F: usize, M: Mesh<D, C, F, 1>>(mesh: &M) -> Self
     where
-        Cell<C>: Simplex<C>,
-        Face<F>: Simplex<F>,
+        Cell<C>: Simplex<C, 1>,
+        Face<F>: Simplex<F, 1>,
     {
         let poly_type = match C {
             4 => PolyMeshType::Polyhedra,

@@ -7,7 +7,7 @@ use crate::{
 /// Create a `Mesh<2, 3, 2>` of a `lx` by `ly` rectangle by splitting a `nx` by `ny`
 /// uniform structured grid
 #[must_use]
-pub fn rectangle_mesh<M: Mesh<2, 3, 2>>(lx: f64, nx: usize, ly: f64, ny: usize) -> M {
+pub fn rectangle_mesh<M: Mesh<2, 3, 2, 1>>(lx: f64, nx: usize, ly: f64, ny: usize) -> M {
     let dx = lx / (nx as f64 - 1.);
     let x_1d = (0..nx).map(|i| i as f64 * dx).collect::<Vec<_>>();
 
@@ -19,7 +19,7 @@ pub fn rectangle_mesh<M: Mesh<2, 3, 2>>(lx: f64, nx: usize, ly: f64, ny: usize) 
 
 /// Create a `Mesh<2, 3, 2>` of rectangle by splitting a structured grid
 #[must_use]
-pub fn nonuniform_rectangle_mesh<M: Mesh<2, 3, 2>>(x: &[f64], y: &[f64]) -> M {
+pub fn nonuniform_rectangle_mesh<M: Mesh<2, 3, 2, 1>>(x: &[f64], y: &[f64]) -> M {
     let nx = x.len();
     let ny = y.len();
 
@@ -68,15 +68,15 @@ pub fn nonuniform_rectangle_mesh<M: Mesh<2, 3, 2>>(x: &[f64], y: &[f64]) -> M {
 }
 
 /// Triangle mesh in 2d
-pub type Mesh2d = GenericMesh<2, 3, 2>;
+pub type Mesh2d = GenericMesh<2, 3, 2, 1>;
 
 #[cfg(test)]
 mod tests {
     use crate::{
         Vert2d, assert_delta,
         mesh::{
-            BoundaryMesh2d, Edge, LinearSimplex, Mesh, Mesh2d, Simplex, Triangle, bandwidth,
-            cell_center, rectangle_mesh,
+            BoundaryMesh2d, Edge, Mesh, Mesh2d, Simplex, Triangle, bandwidth, cell_center,
+            rectangle_mesh,
         },
     };
     use rayon::iter::ParallelIterator;
@@ -135,7 +135,10 @@ mod tests {
         let edgs = msh.edges();
         assert_eq!(edgs.len(), 9 * 15 + 10 * 14 + 9 * 14);
 
-        let vol = msh.gelems().map(|ge| Triangle::vol(&ge)).sum::<f64>();
+        let vol = msh
+            .gelems()
+            .map(|ge| <Triangle as Simplex<3, 1>>::vol(&ge))
+            .sum::<f64>();
         assert!((vol - 2.0).abs() < 1e-10);
     }
 
@@ -162,13 +165,16 @@ mod tests {
         let v1 = Vert2d::new(1.0, 0.0);
         let v2 = Vert2d::new(0.0, 1.0);
         let ge = [v0, v1, v2];
-        assert_delta!(Triangle::vol(&ge), 0.5, 1e-12);
+        assert_delta!(<Triangle as Simplex<3, 1>>::vol(&ge), 0.5, 1e-12);
         let ge = [v0, v2, v1];
-        assert_delta!(Triangle::vol(&ge), -0.5, 1e-12);
+        assert_delta!(<Triangle as Simplex<3, 1>>::vol(&ge), -0.5, 1e-12);
 
         let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 2.0, 15).random_shuffle();
 
-        let vol = msh.par_gelems().map(|ge| Triangle::vol(&ge)).sum::<f64>();
+        let vol = msh
+            .par_gelems()
+            .map(|ge| <Triangle as Simplex<3, 1>>::vol(&ge))
+            .sum::<f64>();
         assert_delta!(vol, 2.0, 1e-12);
 
         let f = msh.par_verts().map(|v| v[0]).collect::<Vec<_>>();
@@ -252,7 +258,10 @@ mod tests {
         let area = bdy.gelems().map(|ge| Edge::vol(&ge)).sum::<f64>();
         assert_delta!(area, 4.0, 1e-10);
 
-        let vol = msh.gelems().map(|ge| Triangle::vol(&ge)).sum::<f64>();
+        let vol = msh
+            .gelems()
+            .map(|ge| <Triangle as Simplex<3, 1>>::vol(&ge))
+            .sum::<f64>();
         assert_delta!(vol, 1.0, 1e-10);
     }
 
@@ -285,7 +294,7 @@ mod tests {
 
         let count = mesh
             .gelems()
-            .map(|ge| Triangle::gamma(&ge))
+            .map(|ge| <Triangle as Simplex<3, 1>>::gamma(&ge))
             .map(|s| assert!((s - 0.8284).abs() < 1e-4))
             .count();
         assert_eq!(count, 8);

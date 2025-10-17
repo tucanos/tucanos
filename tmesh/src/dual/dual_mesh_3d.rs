@@ -3,8 +3,7 @@ use super::{DualCellCenter, DualMesh, DualType, PolyMesh, PolyMeshType, circumce
 use crate::{
     Tag, Vert3d,
     mesh::{
-        Edge, LinearSimplex, Mesh, Simplex, Tetrahedron, Triangle, cell_center, cell_vertex,
-        sort_elem_min_ids,
+        Edge, Mesh, Simplex, Tetrahedron, Triangle, cell_center, cell_vertex, sort_elem_min_ids,
     },
 };
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
@@ -115,7 +114,7 @@ impl PolyMesh<3> for DualMesh3d {
 
 impl DualMesh<3, 4, 3> for DualMesh3d {
     #[allow(clippy::too_many_lines)]
-    fn new<M: Mesh<3, 4, 3>>(msh: &M, t: DualType) -> Self {
+    fn new<M: Mesh<3, 4, 3, 1>>(msh: &M, t: DualType) -> Self {
         // edges
         let all_edges = msh.edges();
         let n_edges = all_edges.len();
@@ -179,7 +178,8 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
                     verts.push(center);
                 }
                 DualCellCenter::Face([i0, i1, i2]) => {
-                    let face = [e[i0], e[i1], e[i2]].sorted();
+                    let face = [e[i0], e[i1], e[i2]];
+                    let face = <Triangle as Simplex<3, 1>>::sorted(&face);
                     let i_face = all_faces.get(&face).unwrap()[0];
                     vert_idx_elem[i_elem] = vert_idx_face[i_face];
                 }
@@ -187,8 +187,8 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
         }
 
         // faces and polyhedra
-        let elem_to_edges = Tetrahedron::edges();
-        let face_to_edges = Triangle::edges();
+        let elem_to_edges = <Tetrahedron as Simplex<4, 1>>::edges();
+        let face_to_edges = <Triangle as Simplex<3, 1>>::edges();
         let elem_to_faces = M::elem_to_faces();
 
         let n_poly_faces = 12 * msh.n_elems() + 6 * msh.n_faces();
@@ -226,7 +226,7 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
         for (i_elem, e) in msh.elems().enumerate() {
             for f in &elem_to_faces {
                 let f = [e[f[0]], e[f[1]], e[f[2]]];
-                let tmp = f.sorted();
+                let tmp = <Triangle as Simplex<3, 1>>::sorted(&f);
                 let i_face = all_faces.get(&tmp).unwrap()[0];
                 for edg in &face_to_edges {
                     let edg = [f[edg[0]], f[edg[1]]];
@@ -247,10 +247,11 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
                         n_empty_faces += 1;
                     } else {
                         let gf = [verts[face[0]], verts[face[1]], verts[face[2]]];
-                        edge_normals[i_edge] += sgn * Triangle::normal(&gf);
+                        edge_normals[i_edge] +=
+                            sgn * <Triangle as Simplex<3, 1>>::center_normal(&gf);
 
-                        let sorted_face = face.sorted();
-                        let is_sorted = face.is_same(&sorted_face);
+                        let sorted_face = <Triangle as Simplex<3, 1>>::sorted(&face);
+                        let is_sorted = <Triangle as Simplex<3, 1>>::is_same(&face, &sorted_face);
                         let i_face = if let Some((i_face, _)) = tmp_faces.get(&sorted_face) {
                             *i_face
                         } else {
@@ -307,7 +308,7 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
         let mut bdy_faces = Vec::with_capacity(msh.n_faces() * 6);
 
         for (f, tag) in msh.faces().zip(msh.ftags()) {
-            let tmp = f.sorted();
+            let tmp = <Triangle as Simplex<3, 1>>::sorted(&f);
             let i_face = all_faces.get(&tmp).unwrap()[0];
             for edg in &face_to_edges {
                 let edg = [f[edg[0]], f[edg[1]]];
@@ -324,10 +325,10 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
                     n_empty_faces += 1;
                 } else {
                     let gf = [verts[face[0]], verts[face[1]], verts[face[2]]];
-                    bdy_faces.push((edg[0], tag, Triangle::normal(&gf)));
+                    bdy_faces.push((edg[0], tag, <Triangle as Simplex<3, 1>>::center_normal(&gf)));
 
-                    let sorted_face = face.sorted();
-                    let is_sorted = face.is_same(&sorted_face);
+                    let sorted_face = <Triangle as Simplex<3, 1>>::sorted(&face);
+                    let is_sorted = <Triangle as Simplex<3, 1>>::is_same(&face, &sorted_face);
                     let i_face = if let Some((i_face, _)) = tmp_faces.get(&sorted_face) {
                         *i_face
                     } else {
@@ -361,10 +362,10 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
                     n_empty_faces += 1;
                 } else {
                     let gf = [verts[face[0]], verts[face[1]], verts[face[2]]];
-                    bdy_faces.push((edg[0], tag, Triangle::normal(&gf)));
+                    bdy_faces.push((edg[0], tag, <Triangle as Simplex<3, 1>>::center_normal(&gf)));
 
-                    let sorted_face = face.sorted();
-                    let is_sorted = face.is_same(&sorted_face);
+                    let sorted_face = <Triangle as Simplex<3, 1>>::sorted(&face);
+                    let is_sorted = <Triangle as Simplex<3, 1>>::is_same(&face, &sorted_face);
                     let i_face = if let Some((i_face, _)) = tmp_faces.get(&sorted_face) {
                         *i_face
                     } else {
