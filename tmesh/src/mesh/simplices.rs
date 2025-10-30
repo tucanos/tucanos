@@ -1,55 +1,74 @@
 //! Simplex elements
-use super::{Cell, Edge, Face, Node, Tetrahedron, Triangle, twovec};
+use super::{Edge, Node, Tetrahedron, Triangle, twovec};
 use crate::Vertex;
+use crate::mesh::GNode;
 use nalgebra::{SMatrix, SVector};
 use rustc_hash::FxHashMap;
+use std::array::IntoIter;
+use std::fmt::Debug;
+use std::ops::{Index, IndexMut};
+
+pub trait Cell:
+    Sized
+    + Index<usize, Output = usize>
+    + IndexMut<usize, Output = usize>
+    + IntoIterator<Item = usize>
+    + Default
+    + Debug
+    + Send
+    + Sync
+    + Copy
+    + Clone
+{
+    type GEOM<const D: usize>: GCell<D>;
+    fn from_slice(s: &[usize]) -> Self;
+    fn from_iter<I: Iterator<Item = usize>>(iter: I) -> Self;
+    fn to_slice(&self) -> &[usize];
+    fn contains(&self, i: usize) -> bool;
+}
+
+pub trait GCell<const D: usize>:
+    Sized
+    + Index<usize, Output = Vertex<D>>
+    + IntoIterator<Item = Vertex<D>>
+    + Default
+    + Debug
+    + Send
+    + Sync
+    + Copy
+    + Clone
+{
+    fn from_slice(s: &[Vertex<D>]) -> Self;
+    fn to_slice(&self) -> &[Vertex<D>];
+}
 
 /// Simplex elements
-pub trait Simplex<const C: usize>: Sized {
-    /// Get the dimension
-    #[must_use]
-    fn dim() -> usize {
-        C - 1
-    }
-
-    /// Get the number of edges
-    #[must_use]
-    fn n_edges() -> usize {
-        C * (C - 1) / 2
-    }
-
-    /// Get the number of faces
-    #[must_use]
-    fn n_faces() -> usize {
-        C
-    }
-
-    /// Get the edges for the simplex `(0, .., C-1)`
-    fn edges() -> Vec<Edge>;
+pub trait Simplex: Cell
+where
+    <Self as Simplex>::FACE: 'static,
+{
+    type FACE: Simplex;
+    const DIM: usize;
+    const N_EDGES: usize;
+    const N_FACES: usize;
+    const EDGES: &'static [Edge];
+    const FACES: &'static [Self::FACE];
 
     /// Get the i-th edge for the current simplex
-    fn edge(&self, i: usize) -> Edge;
-
-    /// Get the faces for the simplex `(0, .., C-1)`
-    fn faces<const F: usize>() -> Vec<Face<F>>;
+    fn edge(&self, i: usize) -> Edge {
+        Edge::from_iter(Self::EDGES[i].into_iter().map(|j| self[j]))
+    }
 
     /// Get the i-th face for the current simplex
-    fn face<const F: usize>(&self, i: usize) -> Face<F>;
-
-    /// Get the volume of a simplex
-    fn vol<const D: usize>(v: &[Vertex<D>; C]) -> f64;
+    fn face<const F: usize>(&self, i: usize) -> Self::FACE {
+        Self::FACE::from_iter(Self::FACES[i].into_iter().map(|j| self[j]))
+    }
 
     /// Check if a normal can be computed in D dimensions
     #[must_use]
     fn has_normal<const D: usize>() -> bool {
-        D == C
+        D == Self::DIM + 1
     }
-
-    /// Normal to the vertex
-    fn normal<const D: usize>(v: &[Vertex<D>; C]) -> Vertex<D>;
-
-    /// Radius (=diameter of the inner circle / sphere)
-    fn radius<const D: usize>(v: &[Vertex<D>; C]) -> f64;
 
     /// Get a quadrature (weights and points)
     fn quadrature() -> (Vec<f64>, Vec<Vec<f64>>);
@@ -63,26 +82,39 @@ pub trait Simplex<const C: usize>: Sized {
 
     /// Invert the element
     fn invert(&mut self);
+}
+
+pub trait GSimplex<const D: usize>: GCell<D> {
+    type BCOORDS: IntoIterator<Item = f64> + Debug + Clone + Copy;
+
+    /// Get the volume of a simplex
+    fn vol(&self) -> f64;
+    /// Normal to the vertex
+    fn normal(&self) -> Vertex<D>;
+
+    /// Radius (=diameter of the inner circle / sphere)
+    fn radius(&self) -> f64;
 
     /// Barycentric coordinates
-    fn bcoords<const D: usize>(ge: &[Vertex<D>; C], v: &Vertex<D>) -> [f64; C];
+    fn bcoords(&self, v: &Vertex<D>) -> Self::BCOORDS;
 
     /// Vertex from barycentric coordinates
-    fn vert<const D: usize>(ge: &[Vertex<D>; C], bcoords: [f64; C]) -> Vertex<D>;
+    fn vert(&self, bcoords: &Self::BCOORDS) -> Vertex<D>;
 
     /// Gamma quality measure, ratio of inscribed radius to circumradius
     /// normalized to be between 0 and 1
-    fn gamma<const D: usize>(ge: &[Vertex<D>; C]) -> f64;
+    fn gamma(&self) -> f64;
 
     /// Project a point on the simplex
-    fn project<const D: usize>(ge: &[Vertex<D>; C], v: &Vertex<D>) -> Vertex<D>;
+    fn project(&self, v: &Vertex<D>) -> Vertex<D>;
 
     /// Try to project a point inside the simplex
     #[must_use]
-    fn project_inside<const D: usize>(ge: &[Vertex<D>; C], v: &Vertex<D>) -> Option<Vertex<D>> {
-        let bcoords = Self::bcoords(ge, v);
-        if bcoords.iter().copied().all(|x| x > 0.0) {
-            Some(Self::vert(ge, bcoords))
+    fn project_inside(&self, v: &Vertex<D>) -> Option<Vertex<D>> {
+        let bcoords = self.bcoords(v);
+        let p = self.vert(&bcoords);
+        if bcoords.into_iter().all(|x| x > 0.0) {
+            Some(p)
         } else {
             None
         }
@@ -90,100 +122,102 @@ pub trait Simplex<const C: usize>: Sized {
 
     /// Distance from a point to the simplex
     #[must_use]
-    fn distance<const D: usize>(ge: &[Vertex<D>; C], v: &Vertex<D>) -> f64 {
-        let pt = Self::project::<D>(ge, v);
+    fn distance(&self, v: &Vertex<D>) -> f64 {
+        let pt = self.project(v);
         (v - pt).norm()
     }
 }
 
-impl Simplex<0> for [usize; 0] {
-    fn edges() -> Vec<Edge> {
-        unreachable!()
-    }
+const NODE2EDGES: [Edge; 0] = [];
+const NODE2FACES: [Node; 1] = [Node([0])];
 
-    fn edge(&self, _i: usize) -> Edge {
-        unreachable!()
-    }
+impl Index<usize> for Node {
+    type Output = usize;
 
-    fn faces<const F: usize>() -> Vec<Face<F>> {
-        unreachable!()
-    }
-
-    fn face<const F: usize>(&self, _i: usize) -> Face<F> {
-        unreachable!()
-    }
-
-    fn vol<const D: usize>(_v: &[Vertex<D>; 0]) -> f64 {
-        unreachable!()
-    }
-
-    fn normal<const D: usize>(_v: &[Vertex<D>; 0]) -> Vertex<D> {
-        unreachable!()
-    }
-
-    fn radius<const D: usize>(_v: &[Vertex<D>; 0]) -> f64 {
-        unreachable!()
-    }
-
-    fn quadrature() -> (Vec<f64>, Vec<Vec<f64>>) {
-        unreachable!()
-    }
-
-    fn sorted(&self) -> Self {
-        unreachable!()
-    }
-
-    fn is_same(&self, _other: &Self) -> bool {
-        unreachable!()
-    }
-
-    fn invert(&mut self) {}
-
-    fn bcoords<const D: usize>(_ge: &[Vertex<D>; 0], _v: &Vertex<D>) -> [f64; 0] {
-        unreachable!()
-    }
-
-    fn vert<const D: usize>(_ge: &[Vertex<D>; 0], _bcoords: [f64; 0]) -> Vertex<D> {
-        unreachable!()
-    }
-
-    fn gamma<const D: usize>(_ge: &[Vertex<D>; 0]) -> f64 {
-        unreachable!()
-    }
-
-    fn project<const D: usize>(_ge: &[Vertex<D>; 0], _v: &Vertex<D>) -> Vertex<D> {
-        unreachable!()
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
     }
 }
 
-impl Simplex<1> for Node {
-    fn edges() -> Vec<Edge> {
-        unreachable!()
+impl IndexMut<usize> for Node {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.0[index]
+    }
+}
+
+impl IntoIterator for Node {
+    type Item = usize;
+    type IntoIter = IntoIter<usize, 1>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<const D: usize> Index<usize> for GNode<D> {
+    type Output = Vertex<D>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
+impl<const D: usize> IndexMut<usize> for GNode<D> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.0[index]
+    }
+}
+
+impl<const D: usize> IntoIterator for GNode<D> {
+    type Item = Vertex<D>;
+    type IntoIter = IntoIter<Vertex<D>, 1>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl Cell for Node {
+    type GEOM<const D: usize> = GNode<D>;
+
+    fn from_slice(s: &[usize]) -> Self {
+        Self(s.try_into().unwrap())
     }
 
-    fn edge(&self, _i: usize) -> Edge {
-        unreachable!()
+    fn from_iter<I: Iterator<Item = usize>>(iter: I) -> Self {
+        let mut res = Self::default();
+        for (i, j) in iter.enumerate() {
+            res.0[i] = j;
+        }
+        res
     }
 
-    fn faces<const F: usize>() -> Vec<Face<F>> {
-        unreachable!()
+    fn to_slice(&self) -> &[usize] {
+        &self.0
     }
 
-    fn face<const F: usize>(&self, _i: usize) -> Face<F> {
-        unreachable!()
+    fn contains(&self, i: usize) -> bool {
+        self.0.contains(&i)
+    }
+}
+
+impl<const D: usize> GCell<D> for GNode<D> {
+    fn from_slice(s: &[Vertex<D>]) -> Self {
+        Self(s.try_into().unwrap())
     }
 
-    fn vol<const D: usize>(_v: &[Vertex<D>; 1]) -> f64 {
-        unreachable!()
+    fn to_slice(&self) -> &[Vertex<D>] {
+        &self.0
     }
+}
 
-    fn normal<const D: usize>(_v: &[Vertex<D>; 1]) -> Vertex<D> {
-        unreachable!()
-    }
-
-    fn radius<const D: usize>(_v: &[Vertex<D>; 1]) -> f64 {
-        unreachable!()
-    }
+impl Simplex for Node {
+    type FACE = Node;
+    const DIM: usize = 0;
+    const N_EDGES: usize = 0;
+    const N_FACES: usize = 1;
+    const EDGES: &'static [Edge] = &NODE2EDGES;
+    const FACES: &'static [Self::FACE] = &NODE2FACES;
 
     fn quadrature() -> (Vec<f64>, Vec<Vec<f64>>) {
         unreachable!()
@@ -198,21 +232,37 @@ impl Simplex<1> for Node {
     }
 
     fn invert(&mut self) {}
+}
 
-    fn bcoords<const D: usize>(_ge: &[Vertex<D>; 1], _v: &Vertex<D>) -> [f64; 1] {
+impl<const D: usize> GSimplex<D> for GNode<D> {
+    type BCOORDS = [f64; 1];
+
+    fn vol(&self) -> f64 {
         unreachable!()
     }
 
-    fn vert<const D: usize>(_ge: &[Vertex<D>; 1], _bcoords: [f64; 1]) -> Vertex<D> {
+    fn normal(&self) -> Vertex<D> {
         unreachable!()
     }
 
-    fn gamma<const D: usize>(_ge: &[Vertex<D>; 1]) -> f64 {
-        1.0
+    fn radius(&self) -> f64 {
+        unreachable!()
     }
 
-    fn project<const D: usize>(ge: &[Vertex<D>; 1], _v: &Vertex<D>) -> Vertex<D> {
-        ge[0]
+    fn bcoords(&self, _v: &Vertex<D>) -> Self::BCOORDS {
+        unreachable!()
+    }
+
+    fn vert(&self, _bcoords: &Self::BCOORDS) -> Vertex<D> {
+        unreachable!()
+    }
+
+    fn gamma(&self) -> f64 {
+        unreachable!()
+    }
+
+    fn project(&self, _v: &Vertex<D>) -> Vertex<D> {
+        unreachable!()
     }
 }
 

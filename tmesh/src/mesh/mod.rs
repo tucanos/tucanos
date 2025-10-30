@@ -19,28 +19,26 @@ pub mod partition;
 
 pub mod least_squares;
 
-/// Cell
-pub type Cell<const C: usize> = [usize; C];
-/// Face
-pub type Face<const F: usize> = Cell<F>;
-
 /// Hexahedron
-pub type Hexahedron = Cell<8>;
+pub struct Hexahedron([usize; 8]);
 /// Prism
-pub type Prism = Cell<6>;
+pub struct Prism([usize; 6]);
 /// Pyramid
-pub type Pyramid = Cell<5>;
+pub struct Pyramid([usize; 5]);
 /// Quadrangle
-pub type Quadrangle = Cell<4>;
+pub struct Quadrangle([usize; 4]);
 
 /// Tetrahedron
-pub type Tetrahedron = Cell<4>;
+pub struct Tetrahedron([usize; 4]);
 /// Triangle
-pub type Triangle = Cell<3>;
+pub struct Triangle([usize; 3]);
 /// Edge
-pub type Edge = Cell<2>;
+pub struct Edge([usize; 2]);
 /// Node
-pub type Node = Cell<1>;
+#[derive(Default, Debug, Clone, Copy)]
+pub struct Node([usize; 1]);
+#[derive(Default, Debug, Clone, Copy)]
+pub struct GNode<const D: usize>([Vertex<D>; 1]);
 
 pub use boundary_mesh_2d::BoundaryMesh2d;
 pub use boundary_mesh_3d::{BoundaryMesh3d, read_stl};
