@@ -10,7 +10,11 @@ use pyo3::{
     pyclass, pymethods,
     types::PyType,
 };
-use tmesh::{Tag, Vert3d, extruded::ExtrudedMesh2d};
+use tmesh::{
+    Tag, Vert3d,
+    extruded::ExtrudedMesh2d,
+    mesh::{Prism, Quadrangle, Triangle},
+};
 
 /// Extruded 2d mesh
 #[pyclass]
@@ -68,13 +72,31 @@ impl PyExtrudedMesh2d {
             .collect();
 
         let prisms = prisms.as_slice()?;
-        let prisms = prisms.chunks(6).map(|x| x.try_into().unwrap()).collect();
+        let prisms = prisms
+            .chunks(6)
+            .map(|x| {
+                let pri: [usize; 6] = x.try_into().unwrap();
+                Prism::from(pri)
+            })
+            .collect();
 
         let tris = tris.as_slice()?;
-        let tris = tris.chunks(3).map(|x| x.try_into().unwrap()).collect();
+        let tris = tris
+            .chunks(3)
+            .map(|x| {
+                let tri: [usize; 3] = x.try_into().unwrap();
+                Triangle::from(tri)
+            })
+            .collect();
 
         let quads = quads.as_slice()?;
-        let quads = quads.chunks(4).map(|x| x.try_into().unwrap()).collect();
+        let quads = quads
+            .chunks(4)
+            .map(|x| {
+                let quad: [usize; 4] = x.try_into().unwrap();
+                Quadrangle::from(quad)
+            })
+            .collect();
 
         Ok(Self(ExtrudedMesh2d::new(
             coords,
@@ -125,7 +147,7 @@ impl PyExtrudedMesh2d {
 
     /// Get a copy of the prisms
     fn get_prisms<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<usize>>> {
-        PyArray::from_vec(py, self.0.prisms().flatten().copied().collect())
+        PyArray::from_vec(py, self.0.prisms().copied().flatten().collect())
             .reshape([self.0.n_prisms(), 6])
     }
 
@@ -141,7 +163,7 @@ impl PyExtrudedMesh2d {
 
     /// Get a copy of the triangles
     fn get_tris<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<usize>>> {
-        PyArray::from_vec(py, self.0.tris().flatten().copied().collect())
+        PyArray::from_vec(py, self.0.tris().copied().flatten().collect())
             .reshape([self.0.n_tris(), 3])
     }
 
@@ -157,7 +179,7 @@ impl PyExtrudedMesh2d {
 
     /// Get a copy of the quandrangles
     fn get_quads<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<usize>>> {
-        PyArray::from_vec(py, self.0.quads().flatten().copied().collect())
+        PyArray::from_vec(py, self.0.quads().copied().flatten().collect())
             .reshape([self.0.n_quads(), 4])
     }
 
