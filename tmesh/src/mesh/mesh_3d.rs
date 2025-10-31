@@ -1,13 +1,20 @@
 //! Tetrahedron meshes in 3d
 use crate::{
     Vert3d,
-    mesh::{GenericMesh, Mesh},
+    mesh::{GenericMesh, Hexahedron, Mesh, Quadrangle, Tetrahedron},
 };
 
 /// Create a `Mesh<3, 4, 3>` of a `lx` by `ly` by `lz` box by splitting a `nx` by `ny` by `nz`
 /// uniform structured grid
 #[must_use]
-pub fn box_mesh<M: Mesh<3, 4, 3>>(lx: f64, nx: usize, ly: f64, ny: usize, lz: f64, nz: usize) -> M {
+pub fn box_mesh<M: Mesh<3, Tetrahedron>>(
+    lx: f64,
+    nx: usize,
+    ly: f64,
+    ny: usize,
+    lz: f64,
+    nz: usize,
+) -> M {
     let dx = lx / (nx as f64 - 1.);
     let x_1d = (0..nx).map(|i| i as f64 * dx).collect::<Vec<_>>();
 
@@ -22,7 +29,7 @@ pub fn box_mesh<M: Mesh<3, 4, 3>>(lx: f64, nx: usize, ly: f64, ny: usize, lz: f6
 
 /// Create a `Mesh<2, 3, 2>` of box by splitting a structured grid`
 #[must_use]
-pub fn nonuniform_box_mesh<M: Mesh<3, 4, 3>>(x: &[f64], y: &[f64], z: &[f64]) -> M {
+pub fn nonuniform_box_mesh<M: Mesh<3, Tetrahedron>>(x: &[f64], y: &[f64], z: &[f64]) -> M {
     let nx = x.len();
     let ny = y.len();
     let nz = z.len();
@@ -43,7 +50,7 @@ pub fn nonuniform_box_mesh<M: Mesh<3, 4, 3>>(x: &[f64], y: &[f64], z: &[f64]) ->
     for i in 0..nx - 1 {
         for j in 0..ny - 1 {
             for k in 0..nz - 1 {
-                hexas.push([
+                hexas.push(Hexahedron([
                     idx(i, j, k),
                     idx(i + 1, j, k),
                     idx(i + 1, j + 1, k),
@@ -52,7 +59,7 @@ pub fn nonuniform_box_mesh<M: Mesh<3, 4, 3>>(x: &[f64], y: &[f64], z: &[f64]) ->
                     idx(i + 1, j, k + 1),
                     idx(i + 1, j + 1, k + 1),
                     idx(i, j + 1, k + 1),
-                ]);
+                ]));
                 etags.push(1);
             }
         }
@@ -66,20 +73,20 @@ pub fn nonuniform_box_mesh<M: Mesh<3, 4, 3>>(x: &[f64], y: &[f64], z: &[f64]) ->
     for i in 0..nx - 1 {
         for j in 0..ny - 1 {
             let k = 0;
-            quads.push([
+            quads.push(Quadrangle([
                 idx(i, j, k),
                 idx(i, j + 1, k),
                 idx(i + 1, j + 1, k),
                 idx(i + 1, j, k),
-            ]);
+            ]));
             ftags.push(1);
             let k = nz - 1;
-            quads.push([
+            quads.push(Quadrangle([
                 idx(i, j, k),
                 idx(i + 1, j, k),
                 idx(i + 1, j + 1, k),
                 idx(i, j + 1, k),
-            ]);
+            ]));
             ftags.push(2);
         }
     }
@@ -87,20 +94,20 @@ pub fn nonuniform_box_mesh<M: Mesh<3, 4, 3>>(x: &[f64], y: &[f64], z: &[f64]) ->
     for i in 0..nx - 1 {
         for k in 0..nz - 1 {
             let j = 0;
-            quads.push([
+            quads.push(Quadrangle([
                 idx(i, j, k),
                 idx(i + 1, j, k),
                 idx(i + 1, j, k + 1),
                 idx(i, j, k + 1),
-            ]);
+            ]));
             ftags.push(3);
             let j = ny - 1;
-            quads.push([
+            quads.push(Quadrangle([
                 idx(i, j, k),
                 idx(i, j, k + 1),
                 idx(i + 1, j, k + 1),
                 idx(i + 1, j, k),
-            ]);
+            ]));
             ftags.push(4);
         }
     }
@@ -108,20 +115,20 @@ pub fn nonuniform_box_mesh<M: Mesh<3, 4, 3>>(x: &[f64], y: &[f64], z: &[f64]) ->
     for j in 0..ny - 1 {
         for k in 0..nz - 1 {
             let i = 0;
-            quads.push([
+            quads.push(Quadrangle([
                 idx(i, j, k),
                 idx(i, j, k + 1),
                 idx(i, j + 1, k + 1),
                 idx(i, j + 1, k),
-            ]);
+            ]));
             ftags.push(5);
             let i = nx - 1;
-            quads.push([
+            quads.push(Quadrangle([
                 idx(i, j, k),
                 idx(i, j + 1, k),
                 idx(i, j + 1, k + 1),
                 idx(i, j, k + 1),
-            ]);
+            ]));
             ftags.push(6);
         }
     }
@@ -136,15 +143,14 @@ pub fn nonuniform_box_mesh<M: Mesh<3, 4, 3>>(x: &[f64], y: &[f64], z: &[f64]) ->
 }
 
 /// Tetrahedron mesh in 3d
-pub type Mesh3d = GenericMesh<3, 4, 3>;
+pub type Mesh3d = GenericMesh<3, Tetrahedron>;
 
 #[cfg(test)]
 mod tests {
     use crate::{
         Vert3d, assert_delta,
         mesh::{
-            BoundaryMesh3d, Mesh, Mesh3d, MutMesh, Simplex, Tetrahedron, Triangle, bandwidth,
-            box_mesh, cell_center,
+            BoundaryMesh3d, GSimplex, GTetrahedron, Mesh, Mesh3d, MutMesh, bandwidth, box_mesh,
             partition::{HilbertPartitioner, KMeansPartitioner3d, RCMPartitioner},
         },
     };
@@ -157,7 +163,7 @@ mod tests {
         let faces = msh.all_faces();
         msh.check(&faces).unwrap();
 
-        let vol = msh.gelems().map(|ge| Tetrahedron::vol(&ge)).sum::<f64>();
+        let vol = msh.gelems().map(|ge| ge.vol()).sum::<f64>();
         assert_delta!(vol, 1.0, 1e-12);
     }
 
@@ -184,17 +190,14 @@ mod tests {
         let v1 = Vert3d::new(1.0, 0.0, 0.0);
         let v2 = Vert3d::new(0.0, 1.0, 0.0);
         let v3 = Vert3d::new(0.0, 0.0, 1.0);
-        let ge = [v0, v1, v2, v3];
-        assert_delta!(Tetrahedron::vol(&ge), 1.0 / 6.0, 1e-12);
-        let ge = [v0, v2, v1, v3];
-        assert_delta!(Tetrahedron::vol(&ge), -1.0 / 6.0, 1e-12);
+        let ge = GTetrahedron([v0, v1, v2, v3]);
+        assert_delta!(ge.vol(), 1.0 / 6.0, 1e-12);
+        let ge = GTetrahedron([v0, v2, v1, v3]);
+        assert_delta!(ge.vol(), -1.0 / 6.0, 1e-12);
 
         let msh = box_mesh::<Mesh3d>(1.0, 10, 2.0, 15, 1.0, 20).random_shuffle();
 
-        let vol = msh
-            .par_gelems()
-            .map(|ge| Tetrahedron::vol(&ge))
-            .sum::<f64>();
+        let vol = msh.par_gelems().map(|ge| ge.vol()).sum::<f64>();
         assert_delta!(vol, 2.0, 1e-12);
 
         let f = msh.par_verts().map(|v| v[0]).collect::<Vec<_>>();
@@ -239,9 +242,9 @@ mod tests {
         }
 
         for (i, v) in msh_rcm.gelems().enumerate() {
-            let v = cell_center(&v);
+            let v = v.center();
             let other = msh.gelem(&msh.elem(elem_ids[i]));
-            let other = cell_center(&other);
+            let other = other.center();
             assert!((v - other).norm() < 1e-12);
         }
 
@@ -251,9 +254,9 @@ mod tests {
         }
 
         for (i, v) in msh_rcm.gfaces().enumerate() {
-            let v = cell_center(&v);
+            let v = v.center();
             let other = msh.gface(&msh.face(face_ids[i]));
-            let other = cell_center(&other);
+            let other = other.center();
             assert!((v - other).norm() < 1e-12);
         }
 
@@ -297,9 +300,9 @@ mod tests {
         }
 
         for (i, v) in msh_hilbert.gelems().enumerate() {
-            let v = cell_center(&v);
+            let v = v.center();
             let other = msh.gelem(&msh.elem(elem_ids[i]));
-            let other = cell_center(&other);
+            let other = other.center();
             assert!((v - other).norm() < 1e-12);
         }
 
@@ -309,9 +312,9 @@ mod tests {
         }
 
         for (i, v) in msh_hilbert.gfaces().enumerate() {
-            let v = cell_center(&v);
+            let v = v.center();
             let other = msh.gface(&msh.face(face_ids[i]));
-            let other = cell_center(&other);
+            let other = other.center();
             assert!((v - other).norm() < 1e-12);
         }
 
@@ -365,10 +368,10 @@ mod tests {
         assert_eq!(msh.n_elems(), 6 * 8);
 
         let (bdy, _): (BoundaryMesh3d, _) = msh.boundary();
-        let area = bdy.gelems().map(|ge| Triangle::vol(&ge)).sum::<f64>();
+        let area = bdy.gelems().map(|ge| ge.vol()).sum::<f64>();
         assert_delta!(area, 6.0, 1e-10);
 
-        let vol = msh.gelems().map(|ge| Tetrahedron::vol(&ge)).sum::<f64>();
+        let vol = msh.gelems().map(|ge| ge.vol()).sum::<f64>();
         assert_delta!(vol, 1.0, 1e-10);
     }
 

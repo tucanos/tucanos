@@ -3,7 +3,7 @@ use crate::{
     Error, Result, Tag, Vert2d, Vert3d,
     dual::{DualMesh2d, PolyMesh, PolyMeshType, SimplePolyMesh, merge_polylines},
     io::{VTUEncoding, VTUFile},
-    mesh::{Mesh, Mesh2d, Prism, Quadrangle, Triangle},
+    mesh::{Edge, Mesh, Mesh2d, Prism, Quadrangle, Triangle},
 };
 use std::iter;
 
@@ -54,11 +54,14 @@ impl ExtrudedMesh2d {
         let (i1, i2) = if h > 0.0 { (1, 2) } else { (2, 1) };
         let prisms = msh
             .elems()
-            .map(|t| [t[0], t[i1], t[i2], t[0] + n, t[i1] + n, t[i2] + n])
+            .map(|t| Prism::from([t[0], t[i1], t[i2], t[0] + n, t[i1] + n, t[i2] + n]))
             .collect();
         let tris = msh
             .elems()
-            .chain(msh.elems().map(|tri| [tri[0] + n, tri[2] + n, tri[1] + n]))
+            .chain(
+                msh.elems()
+                    .map(|tri| Triangle::from([tri[0] + n, tri[2] + n, tri[1] + n])),
+            )
             .collect();
         // Assign distinct tags to bottom and top triangles.
         let n_elems = msh.n_elems();
@@ -67,7 +70,7 @@ impl ExtrudedMesh2d {
             .collect();
         let quads = msh
             .faces()
-            .map(|edg| [edg[0], edg[1], edg[1] + n, edg[0] + n])
+            .map(|edg| Quadrangle::from([edg[0], edg[1], edg[1] + n, edg[0] + n]))
             .collect();
         Self {
             verts,
@@ -103,11 +106,15 @@ impl ExtrudedMesh2d {
         let elems = self
             .prisms
             .iter()
-            .map(|p| [p[0], p[1], p[2]])
+            .map(|p| Triangle::from([p[0], p[1], p[2]]))
             .collect::<Vec<_>>();
         let etags = self.prism_tags.clone();
 
-        let faces = self.quads.iter().map(|p| [p[0], p[1]]).collect::<Vec<_>>();
+        let faces = self
+            .quads
+            .iter()
+            .map(|p| Edge::from([p[0], p[1]]))
+            .collect::<Vec<_>>();
         let ftags = self.quad_tags.clone();
 
         let mut msh2d = Mesh2d::new(&verts, &elems, &etags, &faces, &ftags);

@@ -1,7 +1,7 @@
 //! Simplex meshes in D dimensions, represented by
 //!   - the vertices
-//!   - elements of type `Cell<C>` and element tags
-//!   - faces of type `Face<F>` and element tags
+//!   - elements of type `C` and element tags
+//!   - faces of type `C::FACE` and element tags
 //!
 //! F = C-1 cannot be imposed in rust stable
 mod boundary_mesh_2d;
@@ -19,45 +19,9 @@ pub mod partition;
 
 pub mod least_squares;
 
-/// Hexahedron
-pub struct Hexahedron([usize; 8]);
-/// Prism
-pub struct Prism([usize; 6]);
-/// Pyramid
-pub struct Pyramid([usize; 5]);
-/// Quadrangle
-pub struct Quadrangle([usize; 4]);
+use std::marker::PhantomData;
 
-/// Tetrahedron
-pub struct Tetrahedron([usize; 4]);
-/// Triangle
-pub struct Triangle([usize; 3]);
-/// Edge
-pub struct Edge([usize; 2]);
-/// Node
-#[derive(Default, Debug, Clone, Copy)]
-pub struct Node([usize; 1]);
-#[derive(Default, Debug, Clone, Copy)]
-pub struct GNode<const D: usize>([Vertex<D>; 1]);
-
-pub use boundary_mesh_2d::BoundaryMesh2d;
-pub use boundary_mesh_3d::{BoundaryMesh3d, read_stl};
-use hilbert::hilbert_indices;
-use least_squares::LeastSquaresGradient;
-pub use mesh_2d::{Mesh2d, nonuniform_rectangle_mesh, rectangle_mesh};
-pub use mesh_3d::{Mesh3d, box_mesh, nonuniform_box_mesh};
-use partition::Partitioner;
-pub use simplices::{EDGE_FACES, TETRA_FACES, TRIANGLE_FACES};
-pub use simplices::{Simplex, get_face_to_elem};
-use split::{split_edgs, split_tets, split_tris};
-pub use to_simplices::{hex2tets, pri2tets, pyr2tets, qua2tris};
-
-use crate::{
-    Error, Result, Tag, Vertex,
-    graph::CSRGraph,
-    io::{VTUEncoding, VTUFile},
-    spatialindex::PointIndex,
-};
+use derive_more::{From, Index, IndexMut, IntoIterator};
 use log::{debug, warn};
 use minimeshb::{reader::MeshbReader, writer::MeshbWriter};
 use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
@@ -66,40 +30,75 @@ use rayon::prelude::{
 };
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
-/// Compute the center of a cell
-#[must_use]
-pub fn cell_center<const D: usize, const N: usize>(v: &[Vertex<D>; N]) -> Vertex<D> {
-    let res = v.iter().copied().sum::<Vertex<D>>();
-    (1.0 / N as f64) * res
-}
+use crate::{
+    Error, Result, Tag, Vertex,
+    graph::CSRGraph,
+    io::{VTUEncoding, VTUFile},
+    spatialindex::PointIndex,
+};
+pub use boundary_mesh_2d::BoundaryMesh2d;
+pub use boundary_mesh_3d::{BoundaryMesh3d, read_stl};
+use hilbert::hilbert_indices;
+use least_squares::LeastSquaresGradient;
+pub use mesh_2d::{Mesh2d, nonuniform_rectangle_mesh, rectangle_mesh};
+pub use mesh_3d::{Mesh3d, box_mesh, nonuniform_box_mesh};
+use partition::Partitioner;
+pub use simplices::{GSimplex, Simplex, get_face_to_elem};
+use split::{split_edgs, split_tets, split_tris};
+pub use to_simplices::{hex2tets, pri2tets, pyr2tets, qua2tris};
 
-/// Compute a cell point based on its barycentric coordinates
-#[must_use]
-pub fn cell_vertex<const D: usize, const N: usize>(
-    v: &[Vertex<D>; N],
-    bcoords: [f64; N],
-) -> Vertex<D> {
-    bcoords.iter().zip(v.iter()).map(|(&w, v)| w * v).sum()
-}
+/// Hexahedron
+#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From)]
+pub struct Hexahedron([usize; 8]);
+/// Prism
+#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From)]
+pub struct Prism([usize; 6]);
+/// Pyramid
+#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From)]
+pub struct Pyramid([usize; 5]);
+/// Quadrangle
+#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From)]
+pub struct Quadrangle([usize; 4]);
 
-pub(crate) fn sort_elem_min_ids<const C: usize, I: ExactSizeIterator<Item = Cell<C>>>(
+/// Tetrahedron
+#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From)]
+pub struct Tetrahedron([usize; 4]);
+#[derive(Clone, Copy, Debug, Index, IndexMut, IntoIterator, From)]
+pub struct GTetrahedron<const D: usize>([Vertex<D>; 4]);
+/// Triangle
+#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From)]
+pub struct Triangle([usize; 3]);
+#[derive(Clone, Copy, Debug, Index, IndexMut, IntoIterator, From)]
+pub struct GTriangle<const D: usize>([Vertex<D>; 3]);
+/// Edge
+#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From)]
+pub struct Edge([usize; 2]);
+#[derive(Clone, Copy, Debug, Index, IndexMut, IntoIterator, From)]
+pub struct GEdge<const D: usize>([Vertex<D>; 2]);
+/// Node
+#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From)]
+pub struct Node([usize; 1]);
+#[derive(Clone, Copy, Debug, Index, IndexMut, IntoIterator, From)]
+pub struct GNode<const D: usize>([Vertex<D>; 1]);
+
+pub(crate) fn sort_elem_min_ids<C: Simplex, I: ExactSizeIterator<Item = C>>(
     elems: I,
 ) -> Vec<usize> {
     let n_elems = elems.len();
 
-    let min_ids = elems.map(|e| e.iter().copied().min()).collect::<Vec<_>>();
+    let min_ids = elems.map(|e| e.into_iter().min()).collect::<Vec<_>>();
     let mut indices = (0..n_elems).collect::<Vec<_>>();
     indices.sort_by_key(|&i| min_ids[i]);
     indices
 }
 
 /// Compute the maximum and average bandwidth of a connectivity
-pub fn bandwidth<const C: usize, I: ExactSizeIterator<Item = Cell<C>>>(elems: I) -> (usize, f64) {
+pub fn bandwidth<C: Simplex, I: ExactSizeIterator<Item = C>>(elems: I) -> (usize, f64) {
     let n_elems = elems.len();
 
-    let (bmax, bmean) = elems.fold((0, 0), |a, e| {
-        let max_id = e.iter().copied().max().unwrap();
-        let min_id = e.iter().copied().min().unwrap();
+    let (bmax, bmean) = elems.fold((0_usize, 0_usize), |a, e| {
+        let max_id = e.into_iter().max().unwrap();
+        let min_id = e.into_iter().min().unwrap();
         let tmp = max_id - min_id;
         (a.0.max(tmp), a.1 + tmp)
     });
@@ -107,32 +106,23 @@ pub fn bandwidth<const C: usize, I: ExactSizeIterator<Item = Cell<C>>>(elems: I)
     (bmax, bmean)
 }
 
-/// Collect elements into a fixed shape
-pub fn collect_elems<
-    'a,
-    const C0: usize,
-    const C1: usize,
-    I: ExactSizeIterator<Item = &'a Cell<C0>>,
->(
-    elems: I,
-) -> Vec<Cell<C1>> {
-    assert_eq!(C0, C1);
-    let mut res = Vec::with_capacity(elems.len());
-    let mut new = [0; C1];
-    for e in elems {
-        new.copy_from_slice(e);
-        res.push(new);
-    }
-    res
-}
+// /// Collect elements into a fixed shape
+// pub fn collect_elems<'a, C: Cell, const C1: usize, I: ExactSizeIterator<Item = &'a Cell<C0>>>(
+//     elems: I,
+// ) -> Vec<C1>> {
+//     assert_eq!(C0, C1);
+//     let mut res = Vec::with_capacity(elems.len());
+//     let mut new = [0; C1];
+//     for e in elems {
+//         new.copy_from_slice(e);
+//         res.push(new);
+//     }
+//     res
+// }
 
 /// Submesh of a `Mesh<D, C, F>`, with information about the vertices, element
 /// and face ids in the parent mesh
-pub struct SubMesh<const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>
-where
-    Cell<C>: Simplex<C>,
-    Cell<F>: Simplex<F>,
-{
+pub struct SubMesh<const D: usize, C: Simplex, M: Mesh<D, C>> {
     /// Mesh
     pub mesh: M,
     /// Indices of the vertices of `mesh` in the parent mesh
@@ -141,13 +131,10 @@ where
     pub parent_elem_ids: Vec<usize>,
     /// Indices of the faces of `mesh` in the parent mesh
     pub parent_face_ids: Vec<usize>,
+    _c: PhantomData<C>,
 }
 
-impl<const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>> SubMesh<D, C, F, M>
-where
-    Cell<C>: Simplex<C>,
-    Cell<F>: Simplex<F>,
-{
+impl<const D: usize, C: Simplex, M: Mesh<D, C>> SubMesh<D, C, M> {
     /// Extract the elements with a given tag
     pub fn new<G: Fn(Tag) -> bool>(mesh: &M, filter: G) -> Self {
         let mut res = M::empty();
@@ -158,24 +145,21 @@ where
             parent_vert_ids,
             parent_elem_ids,
             parent_face_ids,
+            _c: PhantomData::<C>,
         }
     }
 }
 
 /// D-dimensional mesh containing simplices with C nodes
 /// F = C-1 is given explicitely to be usable with rust stable
-pub trait Mesh<const D: usize, const C: usize, const F: usize>: Send + Sync + Sized
-where
-    Cell<C>: Simplex<C>,
-    Cell<F>: Simplex<F>,
-{
+pub trait Mesh<const D: usize, C: Simplex>: Send + Sync + Sized {
     /// Create a new mesh from slices of Vertex, Cell and Face
     #[must_use]
     fn new(
         verts: &[Vertex<D>],
-        elems: &[Cell<C>],
+        elems: &[C],
         etags: &[Tag],
-        faces: &[Face<F>],
+        faces: &[C::FACE],
         ftags: &[Tag],
     ) -> Self {
         let mut res = Self::empty();
@@ -183,27 +167,6 @@ where
         res.add_elems(elems.iter().copied(), etags.iter().copied());
         res.add_faces(faces.iter().copied(), ftags.iter().copied());
         res
-    }
-
-    /// Get a vector of faces ( arrays of size C - 1) of the element (0, .., C-1)
-    /// If faces can be oriented, they are oriented outwards
-    #[must_use]
-    fn elem_to_faces() -> Vec<Face<F>> {
-        match C {
-            4 => TETRA_FACES
-                .iter()
-                .map(|x| x.as_slice().try_into().unwrap())
-                .collect(),
-            3 => TRIANGLE_FACES
-                .iter()
-                .map(|x| x.as_slice().try_into().unwrap())
-                .collect(),
-            2 => EDGE_FACES
-                .iter()
-                .map(|x| x.as_slice().try_into().unwrap())
-                .collect(),
-            _ => unreachable!(),
-        }
     }
 
     /// Create an empty mesh
@@ -228,19 +191,19 @@ where
     fn n_elems(&self) -> usize;
 
     /// Get the `i`th element
-    fn elem(&self, i: usize) -> Cell<C>;
+    fn elem(&self, i: usize) -> C;
 
     /// Invert the `i`th element
     fn invert_elem(&mut self, i: usize);
 
     /// Parallel iterator over the mesh elements
-    fn par_elems(&self) -> impl IndexedParallelIterator<Item = Cell<C>> + Clone + '_;
+    fn par_elems(&self) -> impl IndexedParallelIterator<Item = C> + Clone + '_;
 
     /// Sequential iterator over the mesh elements
-    fn elems(&self) -> impl ExactSizeIterator<Item = Cell<C>> + Clone + '_;
+    fn elems(&self) -> impl ExactSizeIterator<Item = C> + Clone + '_;
 
     /// Add elements to the mesh
-    fn add_elems<I1: ExactSizeIterator<Item = Cell<C>>, I2: ExactSizeIterator<Item = Tag>>(
+    fn add_elems<I1: ExactSizeIterator<Item = C>, I2: ExactSizeIterator<Item = Tag>>(
         &mut self,
         elems: I1,
         etags: I2,
@@ -250,10 +213,7 @@ where
     fn clear_elems(&mut self);
 
     /// Add elements to the mesh
-    fn add_elems_and_tags<I: ExactSizeIterator<Item = (Cell<C>, Tag)>>(
-        &mut self,
-        elems_and_tags: I,
-    );
+    fn add_elems_and_tags<I: ExactSizeIterator<Item = (C, Tag)>>(&mut self, elems_and_tags: I);
 
     /// Get the tag of the `i`th element
     fn etag(&self, i: usize) -> Tag;
@@ -265,22 +225,22 @@ where
     fn etags(&self) -> impl ExactSizeIterator<Item = Tag> + Clone + '_;
 
     /// Get the vertices of element `e`
-    fn gelem(&self, e: &Cell<C>) -> [Vertex<D>; C] {
-        let mut res = [self.vert(0); C];
+    fn gelem(&self, e: &C) -> C::GEOM<D> {
+        let mut res = C::GEOM::default();
 
-        for (j, &k) in e.iter().enumerate() {
+        for (j, k) in e.into_iter().enumerate() {
             res[j] = self.vert(k);
         }
         res
     }
 
     /// Parallel iterator over element vertices
-    fn par_gelems(&self) -> impl IndexedParallelIterator<Item = [Vertex<D>; C]> + Clone + '_ {
+    fn par_gelems(&self) -> impl IndexedParallelIterator<Item = C::GEOM<D>> + Clone + '_ {
         self.par_elems().map(|e| self.gelem(&e))
     }
 
     /// Sequential iterator over element vertices
-    fn gelems(&self) -> impl ExactSizeIterator<Item = [Vertex<D>; C]> + Clone + '_ {
+    fn gelems(&self) -> impl ExactSizeIterator<Item = C::GEOM<D>> + Clone + '_ {
         self.elems().map(|e| self.gelem(&e))
     }
 
@@ -288,18 +248,18 @@ where
     fn n_faces(&self) -> usize;
 
     /// Get the `i`th face
-    fn face(&self, i: usize) -> Face<F>;
+    fn face(&self, i: usize) -> C::FACE;
 
     /// Invert the `i`th face
     fn invert_face(&mut self, i: usize);
 
     /// Parallel iterator over the faces
-    fn par_faces(&self) -> impl IndexedParallelIterator<Item = Face<F>> + Clone + '_;
+    fn par_faces(&self) -> impl IndexedParallelIterator<Item = C::FACE> + Clone + '_;
 
     /// Sequential itertor over the faces
-    fn faces(&self) -> impl ExactSizeIterator<Item = Face<F>> + Clone + '_;
+    fn faces(&self) -> impl ExactSizeIterator<Item = C::FACE> + Clone + '_;
     /// Add faces to the mesh
-    fn add_faces<I1: ExactSizeIterator<Item = Face<F>>, I2: ExactSizeIterator<Item = Tag>>(
+    fn add_faces<I1: ExactSizeIterator<Item = C::FACE>, I2: ExactSizeIterator<Item = Tag>>(
         &mut self,
         faces: I1,
         ftags: I2,
@@ -309,7 +269,7 @@ where
     fn clear_faces(&mut self);
 
     /// Add faces to the mesh
-    fn add_faces_and_tags<I: ExactSizeIterator<Item = (Face<F>, Tag)>>(
+    fn add_faces_and_tags<I: ExactSizeIterator<Item = (C::FACE, Tag)>>(
         &mut self,
         faces_and_tags: I,
     );
@@ -324,38 +284,37 @@ where
     fn ftags(&self) -> impl ExactSizeIterator<Item = Tag> + Clone + '_;
 
     /// Get the vertices of face `f`
-    fn gface(&self, f: &Face<F>) -> [Vertex<D>; F] {
-        let mut res = [self.vert(0); F];
-        for j in 0..F {
+    fn gface(&self, f: &C::FACE) -> <C::FACE as Simplex>::GEOM<D> {
+        let mut res = <C::FACE as Simplex>::GEOM::default();
+        for j in 0..C::FACE::N_VERTS {
             res[j] = self.vert(f[j]);
         }
         res
     }
 
     /// Parallel iterator over face vertices
-    fn par_gfaces(&self) -> impl IndexedParallelIterator<Item = [Vertex<D>; F]> + Clone + '_ {
+    fn par_gfaces(
+        &self,
+    ) -> impl IndexedParallelIterator<Item = <C::FACE as Simplex>::GEOM<D>> + Clone + '_ {
         self.par_faces().map(|f| self.gface(&f))
     }
 
     /// Sequential iterator over face vertices
-    fn gfaces(&self) -> impl ExactSizeIterator<Item = [Vertex<D>; F]> + Clone + '_ {
+    fn gfaces(&self) -> impl ExactSizeIterator<Item = <C::FACE as Simplex>::GEOM<D>> + Clone + '_ {
         self.faces().map(|f| self.gface(&f))
     }
 
     /// Compute the mesh edges
     /// a map from sorted edge `[i0, i1]` (`i0 < i1`) to the edge index is returned
     fn edges(&self) -> FxHashMap<Edge, usize> {
-        let elem_to_edges = Cell::<C>::edges();
-
         let mut res = FxHashMap::with_hasher(FxBuildHasher);
 
-        for edg in self.elems().flat_map(|e| {
-            elem_to_edges
-                .iter()
-                .map(move |&[i, j]| [e[i], e[j]].sorted())
-        }) {
-            if !res.contains_key(&edg) {
-                res.insert(edg, res.len());
+        for e in self.elems() {
+            for edg in e.edges() {
+                let edg = edg.sorted();
+                if !res.contains_key(&edg) {
+                    res.insert(edg, res.len());
+                }
             }
         }
 
@@ -370,13 +329,13 @@ where
     /// Compute the vertex-to-vertex connectivity
     fn vertex_to_vertices(&self) -> CSRGraph {
         let edges = self.edges();
-        CSRGraph::from_edges(edges.keys().copied(), Some(self.n_verts()))
+        CSRGraph::from_edges(edges.keys().map(|e| [e[0], e[1]]), Some(self.n_verts()))
     }
 
     /// Check if faces can be oriented for the current values of D and C
     #[must_use]
     fn faces_are_oriented() -> bool {
-        F == D
+        C::FACE::DIM == D
     }
 
     /// Compute all the mesh faces (boundary & internal)
@@ -384,20 +343,14 @@ where
     /// (`e0` and `e1`) is returned.
     /// If the faces can be oriented, it is oriented outwards for `e0` and inwards for `e1`
     /// If the faces only belongs to one element, `i1 = usize::MAX`
-    fn all_faces(&self) -> FxHashMap<Face<F>, [usize; 3]> {
-        let mut res: FxHashMap<Face<F>, [usize; 3]> = FxHashMap::with_hasher(FxBuildHasher);
+    fn all_faces(&self) -> FxHashMap<C::FACE, [usize; 3]> {
+        let mut res: FxHashMap<C::FACE, [usize; 3]> = FxHashMap::with_hasher(FxBuildHasher);
         let mut idx = 0;
-        let elem_to_faces = Self::elem_to_faces();
 
         for (i_elem, e) in self.elems().enumerate() {
-            for face in &elem_to_faces {
-                let mut tmp = [0; F];
-                for (i, &j) in face.iter().enumerate() {
-                    tmp[i] = e[j];
-                }
-                let f = tmp;
-                    tmp.sort_unstable();
-                if F > 1 {
+            for f in e.faces() {
+                let tmp = f.sorted();
+                if C::FACE::N_VERTS > 1 {
                     let i = if f.is_same(&tmp) { 1 } else { 2 };
                     match res.entry(tmp) {
                         std::collections::hash_map::Entry::Occupied(occupied_entry) => {
@@ -424,15 +377,15 @@ where
                         std::collections::hash_map::Entry::Occupied(occupied_entry) => {
                             let arr = occupied_entry.into_mut();
                             if arr[1] == usize::MAX {
-                            arr[1] = i_elem;
-                        } else {
-                            assert_eq!(arr[2], usize::MAX);
-                            arr[2] = i_elem;
-                        }
+                                arr[1] = i_elem;
+                            } else {
+                                assert_eq!(arr[2], usize::MAX);
+                                arr[2] = i_elem;
+                            }
                         }
                         std::collections::hash_map::Entry::Vacant(vacant_entry) => {
                             let arr = [idx, i_elem, usize::MAX];
-                        idx += 1;
+                            idx += 1;
                             vacant_entry.insert(arr);
                         }
                     }
@@ -443,7 +396,7 @@ where
     }
 
     /// Compute element pairs corresponding to all the internal faces (for partitioning)
-    fn element_pairs(&self, faces: &FxHashMap<Face<F>, [usize; 3]>) -> CSRGraph {
+    fn element_pairs(&self, faces: &FxHashMap<C::FACE, [usize; 3]>) -> CSRGraph {
         let e2e = faces
             .iter()
             .map(|(_, &[_, i0, i1])| [i0, i1])
@@ -476,7 +429,7 @@ where
     fn fix_elems_orientation(&mut self) -> usize {
         let flg = self
             .elems()
-            .map(|e| Cell::<C>::vol(&self.gelem(&e)) < 0.0)
+            .map(|e| self.gelem(&e).vol() < 0.0)
             .collect::<Vec<_>>();
         let n = flg
             .iter()
@@ -491,14 +444,14 @@ where
     /// Fix the orientation
     /// - of boundary faces to be oriented outwards (if possible)
     /// - of internal faces to be oriented from the lower to the higher element tag
-    fn fix_faces_orientation(&mut self, all_faces: &FxHashMap<Face<F>, [usize; 3]>) -> usize {
+    fn fix_faces_orientation(&mut self, all_faces: &FxHashMap<C::FACE, [usize; 3]>) -> usize {
         if Self::faces_are_oriented() {
             let flg = self
                 .faces()
                 .map(|f| {
                     let gf = self.gface(&f);
-                    let fc = cell_center(&gf);
-                    let normal = Face::<F>::normal(&gf);
+                    let fc = gf.center();
+                    let normal = gf.center();
 
                     let [_, i0, i1] = all_faces.get(&f.sorted()).unwrap();
                     let i = if *i0 == usize::MAX || *i1 == usize::MAX {
@@ -510,7 +463,7 @@ where
                         if t0 < t1 { *i0 } else { *i1 }
                     };
                     let ge = self.gelem(&self.elem(i));
-                    let ec = cell_center(&ge);
+                    let ec = ge.center();
 
                     normal.dot(&(fc - ec)) < 0.0
                 })
@@ -531,7 +484,7 @@ where
     /// Compute the faces that are connected to only one element and that are not already tagged
     fn tag_boundary_faces(
         &mut self,
-        all_faces: &FxHashMap<Face<F>, [usize; 3]>,
+        all_faces: &FxHashMap<C::FACE, [usize; 3]>,
     ) -> FxHashMap<Tag, Tag> {
         let mut res = FxHashMap::with_hasher(FxBuildHasher);
 
@@ -573,7 +526,7 @@ where
     /// Compute the faces that are connected to elements with different tags and that are not already tagged
     fn tag_internal_faces(
         &mut self,
-        all_faces: &FxHashMap<Face<F>, [usize; 3]>,
+        all_faces: &FxHashMap<C::FACE, [usize; 3]>,
     ) -> FxHashMap<[Tag; 2], Tag> {
         let mut res = FxHashMap::with_hasher(FxBuildHasher);
 
@@ -627,7 +580,7 @@ where
     ///   - element to vertex connectivities
     ///   - element orientations
     ///   - boundary faces and faces connecting elements with different tags are present
-    fn check(&self, all_faces: &FxHashMap<Face<F>, [usize; 3]>) -> Result<()> {
+    fn check(&self, all_faces: &FxHashMap<C::FACE, [usize; 3]>) -> Result<()> {
         // lengths
         if self.par_elems().len() != self.par_etags().len() {
             return Err(Error::from("Inconsistent sizes (elems)"));
@@ -638,16 +591,16 @@ where
 
         // indices & element volume
         for e in self.elems() {
-            if !e.iter().all(|&i| i < self.n_verts()) {
+            if !e.into_iter().all(|i| i < self.n_verts()) {
                 return Err(Error::from("Invalid index in elems"));
             }
             let ge = self.gelem(&e);
-            if Cell::<C>::vol(&ge) < 0.0 {
+            if ge.vol() < 0.0 {
                 return Err(Error::from("Elem has a <0 volume"));
             }
         }
         for f in self.faces() {
-            if !f.iter().all(|&i| i < self.n_verts()) {
+            if !f.into_iter().all(|i| i < self.n_verts()) {
                 return Err(Error::from("Invalid index in faces"));
             }
             if !all_faces.contains_key(&f.sorted()) {
@@ -679,7 +632,7 @@ where
 
         for f in self.faces() {
             let gf = self.gface(&f);
-            let fc = cell_center(&gf);
+            let fc = gf.center();
             let tmp = f.sorted();
             let [_, i0, i1] = all_faces.get(&tmp).unwrap();
             if *i0 != usize::MAX && *i1 != usize::MAX && self.etag(*i0) == self.etag(*i1) {
@@ -689,9 +642,9 @@ where
             } else if *i0 == usize::MAX || *i1 == usize::MAX {
                 let i = if *i1 == usize::MAX { *i0 } else { *i1 };
                 let ge = self.gelem(&self.elem(i));
-                let ec = cell_center(&ge);
+                let ec = ge.center();
                 if Self::faces_are_oriented() {
-                    let n = Face::<F>::normal(&gf);
+                    let n = gf.normal();
                     if n.dot(&(fc - ec)) < 0.0 {
                         return Err(Error::from(&format!(
                             "Invalid face orientation: center = {fc:?}, normal = {n:?}, face = {f:?}"
@@ -703,7 +656,7 @@ where
 
         // volumes
         if Self::faces_are_oriented() {
-            let vol = self.par_gelems().map(|ge| Cell::<C>::vol(&ge)).sum::<f64>();
+            let vol = self.par_gelems().map(|ge| ge.vol()).sum::<f64>();
             let vol2 = self
                 .par_faces()
                 .filter(|f| {
@@ -713,7 +666,7 @@ where
                 })
                 .map(|f| {
                     let gf = self.gface(&f);
-                    cell_center(&gf).dot(&Face::<F>::normal(&gf))
+                    gf.center().dot(&gf.normal())
                 })
                 .sum::<f64>()
                 / D as f64;
@@ -749,8 +702,8 @@ where
 
     /// Integrate `g(f)` over the mesh, where `f` is a field defined on the mesh vertices
     fn integrate<G: Fn(f64) -> f64 + Send + Sync>(&self, f: &[f64], op: G) -> f64 {
-        let (qw, qp) = Cell::<C>::quadrature();
-        debug_assert!(qp.iter().all(|x| x.len() == C - 1));
+        let (qw, qp) = C::quadrature();
+        debug_assert!(qp.iter().all(|x| x.len() == C::N_VERTS - 1));
 
         self.par_elems()
             .map(|e| {
@@ -760,7 +713,7 @@ where
                     .map(|(w, pt)| {
                         let x0 = f[e[0]];
                         let mut x_pt = x0;
-                        for (&b, &j) in pt.iter().zip(e.iter().skip(1)) {
+                        for (&b, j) in pt.iter().zip(e.into_iter().skip(1)) {
                             let mut dx = f[j] - x0;
                             dx *= b;
                             x_pt += dx;
@@ -768,7 +721,7 @@ where
                         *w * op(x_pt)
                     })
                     .sum::<f64>();
-                Cell::<C>::vol(&self.gelem(&e)) * res
+                self.gelem(&e).vol() * res
             })
             .sum::<f64>()
     }
@@ -790,14 +743,14 @@ where
             .for_each(|(i, &new_i)| new_vert_indices[new_i] = i);
         let new_verts = vert_indices.iter().map(|&i| self.vert(i));
         let new_elems = self.elems().map(|mut e| {
-            for idx in &mut e {
-                *idx = new_vert_indices[*idx];
+            for i in 0..C::N_VERTS {
+                e[i] = new_vert_indices[e[i]];
             }
             e
         });
         let new_faces = self.faces().map(|mut f| {
-            for idx in &mut f {
-                *idx = new_vert_indices[*idx];
+            for i in 0..C::FACE::N_VERTS {
+                f[i] = new_vert_indices[f[i]];
             }
             f
         });
@@ -884,7 +837,7 @@ where
     }
 
     /// Get the i-th partition
-    fn get_partition(&self, i: usize) -> SubMesh<D, C, F, Self> {
+    fn get_partition(&self, i: usize) -> SubMesh<D, C, Self> {
         SubMesh::new(self, |t| t == i as Tag + 1)
     }
 
@@ -938,54 +891,44 @@ where
                 .map(|(x, _)| Vertex::<D>::from_column_slice(&x)),
         );
 
-        match C {
+        match C::N_VERTS {
             4 => {
                 if let Ok(iter) = reader.read_tetrahedra() {
-                    res.add_elems_and_tags(iter.map(|(e, t)| {
-                        let mut tmp = [0; C];
-                        tmp.copy_from_slice(&e);
-                        (tmp, t as Tag)
-                    }));
+                    res.add_elems_and_tags(
+                        iter.map(|(e, t)| (C::from_iter(e.into_iter()), t as Tag)),
+                    );
                 }
             }
             3 => {
                 if let Ok(iter) = reader.read_triangles() {
-                    res.add_elems_and_tags(iter.map(|(e, t)| {
-                        let mut tmp = [0; C];
-                        tmp.copy_from_slice(&e);
-                        (tmp, t as Tag)
-                    }));
+                    res.add_elems_and_tags(
+                        iter.map(|(e, t)| (C::from_iter(e.into_iter()), t as Tag)),
+                    );
                 }
             }
             2 => {
                 if let Ok(iter) = reader.read_edges() {
-                    res.add_elems_and_tags(iter.map(|(e, t)| {
-                        let mut tmp = [0; C];
-                        tmp.copy_from_slice(&e);
-                        (tmp, t as Tag)
-                    }));
+                    res.add_elems_and_tags(
+                        iter.map(|(e, t)| (C::from_iter(e.into_iter()), t as Tag)),
+                    );
                 }
             }
             _ => unimplemented!(),
         }
 
-        match F {
+        match C::FACE::N_VERTS {
             3 => {
                 if let Ok(iter) = reader.read_triangles() {
-                    res.add_faces_and_tags(iter.map(|(e, t)| {
-                        let mut tmp = [0; F];
-                        tmp.copy_from_slice(&e);
-                        (tmp, t as Tag)
-                    }));
+                    res.add_faces_and_tags(
+                        iter.map(|(e, t)| (C::FACE::from_iter(e.into_iter()), t as Tag)),
+                    );
                 }
             }
             2 => {
                 if let Ok(iter) = reader.read_edges() {
-                    res.add_faces_and_tags(iter.map(|(e, t)| {
-                        let mut tmp = [0; F];
-                        tmp.copy_from_slice(&e);
-                        (tmp, t as Tag)
-                    }));
+                    res.add_faces_and_tags(
+                        iter.map(|(e, t)| (C::FACE::from_iter(e.into_iter()), t as Tag)),
+                    );
                 }
             }
             1 => warn!("not reading faces when elements are edges"),
@@ -1009,7 +952,7 @@ where
             (0..self.n_verts()).map(|_| 1),
         )?;
 
-        match C {
+        match C::N_VERTS {
             4 => writer.write_tetrahedra(
                 self.elems().map(|x| {
                     let mut tmp = [0; 4];
@@ -1037,7 +980,7 @@ where
             _ => unimplemented!(),
         }
 
-        match F {
+        match C::FACE::N_VERTS {
             3 => writer.write_triangles(
                 self.faces().map(|x| {
                     let mut tmp = [0; 3];
@@ -1147,19 +1090,10 @@ where
         Ok(())
     }
 
-    /// Build a `Mesh<D, C2, F2>` mesh containing faces such that `filter(tag)` is true
+    /// Build a `Mesh<D, C::FACE>` mesh containing faces such that `filter(tag)` is true
     /// Only the required vertices are present
     /// The following must be true: C2 = C - 1 and F2 = F - 1 (rust stable limitation)
-    fn extract_faces<const C2: usize, const F2: usize, M: Mesh<D, C2, F2>, G: Fn(Tag) -> bool>(
-        &self,
-        filter: G,
-    ) -> (M, Vec<usize>)
-    where
-        Cell<C2>: Simplex<C2>,
-        Cell<F2>: Simplex<F2>,
-    {
-        assert_eq!(C2, C - 1);
-        assert_eq!(F2, F - 1);
+    fn extract_faces<M: Mesh<D, C::FACE>, G: Fn(Tag) -> bool>(&self, filter: G) -> (M, Vec<usize>) {
         let mut new_ids = vec![usize::MAX; self.n_verts()];
         let mut vert_ids = Vec::new();
         let mut next = 0;
@@ -1169,7 +1103,7 @@ where
             .zip(self.ftags())
             .filter(|(_, t)| filter(*t))
             .map(|(f, _)| {
-                for &i in &f {
+                for i in f {
                     if new_ids[i] == usize::MAX {
                         new_ids[i] = next;
                         vert_ids.push(i);
@@ -1191,26 +1125,22 @@ where
             .for_each(|(i, &j)| verts[j] = self.vert(i));
         self.faces()
             .zip(self.ftags())
-            .filter(|(f, _)| f.iter().all(|&i| new_ids[i] != usize::MAX))
+            .filter(|(f, _)| f.into_iter().all(|i| new_ids[i] != usize::MAX))
             .for_each(|(f, t)| {
-                faces.push(std::array::from_fn(|i| new_ids[f[i]]));
+                faces.push(C::FACE::from_iter(f.into_iter().map(|i| new_ids[i])));
                 ftags.push(t);
             });
 
         let mut res = M::empty();
-        res.add_verts(verts.iter().copied());
-        res.add_elems(faces.iter().copied(), ftags.iter().copied());
+        res.add_verts(verts.into_iter());
+        res.add_elems(faces.into_iter(), ftags.iter().copied());
 
         (res, vert_ids)
     }
 
     /// Build a `Mesh<D, C2, F2>` mesh containing the boundary faces
     /// The following must be true: C2 = C - 1 and F2 = F - 1 (rust stable limitation)
-    fn boundary<const C2: usize, const F2: usize, M: Mesh<D, C2, F2>>(&self) -> (M, Vec<usize>)
-    where
-        Cell<C2>: Simplex<C2>,
-        Cell<F2>: Simplex<F2>,
-    {
+    fn boundary<M: Mesh<D, C::FACE>>(&self) -> (M, Vec<usize>) {
         self.extract_faces(|_| true)
     }
 
@@ -1223,25 +1153,21 @@ where
         quads: I1,
         tags: I2,
     ) {
-        if C == 3 {
+        if C::N_VERTS == 3 {
             let mut tmp = Vec::with_capacity(2 * quads.len());
             quads.zip(tags).for_each(|(q, t)| {
                 let tris = qua2tris(&q);
                 for tri in tris {
-                    let mut tmp_tri = [0; C];
-                    tmp_tri.copy_from_slice(&tri);
-                    tmp.push((tmp_tri, t));
+                    tmp.push((C::from_other(tri), t));
                 }
             });
             self.add_elems_and_tags(tmp.iter().copied());
-        } else if F == 3 {
+        } else if C::FACE::N_VERTS == 3 {
             let mut tmp = Vec::with_capacity(2 * quads.len());
             quads.zip(tags).for_each(|(q, t)| {
                 let tris = qua2tris(&q);
                 for tri in tris {
-                    let mut tmp_tri = [0; F];
-                    tmp_tri.copy_from_slice(&tri);
-                    tmp.push((tmp_tri, t));
+                    tmp.push((<C::FACE as Simplex>::from_other(tri), t));
                 }
             });
             self.add_faces_and_tags(tmp.iter().copied());
@@ -1259,21 +1185,17 @@ where
         hexs: I1,
         tags: I2,
     ) -> Vec<usize> {
-        if C == 4 {
+        if C::N_VERTS == 4 {
             let mut tmp = Vec::with_capacity(6 * hexs.len());
             let mut ids = Vec::with_capacity(6 * hexs.len());
             hexs.zip(tags).enumerate().for_each(|(i, (q, t))| {
                 let (tets, last_tet) = hex2tets(&q);
                 for tet in tets {
-                    let mut tmp_tet = [0; C];
-                    tmp_tet.copy_from_slice(&tet);
-                    tmp.push((tmp_tet, t));
+                    tmp.push((C::from_other(tet), t));
                     ids.push(i);
                 }
                 if let Some(last_tet) = last_tet {
-                    let mut tmp_tet = [0; C];
-                    tmp_tet.copy_from_slice(&last_tet);
-                    tmp.push((tmp_tet, t));
+                    tmp.push((C::from_other(last_tet), t));
                     ids.push(i);
                 }
             });
@@ -1290,14 +1212,12 @@ where
         pris: I1,
         tags: I2,
     ) {
-        if C == 4 {
+        if C::N_VERTS == 4 {
             let mut tmp = Vec::with_capacity(3 * pris.len());
             pris.zip(tags).for_each(|(q, t)| {
                 let tets = pri2tets(&q);
                 for tet in tets {
-                    let mut tmp_tet = [0; C];
-                    tmp_tet.copy_from_slice(&tet);
-                    tmp.push((tmp_tet, t));
+                    tmp.push((C::from_other(tet), t));
                 }
             });
             self.add_elems_and_tags(tmp.iter().copied());
@@ -1312,14 +1232,12 @@ where
         pyrs: I1,
         tags: I2,
     ) {
-        if C == 4 {
+        if C::N_VERTS == 4 {
             let mut tmp = Vec::with_capacity(3 * pyrs.len());
             pyrs.zip(tags).for_each(|(q, t)| {
                 let tets = pyr2tets(&q);
                 for tet in tets {
-                    let mut tmp_tet = [0; C];
-                    tmp_tet.copy_from_slice(&tet);
-                    tmp.push((tmp_tet, t));
+                    tmp.push((C::from_other(tet), t));
                 }
             });
             self.add_elems_and_tags(tmp.iter().copied());
@@ -1331,7 +1249,7 @@ where
     /// Check that two meshes are equal
     ///   - same vertex coordinates (with tolerance `tol`)
     ///   - same connectivities and tags
-    fn check_equals<M: Mesh<D, C, F>>(&self, other: &M, tol: f64) -> Result<()> {
+    fn check_equals<M: Mesh<D, C>>(&self, other: &M, tol: f64) -> Result<()> {
         for (i, (v0, v1)) in self.verts().zip(other.verts()).enumerate() {
             if (v0 - v1).norm() > tol {
                 return Err(Error::from(&format!("Vertex {i}: {v0:?} != {v1:?}")));
@@ -1388,7 +1306,7 @@ where
         }
 
         // Cells
-        match C {
+        match C::N_VERTS {
             4 => {
                 let (elems, etags) = split_tets(self.elems().zip(self.etags()), &edges);
                 res.add_elems(elems.iter().copied(), etags.iter().copied());
@@ -1405,7 +1323,7 @@ where
         }
 
         // Faces
-        match F {
+        match C::FACE::N_VERTS {
             3 => {
                 let (faces, ftags) = split_tris(self.faces().zip(self.ftags()), &edges);
                 res.add_faces(faces.iter().copied(), ftags.iter().copied());
@@ -1425,15 +1343,15 @@ where
     /// face’s center.
     fn face_skewnesses(
         &self,
-        all_faces: &FxHashMap<Face<F>, [usize; 3]>,
+        all_faces: &FxHashMap<C::FACE, [usize; 3]>,
     ) -> impl Iterator<Item = (usize, usize, f64)> {
         all_faces
             .iter()
             .filter(|&(_, [_, i0, i1])| *i0 != usize::MAX && *i1 != usize::MAX)
             .map(|(f, &[_, i0, i1])| {
-                let fc = cell_center(&self.gface(f));
-                let ec0 = cell_center(&self.gelem(&self.elem(i0)));
-                let ec1 = cell_center(&self.gelem(&self.elem(i1)));
+                let fc = self.gface(f).center();
+                let ec0 = self.gelem(&self.elem(i0)).center();
+                let ec1 = self.gelem(&self.elem(i1)).center();
                 let e2f = fc - ec0;
                 let l_e2f = e2f.norm();
                 let e2e = ec1 - ec0;
@@ -1448,12 +1366,11 @@ where
     /// Compute the edge ratio for all the elements in the mesh
     #[must_use]
     fn edge_length_ratios(&self) -> impl ExactSizeIterator<Item = f64> + '_ {
-        let elem_to_edges = Cell::<C>::edges();
         self.elems().map(move |e| {
             let mut l_min = f64::MAX;
             let mut l_max = 0.0_f64;
-            for &[i0, i1] in &elem_to_edges {
-                let l = (self.vert(e[i1]) - self.vert(e[i0])).norm();
+            for edg in e.edges() {
+                let l = (self.vert(edg[0]) - self.vert(edg[1])).norm();
                 l_min = l_min.min(l);
                 l_max = l_max.max(l);
             }
@@ -1465,7 +1382,7 @@ where
     /// (normalized to be between 0 and 1) for all the elements in the mesh
     #[must_use]
     fn elem_gammas(&self) -> impl ExactSizeIterator<Item = f64> + '_ {
-        self.gelems().map(|ge| Cell::<C>::gamma(&ge))
+        self.gelems().map(|ge| ge.gamma())
     }
 
     /// Get the bounding box
@@ -1519,7 +1436,7 @@ where
 
         for (e, t) in other.elems().zip(other.etags()) {
             if elem_filter(t) {
-                for &i in &e {
+                for i in e {
                     new_vert_ids[i] = usize::MAX - 1;
                 }
             }
@@ -1565,9 +1482,9 @@ where
         });
 
         let mut added_elems = Vec::new();
+
         // keep track of the possible new faces
         let mut all_added_faces = FxHashSet::default();
-        let elem_to_faces = Self::elem_to_faces();
         for (i, (mut e, t)) in other
             .elems()
             .zip(other.etags())
@@ -1575,16 +1492,12 @@ where
             .filter(|(_, (_, t))| elem_filter(*t))
         {
             added_elems.push(i);
-            for i in &mut e {
-                *i = new_vert_ids[*i];
+            for i in 0..C::N_VERTS {
+                e[i] = new_vert_ids[e[i]];
             }
             self.add_elems(std::iter::once(e), std::iter::once(t));
-            for face in &elem_to_faces {
-                let mut tmp = [0; F];
-                for (i, &j) in face.iter().enumerate() {
-                    tmp[i] = e[j];
-                }
-                all_added_faces.insert(tmp.sorted());
+            for face in e.faces() {
+                all_added_faces.insert(face.sorted());
             }
         }
 
@@ -1595,15 +1508,15 @@ where
             .enumerate()
             .filter(|(_, (_, t))| face_filter(*t))
             .filter(|&(_, (mut f, _))| {
-                for i in &mut f {
-                    *i = new_vert_ids[*i];
+                for i in 0..C::FACE::N_VERTS {
+                    f[i] = new_vert_ids[f[i]];
                 }
                 all_added_faces.contains(&f.sorted())
             })
         {
             added_faces.push(i);
-            for i in &mut f {
-                *i = new_vert_ids[*i];
+            for i in 0..C::FACE::N_VERTS {
+                f[i] = new_vert_ids[f[i]];
             }
             self.add_faces(std::iter::once(f), std::iter::once(t));
         }
@@ -1631,41 +1544,39 @@ where
 
 /// D-dimensional mesh containing simplices with C nodes
 /// F = C-1 is given explicitely to be usable with rust stable
-pub trait MutMesh<const D: usize, const C: usize, const F: usize>: Mesh<D, C, F>
-where
-    Cell<C>: Simplex<C>,
-    Cell<F>: Simplex<F>,
-{
+pub trait MutMesh<const D: usize, C: Simplex>: Mesh<D, C> {
     /// Sequential iterator over the vertices
     fn verts_mut(&mut self) -> impl ExactSizeIterator<Item = &mut Vertex<D>> + '_;
 
     /// Sequential iterator over the mesh elements
-    fn elems_mut(&mut self) -> impl ExactSizeIterator<Item = &mut Cell<C>> + '_;
+    #[allow(mismatched_lifetime_syntaxes)]
+    fn elems_mut<'a>(&'a mut self) -> impl ExactSizeIterator<Item = &'a mut C> + '_
+    where
+        C: 'a;
 
     /// Sequential iterator over the element tags
     fn etags_mut(&mut self) -> impl ExactSizeIterator<Item = &mut Tag> + '_;
 
     /// Sequential itertor over the faces
-    fn faces_mut(&mut self) -> impl ExactSizeIterator<Item = &mut Face<F>> + '_;
+    #[allow(mismatched_lifetime_syntaxes)]
+    fn faces_mut<'a>(&'a mut self) -> impl ExactSizeIterator<Item = &'a mut C::FACE> + '_
+    where
+        C: 'a;
 
     /// Sequential iterator over the mesh faces
     fn ftags_mut(&mut self) -> impl ExactSizeIterator<Item = &mut Tag> + '_;
 }
 
 /// Generic meshes implemented with Vecs
-pub struct GenericMesh<const D: usize, const C: usize, const F: usize> {
+pub struct GenericMesh<const D: usize, C: Simplex> {
     verts: Vec<Vertex<D>>,
-    elems: Vec<Cell<C>>,
+    elems: Vec<C>,
     etags: Vec<Tag>,
-    faces: Vec<Face<F>>,
+    faces: Vec<C::FACE>,
     ftags: Vec<Tag>,
 }
 
-impl<const D: usize, const C: usize, const F: usize> Mesh<D, C, F> for GenericMesh<D, C, F>
-where
-    Cell<C>: Simplex<C>,
-    Face<F>: Simplex<F>,
-{
+impl<const D: usize, C: Simplex> Mesh<D, C> for GenericMesh<D, C> {
     fn empty() -> Self {
         Self {
             verts: Vec::new(),
@@ -1700,7 +1611,7 @@ where
         self.elems.len()
     }
 
-    fn elem(&self, i: usize) -> Cell<C> {
+    fn elem(&self, i: usize) -> C {
         self.elems[i]
     }
 
@@ -1708,11 +1619,11 @@ where
         self.elems[i].invert();
     }
 
-    fn elems(&self) -> impl ExactSizeIterator<Item = Cell<C>> + Clone + '_ {
+    fn elems(&self) -> impl ExactSizeIterator<Item = C> + Clone + '_ {
         self.elems.iter().copied()
     }
 
-    fn par_elems(&self) -> impl IndexedParallelIterator<Item = Cell<C>> + Clone + '_ {
+    fn par_elems(&self) -> impl IndexedParallelIterator<Item = C> + Clone + '_ {
         self.elems.par_iter().cloned()
     }
 
@@ -1732,7 +1643,7 @@ where
         self.etags.par_iter().cloned()
     }
 
-    fn add_elems<I1: ExactSizeIterator<Item = Cell<C>>, I2: ExactSizeIterator<Item = Tag>>(
+    fn add_elems<I1: ExactSizeIterator<Item = C>, I2: ExactSizeIterator<Item = Tag>>(
         &mut self,
         elems: I1,
         etags: I2,
@@ -1746,10 +1657,7 @@ where
         self.etags.clear();
     }
 
-    fn add_elems_and_tags<I: ExactSizeIterator<Item = (Cell<C>, Tag)>>(
-        &mut self,
-        elems_and_tags: I,
-    ) {
+    fn add_elems_and_tags<I: ExactSizeIterator<Item = (C, Tag)>>(&mut self, elems_and_tags: I) {
         self.elems.reserve(elems_and_tags.len());
         self.etags.reserve(elems_and_tags.len());
         for (e, t) in elems_and_tags {
@@ -1762,7 +1670,7 @@ where
         self.faces.len()
     }
 
-    fn face(&self, i: usize) -> Face<F> {
+    fn face(&self, i: usize) -> C::FACE {
         self.faces[i]
     }
 
@@ -1770,11 +1678,11 @@ where
         self.faces[i].invert();
     }
 
-    fn faces(&self) -> impl ExactSizeIterator<Item = Face<F>> + Clone + '_ {
+    fn faces(&self) -> impl ExactSizeIterator<Item = C::FACE> + Clone + '_ {
         self.faces.iter().copied()
     }
 
-    fn par_faces(&self) -> impl IndexedParallelIterator<Item = Face<F>> + Clone + '_ {
+    fn par_faces(&self) -> impl IndexedParallelIterator<Item = C::FACE> + Clone + '_ {
         self.faces.par_iter().cloned()
     }
 
@@ -1790,7 +1698,7 @@ where
         self.ftags.par_iter().cloned()
     }
 
-    fn add_faces<I1: ExactSizeIterator<Item = Face<F>>, I2: ExactSizeIterator<Item = Tag>>(
+    fn add_faces<I1: ExactSizeIterator<Item = C::FACE>, I2: ExactSizeIterator<Item = Tag>>(
         &mut self,
         faces: I1,
         ftags: I2,
@@ -1804,7 +1712,7 @@ where
         self.ftags.clear();
     }
 
-    fn add_faces_and_tags<I: ExactSizeIterator<Item = (Face<F>, Tag)>>(
+    fn add_faces_and_tags<I: ExactSizeIterator<Item = (C::FACE, Tag)>>(
         &mut self,
         faces_and_tags: I,
     ) {
@@ -1817,16 +1725,16 @@ where
     }
 }
 
-impl<const D: usize, const C: usize, const F: usize> MutMesh<D, C, F> for GenericMesh<D, C, F>
-where
-    Cell<C>: Simplex<C>,
-    Face<F>: Simplex<F>,
-{
+impl<const D: usize, C: Simplex> MutMesh<D, C> for GenericMesh<D, C> {
     fn verts_mut(&mut self) -> impl ExactSizeIterator<Item = &mut Vertex<D>> + '_ {
         self.verts.iter_mut()
     }
 
-    fn elems_mut(&mut self) -> impl ExactSizeIterator<Item = &mut Cell<C>> + '_ {
+    #[allow(mismatched_lifetime_syntaxes)]
+    fn elems_mut<'a>(&'a mut self) -> impl ExactSizeIterator<Item = &'a mut C> + '_
+    where
+        C: 'a,
+    {
         self.elems.iter_mut()
     }
 
@@ -1834,7 +1742,11 @@ where
         self.etags.iter_mut()
     }
 
-    fn faces_mut(&mut self) -> impl ExactSizeIterator<Item = &mut Face<F>> + '_ {
+    #[allow(mismatched_lifetime_syntaxes)]
+    fn faces_mut<'a>(&'a mut self) -> impl ExactSizeIterator<Item = &'a mut C::FACE> + '_
+    where
+        C: 'a,
+    {
         self.faces.iter_mut()
     }
 

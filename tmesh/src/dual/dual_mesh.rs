@@ -9,7 +9,7 @@
 use super::PolyMesh;
 use crate::{
     Error, Result, Tag, Vertex,
-    mesh::{Cell, Face, Mesh, Simplex, cell_center},
+    mesh::{Edge, GSimplex, Mesh, Simplex},
 };
 use nalgebra::{DMatrix, DVector};
 use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
@@ -30,25 +30,21 @@ pub enum DualType {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum DualCellCenter<const D: usize, const F: usize> {
+pub enum DualCellCenter<const D: usize, C: Simplex> {
     Vertex(Vertex<D>),
-    Face(Face<F>),
+    Face(C::FACE),
 }
 
 /// Dual of a `Mesh<D, C, F>`
-pub trait DualMesh<const D: usize, const C: usize, const F: usize>: PolyMesh<D>
-where
-    Cell<C>: Simplex<C>,
-    Cell<F>: Simplex<F>,
-{
+pub trait DualMesh<const D: usize, C: Simplex>: PolyMesh<D> {
     /// Compute the dual of `mesh`
-    fn new<M: Mesh<D, C, F>>(msh: &M, t: DualType) -> Self;
+    fn new<M: Mesh<D, C>>(msh: &M, t: DualType) -> Self;
 
     /// Display element `i`
     fn print_elem_info(&self, i: usize) {
         println!("Dual element {i}");
         self.par_edges_and_normals()
-            .filter(|&([i0, i1], _)| i0 == i || i1 == i)
+            .filter(|&(e, _)| e[0] == i || e[1] == i)
             .for_each(|(e, n)| {
                 println!(
                     "  edges: {} - {} : n = {:?} (nrm = {})",
@@ -72,26 +68,24 @@ where
     }
 
     /// Get the vertex coordinates for face `f`
-    fn gface(&self, f: &[usize; F]) -> [Vertex<D>; F] {
-        let mut res = [self.vert(0); F];
-        for (j, &k) in f.iter().enumerate() {
-            res[j] = self.vert(k);
-        }
-        res
+    fn gface(&self, f: &C::FACE) -> <C::FACE as Simplex>::GEOM<D> {
+        <C::FACE as Simplex>::GEOM::from_iter(f.into_iter().map(|i| self.vert(i)))
     }
 
     /// Parallel iterator over the faces vertex coordinates
-    fn par_gfaces(&self) -> impl IndexedParallelIterator<Item = [Vertex<D>; F]> + '_ {
+    fn par_gfaces(
+        &self,
+    ) -> impl IndexedParallelIterator<Item = <C::FACE as Simplex>::GEOM<D>> + '_ {
         self.par_faces().map(|f| {
-            let f = f.try_into().unwrap();
+            let f = C::FACE::from_iter(f.iter().copied());
             self.gface(&f)
         })
     }
 
     /// Sequential iterator over the faces vertex coordinates
-    fn gfaces(&self) -> impl ExactSizeIterator<Item = [Vertex<D>; F]> + '_ {
+    fn gfaces(&self) -> impl ExactSizeIterator<Item = <C::FACE as Simplex>::GEOM<D>> + '_ {
         self.faces().map(|f| {
-            let f = f.try_into().unwrap();
+            let f = C::FACE::from_iter(f.iter().copied());
             self.gface(&f)
         })
     }
@@ -100,15 +94,15 @@ where
     fn n_edges(&self) -> usize;
 
     /// Get the `i`th edge
-    fn edge(&self, i: usize) -> [usize; 2];
+    fn edge(&self, i: usize) -> Edge;
 
     /// Parallel itertator over the edges
-    fn par_edges(&self) -> impl IndexedParallelIterator<Item = [usize; 2]> + '_ + Clone {
+    fn par_edges(&self) -> impl IndexedParallelIterator<Item = Edge> + '_ + Clone {
         (0..self.n_edges()).into_par_iter().map(|i| self.edge(i))
     }
 
     /// Sequential iterator over the edges
-    fn edges(&self) -> impl ExactSizeIterator<Item = [usize; 2]> + '_ + Clone {
+    fn edges(&self) -> impl ExactSizeIterator<Item = Edge> + '_ + Clone {
         (0..self.n_edges()).map(|i| self.edge(i))
     }
 
@@ -116,16 +110,14 @@ where
     fn edge_normal(&self, i: usize) -> Vertex<D>;
 
     /// Parallel iterator over the edges and edge normals
-    fn par_edges_and_normals(
-        &self,
-    ) -> impl IndexedParallelIterator<Item = ([usize; 2], Vertex<D>)> + '_ {
+    fn par_edges_and_normals(&self) -> impl IndexedParallelIterator<Item = (Edge, Vertex<D>)> + '_ {
         (0..self.n_edges())
             .into_par_iter()
             .map(|i| (self.edge(i), self.edge_normal(i)))
     }
 
     /// Sequential iterator over the edges and edge normals
-    fn edges_and_normals(&self) -> impl ExactSizeIterator<Item = ([usize; 2], Vertex<D>)> + '_ {
+    fn edges_and_normals(&self) -> impl ExactSizeIterator<Item = (Edge, Vertex<D>)> + '_ {
         (0..self.n_edges()).map(|i| (self.edge(i), self.edge_normal(i)))
     }
 
@@ -145,13 +137,13 @@ where
         self.elem(i)
             .iter()
             .map(|&(i, orient)| {
-                let mut f: [usize; F] = self.face(i).try_into().unwrap();
+                let mut f = C::FACE::from_iter(self.face(i).iter().copied());
                 if !orient {
-                    f.swap(0, 1);
+                    f.invert();
                 }
                 self.gface(&f)
             })
-            .map(|gf| cell_center(&gf).dot(&Face::<F>::normal(&gf)))
+            .map(|gf| gf.center().dot(&gf.normal()))
             .sum::<f64>()
             / D as f64
     }
@@ -172,14 +164,14 @@ where
 
         e.iter()
             .map(|&(i, orient)| {
-                let mut f: [usize; F] = self.face(i).try_into().unwrap();
+                let mut f = C::FACE::from_iter(self.face(i).iter().copied());
                 if !orient {
-                    f.swap(0, 1);
+                    f.invert();
                 }
                 self.gface(&f)
             })
             .for_each(|gf| {
-                let n = Face::<F>::normal(&gf);
+                let n = gf.normal();
                 res.iter_mut().zip(n.iter()).for_each(|(x, y)| *x += y);
             });
         res.iter().map(|x| x.abs()).sum::<f64>() < 1e-10
@@ -228,10 +220,8 @@ where
         // all faces appear only once
         let mut faces = FxHashMap::with_hasher(FxBuildHasher);
         for (i, f) in self.faces().enumerate() {
-            assert_eq!(f.len(), F);
-            let mut res = [0; F];
-            res.iter_mut().zip(f.iter()).for_each(|(x, y)| *x = *y);
-            res.sort_unstable();
+            assert_eq!(f.len(), C::FACE::N_VERTS);
+            let res = C::FACE::from_iter(f.iter().copied()).sorted();
             if let std::collections::hash_map::Entry::Vacant(e) = faces.entry(res) {
                 e.insert(i);
             } else {
@@ -282,16 +272,7 @@ where
     }
 
     /// Return a `Mesh<D, C2, F2>` containing the faces such that `filter(tag)` is true.
-    fn extract_faces<const C2: usize, const F2: usize, M: Mesh<D, C2, F2>, G: Fn(Tag) -> bool>(
-        &self,
-        filter: G,
-    ) -> (M, Vec<usize>)
-    where
-        Cell<C2>: Simplex<C2>,
-        Cell<F2>: Simplex<F2>,
-    {
-        assert_eq!(C2, C - 1);
-        assert_eq!(F2, F - 1);
+    fn extract_faces<M: Mesh<D, C::FACE>, G: Fn(Tag) -> bool>(&self, filter: G) -> (M, Vec<usize>) {
         let mut new_ids = vec![usize::MAX; self.n_verts()];
         let mut vert_ids = Vec::new();
         let mut next = 0;
@@ -325,7 +306,7 @@ where
             .zip(self.ftags())
             .filter(|(f, _)| f.iter().all(|&i| new_ids[i] != usize::MAX))
             .for_each(|(f, t)| {
-                faces.push(std::array::from_fn(|i| new_ids[f[i]]));
+                faces.push(C::FACE::from_iter(f.iter().map(|&i| new_ids[i])));
                 ftags.push(t);
             });
 
@@ -337,40 +318,36 @@ where
     }
 
     /// Return a `Mesh<D, C2, F2>` containing all the boundary faces.
-    fn boundary<const C2: usize, const F2: usize, M: Mesh<D, C2, F2>>(&self) -> (M, Vec<usize>)
-    where
-        Cell<C2>: Simplex<C2>,
-        Cell<F2>: Simplex<F2>,
-    {
+    fn boundary<M: Mesh<D, C::FACE>>(&self) -> (M, Vec<usize>) {
         self.extract_faces(|t| t > 0)
     }
 }
 
 /// Get the barycentric coordinates of the circumcenter
-pub fn circumcenter_bcoords<const D: usize, const C: usize>(v: &[Vertex<D>; C]) -> [f64; C] {
-    assert!(C <= D + 1);
+pub fn circumcenter_bcoords<const D: usize, G: GSimplex<D>>(v: &G) -> G::BCOORDS {
+    assert!(G::N_VERTS <= D + 1);
 
-    let mut a = DMatrix::<f64>::zeros(C + 1, C + 1);
-    let mut b = DVector::<f64>::zeros(C + 1);
+    let mut a = DMatrix::<f64>::zeros(G::N_VERTS + 1, G::N_VERTS + 1);
+    let mut b = DVector::<f64>::zeros(G::N_VERTS + 1);
 
-    for i in 0..C {
-        for j in i..C {
-            a[(C + 1) * i + j] = 2.0 * v[i].dot(&v[j]);
-            a[(C + 1) * j + i] = a[(C + 1) * i + j];
+    for i in 0..G::N_VERTS {
+        for j in i..G::N_VERTS {
+            a[(G::N_VERTS + 1) * i + j] = 2.0 * v[i].dot(&v[j]);
+            a[(G::N_VERTS + 1) * j + i] = a[(G::N_VERTS + 1) * i + j];
         }
         b[i] = v[i].dot(&v[i]);
     }
-    b[C] = 1.0;
-    let j = C;
-    for i in 0..C {
-        a[(C + 1) * i + j] = 1.0;
-        a[(C + 1) * j + i] = 1.0;
+    b[G::N_VERTS] = 1.0;
+    let j = G::N_VERTS;
+    for i in 0..G::N_VERTS {
+        a[(G::N_VERTS + 1) * i + j] = 1.0;
+        a[(G::N_VERTS + 1) * j + i] = 1.0;
     }
 
     a.lu().solve_mut(&mut b);
 
-    let mut res = [0.0; C];
-    for (i, &v) in b.iter().take(C).enumerate() {
+    let mut res = G::BCOORDS::default();
+    for (i, &v) in b.iter().take(G::N_VERTS).enumerate() {
         res[i] = v;
     }
     res
@@ -378,7 +355,11 @@ pub fn circumcenter_bcoords<const D: usize, const C: usize>(v: &[Vertex<D>; C]) 
 
 #[cfg(test)]
 mod tests {
-    use crate::{Vert2d, Vert3d, assert_delta, dual::circumcenter_bcoords, mesh::cell_vertex};
+    use crate::{
+        Vert2d, Vert3d, assert_delta,
+        dual::circumcenter_bcoords,
+        mesh::{GEdge, GSimplex, GTetrahedron, GTriangle},
+    };
     use rand::{Rng, SeedableRng, rngs::StdRng};
 
     #[test]
@@ -389,9 +370,9 @@ mod tests {
             let p0 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
             let p1 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
             let p2 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
-            let ge = [p0, p1, p2];
+            let ge = GTriangle::from([p0, p1, p2]);
             let bcoords = circumcenter_bcoords(&ge);
-            let p = cell_vertex(&ge, bcoords);
+            let p = ge.vert(&bcoords);
             let l0 = (p0 - p).norm();
             let l1 = (p1 - p).norm();
             let l2 = (p2 - p).norm();
@@ -407,9 +388,9 @@ mod tests {
         for _ in 0..100 {
             let p0 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
             let p1 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
-            let ge = [p0, p1];
+            let ge = GEdge::from([p0, p1]);
             let bcoords = circumcenter_bcoords(&ge);
-            let p = cell_vertex(&ge, bcoords);
+            let p = ge.vert(&bcoords);
             let l0 = (p0 - p).norm();
             let l1 = (p1 - p).norm();
             assert_delta!(l0, l1, 1e-12);
@@ -427,9 +408,9 @@ mod tests {
             let p1 = Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5);
             let p2 = Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5);
             let p3 = Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5);
-            let ge = [p0, p1, p2, p3];
+            let ge = GTetrahedron::from([p0, p1, p2, p3]);
             let bcoords = circumcenter_bcoords(&ge);
-            let p = cell_vertex(&ge, bcoords);
+            let p = ge.vert(&bcoords);
             let l0 = (p0 - p).norm();
             let l1 = (p1 - p).norm();
             let l2 = (p2 - p).norm();
@@ -448,9 +429,9 @@ mod tests {
             let p0 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
             let p1 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
             let p2 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
-            let ge = [p0, p1, p2];
+            let ge = GTriangle::from([p0, p1, p2]);
             let bcoords = circumcenter_bcoords(&ge);
-            let p = cell_vertex(&ge, bcoords);
+            let p = ge.vert(&bcoords);
             let l0 = (p0 - p).norm();
             let l1 = (p1 - p).norm();
             let l2 = (p2 - p).norm();

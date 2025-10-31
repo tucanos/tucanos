@@ -40,7 +40,7 @@ mod tests {
 
     use crate::{
         Vert2d, Vert3d,
-        mesh::{BoundaryMesh2d, BoundaryMesh3d, Mesh},
+        mesh::{BoundaryMesh2d, BoundaryMesh3d, Edge, Mesh, Triangle},
         spatialindex::ObjectIndex,
     };
 
@@ -52,7 +52,12 @@ mod tests {
             Vert2d::new(1., 1.),
             Vert2d::new(0., 1.),
         ];
-        let elems = vec![[0, 1], [1, 2], [2, 3], [3, 0]];
+        let elems = vec![
+            Edge::from([0, 1]),
+            Edge::from([1, 2]),
+            Edge::from([2, 3]),
+            Edge::from([3, 0]),
+        ];
         let etags = vec![1, 2, 3, 4];
         let faces = Vec::new();
         let ftags = Vec::new();
@@ -91,11 +96,11 @@ mod tests {
 
         let mut tris = Vec::with_capacity(2 * n);
         for i in 0..n - 1 {
-            tris.push([2 * i, 2 * i + 1, 2 * i + 2]);
-            tris.push([2 * i + 2, 2 * i + 1, 2 * i + 3]);
+            tris.push(Triangle::from([2 * i, 2 * i + 1, 2 * i + 2]));
+            tris.push(Triangle::from([2 * i + 2, 2 * i + 1, 2 * i + 3]));
         }
-        tris.push([2 * n - 2, 2 * n - 1, 0]);
-        tris.push([0, 2 * n - 1, 1]);
+        tris.push(Triangle::from([2 * n - 2, 2 * n - 1, 0]));
+        tris.push(Triangle::from([0, 2 * n - 1, 1]));
 
         let tri_tags = vec![1; 2 * n];
 

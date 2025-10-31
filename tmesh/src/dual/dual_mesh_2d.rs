@@ -2,7 +2,7 @@
 use super::{DualCellCenter, DualMesh, DualType, PolyMesh, PolyMeshType, circumcenter_bcoords};
 use crate::{
     Tag, Vert2d,
-    mesh::{Edge, Mesh, Simplex, Triangle, cell_center, cell_vertex, sort_elem_min_ids},
+    mesh::{Edge, GEdge, GSimplex, GTriangle, Mesh, Simplex, Triangle, sort_elem_min_ids},
 };
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rustc_hash::FxHashMap;
@@ -21,9 +21,9 @@ pub struct DualMesh2d {
 }
 
 impl DualMesh2d {
-    fn get_tri_center(v: &[Vert2d; 3], t: DualType) -> DualCellCenter<2, 2> {
+    fn get_tri_center(v: &GTriangle<2>, t: DualType) -> DualCellCenter<2, Triangle> {
         match t {
-            DualType::Median => DualCellCenter::Vertex(cell_center(v)),
+            DualType::Median => DualCellCenter::Vertex(v.center()),
             DualType::Barth | DualType::ThresholdBarth(_) => {
                 let f = match t {
                     DualType::Barth => 0.0,
@@ -33,13 +33,13 @@ impl DualMesh2d {
                 let f = f.max(1e-6);
                 let bcoords = circumcenter_bcoords(v);
                 if bcoords.iter().all(|&x| x > f) {
-                    DualCellCenter::Vertex(cell_vertex(v, bcoords))
+                    DualCellCenter::Vertex(v.vert(&bcoords))
                 } else if bcoords[0] <= f {
-                    DualCellCenter::Face([1, 2])
+                    DualCellCenter::Face([1, 2].into())
                 } else if bcoords[1] <= f {
-                    DualCellCenter::Face([2, 0])
+                    DualCellCenter::Face([2, 0].into())
                 } else {
-                    DualCellCenter::Face([1, 0])
+                    DualCellCenter::Face([1, 0].into())
                 }
             }
         }
@@ -78,7 +78,7 @@ impl PolyMesh<2> for DualMesh2d {
     }
 
     fn face(&self, i: usize) -> &[usize] {
-        &self.faces[i]
+        self.faces[i].as_slice()
     }
 
     fn ftag(&self, i: usize) -> Tag {
@@ -86,9 +86,9 @@ impl PolyMesh<2> for DualMesh2d {
     }
 }
 
-impl DualMesh<2, 3, 2> for DualMesh2d {
+impl DualMesh<2, Triangle> for DualMesh2d {
     #[allow(clippy::too_many_lines)]
-    fn new<M: Mesh<2, 3, 2>>(msh: &M, t: DualType) -> Self {
+    fn new<M: Mesh<2, Triangle>>(msh: &M, t: DualType) -> Self {
         // edges
         let all_edges = msh.edges();
         let n_edges = all_edges.len();
@@ -111,7 +111,8 @@ impl DualMesh<2, 3, 2> for DualMesh2d {
         verts.resize(verts.len() + n_edges, Vert2d::zeros());
         let vert_idx_edge = |i: usize| i + n_bdy_verts;
         for (&edge, &i_edge) in &all_edges {
-            verts[vert_idx_edge(i_edge)] = cell_center(&[msh.vert(edge[0]), msh.vert(edge[1])]);
+            let ge = GEdge::from([msh.vert(edge[0]), msh.vert(edge[1])]);
+            verts[vert_idx_edge(i_edge)] = ge.center();
         }
 
         // vertices: triangle centers
@@ -124,8 +125,8 @@ impl DualMesh<2, 3, 2> for DualMesh2d {
                     vert_idx_elem[i_elem] = verts.len();
                     verts.push(center);
                 }
-                DualCellCenter::Face([i0, i1]) => {
-                    let edge = [e[i0], e[i1]].sorted();
+                DualCellCenter::Face(f) => {
+                    let edge = Edge::from([e[f[0]], e[f[1]]]).sorted();
                     let i_edge = *all_edges.get(&edge).unwrap();
                     vert_idx_elem[i_elem] = vert_idx_edge(i_edge);
                 }
@@ -133,8 +134,6 @@ impl DualMesh<2, 3, 2> for DualMesh2d {
         }
 
         // faces and elements
-        let elem_to_edges = Triangle::edges();
-
         let n_poly_faces = 3 * msh.n_elems() + 2 * msh.n_faces();
         let mut faces = Vec::with_capacity(n_poly_faces);
         let mut ftags = Vec::with_capacity(n_poly_faces);
@@ -143,9 +142,9 @@ impl DualMesh<2, 3, 2> for DualMesh2d {
 
         // internal faces
         for e in msh.elems() {
-            for edg in &elem_to_edges {
-                poly_to_face_ptr[e[edg[0]] + 1] += 1;
-                poly_to_face_ptr[e[edg[1]] + 1] += 1;
+            for edg in e.edges() {
+                poly_to_face_ptr[edg[0] + 1] += 1;
+                poly_to_face_ptr[edg[1] + 1] += 1;
             }
         }
 
@@ -166,20 +165,19 @@ impl DualMesh<2, 3, 2> for DualMesh2d {
         let mut n_empty_faces = 0;
         // build internal faces
         for (i_elem, e) in msh.elems().enumerate() {
-            for edg in &elem_to_edges {
-                let edg = [e[edg[0]], e[edg[1]]];
+            for edg in e.edges() {
                 let (i_edge, sgn) = if edg[0] < edg[1] {
                     (*all_edges.get(&edg).unwrap(), 1.0)
                 } else {
-                    let tmp = [edg[1], edg[0]];
+                    let tmp = Edge::from([edg[1], edg[0]]);
                     (*all_edges.get(&tmp).unwrap(), -1.0)
                 };
-                let face = [vert_idx_edge(i_edge), vert_idx_elem[i_elem]];
+                let face = Edge::from([vert_idx_edge(i_edge), vert_idx_elem[i_elem]]);
                 if face[0] == face[1] {
                     n_empty_faces += 1;
                 } else {
-                    let gf = [verts[face[0]], verts[face[1]]];
-                    edge_normals[i_edge] += sgn * Edge::normal(&gf);
+                    let gf = GEdge::from([verts[face[0]], verts[face[1]]]);
+                    edge_normals[i_edge] += sgn * gf.normal();
 
                     let i_new_face = faces.len();
                     faces.push(face);
@@ -219,12 +217,12 @@ impl DualMesh<2, 3, 2> for DualMesh2d {
             let tmp = f.sorted();
             let i_edge = *all_edges.get(&tmp).unwrap();
 
-            let face = [vert_ids_bdy(f[0]), vert_idx_edge(i_edge)];
+            let face = Edge::from([vert_ids_bdy(f[0]), vert_idx_edge(i_edge)]);
             if face[0] == face[1] {
                 n_empty_faces += 1;
             } else {
-                let gf = [verts[face[0]], verts[face[1]]];
-                bdy_faces.push((f[0], tag, Edge::normal(&gf)));
+                let gf = GEdge::from([verts[face[0]], verts[face[1]]]);
+                bdy_faces.push((f[0], tag, gf.normal()));
 
                 let i_new_face = faces.len();
                 faces.push(face);
@@ -241,9 +239,9 @@ impl DualMesh<2, 3, 2> for DualMesh2d {
                 }
                 assert!(ok);
 
-                let face = [vert_idx_edge(i_edge), vert_ids_bdy(f[1])];
-                let gf = [verts[face[0]], verts[face[1]]];
-                bdy_faces.push((f[0], tag, Edge::normal(&gf)));
+                let face = Edge::from([vert_idx_edge(i_edge), vert_ids_bdy(f[1])]);
+                let gf = GEdge::from([verts[face[0]], verts[face[1]]]);
+                bdy_faces.push((f[0], tag, gf.normal()));
 
                 let i_new_face = faces.len();
                 faces.push(face);
@@ -286,7 +284,7 @@ impl DualMesh<2, 3, 2> for DualMesh2d {
 
         assert!(!new_poly_to_face.iter().any(|&i| i.0 == usize::MAX));
 
-        let mut edges = vec![[0; 2]; n_edges];
+        let mut edges = vec![Edge::default(); n_edges];
         for (&edg, &i_edg) in &all_edges {
             edges[i_edg] = edg;
         }
@@ -345,7 +343,7 @@ mod tests {
     use crate::{
         Vert2d,
         dual::{DualMesh, DualMesh2d, DualType, PolyMesh},
-        mesh::{Edge, Mesh, Mesh2d, Simplex, rectangle_mesh},
+        mesh::{Edge, GSimplex, Mesh, Mesh2d, rectangle_mesh},
     };
     use rayon::iter::ParallelIterator;
 
@@ -364,7 +362,7 @@ mod tests {
 
         let n_empty_faces = dual
             .par_gfaces()
-            .filter(|gf| Edge::normal(gf).norm() < 1e-12)
+            .filter(|gf| gf.normal().norm() < 1e-12)
             .count();
         assert_eq!(n_empty_faces, 0);
     }
@@ -383,20 +381,20 @@ mod tests {
 
         let n_empty_faces = dual
             .par_gfaces()
-            .filter(|gf| Edge::normal(gf).norm() < 1e-10)
+            .filter(|gf| gf.normal().norm() < 1e-10)
             .count();
         assert_eq!(n_empty_faces, 0);
 
         let mut res = HashMap::new();
-        res.insert([0, 1], Vert2d::new(1. / 3., -1. / 6.));
-        res.insert([0, 4], Vert2d::new(1. / 3., 1. / 3.));
-        res.insert([0, 3], Vert2d::new(-1. / 6., 1. / 3.));
-        res.insert([3, 4], Vert2d::new(1. / 3., -1. / 6.));
-        res.insert([1, 4], Vert2d::new(-1. / 3., 2. / 3.));
-        res.insert([1, 2], Vert2d::new(1. / 3., -1. / 6.));
-        res.insert([1, 5], Vert2d::new(1. / 3., 1. / 3.));
-        res.insert([4, 5], Vert2d::new(1. / 3., -1. / 6.));
-        res.insert([2, 5], Vert2d::new(-1. / 6., 1. / 3.));
+        res.insert(Edge::from([0, 1]), Vert2d::new(1. / 3., -1. / 6.));
+        res.insert(Edge::from([0, 4]), Vert2d::new(1. / 3., 1. / 3.));
+        res.insert(Edge::from([0, 3]), Vert2d::new(-1. / 6., 1. / 3.));
+        res.insert(Edge::from([3, 4]), Vert2d::new(1. / 3., -1. / 6.));
+        res.insert(Edge::from([1, 4]), Vert2d::new(-1. / 3., 2. / 3.));
+        res.insert(Edge::from([1, 2]), Vert2d::new(1. / 3., -1. / 6.));
+        res.insert(Edge::from([1, 5]), Vert2d::new(1. / 3., 1. / 3.));
+        res.insert(Edge::from([4, 5]), Vert2d::new(1. / 3., -1. / 6.));
+        res.insert(Edge::from([2, 5]), Vert2d::new(-1. / 6., 1. / 3.));
 
         dual.par_edges_and_normals().for_each(|(e, n)| {
             let n_res = *res.get(&e).unwrap();
@@ -412,7 +410,7 @@ mod tests {
 
         let n_empty_faces = dual
             .par_gfaces()
-            .filter(|gf| Edge::normal(gf).norm() < 1e-10)
+            .filter(|gf| gf.normal().norm() < 1e-10)
             .count();
         assert_eq!(n_empty_faces, 0);
 
@@ -424,15 +422,15 @@ mod tests {
         assert!((dual.par_vols().sum::<f64>() - 2.0) < 1e-10);
 
         let mut res = HashMap::new();
-        res.insert([0, 1], Vert2d::new(0.5, 0.0));
-        res.insert([0, 4], Vert2d::new(0.0, 0.0));
-        res.insert([0, 3], Vert2d::new(0.0, 0.5));
-        res.insert([3, 4], Vert2d::new(0.5, 0.0));
-        res.insert([1, 4], Vert2d::new(0.0, 1.0));
-        res.insert([1, 2], Vert2d::new(0.5, 0.0));
-        res.insert([1, 5], Vert2d::new(0.0, 0.0));
-        res.insert([4, 5], Vert2d::new(0.5, 0.0));
-        res.insert([2, 5], Vert2d::new(0.0, 0.5));
+        res.insert(Edge::from([0, 1]), Vert2d::new(0.5, 0.0));
+        res.insert(Edge::from([0, 4]), Vert2d::new(0.0, 0.0));
+        res.insert(Edge::from([0, 3]), Vert2d::new(0.0, 0.5));
+        res.insert(Edge::from([3, 4]), Vert2d::new(0.5, 0.0));
+        res.insert(Edge::from([1, 4]), Vert2d::new(0.0, 1.0));
+        res.insert(Edge::from([1, 2]), Vert2d::new(0.5, 0.0));
+        res.insert(Edge::from([1, 5]), Vert2d::new(0.0, 0.0));
+        res.insert(Edge::from([4, 5]), Vert2d::new(0.5, 0.0));
+        res.insert(Edge::from([2, 5]), Vert2d::new(0.0, 0.5));
 
         dual.par_edges_and_normals().for_each(|(e, n)| {
             let n_res = *res.get(&e).unwrap();

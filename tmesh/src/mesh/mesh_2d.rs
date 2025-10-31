@@ -1,13 +1,13 @@
 //! Triangle meshes in 2d
 use crate::{
     Vert2d,
-    mesh::{GenericMesh, Mesh},
+    mesh::{Edge, GenericMesh, Mesh, Quadrangle, Triangle},
 };
 
 /// Create a `Mesh<2, 3, 2>` of a `lx` by `ly` rectangle by splitting a `nx` by `ny`
 /// uniform structured grid
 #[must_use]
-pub fn rectangle_mesh<M: Mesh<2, 3, 2>>(lx: f64, nx: usize, ly: f64, ny: usize) -> M {
+pub fn rectangle_mesh<M: Mesh<2, Triangle>>(lx: f64, nx: usize, ly: f64, ny: usize) -> M {
     let dx = lx / (nx as f64 - 1.);
     let x_1d = (0..nx).map(|i| i as f64 * dx).collect::<Vec<_>>();
 
@@ -19,7 +19,7 @@ pub fn rectangle_mesh<M: Mesh<2, 3, 2>>(lx: f64, nx: usize, ly: f64, ny: usize) 
 
 /// Create a `Mesh<2, 3, 2>` of rectangle by splitting a structured grid
 #[must_use]
-pub fn nonuniform_rectangle_mesh<M: Mesh<2, 3, 2>>(x: &[f64], y: &[f64]) -> M {
+pub fn nonuniform_rectangle_mesh<M: Mesh<2, Triangle>>(x: &[f64], y: &[f64]) -> M {
     let nx = x.len();
     let ny = y.len();
 
@@ -36,7 +36,12 @@ pub fn nonuniform_rectangle_mesh<M: Mesh<2, 3, 2>>(x: &[f64], y: &[f64]) -> M {
     let mut etags = Vec::with_capacity((nx - 1) * (ny - 1));
     for i in 0..nx - 1 {
         for j in 0..ny - 1 {
-            quads.push([idx(i, j), idx(i + 1, j), idx(i + 1, j + 1), idx(i, j + 1)]);
+            quads.push(Quadrangle([
+                idx(i, j),
+                idx(i + 1, j),
+                idx(i + 1, j + 1),
+                idx(i, j + 1),
+            ]));
             etags.push(1);
         }
     }
@@ -45,16 +50,16 @@ pub fn nonuniform_rectangle_mesh<M: Mesh<2, 3, 2>>(x: &[f64], y: &[f64]) -> M {
     let mut ftags = Vec::with_capacity(2 * (nx - 1 + ny - 1));
 
     for i in 0..nx - 1 {
-        faces.push([idx(i, 0), idx(i + 1, 0)]);
+        faces.push(Edge([idx(i, 0), idx(i + 1, 0)]));
         ftags.push(1);
-        faces.push([idx(i + 1, ny - 1), idx(i, ny - 1)]);
+        faces.push(Edge([idx(i + 1, ny - 1), idx(i, ny - 1)]));
         ftags.push(3);
     }
 
     for j in 0..ny - 1 {
-        faces.push([idx(nx - 1, j), idx(nx - 1, j + 1)]);
+        faces.push(Edge([idx(nx - 1, j), idx(nx - 1, j + 1)]));
         ftags.push(2);
-        faces.push([idx(0, j + 1), idx(0, j)]);
+        faces.push(Edge([idx(0, j + 1), idx(0, j)]));
         ftags.push(4);
     }
 
@@ -68,15 +73,15 @@ pub fn nonuniform_rectangle_mesh<M: Mesh<2, 3, 2>>(x: &[f64], y: &[f64]) -> M {
 }
 
 /// Triangle mesh in 2d
-pub type Mesh2d = GenericMesh<2, 3, 2>;
+pub type Mesh2d = GenericMesh<2, Triangle>;
 
 #[cfg(test)]
 mod tests {
     use crate::{
         Vert2d, assert_delta,
         mesh::{
-            BoundaryMesh2d, Edge, Mesh, Mesh2d, Simplex, Triangle, bandwidth, cell_center,
-            rectangle_mesh,
+            BoundaryMesh2d, Edge, GTriangle, Mesh, Mesh2d, bandwidth, rectangle_mesh,
+            simplices::GSimplex,
         },
     };
     use rayon::iter::ParallelIterator;
@@ -90,19 +95,19 @@ mod tests {
 
         let edgs = msh.edges();
         assert_eq!(edgs.len(), 5, "{edgs:?}");
-        assert!(edgs.contains_key(&[0, 1]));
-        assert!(edgs.contains_key(&[2, 3]));
-        assert!(edgs.contains_key(&[0, 2]));
-        assert!(edgs.contains_key(&[1, 3]));
-        assert!(edgs.contains_key(&[0, 3]));
+        assert!(edgs.contains_key(&Edge([0, 1])));
+        assert!(edgs.contains_key(&Edge([2, 3])));
+        assert!(edgs.contains_key(&Edge([0, 2])));
+        assert!(edgs.contains_key(&Edge([1, 3])));
+        assert!(edgs.contains_key(&Edge([0, 3])));
 
         let faces = msh.all_faces();
         assert_eq!(faces.len(), 5);
-        assert!(faces.contains_key(&[0, 1]));
-        assert!(faces.contains_key(&[2, 3]));
-        assert!(faces.contains_key(&[0, 2]));
-        assert!(faces.contains_key(&[1, 3]));
-        assert!(faces.contains_key(&[0, 3]));
+        assert!(faces.contains_key(&Edge([0, 1])));
+        assert!(faces.contains_key(&Edge([2, 3])));
+        assert!(faces.contains_key(&Edge([0, 2])));
+        assert!(faces.contains_key(&Edge([1, 3])));
+        assert!(faces.contains_key(&Edge([0, 3])));
     }
 
     #[test]
@@ -114,15 +119,15 @@ mod tests {
 
         let edgs = msh.edges();
         assert_eq!(edgs.len(), 9);
-        assert!(edgs.contains_key(&[0, 1]));
-        assert!(edgs.contains_key(&[1, 2]));
-        assert!(edgs.contains_key(&[3, 4]));
-        assert!(edgs.contains_key(&[4, 5]));
-        assert!(edgs.contains_key(&[0, 3]));
-        assert!(edgs.contains_key(&[1, 4]));
-        assert!(edgs.contains_key(&[2, 5]));
-        assert!(edgs.contains_key(&[0, 4]));
-        assert!(edgs.contains_key(&[1, 5]));
+        assert!(edgs.contains_key(&Edge([0, 1])));
+        assert!(edgs.contains_key(&Edge([1, 2])));
+        assert!(edgs.contains_key(&Edge([3, 4])));
+        assert!(edgs.contains_key(&Edge([4, 5])));
+        assert!(edgs.contains_key(&Edge([0, 3])));
+        assert!(edgs.contains_key(&Edge([1, 4])));
+        assert!(edgs.contains_key(&Edge([2, 5])));
+        assert!(edgs.contains_key(&Edge([0, 4])));
+        assert!(edgs.contains_key(&Edge([1, 5])));
     }
 
     #[test]
@@ -135,7 +140,7 @@ mod tests {
         let edgs = msh.edges();
         assert_eq!(edgs.len(), 9 * 15 + 10 * 14 + 9 * 14);
 
-        let vol = msh.gelems().map(|ge| Triangle::vol(&ge)).sum::<f64>();
+        let vol = msh.gelems().map(|ge| ge.vol()).sum::<f64>();
         assert!((vol - 2.0).abs() < 1e-10);
     }
 
@@ -161,14 +166,14 @@ mod tests {
         let v0 = Vert2d::new(0.0, 0.0);
         let v1 = Vert2d::new(1.0, 0.0);
         let v2 = Vert2d::new(0.0, 1.0);
-        let ge = [v0, v1, v2];
-        assert_delta!(Triangle::vol(&ge), 0.5, 1e-12);
-        let ge = [v0, v2, v1];
-        assert_delta!(Triangle::vol(&ge), -0.5, 1e-12);
+        let ge = GTriangle([v0, v1, v2]);
+        assert_delta!(ge.vol(), 0.5, 1e-12);
+        let ge = GTriangle([v0, v2, v1]);
+        assert_delta!(ge.vol(), -0.5, 1e-12);
 
         let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 2.0, 15).random_shuffle();
 
-        let vol = msh.par_gelems().map(|ge| Triangle::vol(&ge)).sum::<f64>();
+        let vol = msh.par_gelems().map(|ge| ge.vol()).sum::<f64>();
         assert_delta!(vol, 2.0, 1e-12);
 
         let f = msh.par_verts().map(|v| v[0]).collect::<Vec<_>>();
@@ -213,9 +218,9 @@ mod tests {
         }
 
         for (i, v) in msh_rcm.gelems().enumerate() {
-            let v = cell_center(&v);
+            let v = v.center();
             let other = msh.gelem(&msh.elem(elem_ids[i]));
-            let other = cell_center(&other);
+            let other = other.center();
             assert!((v - other).norm() < 1e-12);
         }
 
@@ -225,9 +230,9 @@ mod tests {
         }
 
         for (i, v) in msh_rcm.gfaces().enumerate() {
-            let v = cell_center(&v);
+            let v = v.center();
             let other = msh.gface(&msh.face(face_ids[i]));
-            let other = cell_center(&other);
+            let other = other.center();
             assert!((v - other).norm() < 1e-12);
         }
 
@@ -249,10 +254,10 @@ mod tests {
         assert_eq!(msh.n_elems(), 8);
 
         let (bdy, _): (BoundaryMesh2d, _) = msh.boundary();
-        let area = bdy.gelems().map(|ge| Edge::vol(&ge)).sum::<f64>();
+        let area = bdy.gelems().map(|ge| ge.vol()).sum::<f64>();
         assert_delta!(area, 4.0, 1e-10);
 
-        let vol = msh.gelems().map(|ge| Triangle::vol(&ge)).sum::<f64>();
+        let vol = msh.gelems().map(|ge| ge.vol()).sum::<f64>();
         assert_delta!(vol, 1.0, 1e-10);
     }
 

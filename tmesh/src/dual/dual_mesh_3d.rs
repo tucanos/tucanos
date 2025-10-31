@@ -3,7 +3,8 @@ use super::{DualCellCenter, DualMesh, DualType, PolyMesh, PolyMeshType, circumce
 use crate::{
     Tag, Vert3d,
     mesh::{
-        Edge, Mesh, Simplex, Tetrahedron, Triangle, cell_center, cell_vertex, sort_elem_min_ids,
+        Edge, GEdge, GSimplex, GTetrahedron, GTriangle, Mesh, Simplex, Tetrahedron, Triangle,
+        sort_elem_min_ids,
     },
 };
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
@@ -23,9 +24,9 @@ pub struct DualMesh3d {
 }
 
 impl DualMesh3d {
-    fn get_tet_center(v: &[Vert3d; 4], t: DualType) -> DualCellCenter<3, 3> {
+    fn get_tet_center(v: &GTetrahedron<3>, t: DualType) -> DualCellCenter<3, Tetrahedron> {
         match t {
-            DualType::Median => DualCellCenter::Vertex(cell_center(v)),
+            DualType::Median => DualCellCenter::Vertex(v.center()),
             DualType::Barth | DualType::ThresholdBarth(_) => {
                 let f = match t {
                     DualType::Barth => 0.0,
@@ -35,22 +36,22 @@ impl DualMesh3d {
                 let f = f.max(1e-6);
                 let bcoords = circumcenter_bcoords(v);
                 if bcoords.iter().all(|&x| x > f) {
-                    DualCellCenter::Vertex(cell_vertex(v, bcoords))
+                    DualCellCenter::Vertex(v.vert(&bcoords))
                 } else if bcoords[0] <= f {
-                    DualCellCenter::Face([1, 2, 3])
+                    DualCellCenter::Face([1, 2, 3].into())
                 } else if bcoords[1] <= f {
-                    DualCellCenter::Face([2, 0, 3])
+                    DualCellCenter::Face([2, 0, 3].into())
                 } else if bcoords[2] <= f {
-                    DualCellCenter::Face([0, 1, 3])
+                    DualCellCenter::Face([0, 1, 3].into())
                 } else {
-                    DualCellCenter::Face([0, 2, 1])
+                    DualCellCenter::Face([0, 2, 1].into())
                 }
             }
         }
     }
-    fn get_tri_center(v: &[Vert3d; 3], t: DualType) -> DualCellCenter<3, 2> {
+    fn get_tri_center(v: &GTriangle<3>, t: DualType) -> DualCellCenter<3, Triangle> {
         match t {
-            DualType::Median => DualCellCenter::Vertex(cell_center(v)),
+            DualType::Median => DualCellCenter::Vertex(v.center()),
             DualType::Barth | DualType::ThresholdBarth(_) => {
                 let f = match t {
                     DualType::Barth => 0.0,
@@ -59,13 +60,13 @@ impl DualMesh3d {
                 };
                 let bcoords = circumcenter_bcoords(v);
                 if bcoords.iter().all(|&x| x >= f) {
-                    DualCellCenter::Vertex(cell_vertex(v, bcoords))
+                    DualCellCenter::Vertex(v.vert(&bcoords))
                 } else if bcoords[0] < f {
-                    DualCellCenter::Face([1, 2])
+                    DualCellCenter::Face([1, 2].into())
                 } else if bcoords[1] < f {
-                    DualCellCenter::Face([2, 0])
+                    DualCellCenter::Face([2, 0].into())
                 } else {
-                    DualCellCenter::Face([1, 0])
+                    DualCellCenter::Face([1, 0].into())
                 }
             }
         }
@@ -104,7 +105,7 @@ impl PolyMesh<3> for DualMesh3d {
     }
 
     fn face(&self, i: usize) -> &[usize] {
-        &self.faces[i]
+        self.faces[i].as_slice()
     }
 
     fn ftag(&self, i: usize) -> Tag {
@@ -112,9 +113,9 @@ impl PolyMesh<3> for DualMesh3d {
     }
 }
 
-impl DualMesh<3, 4, 3> for DualMesh3d {
+impl DualMesh<3, Tetrahedron> for DualMesh3d {
     #[allow(clippy::too_many_lines)]
-    fn new<M: Mesh<3, 4, 3>>(msh: &M, t: DualType) -> Self {
+    fn new<M: Mesh<3, Tetrahedron>>(msh: &M, t: DualType) -> Self {
         // edges
         let all_edges = msh.edges();
         let n_edges = all_edges.len();
@@ -146,7 +147,8 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
         let vert_idx_edge = |i: usize| i + n_bdy_verts;
 
         for (&edge, &i_edge) in &all_edges {
-            verts[vert_idx_edge(i_edge)] = cell_center(&[msh.vert(edge[0]), msh.vert(edge[1])]);
+            let ge = GEdge::from([msh.vert(edge[0]), msh.vert(edge[1])]);
+            verts[vert_idx_edge(i_edge)] = ge.center();
         }
 
         // vertices: triangle centers
@@ -159,8 +161,8 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
                     vert_idx_face[i_face] = verts.len();
                     verts.push(center);
                 }
-                DualCellCenter::Face([i0, i1]) => {
-                    let edge = [f[i0], f[i1]].sorted();
+                DualCellCenter::Face(e) => {
+                    let edge = Edge::from([f[e[0]], f[e[1]]]).sorted();
                     let i_edge = *all_edges.get(&edge).unwrap();
                     vert_idx_face[i_face] = vert_idx_edge(i_edge);
                 }
@@ -177,8 +179,8 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
                     vert_idx_elem[i_elem] = verts.len();
                     verts.push(center);
                 }
-                DualCellCenter::Face([i0, i1, i2]) => {
-                    let face = [e[i0], e[i1], e[i2]].sorted();
+                DualCellCenter::Face(f) => {
+                    let face = Triangle::from([e[f[0]], e[f[1]], e[f[2]]]).sorted();
                     let i_face = all_faces.get(&face).unwrap()[0];
                     vert_idx_elem[i_elem] = vert_idx_face[i_face];
                 }
@@ -186,9 +188,6 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
         }
 
         // faces and polyhedra
-        let elem_to_edges = Tetrahedron::edges();
-        let face_to_edges = Triangle::edges();
-        let elem_to_faces = M::elem_to_faces();
 
         let n_poly_faces = 12 * msh.n_elems() + 6 * msh.n_faces();
         // for Barth cells we may build the same face from different edge / face / element
@@ -198,17 +197,17 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
         let mut poly_to_face_ptr = vec![0; msh.n_verts() + 1];
         // internal faces
         for e in msh.elems() {
-            for edg in &elem_to_edges {
-                poly_to_face_ptr[e[edg[0]] + 1] += 2;
-                poly_to_face_ptr[e[edg[1]] + 1] += 2;
+            for edg in e.edges() {
+                poly_to_face_ptr[edg[0] + 1] += 2;
+                poly_to_face_ptr[edg[1] + 1] += 2;
             }
         }
 
         // boundary faces
         for f in msh.faces() {
-            for edg in &face_to_edges {
-                poly_to_face_ptr[f[edg[0]] + 1] += 1;
-                poly_to_face_ptr[f[edg[1]] + 1] += 1;
+            for edg in f.edges() {
+                poly_to_face_ptr[edg[0] + 1] += 1;
+                poly_to_face_ptr[edg[1] + 1] += 1;
             }
         }
 
@@ -223,30 +222,28 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
         let mut n_empty_faces = 0;
         // build internal faces
         for (i_elem, e) in msh.elems().enumerate() {
-            for f in &elem_to_faces {
-                let f = [e[f[0]], e[f[1]], e[f[2]]];
+            for f in e.faces() {
                 let tmp = f.sorted();
                 let i_face = all_faces.get(&tmp).unwrap()[0];
-                for edg in &face_to_edges {
-                    let edg = [f[edg[0]], f[edg[1]]];
+                for edg in f.edges() {
                     let (i_edge, sgn) = if edg[0] < edg[1] {
                         (*all_edges.get(&edg).unwrap(), 1.0)
                     } else {
-                        let tmp = [edg[1], edg[0]];
+                        let tmp = Edge::from([edg[1], edg[0]]);
                         (*all_edges.get(&tmp).unwrap(), -1.0)
                     };
-                    let face = [
+                    let face = Triangle::from([
                         vert_idx_edge(i_edge),
                         vert_idx_elem[i_elem],
                         vert_idx_face[i_face],
-                    ];
+                    ]);
 
                     let skip = face[0] == face[1] || face[0] == face[2] || face[1] == face[2];
                     if skip {
                         n_empty_faces += 1;
                     } else {
-                        let gf = [verts[face[0]], verts[face[1]], verts[face[2]]];
-                        edge_normals[i_edge] += sgn * Triangle::normal(&gf);
+                        let gf = GTriangle::from([verts[face[0]], verts[face[1]], verts[face[2]]]);
+                        edge_normals[i_edge] += sgn * gf.normal();
 
                         let sorted_face = face.sorted();
                         let is_sorted = face.is_same(&sorted_face);
@@ -308,22 +305,21 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
         for (f, tag) in msh.faces().zip(msh.ftags()) {
             let tmp = f.sorted();
             let i_face = all_faces.get(&tmp).unwrap()[0];
-            for edg in &face_to_edges {
-                let edg = [f[edg[0]], f[edg[1]]];
+            for edg in f.edges() {
                 let tmp = edg.sorted();
                 let i_edge = *all_edges.get(&tmp).unwrap();
 
-                let face = [
+                let face = Triangle::from([
                     vert_ids_bdy(edg[0]),
                     vert_idx_edge(i_edge),
                     vert_idx_face[i_face],
-                ];
+                ]);
                 let skip = face[0] == face[1] || face[0] == face[2] || face[1] == face[2];
                 if skip {
                     n_empty_faces += 1;
                 } else {
-                    let gf = [verts[face[0]], verts[face[1]], verts[face[2]]];
-                    bdy_faces.push((edg[0], tag, Triangle::normal(&gf)));
+                    let gf = GTriangle::from([verts[face[0]], verts[face[1]], verts[face[2]]]);
+                    bdy_faces.push((edg[0], tag, gf.normal()));
 
                     let sorted_face = face.sorted();
                     let is_sorted = face.is_same(&sorted_face);
@@ -350,17 +346,17 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
                     assert!(ok);
                 }
 
-                let face = [
+                let face = Triangle::from([
                     vert_ids_bdy(edg[1]),
                     vert_idx_face[i_face],
                     vert_idx_edge(i_edge),
-                ];
+                ]);
                 let skip = face[0] == face[1] || face[0] == face[2] || face[1] == face[2];
                 if skip {
                     n_empty_faces += 1;
                 } else {
-                    let gf = [verts[face[0]], verts[face[1]], verts[face[2]]];
-                    bdy_faces.push((edg[0], tag, Triangle::normal(&gf)));
+                    let gf = GTriangle::from([verts[face[0]], verts[face[1]], verts[face[2]]]);
+                    bdy_faces.push((edg[0], tag, gf.normal()));
 
                     let sorted_face = face.sorted();
                     let is_sorted = face.is_same(&sorted_face);
@@ -412,7 +408,7 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
             assert_eq!(count, n);
         }
 
-        let mut faces = vec![[0; 3]; count];
+        let mut faces = vec![Triangle::default(); count];
         let mut ftags = vec![0; count];
         for (face, (i_old, tag)) in tmp_faces {
             let i = new_face_idx[i_old];
@@ -443,7 +439,7 @@ impl DualMesh<3, 4, 3> for DualMesh3d {
 
         assert!(!new_poly_to_face.iter().any(|&i| i.0 == usize::MAX));
 
-        let mut edges = vec![[0; 2]; n_edges];
+        let mut edges = vec![Edge::default(); n_edges];
         for (&edg, &i_edg) in &all_edges {
             edges[i_edg] = edg;
         }

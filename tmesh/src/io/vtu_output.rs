@@ -2,7 +2,7 @@ use crate::{
     Result, Tag, Vertex,
     dual::{PolyMesh, PolyMeshType, merge_polylines},
     extruded::ExtrudedMesh2d,
-    mesh::{Cell, Face, Mesh, Prism, Simplex},
+    mesh::{Mesh, Prism, Simplex},
 };
 use base64::Engine as _;
 use quick_xml::se::to_utf8_io_writer;
@@ -39,14 +39,10 @@ pub struct VTUFile {
 
 impl VTUFile {
     /// Create a vtu Mesh writer
-    pub fn from_mesh<const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>(
+    pub fn from_mesh<const D: usize, C: Simplex, M: Mesh<D, C>>(
         mesh: &M,
         encoding: VTUEncoding,
-    ) -> Self
-    where
-        Cell<C>: Simplex<C>,
-        Face<F>: Simplex<F>,
-    {
+    ) -> Self {
         Self {
             grid_type: "UnstructuredGrid".to_string(),
             version: 0.1,
@@ -403,28 +399,24 @@ struct Cells {
 }
 
 impl Cells {
-    fn from_elems<const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>(
+    fn from_elems<const D: usize, C: Simplex, M: Mesh<D, C>>(
         mesh: &M,
         encoding: VTUEncoding,
-    ) -> Self
-    where
-        Cell<C>: Simplex<C>,
-        Face<F>: Simplex<F>,
-    {
+    ) -> Self {
         let n = mesh.n_elems();
 
         let connectivity = DataArray::new_i64(
             "connectivity",
             1,
-            C * n,
+            C::N_VERTS * n,
             mesh.elems().flatten().map(|x| x as i64),
             encoding,
         );
 
-        let data = (0..n).map(|i| (C * (i + 1)) as i64);
+        let data = (0..n).map(|i| (C::N_VERTS * (i + 1)) as i64);
         let offsets = DataArray::new_i64("offsets", 1, data.len(), data, encoding);
 
-        let cell_type: u8 = match C {
+        let cell_type: u8 = match C::N_VERTS {
             4 => 10,
             3 => 5,
             2 => 4,
@@ -449,7 +441,7 @@ impl Cells {
             "connectivity",
             1,
             6 * n,
-            prisms.flatten().map(|&x| x as i64),
+            prisms.copied().flatten().map(|x| x as i64),
             encoding,
         );
 

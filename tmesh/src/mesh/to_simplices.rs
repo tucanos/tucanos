@@ -100,7 +100,7 @@ pub fn pyr2tets(pyr: &Pyramid) -> [Tetrahedron; 2] {
 /// Convert a prism into 3 tetrahedra
 #[must_use]
 pub fn pri2tets(pri: &Prism) -> [Tetrahedron; 3] {
-    let imin = argmin(pri);
+    let imin = argmin(&pri.0);
 
     let mut usize = [0; 6];
     for i in 0..6 {
@@ -137,7 +137,7 @@ pub fn pri2tets(pri: &Prism) -> [Tetrahedron; 3] {
 #[must_use]
 #[allow(clippy::too_many_lines)]
 pub fn hex2tets(hex: &Hexahedron) -> ([Tetrahedron; 5], Option<Tetrahedron>) {
-    let imin = argmin(hex);
+    let imin = argmin(&hex.0);
 
     let mut usize = [0; 8];
     for i in 0..8 {

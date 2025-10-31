@@ -1,6 +1,6 @@
 use crate::{
-    mesh::{Cell, Mesh, Simplex},
     Vertex,
+    mesh::{Mesh, Simplex},
 };
 use parry2d_f64::math::Point as Point2;
 use parry2d_f64::query::{PointQuery as _, PointQueryWithLocation as _};
@@ -20,7 +20,7 @@ mod parry2d {
         bounding_volume::Aabb,
         math::{Isometry, Point, Real},
         partitioning::{Bvh, BvhBuildStrategy},
-        query::{details::NormalConstraints, PointProjection, PointQueryWithLocation},
+        query::{PointProjection, PointQueryWithLocation, details::NormalConstraints},
         shape::{
             CompositeShape, CompositeShapeRef, Segment, SegmentPointLocation, Shape,
             TypedCompositeShape,
@@ -28,10 +28,7 @@ mod parry2d {
     };
     use std::marker::PhantomData;
 
-    use crate::{
-        mesh::{Cell, Mesh, Simplex},
-        Vertex,
-    };
+    use crate::mesh::{GSimplex, Mesh, Simplex};
 
     pub trait MeshToShape {
         type Shape: Shape + PointQueryWithLocation<Location = Self::Location> + Copy + Clone;
@@ -85,14 +82,14 @@ mod parry2d {
     }
 
     impl<const D: usize, MS: MeshToShape> MeshShape<D, MS> {
-        fn local_aabb<const C: usize>(ge: &[Vertex<D>; C]) -> Aabb {
+        fn local_aabb<G: GSimplex<D>>(ge: &G) -> Aabb {
             let mut min = Point::origin();
             let mut max = min;
 
             for d in 0..2 {
                 let (mn, mx) = ge
-                    .iter()
-                    .map(|&p| p[d])
+                    .into_iter()
+                    .map(|p| p[d])
                     .fold((f64::MAX, -f64::MAX), |(mn, mx), x| (mn.min(x), mx.max(x)));
                 min.coords[d] = mn;
                 max.coords[d] = mx;
@@ -101,11 +98,7 @@ mod parry2d {
             Aabb::new(min, max)
         }
 
-        pub fn new<const C: usize, const F: usize, M: Mesh<D, C, F>>(mesh: &M) -> Self
-        where
-            Cell<C>: Simplex<C>,
-            Cell<F>: Simplex<F>,
-        {
+        pub fn new<C: Simplex, M: Mesh<D, C>>(mesh: &M) -> Self {
             assert_eq!(D, 2);
             let data = mesh
                 .gelems()
@@ -193,8 +186,8 @@ mod parry3d {
         math::{Isometry, Point, Real},
         partitioning::{Bvh, BvhBuildStrategy},
         query::{
-            details::NormalConstraints, PointProjection, PointQuery, PointQueryWithLocation, Ray,
-            RayCast, RayIntersection,
+            PointProjection, PointQuery, PointQueryWithLocation, Ray, RayCast, RayIntersection,
+            details::NormalConstraints,
         },
         shape::{
             CompositeShape, CompositeShapeRef, FeatureId, Segment, SegmentPointLocation, Shape,
@@ -204,8 +197,8 @@ mod parry3d {
     use std::marker::PhantomData;
 
     use crate::{
-        mesh::{Cell, Mesh, Simplex},
         Vertex,
+        mesh::{GSimplex, Mesh, Simplex},
     };
     /// Create a parry Shape from a tucanos Elem
     pub trait MeshToShape {
@@ -345,14 +338,14 @@ mod parry3d {
         phantom: PhantomData<MS>,
     }
     impl<const D: usize, MS: MeshToShape> MeshShape<D, MS> {
-        fn local_aabb<const C: usize>(ge: &[Vertex<D>; C]) -> Aabb {
+        fn local_aabb<G: GSimplex<D>>(ge: &G) -> Aabb {
             let mut min = Point::origin();
             let mut max = min;
 
             for d in 0..3 {
                 let (mn, mx) = ge
-                    .iter()
-                    .map(|&p| p[d])
+                    .into_iter()
+                    .map(|p| p[d])
                     .fold((f64::MAX, -f64::MAX), |(mn, mx), x| (mn.min(x), mx.max(x)));
                 min.coords[d] = mn;
                 max.coords[d] = mx;
@@ -360,11 +353,7 @@ mod parry3d {
 
             Aabb::new(min, max)
         }
-        pub fn new<const C: usize, const F: usize, M: Mesh<D, C, F>>(mesh: &M) -> Self
-        where
-            Cell<C>: Simplex<C>,
-            Cell<F>: Simplex<F>,
-        {
+        pub fn new<C: Simplex, M: Mesh<D, C>>(mesh: &M) -> Self {
             assert_eq!(D, 3);
             let data = mesh
                 .gelems()
@@ -487,12 +476,8 @@ enum ParryImpl<const D: usize> {
 
 impl<const D: usize> ObjectIndex<D> {
     /// Create a PointIndex from a mesh
-    pub fn new<const C: usize, const F: usize, M: Mesh<D, C, F>>(mesh: &M) -> Self
-    where
-        Cell<C>: Simplex<C>,
-        Cell<F>: Simplex<F>,
-    {
-        if D == 3 && C == 3 {
+    pub fn new<C: Simplex, M: Mesh<D, C>>(mesh: &M) -> Self {
+        if D == 3 && C::N_VERTS == 3 {
             let coords = mesh
                 .verts()
                 .map(|p| Point3::from_slice(p.as_slice()))
@@ -504,19 +489,19 @@ impl<const D: usize> ObjectIndex<D> {
             Self {
                 inner: ParryImpl::Tria3D(parry3d_f64::shape::TriMesh::new(coords, elems).unwrap()),
             }
-        } else if D == 2 && C == 2 {
+        } else if D == 2 && C::N_VERTS == 2 {
             Self {
                 inner: ParryImpl::Edge2D(parry2d::MeshShape::new(mesh)),
             }
-        } else if D == 3 && C == 4 {
+        } else if D == 3 && C::N_VERTS == 4 {
             Self {
                 inner: ParryImpl::Tetra(parry3d::MeshShape::new(mesh)),
             }
-        } else if D == 3 && C == 2 {
+        } else if D == 3 && C::N_VERTS == 2 {
             Self {
                 inner: ParryImpl::Edge3D(parry3d::MeshShape::new(mesh)),
             }
-        } else if D == 2 && C == 3 {
+        } else if D == 2 && C::N_VERTS == 3 {
             let coords = mesh
                 .verts()
                 .map(|p| Point2::from_slice(p.as_slice()))
@@ -529,7 +514,7 @@ impl<const D: usize> ObjectIndex<D> {
                 inner: ParryImpl::Tria2D(parry2d_f64::shape::TriMesh::new(coords, elems).unwrap()),
             }
         } else {
-            unimplemented!("D={D} C={}", C);
+            unimplemented!("D={D} C={}", C::N_VERTS);
         }
     }
 

@@ -21,6 +21,7 @@ coupe = { git = "https://github.com/LIHPC-Computational-Geometry/coupe.git", rev
 metis = { git = "https://github.com/tucanos/metis-rs.git", rev = "d31aa3e", optional=true}
 lindel = "0.1.1"
 stl_io = "0.8.5"
+derive_more = { version = "2.0.1", features = ["from", "index", "index_mut", "into", "into_iterator"] }
 
 [features]
 32bit-tags = []
