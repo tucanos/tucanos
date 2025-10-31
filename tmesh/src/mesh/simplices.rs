@@ -54,8 +54,29 @@ where
         res
     }
 
+    /// Get the local index of vertex i in element e
+    fn vertex_index(&self, i: usize) -> Option<usize> {
+        self.into_iter().position(|j| j == i)
+    }
+
+    /// Create an element from a vertex Id and the opposite face
+    fn from_vertex_and_face(i: usize, f: &Self::FACE) -> Self {
+        let mut e = Self::default();
+        e[0] = i;
+        for i in 1..Self::N_VERTS {
+            e[i] = f[i - 1];
+        }
+        e
+    }
+
+    /// Check if an element contains a vertex
     fn contains(&self, i: usize) -> bool {
         self.as_ref().contains(&i)
+    }
+
+    /// Check if an element contains an edge
+    fn contains_edge(&self, edg: &Edge) -> bool {
+        self.contains(edg[0]) && self.contains(edg[1])
     }
 
     /// Get the i-th edge for the current simplex
