@@ -273,6 +273,10 @@ pub trait DualMesh<const D: usize, C: Simplex>: PolyMesh<D> {
 
     /// Return a `Mesh<D, C2, F2>` containing the faces such that `filter(tag)` is true.
     fn extract_faces<M: Mesh<D, C::FACE>, G: Fn(Tag) -> bool>(&self, filter: G) -> (M, Vec<usize>) {
+        // find out if faces needs to be inverted (boundary faces will only be seen once)
+        let mut flg = vec![true; self.n_faces()];
+        self.elems().flatten().for_each(|&(i, x)| flg[i] = x);
+
         let mut new_ids = vec![usize::MAX; self.n_verts()];
         let mut vert_ids = Vec::new();
         let mut next = 0;
@@ -304,9 +308,14 @@ pub trait DualMesh<const D: usize, C: Simplex>: PolyMesh<D> {
             .for_each(|(i, &j)| verts[j] = self.vert(i));
         self.faces()
             .zip(self.ftags())
-            .filter(|(f, _)| f.iter().all(|&i| new_ids[i] != usize::MAX))
-            .for_each(|(f, t)| {
-                faces.push(C::FACE::from_iter(f.iter().map(|&i| new_ids[i])));
+            .zip(flg.iter())
+            .filter(|((f, _), _)| f.iter().all(|&i| new_ids[i] != usize::MAX))
+            .for_each(|((f, t), &invert)| {
+                let mut f = C::FACE::from_iter(f.iter().map(|&i| new_ids[i]));
+                if invert {
+                    f.invert();
+                }
+                faces.push(f);
                 ftags.push(t);
             });
 
