@@ -21,7 +21,7 @@ pub mod least_squares;
 
 use std::marker::PhantomData;
 
-use derive_more::{From, Index, IndexMut, IntoIterator};
+use derive_more::{AsRef, From, Index, IndexMut, IntoIterator};
 use log::{debug, warn};
 use minimeshb::{reader::MeshbReader, writer::MeshbWriter};
 use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
@@ -48,37 +48,65 @@ use split::{split_edgs, split_tets, split_tris};
 pub use to_simplices::{hex2tets, pri2tets, pyr2tets, qua2tris};
 
 /// Hexahedron
-#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From)]
+#[derive(
+    Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From, AsRef,
+)]
+#[as_ref(forward)]
 pub struct Hexahedron([usize; 8]);
 /// Prism
-#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From)]
+#[derive(
+    Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From, AsRef,
+)]
+#[as_ref(forward)]
 pub struct Prism([usize; 6]);
 /// Pyramid
-#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From)]
+#[derive(
+    Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From, AsRef,
+)]
+#[as_ref(forward)]
 pub struct Pyramid([usize; 5]);
 /// Quadrangle
-#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From)]
+#[derive(
+    Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From, AsRef,
+)]
+#[as_ref(forward)]
 pub struct Quadrangle([usize; 4]);
 
 /// Tetrahedron
-#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From)]
+#[derive(
+    Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From, AsRef,
+)]
+#[as_ref(forward)]
 pub struct Tetrahedron([usize; 4]);
-#[derive(Clone, Copy, Debug, Index, IndexMut, IntoIterator, From)]
+#[derive(Clone, Copy, Debug, Index, IndexMut, IntoIterator, From, AsRef)]
+#[as_ref(forward)]
 pub struct GTetrahedron<const D: usize>([Vertex<D>; 4]);
 /// Triangle
-#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From)]
+#[derive(
+    Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From, AsRef,
+)]
+#[as_ref(forward)]
 pub struct Triangle([usize; 3]);
-#[derive(Clone, Copy, Debug, Index, IndexMut, IntoIterator, From)]
+#[derive(Clone, Copy, Debug, Index, IndexMut, IntoIterator, From, AsRef)]
+#[as_ref(forward)]
 pub struct GTriangle<const D: usize>([Vertex<D>; 3]);
 /// Edge
-#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From)]
+#[derive(
+    Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From, AsRef,
+)]
+#[as_ref(forward)]
 pub struct Edge([usize; 2]);
-#[derive(Clone, Copy, Debug, Index, IndexMut, IntoIterator, From)]
+#[derive(Clone, Copy, Debug, Index, IndexMut, IntoIterator, From, AsRef)]
+#[as_ref(forward)]
 pub struct GEdge<const D: usize>([Vertex<D>; 2]);
 /// Node
-#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From)]
+#[derive(
+    Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Index, IndexMut, IntoIterator, From, AsRef,
+)]
+#[as_ref(forward)]
 pub struct Node([usize; 1]);
-#[derive(Clone, Copy, Debug, Index, IndexMut, IntoIterator, From)]
+#[derive(Clone, Copy, Debug, Index, IndexMut, IntoIterator, From, AsRef)]
+#[as_ref(forward)]
 pub struct GNode<const D: usize>([Vertex<D>; 1]);
 
 pub(crate) fn sort_elem_min_ids<C: Simplex, I: ExactSizeIterator<Item = C>>(
@@ -946,7 +974,7 @@ pub trait Mesh<const D: usize, C: Simplex>: Send + Sync + Sized {
         writer.write_vertices::<D, _, _>(
             self.verts().map(|x| {
                 let mut tmp = [0.0; D];
-                tmp.copy_from_slice(x.as_slice());
+                tmp.copy_from_slice(x.as_ref());
                 tmp
             }),
             (0..self.n_verts()).map(|_| 1),
@@ -956,7 +984,7 @@ pub trait Mesh<const D: usize, C: Simplex>: Send + Sync + Sized {
             4 => writer.write_tetrahedra(
                 self.elems().map(|x| {
                     let mut tmp = [0; 4];
-                    tmp.copy_from_slice(x.as_slice());
+                    tmp.copy_from_slice(x.as_ref());
                     tmp
                 }),
                 self.etags().map(|x| x.try_into().unwrap()),
@@ -964,7 +992,7 @@ pub trait Mesh<const D: usize, C: Simplex>: Send + Sync + Sized {
             3 => writer.write_triangles(
                 self.elems().map(|x| {
                     let mut tmp = [0; 3];
-                    tmp.copy_from_slice(x.as_slice());
+                    tmp.copy_from_slice(x.as_ref());
                     tmp
                 }),
                 self.etags().map(|x| x.try_into().unwrap()),
@@ -972,7 +1000,7 @@ pub trait Mesh<const D: usize, C: Simplex>: Send + Sync + Sized {
             2 => writer.write_edges(
                 self.elems().map(|x| {
                     let mut tmp = [0; 2];
-                    tmp.copy_from_slice(x.as_slice());
+                    tmp.copy_from_slice(x.as_ref());
                     tmp
                 }),
                 self.etags().map(|x| x.try_into().unwrap()),
@@ -984,7 +1012,7 @@ pub trait Mesh<const D: usize, C: Simplex>: Send + Sync + Sized {
             3 => writer.write_triangles(
                 self.faces().map(|x| {
                     let mut tmp = [0; 3];
-                    tmp.copy_from_slice(x.as_slice());
+                    tmp.copy_from_slice(x.as_ref());
                     tmp
                 }),
                 self.ftags().map(|x| x.try_into().unwrap()),
@@ -992,7 +1020,7 @@ pub trait Mesh<const D: usize, C: Simplex>: Send + Sync + Sized {
             2 => writer.write_edges(
                 self.faces().map(|x| {
                     let mut tmp = [0; 2];
-                    tmp.copy_from_slice(x.as_slice());
+                    tmp.copy_from_slice(x.as_ref());
                     tmp
                 }),
                 self.ftags().map(|x| x.try_into().unwrap()),
@@ -1549,8 +1577,7 @@ pub trait MutMesh<const D: usize, C: Simplex>: Mesh<D, C> {
     fn verts_mut(&mut self) -> impl ExactSizeIterator<Item = &mut Vertex<D>> + '_;
 
     /// Sequential iterator over the mesh elements
-    #[allow(mismatched_lifetime_syntaxes)]
-    fn elems_mut<'a>(&'a mut self) -> impl ExactSizeIterator<Item = &'a mut C> + '_
+    fn elems_mut<'a>(&'a mut self) -> impl ExactSizeIterator<Item = &'a mut C> + 'a
     where
         C: 'a;
 
@@ -1558,8 +1585,7 @@ pub trait MutMesh<const D: usize, C: Simplex>: Mesh<D, C> {
     fn etags_mut(&mut self) -> impl ExactSizeIterator<Item = &mut Tag> + '_;
 
     /// Sequential itertor over the faces
-    #[allow(mismatched_lifetime_syntaxes)]
-    fn faces_mut<'a>(&'a mut self) -> impl ExactSizeIterator<Item = &'a mut C::FACE> + '_
+    fn faces_mut<'a>(&'a mut self) -> impl ExactSizeIterator<Item = &'a mut C::FACE> + 'a
     where
         C: 'a;
 
@@ -1730,8 +1756,7 @@ impl<const D: usize, C: Simplex> MutMesh<D, C> for GenericMesh<D, C> {
         self.verts.iter_mut()
     }
 
-    #[allow(mismatched_lifetime_syntaxes)]
-    fn elems_mut<'a>(&'a mut self) -> impl ExactSizeIterator<Item = &'a mut C> + '_
+    fn elems_mut<'a>(&'a mut self) -> impl ExactSizeIterator<Item = &'a mut C> + 'a
     where
         C: 'a,
     {
@@ -1742,8 +1767,7 @@ impl<const D: usize, C: Simplex> MutMesh<D, C> for GenericMesh<D, C> {
         self.etags.iter_mut()
     }
 
-    #[allow(mismatched_lifetime_syntaxes)]
-    fn faces_mut<'a>(&'a mut self) -> impl ExactSizeIterator<Item = &'a mut C::FACE> + '_
+    fn faces_mut<'a>(&'a mut self) -> impl ExactSizeIterator<Item = &'a mut C::FACE> + 'a
     where
         C: 'a,
     {

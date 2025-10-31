@@ -23,6 +23,7 @@ pub trait Simplex:
     + Hash
     + Eq
     + PartialEq
+    + AsRef<[usize]>
 where
     <Self as Simplex>::FACE: 'static,
 {
@@ -41,8 +42,6 @@ where
         Self::from_iter(other.into_iter())
     }
 
-    fn as_slice(&self) -> &[usize];
-
     fn from_iter<I: Iterator<Item = usize>>(iter: I) -> Self {
         let mut res = Self::default();
         let mut count = 0;
@@ -56,7 +55,7 @@ where
     }
 
     fn contains(&self, i: usize) -> bool {
-        self.as_slice().contains(&i)
+        self.as_ref().contains(&i)
     }
 
     /// Get the i-th edge for the current simplex
@@ -116,7 +115,6 @@ pub trait GSimplex<const D: usize>:
     type FACE: GSimplex<D>;
     const N_VERTS: usize;
 
-    fn as_slice(&self) -> &[Vertex<D>];
     fn from_iter<I: Iterator<Item = Vertex<D>>>(iter: I) -> Self {
         let mut res = Self::default();
         let mut count = 0;
@@ -215,8 +213,7 @@ const NODE2EDGES: [Edge; 0] = [];
 const NODE2FACES: [Node; 1] = [Node([0])];
 
 impl Simplex for Node {
-    #[allow(clippy::use_self)]
-    type FACE = Node;
+    type FACE = Self;
     type GEOM<const D: usize> = GNode<D>;
     const DIM: usize = 0;
     const N_VERTS: usize = 1;
@@ -224,10 +221,6 @@ impl Simplex for Node {
     const N_FACES: usize = 1;
     const EDGES: &'static [Edge] = &NODE2EDGES;
     const FACES: &'static [Self::FACE] = &NODE2FACES;
-
-    fn as_slice(&self) -> &[usize] {
-        &self.0
-    }
 
     fn contains(&self, i: usize) -> bool {
         self.0.contains(&i)
@@ -252,12 +245,7 @@ impl<const D: usize> GSimplex<D> for GNode<D> {
     const N_VERTS: usize = 1;
     type BCOORDS = [f64; 1];
     type TOPO = Node;
-    #[allow(clippy::use_self)]
-    type FACE = GNode<D>;
-
-    fn as_slice(&self) -> &[Vertex<D>] {
-        &self.0
-    }
+    type FACE = Self;
 
     fn vol(&self) -> f64 {
         unreachable!()
@@ -312,13 +300,8 @@ impl Simplex for Edge {
     const N_VERTS: usize = 2;
     const N_EDGES: usize = 1;
     const N_FACES: usize = 2;
-    #[allow(clippy::use_self)]
-    const EDGES: &'static [Edge] = &EDGE2EDGES;
+    const EDGES: &'static [Self] = &EDGE2EDGES;
     const FACES: &'static [Self::FACE] = &EDGE2FACES;
-
-    fn as_slice(&self) -> &[usize] {
-        &self.0
-    }
 
     fn contains(&self, i: usize) -> bool {
         self.0.contains(&i)
@@ -354,10 +337,6 @@ impl<const D: usize> GSimplex<D> for GEdge<D> {
     type TOPO = Edge;
     type FACE = GNode<D>;
     const N_VERTS: usize = 2;
-
-    fn as_slice(&self) -> &[Vertex<D>] {
-        self.0.as_slice()
-    }
 
     fn has_normal() -> bool {
         D == 2
@@ -412,10 +391,6 @@ impl Simplex for Triangle {
     const EDGES: &'static [Edge] = &TRIANGLE2EDGES;
     const FACES: &'static [Self::FACE] = &TRIANGLE2FACES;
 
-    fn as_slice(&self) -> &[usize] {
-        &self.0
-    }
-
     fn contains(&self, i: usize) -> bool {
         self.0.contains(&i)
     }
@@ -451,10 +426,6 @@ impl<const D: usize> GSimplex<D> for GTriangle<D> {
     type TOPO = Triangle;
     type FACE = GEdge<D>;
     const N_VERTS: usize = 3;
-
-    fn as_slice(&self) -> &[Vertex<D>] {
-        self.0.as_slice()
-    }
 
     fn has_normal() -> bool {
         D == 3
@@ -573,10 +544,6 @@ impl Simplex for Tetrahedron {
     const EDGES: &'static [Edge] = &TETRA2EDGES;
     const FACES: &'static [Self::FACE] = &TETRA2FACES;
 
-    fn as_slice(&self) -> &[usize] {
-        &self.0
-    }
-
     fn contains(&self, i: usize) -> bool {
         self.0.contains(&i)
     }
@@ -617,10 +584,6 @@ impl<const D: usize> GSimplex<D> for GTetrahedron<D> {
     type TOPO = Tetrahedron;
     type FACE = GTriangle<D>;
     const N_VERTS: usize = 4;
-
-    fn as_slice(&self) -> &[Vertex<D>] {
-        self.0.as_slice()
-    }
 
     fn has_normal() -> bool {
         false

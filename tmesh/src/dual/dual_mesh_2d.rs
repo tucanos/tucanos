@@ -78,7 +78,7 @@ impl PolyMesh<2> for DualMesh2d {
     }
 
     fn face(&self, i: usize) -> &[usize] {
-        self.faces[i].as_slice()
+        self.faces[i].as_ref()
     }
 
     fn ftag(&self, i: usize) -> Tag {
