@@ -284,7 +284,7 @@ where
                 .iter()
                 .filter(|i| {
                     let other = self.elems.get(i).unwrap().el;
-                    **i != i_elem && f.iter().all(|j| other.contains_vertex(*j))
+                    **i != i_elem && f.iter().all(|j| other.contains(*j))
                 })
                 .collect::<Vec<_>>();
 

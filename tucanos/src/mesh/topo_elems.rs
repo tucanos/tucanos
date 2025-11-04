@@ -10,50 +10,18 @@ use rustc_hash::FxHashMap;
 use std::fmt::Debug;
 use std::ops::Index;
 use std::{array::IntoIter, ops::IndexMut};
-use tmesh::mesh::TETRA_FACES;
+use tmesh::mesh::Simplex;
 
 /// Topological elements (i.e. element-to-vertex connectivity)
 /// Only usable for simplices
-pub trait Elem:
-    Clone
-    + Copy
-    + Eq
-    + PartialEq
-    + Hash
-    + IntoIterator<Item = Idx>
-    + Index<usize, Output = Idx>
-    + IndexMut<usize, Output = Idx>
-    + Default
-    + Debug
-    + Send
-    + Sync
-{
-    /// Number of vertices in the element
-    const N_VERTS: Idx;
-    /// Number of faces in the element
-    const N_FACES: Idx;
-    /// Number of edes in the element
-    const N_EDGES: Idx;
-    /// Element dimension
-    const DIM: Idx;
+pub trait Elem: Simplex {
     /// Element name (in .xdmf files)
     const NAME: &'static str;
     /// Type for the element faces
     type Face: Elem;
     /// Type for the element geometry
     type Geom<const D: usize, M: Metric<D>>: GElem<D, M>;
-    /// Iterate through the element's vertices
-    fn iter(&'_ self) -> Iter<'_, Idx>;
-    /// Create from a slice containing the element connectivity
-    fn from_slice(s: &[Idx]) -> Self;
-    /// Create from a iterator containing the element connectivity
-    fn from_iter<I: Iterator<Item = Idx>>(s: I) -> Self;
-    /// Sort the vertices by increasing order (can make the geometric element invalid !)
-    fn sort(&mut self);
-    /// Get the i-th face
-    fn face(&self, i: Idx) -> Self::Face;
-    /// Get the i-the edge
-    fn edge(&self, i: Idx) -> [Idx; 2];
+
     /// Get the local index of vertex i in element e
     fn vertex_index(&self, i: Idx) -> Idx {
         for j in 0..(Self::N_VERTS as usize) {
@@ -73,12 +41,12 @@ pub trait Elem:
         e
     }
     /// Check if an element contains a vertex
-    fn contains_vertex(&self, i: Idx) -> bool {
+    fn contains(&self, i: Idx) -> bool {
         self.iter().any(|x| *x == i)
     }
     /// Check if an element contains an edge
     fn contains_edge(&self, edg: [Idx; 2]) -> bool {
-        self.contains_vertex(edg[0]) && self.contains_vertex(edg[1])
+        self.contains(edg[0]) && self.contains(edg[1])
     }
 
     #[must_use]

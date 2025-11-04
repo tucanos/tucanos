@@ -1,4 +1,4 @@
-use crate::Vertex;
+use crate::{Vertex, mesh::Idx};
 use lindel::Lineariseable;
 
 /// Get the bounding box
@@ -20,9 +20,9 @@ fn bounding_box<const D: usize, I: Iterator<Item = Vertex<D>>>(
 
 /// Get the Hilbert indices
 #[must_use]
-pub fn hilbert_indices<const D: usize, I: ExactSizeIterator<Item = Vertex<D>> + Clone>(
+pub fn hilbert_indices<T: Idx, const D: usize, I: ExactSizeIterator<Item = Vertex<D>> + Clone>(
     verts: I,
-) -> Vec<usize> {
+) -> Vec<T> {
     let n = verts.len();
 
     // bounding box
@@ -41,8 +41,7 @@ pub fn hilbert_indices<const D: usize, I: ExactSizeIterator<Item = Vertex<D>> + 
 
     let hilbert_ids = verts.map(hilbert).collect::<Vec<_>>();
 
-    let mut indices = Vec::with_capacity(n);
-    indices.extend(0..n);
-    indices.sort_by_key(|&i| hilbert_ids[i]);
+    let mut indices = (0..n).map(|x| x.into()).collect::<Vec<T>>();
+    indices.sort_by_key(|&i| hilbert_ids[i.into()]);
     indices
 }

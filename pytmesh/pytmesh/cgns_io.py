@@ -203,8 +203,8 @@ def write_cgns(
     mesh,
     fname,
     tags,
-    elem_data,
-    vert_data,
+    elem_data=None,
+    vert_data=None,
 ):
     """
     Write a mesh to a .cgns file.
@@ -213,69 +213,71 @@ def write_cgns(
     if not HAVE_CGNS:
         raise RuntimeError("pycgns not available")
 
-    coords = mesh.get_verts()
-    elems = mesh.get_elems()
+    if isinstance(mesh, (Mesh2d, Mesh3d)):
+        coords = mesh.get_verts()
+        elems = mesh.get_elems()
 
-    phy_dim = coords.shape[1]
-    cell_dim = elems.shape[1] - 1
+        phy_dim = coords.shape[1]
+        cell_dim = elems.shape[1] - 1
 
-    tree = CGL.newCGNSTree()
-    base = CGL.newBase(tree, "Base", cell_dim, phy_dim)
-    s = np.array([[mesh.n_verts(), mesh.n_elems(), 0]], dtype=np.int32)
-    zone = CGL.newZone(base, "Zone", s, CGK.Unstructured_s)
+        tree = CGL.newCGNSTree()
+        base = CGL.newBase(tree, "Base", cell_dim, phy_dim)
+        s = np.array([[mesh.n_verts(), mesh.n_elems(), 0]], dtype=np.int32)
+        zone = CGL.newZone(base, "Zone", s, CGK.Unstructured_s)
 
-    gc = CGL.newGridCoordinates(zone, CGK.GridCoordinates_s)
-    CGL.newDataArray(gc, CGK.CoordinateX_s, coords[:, 0].copy())
-    CGL.newDataArray(gc, CGK.CoordinateY_s, coords[:, 1].copy())
-    if coords.shape[1] == 3:
-        CGL.newDataArray(gc, CGK.CoordinateZ_s, coords[:, 2].copy())
+        gc = CGL.newGridCoordinates(zone, CGK.GridCoordinates_s)
+        CGL.newDataArray(gc, CGK.CoordinateX_s, coords[:, 0].copy())
+        CGL.newDataArray(gc, CGK.CoordinateY_s, coords[:, 1].copy())
+        if coords.shape[1] == 3:
+            CGL.newDataArray(gc, CGK.CoordinateZ_s, coords[:, 2].copy())
 
-    if cell_dim == 3:
-        CGL.newElements(
-            zone,
-            "Elems",
-            CGK.TETRA_4,
-            np.array([1, mesh.n_elems()]),
-            elems.astype(np.int32).ravel() + 1,
-        )
-        CGL.newElements(
-            zone,
-            "Faces",
-            CGK.TRI_3,
-            np.array([mesh.n_elems() + 1, mesh.n_faces()]),
-            mesh.get_faces().astype(np.int32).ravel() + 1,
-        )
-    elif cell_dim == 2:
-        CGL.newElements(
-            zone,
-            "Elems",
-            CGK.TRI_3,
-            np.array([1, mesh.n_elems()]),
-            elems.astype(np.int32).ravel() + 1,
-        )
-        CGL.newElements(
-            zone,
-            "Faces",
-            CGK.BAR_2,
-            np.array([mesh.n_elems() + 1, mesh.n_faces()]),
-            mesh.get_faces().astype(np.int32).ravel() + 1,
-        )
-    elif cell_dim == 1:
-        CGL.newElements(
-            zone,
-            "Elems",
-            CGK.BAR_2,
-            np.array([1, mesh.n_elems()]),
-            elems.astype(np.int32).ravel() + 1,
-        )
-    else:
-        raise NotImplementedError(f"not implemented for {type(mesh)}")
+        if cell_dim == 3:
+            CGL.newElements(
+                zone,
+                "Elems",
+                CGK.TETRA_4,
+                np.array([1, mesh.n_elems()]),
+                elems.astype(np.int32).ravel() + 1,
+            )
+            CGL.newElements(
+                zone,
+                "Faces",
+                CGK.TRI_3,
+                np.array([mesh.n_elems() + 1, mesh.n_faces()]),
+                mesh.get_faces().astype(np.int32).ravel() + 1,
+            )
+        elif cell_dim == 2:
+            CGL.newElements(
+                zone,
+                "Elems",
+                CGK.TRI_3,
+                np.array([1, mesh.n_elems()]),
+                elems.astype(np.int32).ravel() + 1,
+            )
+            CGL.newElements(
+                zone,
+                "Faces",
+                CGK.BAR_2,
+                np.array([mesh.n_elems() + 1, mesh.n_faces()]),
+                mesh.get_faces().astype(np.int32).ravel() + 1,
+            )
+        elif cell_dim == 1:
+            CGL.newElements(
+                zone,
+                "Elems",
+                CGK.BAR_2,
+                np.array([1, mesh.n_elems()]),
+                elems.astype(np.int32).ravel() + 1,
+            )
+        else:
+            raise NotImplementedError(f"not implemented for {type(mesh)}")
 
-    zbc = CGL.newZoneBC(zone)
-    ftags = mesh.get_ftags()
-    for name, tag in tags.items():
-        (ids,) = np.nonzero(ftags == tag)
-        CGL.newBC(zbc, name, ids + 1, pttype=CGK.PointList_s)
+        zbc = CGL.newZoneBC(zone)
+        ftags = mesh.get_ftags()
+        for name, tag in tags.items():
+            (ids,) = np.nonzero(ftags == tag)
+            # CGL.newBC(zbc, name, ids + 1, pttype=CGK.PointList_s)
+            CGL.newBC(zbc, name, ids + 1, pttype=CGK.PointRange_s)
 
     if vert_data is not None:
         fs = CGL.newFlowSolution(zone, "FlowSolution_Vertex", CGK.Vertex_s)

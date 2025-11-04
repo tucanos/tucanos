@@ -533,8 +533,8 @@ where
     /// Return an iterator through the cavity faces
     pub fn faces(&self) -> impl Iterator<Item = (E::Face, Tag)> + '_ {
         self.cavity.faces().filter(|(f, _)| match self.ftype {
-            FilledCavityType::ExistingVertex(i) => !f.contains_vertex(i),
-            FilledCavityType::MovedVertex((i, _, _)) => !f.contains_vertex(i),
+            FilledCavityType::ExistingVertex(i) => !f.contains(i),
+            FilledCavityType::MovedVertex((i, _, _)) => !f.contains(i),
             FilledCavityType::EdgeCenter((edg, _, _)) => !f.contains_edge(edg),
         })
     }
@@ -548,8 +548,8 @@ where
             .iter()
             .zip(self.cavity.tagged_bdys_flg.iter())
             .filter(|((b, _), _)| match self.ftype {
-                FilledCavityType::ExistingVertex(i) => !b.contains_vertex(i),
-                FilledCavityType::MovedVertex((i, _, _)) => !b.contains_vertex(i),
+                FilledCavityType::ExistingVertex(i) => !b.contains(i),
+                FilledCavityType::MovedVertex((i, _, _)) => !b.contains(i),
                 FilledCavityType::EdgeCenter((edg, _, _)) => !b.contains_edge(edg),
             })
             .map(|((b, t), s)| (*b, *t, *s))

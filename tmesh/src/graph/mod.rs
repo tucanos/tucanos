@@ -1,11 +1,11 @@
 //! Basic graphs to compute and store connectivities that can not be stored in
 //! simple 2d arrays
-use crate::{Error, Result};
+use crate::{Error, Result, mesh::Idx};
 use rustc_hash::{FxBuildHasher, FxHashMap};
 use std::fmt::Debug;
 
 /// Compute the indices that would sort `data`
-fn argsort(data: &[usize]) -> Vec<usize> {
+fn argsort<T: Idx>(data: &[T]) -> Vec<T> {
     let mut indices = (0..data.len()).collect::<Vec<_>>();
     indices.sort_by_key(|&i| &data[i]);
     indices
@@ -14,13 +14,13 @@ fn argsort(data: &[usize]) -> Vec<usize> {
 /// Renumber the vertices in order to have contininuous indices, and return he map from old to nex indices
 #[allow(dead_code)]
 #[must_use]
-pub fn reindex<const N: usize>(elems: &[[usize; N]]) -> (Vec<[usize; N]>, FxHashMap<usize, usize>) {
+pub fn reindex<T: Idx, const N: usize>(elems: &[[T; N]]) -> (Vec<[T; N]>, FxHashMap<T, T>) {
     let mut map = FxHashMap::with_hasher(FxBuildHasher);
-    let mut next = 0;
+    let mut next: T = 0.into();
     for i in elems.iter().copied().flatten() {
         if let std::collections::hash_map::Entry::Vacant(e) = map.entry(i) {
             e.insert(next);
-            next += 1;
+            next += 1.into();
         }
     }
 
@@ -40,58 +40,44 @@ pub fn reindex<const N: usize>(elems: &[[usize; N]]) -> (Vec<[usize; N]>, FxHash
 
 /// CSR representation of a graph
 #[derive(Debug, Default, Clone)]
-pub struct CSRGraph {
-    ptr: Vec<usize>,
-    indices: Vec<usize>,
-    values: Option<Vec<usize>>,
-    m: usize,
+pub struct CSRGraph<T: Idx> {
+    ptr: Vec<T>,
+    indices: Vec<T>,
+    values: Option<Vec<T>>,
+    m: T,
 }
 
-impl CSRGraph {
-    fn set_ptr<
-        T: TryInto<usize> + Ord + Debug,
-        E: IntoIterator<Item = T> + Copy,
-        I: ExactSizeIterator<Item = E> + Clone,
-    >(
+impl<T: Idx> CSRGraph<T> {
+    fn set_ptr<E: IntoIterator<Item = T> + Copy, I: ExactSizeIterator<Item = E> + Clone>(
         elems: I,
-        n_verts: Option<usize>,
+        n_verts: Option<T>,
     ) -> Self
     where
-        <T as TryInto<usize>>::Error: Debug,
+        <T as TryInto<T>>::Error: Debug,
     {
         let nv = n_verts.unwrap_or_else(|| {
             elems
                 .clone()
                 .flatten()
-                .map(|i| i.try_into().unwrap())
-                .filter(|&i| i != usize::MAX)
+                .filter(|&i| i != T::MAX)
                 .max()
-                .unwrap_or(0)
-                + 1
+                .unwrap_or(0.into())
+                + 1.into()
         });
-        let n = elems
-            .clone()
-            .flatten()
-            .map(|i| i.try_into().unwrap())
-            .filter(|&i| i != usize::MAX)
-            .count();
+        let n = elems.clone().flatten().filter(|&i| i != T::MAX).count();
 
         let mut res = Self {
-            ptr: vec![0; nv + 1],
-            indices: vec![usize::MAX; n],
+            ptr: vec![0.into(); nv.into() + 1],
+            indices: vec![T::MAX; n],
             values: None,
-            m: 0,
+            m: 0.into(),
         };
 
-        for i in elems
-            .flatten()
-            .map(|i| i.try_into().unwrap())
-            .filter(|&i| i != usize::MAX)
-        {
-            res.ptr[i + 1] += 1;
+        for i in elems.flatten().filter(|&i| i != T::MAX) {
+            res.ptr[i.into() + 1] += 1.into();
         }
 
-        for i in 0..nv {
+        for i in 0..nv.into() {
             res.ptr[i + 1] += res.ptr[i];
         }
 
@@ -102,8 +88,8 @@ impl CSRGraph {
     pub fn sort(&mut self) {
         let n = self.ptr.len() - 1;
         for i in 0..n {
-            let start = self.ptr[i];
-            let end = self.ptr[i + 1];
+            let start = self.ptr[i].into();
+            let end = self.ptr[i + 1].into();
             self.indices[start..end].sort_unstable();
             for j in start + 1..end {
                 assert_ne!(self.indices[j], self.indices[j - 1]);
@@ -113,7 +99,7 @@ impl CSRGraph {
 
     /// Create a new graph explicitely
     #[must_use]
-    pub fn new(ptr: Vec<usize>, indices: Vec<usize>) -> Self {
+    pub fn new(ptr: Vec<T>, indices: Vec<T>) -> Self {
         let m = indices.iter().copied().max().unwrap();
         let mut res = Self {
             ptr,
@@ -126,27 +112,19 @@ impl CSRGraph {
     }
 
     /// Create a graph from edges
-    pub fn from_edges<
-        T: TryInto<usize> + Ord + Debug + Copy,
-        I: ExactSizeIterator<Item = [T; 2]> + Clone,
-    >(
+    pub fn from_edges<I: ExactSizeIterator<Item = [T; 2]> + Clone>(
         edgs: I,
-        n_verts: Option<usize>,
-    ) -> Self
-    where
-        <T as TryInto<usize>>::Error: Debug,
-    {
+        n_verts: Option<T>,
+    ) -> Self {
         let mut res = Self::set_ptr(edgs.clone(), n_verts);
         res.m = res.n();
 
-        for e in edgs {
-            let i0 = e[0].try_into().unwrap();
-            let i1 = e[1].try_into().unwrap();
-            assert!(i0 != usize::MAX);
-            assert!(i1 != usize::MAX);
+        for [i0, i1] in edgs {
+            assert!(i0 != T::MAX);
+            assert!(i1 != T::MAX);
             let mut ok = false;
-            for j in res.ptr[i0]..res.ptr[i0 + 1] {
-                if res.indices[j] == usize::MAX {
+            for j in res.ptr[i0.into()].into()..res.ptr[i0.into() + 1].into() {
+                if res.indices[j] == T::MAX {
                     res.indices[j] = i1;
                     ok = true;
                     break;
@@ -154,8 +132,8 @@ impl CSRGraph {
             }
             assert!(ok);
             let mut ok = false;
-            for j in res.ptr[i1]..res.ptr[i1 + 1] {
-                if res.indices[j] == usize::MAX {
+            for j in res.ptr[i1.into()].into()..res.ptr[i1.into() + 1].into() {
+                if res.indices[j] == T::MAX {
                     res.indices[j] = i0;
                     ok = true;
                     break;
@@ -168,35 +146,23 @@ impl CSRGraph {
     }
 
     /// Compute the vertex to element connectivity from an element to vertex connectivity
-    pub fn transpose<
-        T: TryInto<usize> + Ord + Debug,
-        E: IntoIterator<Item = T> + Copy,
-        I: ExactSizeIterator<Item = E> + Clone,
-    >(
+    pub fn transpose<E: IntoIterator<Item = T> + Copy, I: ExactSizeIterator<Item = E> + Clone>(
         elems: I,
-        n_verts: Option<usize>,
-    ) -> Self
-    where
-        <T as TryInto<usize>>::Error: Debug,
-    {
+        n_verts: Option<T>,
+    ) -> Self {
         let mut res = Self::set_ptr(elems.clone(), n_verts);
-        res.m = elems.len();
-        let mut values = vec![0; res.indices.len()];
+        res.m = elems.len().into();
+        let mut values = vec![0.into(); res.indices.len()];
 
         for (i, e) in elems.enumerate() {
-            for (v, i_vert) in e
-                .into_iter()
-                .map(|i| i.try_into().unwrap())
-                .filter(|&i| i != usize::MAX)
-                .enumerate()
-            {
-                let start = res.ptr[i_vert];
-                let end = res.ptr[i_vert + 1];
+            for (v, i_vert) in e.into_iter().filter(|&i| i != T::MAX).enumerate() {
+                let start = res.ptr[i_vert.into()].into();
+                let end = res.ptr[i_vert.into() + 1].into();
                 let mut ok = false;
                 #[allow(clippy::needless_range_loop)]
                 for j in start..end {
-                    if res.indices[j] == usize::MAX {
-                        res.indices[j] = i;
+                    if res.indices[j] == T::MAX {
+                        res.indices[j] = i.into();
                         values[j] = v;
                         ok = true;
                         break;
@@ -212,47 +178,47 @@ impl CSRGraph {
 
     /// Number of vertices
     #[must_use]
-    pub const fn n(&self) -> usize {
-        self.ptr.len() - 1
+    pub fn n(&self) -> T {
+        (self.ptr.len() - 1).into()
     }
 
     /// Number of columns
     #[must_use]
-    pub const fn m(&self) -> usize {
+    pub const fn m(&self) -> T {
         self.m
     }
 
     /// Number of edges
     #[must_use]
-    pub const fn n_edges(&self) -> usize {
-        self.indices.len()
+    pub fn n_edges(&self) -> T {
+        self.indices.len().into()
     }
 
     /// Get the neighbors of the `i`th vertex
     #[must_use]
-    pub fn row(&self, i: usize) -> &[usize] {
-        let start = self.ptr[i];
-        let end = self.ptr[i + 1];
+    pub fn row(&self, i: T) -> &[T] {
+        let start = self.ptr[i.into()].into();
+        let end = self.ptr[i.into() + 1].into();
         &self.indices[start..end]
     }
 
     /// Get the indices corresponding to the `i`th vertex
     #[must_use]
-    pub fn row_ptr(&self, i: usize) -> impl ExactSizeIterator<Item = usize> {
-        let start = self.ptr[i];
-        let end = self.ptr[i + 1];
+    pub fn row_ptr(&self, i: T) -> impl ExactSizeIterator<Item = T> {
+        let start = self.ptr[i.into()];
+        let end = self.ptr[i.into() + 1];
         start..end
     }
 
     /// Sequential iterator over the rows
     #[must_use]
-    pub fn rows(&self) -> impl ExactSizeIterator<Item = &[usize]> {
+    pub fn rows(&self) -> impl ExactSizeIterator<Item = &[T]> {
         (0..self.n()).map(|i| self.row(i))
     }
 
     /// Sequential iterator over the rows and values
     #[must_use]
-    pub fn row_and_values(&self, i: usize) -> (&[usize], &[usize]) {
+    pub fn row_and_values(&self, i: T) -> (&[T], &[T]) {
         let start = self.ptr[i];
         let end = self.ptr[i + 1];
         (
@@ -262,7 +228,7 @@ impl CSRGraph {
     }
 
     #[must_use]
-    fn node_degrees(&self) -> Vec<usize> {
+    fn node_degrees(&self) -> Vec<T> {
         let mut res = Vec::with_capacity(self.n());
         for (i_row, row) in self.rows().enumerate() {
             let mut n = row.len();
@@ -276,7 +242,7 @@ impl CSRGraph {
 
     /// Compute the Reverse Cuthill McKee ordering
     #[must_use]
-    pub fn reverse_cuthill_mckee(&self) -> Vec<usize> {
+    pub fn reverse_cuthill_mckee(&self) -> Vec<T> {
         // strongly inspired from scipy
         let mut order = vec![0; self.n()];
         let degree = self.node_degrees();
@@ -343,14 +309,14 @@ impl CSRGraph {
     }
 
     /// Compute the connected components
-    pub fn connected_components(&self) -> Result<Vec<usize>> {
+    pub fn connected_components(&self) -> Result<Vec<T>> {
         Ok(ConnectedComponents::new(self)?.vtag)
     }
 
     /// Extract a sub-graph
     #[must_use]
-    pub fn subgraph<I: Iterator<Item = usize>>(&self, ids: I) -> Self {
-        let mut new_ids = vec![usize::MAX; self.n()];
+    pub fn subgraph<I: Iterator<Item = T>>(&self, ids: I) -> Self {
+        let mut new_ids = vec![T::MAX; self.n()];
         let mut m = 0;
         for (i, j) in ids.enumerate() {
             new_ids[j] = i;
@@ -360,11 +326,11 @@ impl CSRGraph {
         let mut indices = Vec::new();
         let mut values = Vec::new();
         for (old_i, &new_i) in new_ids.iter().enumerate() {
-            if new_i != usize::MAX {
+            if new_i != T::MAX {
                 for k in self.row_ptr(old_i) {
                     let old_j = self.indices[k];
                     let new_j = new_ids[old_j];
-                    if new_j != usize::MAX {
+                    if new_j != T::MAX {
                         indices.push(new_j);
                         if let Some(v) = &self.values {
                             values.push(v[k]);
@@ -390,28 +356,28 @@ impl CSRGraph {
 
 /// Connected components of a graph
 #[derive(Debug)]
-struct ConnectedComponents {
-    pub vtag: Vec<usize>,
+struct ConnectedComponents<T: Idx> {
+    pub vtag: Vec<T>,
 }
 
-impl ConnectedComponents {
+impl<T: Idx> ConnectedComponents<T> {
     /// Compute the connected components of a CSR graph
-    pub fn new(g: &CSRGraph) -> Result<Self> {
+    pub fn new(g: &CSRGraph<T>) -> Result<Self> {
         assert_eq!(g.n(), g.m());
 
         let mut res = Self {
-            vtag: vec![usize::MAX; g.n()],
+            vtag: vec![T::MAX; g.n()],
         };
         res.compute(g)?;
         Ok(res)
     }
 
-    fn compute_from(&mut self, g: &CSRGraph, starts: &[usize], component: usize) {
+    fn compute_from(&mut self, g: &CSRGraph<T>, starts: &[T], component: T) {
         let mut next_starts = Vec::new();
         for &start in starts {
             self.vtag[start] = component;
             for i in g.row(start).iter().copied() {
-                if self.vtag[i] == usize::MAX {
+                if self.vtag[i] == T::MAX {
                     self.vtag[i] = component;
                     next_starts.push(i);
                 }
@@ -422,19 +388,19 @@ impl ConnectedComponents {
         }
     }
 
-    fn compute(&mut self, g: &CSRGraph) -> Result<()> {
+    fn compute(&mut self, g: &CSRGraph<T>) -> Result<()> {
         let mut start = 0;
         let mut component = 0;
         while start < g.n() {
             self.compute_from(g, &[start], component);
-            while start < g.n() && self.vtag[start] < usize::MAX {
+            while start < g.n() && self.vtag[start] < T::MAX {
                 start += 1;
             }
             component += 1;
-            if component == usize::MAX {
+            if component == T::MAX {
                 return Err(Error::from("too many connected components"));
             }
-            assert!(component < usize::MAX);
+            assert!(component < T::MAX);
         }
         Ok(())
     }
