@@ -1,8 +1,8 @@
 //! Boundary of `Mesh2d`
-use crate::mesh::{Edge, GenericMesh, Idx};
+use crate::mesh::{Edge, GenericMesh};
 
 /// Edge mesh in 2d
-pub type BoundaryMesh2d<T: Idx = usize> = GenericMesh<T, 2, Edge<T>>;
+pub type BoundaryMesh2d<T = usize> = GenericMesh<T, 2, Edge<T>>;
 
 #[cfg(test)]
 mod tests {

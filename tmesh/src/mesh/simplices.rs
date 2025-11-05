@@ -1,7 +1,7 @@
 //! Simplex elements
-use super::{Edge, Node, Tetrahedron, Triangle, twovec};
-use crate::Vertex;
+use super::{twovec, Edge, Node, Tetrahedron, Triangle};
 use crate::mesh::{GEdge, GNode, GTetrahedron, GTriangle, Idx};
+use crate::Vertex;
 use nalgebra::{SMatrix, SVector};
 use rustc_hash::FxHashMap;
 use std::fmt::Debug;
@@ -9,7 +9,7 @@ use std::hash::Hash;
 use std::ops::{Index, IndexMut};
 
 /// Simplex elements
-pub trait Simplex<T: Idx>:
+pub trait Simplex<T: Idx = usize>:
     Sized
     + Index<usize, Output = T>
     + IndexMut<usize, Output = T>
@@ -94,7 +94,7 @@ where
         Edge::<T>::from_iter(
             Self::EDGES[i.try_into().unwrap()]
                 .into_iter()
-                .map(|j| self[j.try_into().unwrap()]),
+                .map(|j| self[j]),
         )
     }
 
@@ -109,8 +109,8 @@ where
     /// Get the i-th face for the current simplex
     fn face(&self, i: T) -> Self::FACE {
         let mut f = Self::local_face(i);
-        for i in 0..Self::N_VERTS {
-            f[i] = self[f[i.try_into().unwrap()].try_into().unwrap()];
+        for i in 0..Self::FACE::N_VERTS {
+            f[i] = self[f[i].try_into().unwrap()];
         }
         f
     }
@@ -171,7 +171,7 @@ pub trait GSimplex<const D: usize>:
 
     /// Get the i-th face for the current simplex
     fn face<T: Idx>(&self, i: T) -> Self::FACE {
-        let f = <Self::TOPO<T> as Simplex<T>>::FACE::local_face(i);
+        let f = <Self::TOPO<T> as Simplex<T>>::local_face(i);
         Self::FACE::from_iter(f.into_iter().map(|j| self[j.try_into().unwrap()]))
     }
 
@@ -256,7 +256,7 @@ const NODE2EDGES: [Edge<usize>; 0] = [];
 const NODE2FACES: [Node<usize>; 1] = [Node([0])];
 
 impl<T: Idx> Simplex<T> for Node<T> {
-    type FACE = Node<T>;
+    type FACE = Self;
     type GEOM<const D: usize> = GNode<D>;
     const DIM: usize = 0;
     const N_VERTS: usize = 1;
@@ -449,7 +449,7 @@ impl<T: Idx> Simplex<T> for Triangle<T> {
 
     fn local_face(i: T) -> Self::FACE {
         Self::FACE::from_iter(
-            NODE2FACES[i.try_into().unwrap()]
+            TRIANGLE2FACES[i.try_into().unwrap()]
                 .into_iter()
                 .map(|x| x.try_into().unwrap()),
         )
@@ -763,13 +763,13 @@ pub fn get_face_to_elem<'a, T: Idx, C: Simplex<T> + 'a, I: ExactSizeIterator<Ite
 
 #[cfg(test)]
 mod tests {
-    use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
+    use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 
     use crate::{
-        Vert2d, Vert3d,
         mesh::{
-            Edge, GTetrahedron, GTriangle, Simplex, Tetrahedron, Triangle, simplices::GSimplex,
+            simplices::GSimplex, Edge, GTetrahedron, GTriangle, Simplex, Tetrahedron, Triangle,
         },
+        Vert2d, Vert3d,
     };
 
     #[test]

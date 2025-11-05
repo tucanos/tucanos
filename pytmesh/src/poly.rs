@@ -29,7 +29,7 @@ macro_rules! create_poly_mesh {
     ($pyname: ident, $dim: expr) => {
         #[doc = concat!("Python binding for ", stringify!($name))]
         #[pyclass]
-        pub struct $pyname(pub(crate) SimplePolyMesh<$dim>);
+        pub struct $pyname(pub(crate) SimplePolyMesh<usize, $dim>);
 
         #[pymethods]
         impl $pyname {
@@ -75,7 +75,7 @@ macro_rules! create_poly_mesh {
                     .zip(elem_to_face_orient.iter().cloned())
                     .collect::<Vec<_>>();
 
-                Ok(Self(SimplePolyMesh::<$dim>::new(
+                Ok(Self(SimplePolyMesh::<usize, $dim>::new(
                     poly_type,
                     coords,
                     face_to_node_ptr.to_vec().unwrap(),

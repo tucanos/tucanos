@@ -18,7 +18,7 @@ use tmesh::{
 
 /// Extruded 2d mesh
 #[pyclass]
-pub struct PyExtrudedMesh2d(pub(crate) ExtrudedMesh2d);
+pub struct PyExtrudedMesh2d(pub(crate) ExtrudedMesh2d<usize>);
 
 #[pymethods]
 impl PyExtrudedMesh2d {

@@ -119,7 +119,7 @@ pub trait DualMesh<T: Idx, const D: usize, C: Simplex<T>>: PolyMesh<T, D> {
             .into_par_iter()
             .map(|i| {
                 (
-                    self.edge(i.try_into().unwrap()).try_into().unwrap(),
+                    self.edge(i.try_into().unwrap()),
                     self.edge_normal(i.try_into().unwrap()),
                 )
             })

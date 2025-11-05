@@ -18,8 +18,8 @@ use tmesh::{
     Tag, Vertex,
     interpolate::{InterpolationMethod, Interpolator},
     mesh::{
-        BoundaryMesh2d, BoundaryMesh3d, Edge, Hexahedron, Mesh, Mesh2d, Mesh3d, Prism, Pyramid,
-        Quadrangle, Simplex, Tetrahedron, Triangle, nonuniform_box_mesh, nonuniform_rectangle_mesh,
+        Edge, GenericMesh, Hexahedron, Mesh, Prism, Pyramid, Quadrangle, Simplex, Tetrahedron,
+        Triangle, nonuniform_box_mesh, nonuniform_rectangle_mesh,
         partition::{
             HilbertPartitioner, KMeansPartitioner2d, KMeansPartitioner3d, PartitionType,
             RCMPartitioner,
@@ -64,16 +64,16 @@ impl PyPartitionerType {
 }
 
 macro_rules! create_mesh {
-    ($pyname: ident, $name: ident, $dim: expr, $cell: expr) => {
-        #[doc = concat!("Python binding for ", stringify!($name))]
+    ($pyname: ident, $dim: expr, $cell: expr) => {
+        #[doc = concat!("Python binding for ", stringify!($pyname))]
         #[pyclass]
-        pub struct $pyname(pub(crate) $name);
+        pub struct $pyname(pub(crate) GenericMesh<usize, $dim, $cell>);
     };
 }
 
 #[macro_export]
 macro_rules! impl_mesh {
-    ($pyname: ident, $name: ident, $dim: expr, $cell: ident) => {
+    ($pyname: ident, $dim: expr, $cell: ident) => {
         #[pymethods]
         impl $pyname {
             /// Create a new mesh from coordinates, connectivities and tags
@@ -89,7 +89,7 @@ macro_rules! impl_mesh {
                     return Err(PyValueError::new_err("Invalid dimension 1 for coords"));
                 }
                 let n = elems.shape()[0];
-                if elems.shape()[1] != $cell::N_VERTS {
+                if elems.shape()[1] != $cell::<usize>::N_VERTS {
                     return Err(PyValueError::new_err("Invalid dimension 1 for elems"));
                 }
                 if etags.shape()[0] != n {
@@ -97,7 +97,7 @@ macro_rules! impl_mesh {
                 }
                 let n = faces.shape()[0];
 
-                if faces.shape()[1] != <$cell as Simplex>::N_VERTS {
+                if faces.shape()[1] != <$cell<usize> as Simplex>::N_VERTS {
                     return Err(PyValueError::new_err("Invalid dimension 1 for faces"));
                 }
                 if ftags.shape()[0] != n {
@@ -113,15 +113,15 @@ macro_rules! impl_mesh {
 
                 let elems = elems.as_slice()?;
                 let elems = elems
-                    .chunks($cell::N_VERTS)
-                    .map(|x| $cell::from_iter(x.iter().copied()));
+                    .chunks($cell::<usize>::N_VERTS)
+                    .map(|x| $cell::<usize>::from_iter(x.iter().copied()));
 
                 let faces = faces.as_slice()?;
                 let faces = faces
-                    .chunks(<$cell as Simplex>::FACE::N_VERTS)
-                    .map(|x| <$cell as Simplex>::FACE::from_iter(x.iter().copied()));
+                    .chunks(<$cell<usize> as Simplex>::FACE::N_VERTS)
+                    .map(|x| <$cell<usize> as Simplex>::FACE::from_iter(x.iter().copied()));
 
-                let mut res = $name::empty();
+                let mut res = GenericMesh::empty();
 
                 res.add_verts(coords);
                 res.add_elems(elems, etags.to_vec().unwrap().iter().cloned());
@@ -154,7 +154,7 @@ macro_rules! impl_mesh {
             /// Get a copy of the elements
             fn get_elems<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<usize>>> {
                 PyArray::from_vec(py, self.0.elems().flatten().collect())
-                    .reshape([self.n_elems(), $cell::N_VERTS])
+                    .reshape([self.n_elems(), $cell::<usize>::N_VERTS])
             }
 
             /// Get a copy of the element tags
@@ -170,7 +170,7 @@ macro_rules! impl_mesh {
             /// Get a copy of the faces
             fn get_faces<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<usize>>> {
                 PyArray::from_vec(py, self.0.faces().flatten().collect())
-                    .reshape([self.n_faces(), <$cell as Simplex>::FACE::N_VERTS])
+                    .reshape([self.n_faces(), <$cell<usize> as Simplex>::FACE::N_VERTS])
             }
 
             /// Get a copy of the face tags
@@ -224,7 +224,7 @@ macro_rules! impl_mesh {
             #[classmethod]
             fn from_meshb(_cls: &Bound<'_, PyType>, file_name: &str) -> PyResult<Self> {
                 Ok(Self(
-                    $name::from_meshb(file_name)
+                    GenericMesh::from_meshb(file_name)
                         .map_err(|e| PyRuntimeError::new_err(e.to_string()))?,
                 ))
             }
@@ -238,7 +238,7 @@ macro_rules! impl_mesh {
             ) -> PyResult<Bound<'py, PyArray2<f64>>> {
                 use pyo3::exceptions::PyRuntimeError;
 
-                let res = $name::read_solb(fname);
+                let res = GenericMesh::<usize, $dim, $cell>::read_solb(fname);
                 match res {
                     Ok((sol, m)) => {
                         let n = sol.len() / m;
@@ -248,10 +248,10 @@ macro_rules! impl_mesh {
                 }
             }
 
-            #[doc = concat!("Create an empty ", stringify!($name))]
+            #[doc = concat!("Create an empty ", stringify!($pyname))]
             #[classmethod]
             pub fn empty(_cls: &Bound<'_, PyType>) -> Self {
-                Self($name::empty())
+                Self(GenericMesh::empty())
             }
 
             /// Add vertices, faces and elements from another mesh
@@ -291,16 +291,16 @@ macro_rules! impl_mesh {
                 faces: PyReadonlyArray2<usize>,
                 ftags: PyReadonlyArray1<Tag>,
             ) -> PyResult<()> {
-                if faces.shape()[1] != <$cell as Simplex>::FACE::N_VERTS {
+                if faces.shape()[1] != <$cell<usize> as Simplex>::FACE::N_VERTS {
                     return Err(PyValueError::new_err(format!(
                         "Invalid dimension 1 for faces (expecting {})",
-                        <$cell as Simplex>::FACE::N_VERTS
+                        <$cell::<usize> as Simplex>::FACE::N_VERTS
                     )));
                 }
                 let faces = faces.as_slice()?;
                 let faces = faces
-                    .chunks(<$cell as Simplex>::FACE::N_VERTS)
-                    .map(|x| <$cell as Simplex>::FACE::from_iter(x.iter().copied()));
+                    .chunks(<$cell<usize> as Simplex>::FACE::N_VERTS)
+                    .map(|x| <$cell<usize> as Simplex>::FACE::from_iter(x.iter().copied()));
                 let ftags = ftags.as_slice()?;
                 self.0.add_faces(faces, ftags.iter().copied());
 
@@ -313,16 +313,16 @@ macro_rules! impl_mesh {
                 elems: PyReadonlyArray2<usize>,
                 etags: PyReadonlyArray1<Tag>,
             ) -> PyResult<()> {
-                if elems.shape()[1] != $cell::N_VERTS {
+                if elems.shape()[1] != $cell::<usize>::N_VERTS {
                     return Err(PyValueError::new_err(format!(
                         "Invalid dimension 1 for elems (expecting {})",
-                        $cell::N_VERTS
+                        $cell::<usize>::N_VERTS
                     )));
                 }
                 let elems = elems.as_slice()?;
                 let elems = elems
-                    .chunks($cell::N_VERTS)
-                    .map(|x| $cell::from_iter(x.iter().copied()));
+                    .chunks($cell::<usize>::N_VERTS)
+                    .map(|x| $cell::<usize>::from_iter(x.iter().copied()));
                 let etags = etags.as_slice()?;
                 self.0.add_elems(elems, etags.iter().copied());
 
@@ -487,33 +487,33 @@ macro_rules! impl_mesh {
                 match method {
                     PyPartitionerType::Hilbert => self
                         .0
-                        .partition::<HilbertPartitioner>(n_parts, weights)
+                        .partition::<HilbertPartitioner<_>>(n_parts, weights)
                         .map_err(|e| PyRuntimeError::new_err(e.to_string())),
                     PyPartitionerType::RCM => self
                         .0
-                        .partition::<RCMPartitioner>(n_parts, weights)
+                        .partition::<RCMPartitioner<_>>(n_parts, weights)
                         .map_err(|e| PyRuntimeError::new_err(e.to_string())),
                     PyPartitionerType::KMeans => match $dim {
                         3 => self
                             .0
-                            .partition::<KMeansPartitioner3d>(n_parts, weights)
+                            .partition::<KMeansPartitioner3d<_>>(n_parts, weights)
                             .map_err(|e| PyRuntimeError::new_err(e.to_string())),
                         2 => self
                             .0
-                            .partition::<KMeansPartitioner2d>(n_parts, weights)
+                            .partition::<KMeansPartitioner2d<_>>(n_parts, weights)
                             .map_err(|e| PyRuntimeError::new_err(e.to_string())),
                         _ => unimplemented!(),
                     },
                     #[cfg(feature = "metis")]
                     PyPartitionerType::MetisRecursive => self
                         .0
-                        .partition::<MetisPartitioner<MetisRecursive>>(n_parts, weights)
+                        .partition::<MetisPartitioner<MetisRecursive<_>>>(n_parts, weights)
                         .map_err(|e| PyRuntimeError::new_err(e.to_string())),
 
                     #[cfg(feature = "metis")]
                     PyPartitionerType::MetisKWay => self
                         .0
-                        .partition::<MetisPartitioner<MetisKWay>>(n_parts, weights)
+                        .partition::<MetisPartitioner<MetisKWay<_>>>(n_parts, weights)
                         .map_err(|e| PyRuntimeError::new_err(e.to_string())),
                 }
             }
@@ -604,14 +604,14 @@ macro_rules! impl_mesh {
     };
 }
 
-create_mesh!(PyMesh2d, Mesh2d, 2, Triangle);
-impl_mesh!(PyMesh2d, Mesh2d, 2, Triangle);
-create_mesh!(PyBoundaryMesh2d, BoundaryMesh2d, 2, Edge);
-impl_mesh!(PyBoundaryMesh2d, BoundaryMesh2d, 2, Edge);
-create_mesh!(PyMesh3d, Mesh3d, 3, Tetrahedron);
-impl_mesh!(PyMesh3d, Mesh3d, 3, Tetrahedron);
-create_mesh!(PyBoundaryMesh3d, BoundaryMesh3d, 3, Triangle);
-impl_mesh!(PyBoundaryMesh3d, BoundaryMesh3d, 3, Triangle);
+create_mesh!(PyMesh2d, 2, Triangle);
+impl_mesh!(PyMesh2d, 2, Triangle);
+create_mesh!(PyBoundaryMesh2d, 2, Edge);
+impl_mesh!(PyBoundaryMesh2d, 2, Edge);
+create_mesh!(PyMesh3d, 3, Tetrahedron);
+impl_mesh!(PyMesh3d, 3, Tetrahedron);
+create_mesh!(PyBoundaryMesh3d, 3, Triangle);
+impl_mesh!(PyBoundaryMesh3d, 3, Triangle);
 
 #[pymethods]
 impl PyMesh2d {

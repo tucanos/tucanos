@@ -147,7 +147,7 @@ pub fn nonuniform_box_mesh<T: Idx, M: Mesh<T, 3, Tetrahedron<T>>>(
 }
 
 /// Tetrahedron mesh in 3d
-pub type Mesh3d<T: Idx = usize> = GenericMesh<T, 3, Tetrahedron<T>>;
+pub type Mesh3d<T = usize> = GenericMesh<T, 3, Tetrahedron<T>>;
 
 #[cfg(test)]
 mod tests {

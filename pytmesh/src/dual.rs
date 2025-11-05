@@ -21,7 +21,7 @@ macro_rules! create_dual_mesh {
     ($pyname: ident, $name: ident, $mesh: ident, $dim: expr, $cell_dim: expr, $face_dim: expr) => {
         #[doc = concat!("Python binding for ", stringify!($name))]
         #[pyclass]
-        pub struct $pyname(pub(crate) $name);
+        pub struct $pyname(pub(crate) $name<usize>);
 
         #[pymethods]
         impl $pyname {

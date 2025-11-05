@@ -78,7 +78,7 @@ pub fn nonuniform_rectangle_mesh<T: Idx, M: Mesh<T, 2, Triangle<T>>>(x: &[f64], 
 }
 
 /// Triangle mesh in 2d
-pub type Mesh2d<T: Idx = usize> = GenericMesh<T, 2, Triangle<T>>;
+pub type Mesh2d<T = usize> = GenericMesh<T, 2, Triangle<T>>;
 
 #[cfg(test)]
 mod tests {

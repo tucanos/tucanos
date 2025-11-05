@@ -309,7 +309,8 @@ impl<T: Idx, const D: usize> SimplePolyMesh<T, D> {
             }
         }
         for i in 0..mesh.n_elems().try_into().unwrap() {
-            new_elems_ptr[i + 1] += new_elems_ptr[i];
+            let tmp = new_elems_ptr[i];
+            new_elems_ptr[i + 1] += tmp;
         }
         let n = *new_elems_ptr.last().unwrap();
         let mut new_elems = vec![(T::MAX, false); n.try_into().unwrap()];

@@ -62,7 +62,7 @@ fn main() -> Result<()> {
     let n_parts = 4;
 
     let start = Instant::now();
-    let (quality, imbalance) = msh.partition::<HilbertPartitioner>(n_parts, None)?;
+    let (quality, imbalance) = msh.partition::<HilbertPartitioner<_>>(n_parts, None)?;
     let t = start.elapsed();
     println!(
         "HilbertPartitioner: {:.2e}s, quality={:.2e}, imbalance={:.2e}",
@@ -78,7 +78,7 @@ fn main() -> Result<()> {
     }
 
     let start = Instant::now();
-    let (quality, imbalance) = msh.partition::<RCMPartitioner>(n_parts, None)?;
+    let (quality, imbalance) = msh.partition::<RCMPartitioner<_>>(n_parts, None)?;
     let t = start.elapsed();
     println!(
         "RCMPartitioner: {:.2e}s, quality={:.2e}, imbalance={:.2e}",
@@ -94,7 +94,7 @@ fn main() -> Result<()> {
     }
 
     let start = Instant::now();
-    let (quality, imbalance) = msh.partition::<KMeansPartitioner3d>(n_parts, None)?;
+    let (quality, imbalance) = msh.partition::<KMeansPartitioner3d<_>>(n_parts, None)?;
     let t = start.elapsed();
     println!(
         "KMeansPartitioner3d: {:.2e}s, quality={:.2e}, imbalance={:.2e}",

@@ -443,12 +443,12 @@ impl<T: Idx> DualMesh<T, 3, Tetrahedron<T>> for DualMesh3d<T> {
             .for_each(|&i| new_face_idx[i.0.try_into().unwrap()] += 1.try_into().unwrap());
         let mut count = 0.try_into().unwrap();
         for i in &mut new_face_idx {
-            if *i != 0.try_into().unwrap() {
+            if *i == 0.try_into().unwrap() {
+                *i = T::MAX;
+            } else {
                 assert!(*i <= 2.try_into().unwrap());
                 *i = count;
                 count += 1.try_into().unwrap();
-            } else {
-                *i = T::MAX;
             }
         }
         if matches!(t, DualType::Median) {

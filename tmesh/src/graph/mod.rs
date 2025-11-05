@@ -63,7 +63,7 @@ impl<T: Idx> CSRGraph<T> {
                 .flatten()
                 .filter(|&i| i != T::MAX)
                 .max()
-                .unwrap_or(0.try_into().unwrap())
+                .unwrap_or_else(|| 0.try_into().unwrap())
                 + 1.try_into().unwrap()
         });
         let n = elems.clone().flatten().filter(|&i| i != T::MAX).count();
@@ -80,7 +80,8 @@ impl<T: Idx> CSRGraph<T> {
         }
 
         for i in 0..nv.try_into().unwrap() {
-            res.ptr[i + 1] += res.ptr[i];
+            let tmp = res.ptr[i];
+            res.ptr[i + 1] += tmp;
         }
 
         res

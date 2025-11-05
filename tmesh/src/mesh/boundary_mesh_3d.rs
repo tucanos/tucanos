@@ -6,7 +6,7 @@ use crate::{
 use std::fs::OpenOptions;
 
 /// Triangle mesh in 3d
-pub type BoundaryMesh3d<T: Idx = usize> = GenericMesh<T, 3, Triangle<T>>;
+pub type BoundaryMesh3d<T = usize> = GenericMesh<T, 3, Triangle<T>>;
 
 /// Read a stl file
 pub fn read_stl<T: Idx, M: Mesh<T, 3, Triangle<T>>>(file_name: &str) -> Result<M> {

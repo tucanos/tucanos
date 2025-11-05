@@ -67,7 +67,7 @@ fn main() -> Result<()> {
     let (bdy, _): (BoundaryMesh2d, _) = dual.boundary();
     bdy.write_vtk("median_bdy.vtu")?;
 
-    let poly = SimplePolyMesh::<2>::simplify(&dual, true);
+    let poly = SimplePolyMesh::simplify(&dual, true);
     poly.write_vtk("median_simplified.vtu")?;
 
     println!("dual: {} faces", dual.n_faces());
@@ -78,7 +78,7 @@ fn main() -> Result<()> {
     let (bdy, _): (BoundaryMesh2d, _) = dual.boundary();
     bdy.write_vtk("barth_bdy.vtu")?;
 
-    let poly = SimplePolyMesh::<2>::simplify(&dual, true);
+    let poly = SimplePolyMesh::simplify(&dual, true);
     poly.write_vtk("barth_simplified.vtu")?;
 
     println!("dual: {} faces", dual.n_faces());
