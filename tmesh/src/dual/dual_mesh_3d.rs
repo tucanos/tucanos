@@ -136,13 +136,13 @@ impl<T: Idx> DualMesh<T, 3, Tetrahedron<T>> for DualMesh3d<T> {
     fn new<M: Mesh<T, 3, Tetrahedron<T>>>(msh: &M, t: DualType) -> Self {
         // edges
         let all_edges = msh.edges();
-        let n_edges: T = all_edges.len().try_into().unwrap();
+        let n_edges = all_edges.len();
 
         // faces
         let all_faces = msh.all_faces();
-        let n_faces = all_faces.len().try_into().unwrap();
+        let n_faces = all_faces.len();
 
-        let n_elems = msh.n_elems();
+        let n_elems = msh.n_elems().try_into().unwrap();
 
         // vertices: boundary
         let mut bdy_verts: FxHashMap<T, T> = msh
@@ -154,10 +154,10 @@ impl<T: Idx> DualMesh<T, 3, Tetrahedron<T>> for DualMesh3d<T> {
             .iter_mut()
             .enumerate()
             .for_each(|(i, (_, i_new))| *i_new = i.try_into().unwrap());
-        let n_bdy_verts = bdy_verts.len().try_into().unwrap();
+        let n_bdy_verts = bdy_verts.len();
 
-        let n: T = n_bdy_verts + n_edges + n_faces + n_elems;
-        let mut verts = Vec::with_capacity(n.try_into().unwrap());
+        let n = n_bdy_verts + n_edges + n_faces + n_elems;
+        let mut verts = Vec::with_capacity(n);
         for (&i_old, i_new) in &mut bdy_verts {
             *i_new = verts.len().try_into().unwrap();
             verts.push(msh.vert(i_old));
@@ -165,22 +165,22 @@ impl<T: Idx> DualMesh<T, 3, Tetrahedron<T>> for DualMesh3d<T> {
         let vert_ids_bdy = |i: T| *bdy_verts.get(&i).unwrap();
 
         // vertices: edge centers
-        verts.resize(verts.len() + n_edges.try_into().unwrap(), Vert3d::zeros());
-        let vert_idx_edge = |i: T| i + n_bdy_verts;
-
+        verts.resize(verts.len() + n_edges, Vert3d::zeros());
         for (&edge, &i_edge) in &all_edges {
             let ge = GEdge::from([msh.vert(edge[0]), msh.vert(edge[1])]);
-            verts[vert_idx_edge(i_edge).try_into().unwrap()] = ge.center();
+            verts[n_bdy_verts + i_edge.try_into().unwrap()] = ge.center();
         }
 
+        let vert_idx_edge = |i: T| i + n_bdy_verts.try_into().unwrap();
         // vertices: triangle centers
-        let mut vert_idx_face = vec![T::MAX; n_faces.try_into().unwrap()];
+        let mut vert_idx_face = vec![T::MAX; n_faces];
         for (f, &[i_face, _, _]) in &all_faces {
+            let i_face = i_face.try_into().unwrap();
             let gf = msh.gface(f);
             let center = Self::get_tri_center(&gf, t);
             match center {
                 DualCellCenter::Vertex(center) => {
-                    vert_idx_face[i_face.try_into().unwrap()] = verts.len().try_into().unwrap();
+                    vert_idx_face[i_face] = verts.len().try_into().unwrap();
                     verts.push(center);
                 }
                 DualCellCenter::Face(e) => {
@@ -188,13 +188,13 @@ impl<T: Idx> DualMesh<T, 3, Tetrahedron<T>> for DualMesh3d<T> {
                         Edge::from([f[e[0].try_into().unwrap()], f[e[1].try_into().unwrap()]])
                             .sorted();
                     let i_edge = *all_edges.get(&edge).unwrap();
-                    vert_idx_face[i_face.try_into().unwrap()] = vert_idx_edge(i_edge);
+                    vert_idx_face[i_face] = vert_idx_edge(i_edge);
                 }
             }
         }
 
         // vertices: tet centers
-        let mut vert_idx_elem = vec![T::MAX; n_elems.try_into().unwrap()];
+        let mut vert_idx_elem = vec![T::MAX; n_elems];
         for (i_elem, e) in msh.elems().enumerate() {
             let ge = msh.gelem(&e);
             let center = Self::get_tet_center(&ge, t);
@@ -224,7 +224,8 @@ impl<T: Idx> DualMesh<T, 3, Tetrahedron<T>> for DualMesh3d<T> {
         // combinations, so faces are stored sorted in a hashmap to detect duplicates
         let mut tmp_faces = FxHashMap::with_capacity_and_hasher(n_poly_faces, FxBuildHasher);
 
-        let mut poly_to_face_ptr = vec![0; msh.n_verts().try_into().unwrap() + 1];
+        let n_verts = msh.n_verts().try_into().unwrap();
+        let mut poly_to_face_ptr = vec![0; n_verts + 1];
         // internal faces
         for e in msh.elems() {
             for edg in e.edges() {
@@ -241,12 +242,12 @@ impl<T: Idx> DualMesh<T, 3, Tetrahedron<T>> for DualMesh3d<T> {
             }
         }
 
-        for i in 0..msh.n_verts().try_into().unwrap() {
+        for i in 0..n_verts {
             poly_to_face_ptr[i + 1] += poly_to_face_ptr[i];
         }
 
         let mut poly_to_face = vec![(T::MAX, true); poly_to_face_ptr[poly_to_face_ptr.len() - 1]];
-        let mut edge_normals = vec![Vert3d::zeros(); n_edges.try_into().unwrap()];
+        let mut edge_normals = vec![Vert3d::zeros(); n_edges];
 
         let mut n_empty_faces = 0;
         // build internal faces
@@ -286,19 +287,21 @@ impl<T: Idx> DualMesh<T, 3, Tetrahedron<T>> for DualMesh3d<T> {
                             let i_face = tmp_faces.len();
                             tmp_faces.insert(sorted_face, (i_face, 0));
                             i_face
-                        };
+                        }
+                        .try_into()
+                        .unwrap();
                         let mut ok = false;
                         let slice = &mut poly_to_face[poly_to_face_ptr[edg[0].try_into().unwrap()]
                             ..poly_to_face_ptr[edg[0].try_into().unwrap() + 1]];
                         let n = slice
                             .iter_mut()
-                            .filter(|(i, _)| *i == i_face.try_into().unwrap())
+                            .filter(|(i, _)| *i == i_face)
                             .map(|(i, _)| *i = T::MAX)
                             .count();
                         if n == 0 {
                             for j in slice {
                                 if j.0 == T::MAX {
-                                    *j = (i_face.try_into().unwrap(), is_sorted);
+                                    *j = (i_face, is_sorted);
                                     ok = true;
                                     break;
                                 }
@@ -313,13 +316,13 @@ impl<T: Idx> DualMesh<T, 3, Tetrahedron<T>> for DualMesh3d<T> {
                             ..poly_to_face_ptr[edg[1].try_into().unwrap() + 1]];
                         let n = slice
                             .iter_mut()
-                            .filter(|(i, _)| *i == i_face.try_into().unwrap())
+                            .filter(|(i, _)| *i == i_face)
                             .map(|(i, _)| *i = T::MAX)
                             .count();
                         if n == 0 {
                             for j in slice {
                                 if j.0 == T::MAX {
-                                    *j = (i_face.try_into().unwrap(), !is_sorted);
+                                    *j = (i_face, !is_sorted);
                                     ok = true;
                                     break;
                                 }
@@ -337,7 +340,7 @@ impl<T: Idx> DualMesh<T, 3, Tetrahedron<T>> for DualMesh3d<T> {
 
         for (f, tag) in msh.faces().zip(msh.ftags()) {
             let tmp = f.sorted();
-            let i_face = all_faces.get(&tmp).unwrap()[0];
+            let i_face = all_faces.get(&tmp).unwrap()[0].try_into().unwrap();
             for edg in f.edges() {
                 let tmp = edg.sorted();
                 let i_edge = *all_edges.get(&tmp).unwrap();
@@ -345,7 +348,7 @@ impl<T: Idx> DualMesh<T, 3, Tetrahedron<T>> for DualMesh3d<T> {
                 let face = Triangle::from([
                     vert_ids_bdy(edg[0]),
                     vert_idx_edge(i_edge),
-                    vert_idx_face[i_face.try_into().unwrap()],
+                    vert_idx_face[i_face],
                 ]);
                 let skip = face[0] == face[1] || face[0] == face[2] || face[1] == face[2];
                 if skip {
@@ -366,19 +369,18 @@ impl<T: Idx> DualMesh<T, 3, Tetrahedron<T>> for DualMesh3d<T> {
                         let i_face = tmp_faces.len();
                         tmp_faces.insert(sorted_face, (i_face, tag));
                         i_face
-                    };
+                    }
+                    .try_into()
+                    .unwrap();
 
                     let mut ok = false;
                     let slice = &mut poly_to_face[poly_to_face_ptr[edg[0].try_into().unwrap()]
                         ..poly_to_face_ptr[edg[0].try_into().unwrap() + 1]];
-                    let n = slice
-                        .iter_mut()
-                        .filter(|(i, _)| *i == i_face.try_into().unwrap())
-                        .count();
+                    let n = slice.iter_mut().filter(|(i, _)| *i == i_face).count();
                     assert_eq!(n, 0);
                     for j in slice {
                         if j.0 == T::MAX {
-                            *j = (i_face.try_into().unwrap(), is_sorted);
+                            *j = (i_face, is_sorted);
                             ok = true;
                             break;
                         }
@@ -388,7 +390,7 @@ impl<T: Idx> DualMesh<T, 3, Tetrahedron<T>> for DualMesh3d<T> {
 
                 let face = Triangle::from([
                     vert_ids_bdy(edg[1]),
-                    vert_idx_face[i_face.try_into().unwrap()],
+                    vert_idx_face[i_face],
                     vert_idx_edge(i_edge),
                 ]);
                 let skip = face[0] == face[1] || face[0] == face[2] || face[1] == face[2];
@@ -410,19 +412,18 @@ impl<T: Idx> DualMesh<T, 3, Tetrahedron<T>> for DualMesh3d<T> {
                         let i_face = tmp_faces.len();
                         tmp_faces.insert(sorted_face, (i_face, tag));
                         i_face
-                    };
+                    }
+                    .try_into()
+                    .unwrap();
 
                     let mut ok = false;
                     let slice = &mut poly_to_face[poly_to_face_ptr[edg[1].try_into().unwrap()]
                         ..poly_to_face_ptr[edg[1].try_into().unwrap() + 1]];
-                    let n = slice
-                        .iter_mut()
-                        .filter(|(i, _)| *i == i_face.try_into().unwrap())
-                        .count();
+                    let n = slice.iter_mut().filter(|(i, _)| *i == i_face).count();
                     assert_eq!(n, 0);
                     for j in slice {
                         if j.0 == T::MAX {
-                            *j = (i_face.try_into().unwrap(), is_sorted);
+                            *j = (i_face, is_sorted);
                             ok = true;
                             break;
                         }
@@ -486,7 +487,7 @@ impl<T: Idx> DualMesh<T, 3, Tetrahedron<T>> for DualMesh3d<T> {
 
         assert!(!new_poly_to_face.iter().any(|&i| i.0 == T::MAX));
 
-        let mut edges = vec![Edge::<T>::default(); n_edges.try_into().unwrap()];
+        let mut edges = vec![Edge::<T>::default(); n_edges];
         for (&edg, &i_edg) in &all_edges {
             edges[i_edg.try_into().unwrap()] = edg;
         }
