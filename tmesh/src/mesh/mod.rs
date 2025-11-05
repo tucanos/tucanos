@@ -80,12 +80,12 @@ pub trait Idx:
 }
 
 impl Idx for usize {
-    const MAX: usize = usize::MAX;
+    const MAX: Self = Self::MAX;
     type ConvertError = Infallible;
 }
 
 impl Idx for u32 {
-    const MAX: u32 = u32::MAX;
+    const MAX: Self = Self::MAX;
     type ConvertError = TryFromIntError;
 }
 
@@ -817,7 +817,7 @@ pub trait Mesh<T: Idx, const D: usize, C: Simplex<T>>: Send + Sync + Sized {
         let mut new_vert_indices: Vec<T> =
             vec![0.try_into().unwrap(); self.n_verts().try_into().unwrap()];
         vert_indices.iter().enumerate().for_each(|(i, &new_i)| {
-            new_vert_indices[new_i.try_into().unwrap()] = i.try_into().unwrap()
+            new_vert_indices[new_i.try_into().unwrap()] = i.try_into().unwrap();
         });
         let new_verts = vert_indices.iter().map(|&i| self.vert(i));
         let new_elems = self.elems().map(|mut e| {
@@ -1584,7 +1584,7 @@ pub trait Mesh<T: Idx, const D: usize, C: Simplex<T>>: Send + Sync + Sized {
         {
             added_elems.push(i);
             for i in 0..C::N_VERTS {
-                e[i] = new_vert_ids[e[i.try_into().unwrap()].try_into().unwrap()];
+                e[i] = new_vert_ids[e[i].try_into().unwrap()];
             }
             self.add_elems(std::iter::once(e), std::iter::once(t));
             for face in e.faces() {
@@ -1600,14 +1600,14 @@ pub trait Mesh<T: Idx, const D: usize, C: Simplex<T>>: Send + Sync + Sized {
             .filter(|(_, (_, t))| face_filter(*t))
             .filter(|&(_, (mut f, _))| {
                 for i in 0..C::FACE::N_VERTS {
-                    f[i] = new_vert_ids[f[i.try_into().unwrap()].try_into().unwrap()];
+                    f[i] = new_vert_ids[f[i].try_into().unwrap()];
                 }
                 all_added_faces.contains(&f.sorted())
             })
         {
             added_faces.push(i);
             for i in 0..C::FACE::N_VERTS {
-                f[i] = new_vert_ids[f[i.try_into().unwrap()].try_into().unwrap()];
+                f[i] = new_vert_ids[f[i].try_into().unwrap()];
             }
             self.add_faces(std::iter::once(f), std::iter::once(t));
         }
