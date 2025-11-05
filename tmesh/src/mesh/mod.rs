@@ -79,6 +79,17 @@ pub trait Idx:
     const MAX: Self;
     const ONE: Self;
     const ZERO: Self;
+
+    fn from_zero_range(self) -> std::ops::Range<usize> {
+        0..self.try_into().unwrap()
+    }
+    fn from_zero_iter<IV>(self) -> impl ExactSizeIterator<Item = IV>
+    where
+        IV: TryFrom<usize>,
+        <IV as TryFrom<usize>>::Error: Debug,
+    {
+        (0..self.try_into().unwrap()).map(|x| x.try_into().unwrap())
+    }
 }
 
 impl Idx for usize {
@@ -772,7 +783,8 @@ pub trait Mesh<T: Idx, const D: usize, C: Simplex<T>>: Send + Sync + Sized {
     where
         nalgebra::Const<D>: nalgebra::Dim,
     {
-        (0..self.n_verts().try_into().unwrap())
+        self.n_verts()
+            .from_zero_range()
             .into_par_iter()
             .map(move |i| {
                 let x = self.vert(i.try_into().unwrap());
@@ -948,22 +960,16 @@ pub trait Mesh<T: Idx, const D: usize, C: Simplex<T>>: Send + Sync + Sized {
     fn random_shuffle(&self) -> Self {
         let mut rng = StdRng::seed_from_u64(1234);
 
-        let mut vert_ids = (0..self.n_verts().try_into().unwrap())
-            .map(|x| x.try_into().unwrap())
-            .collect::<Vec<T>>();
+        let mut vert_ids: Vec<_> = self.n_verts().from_zero_iter().collect();
         vert_ids.shuffle(&mut rng);
 
         let mut res = self.reorder_vertices(&vert_ids);
 
-        let mut elem_ids = (0..self.n_elems().try_into().unwrap())
-            .map(|x| x.try_into().unwrap())
-            .collect::<Vec<T>>();
+        let mut elem_ids: Vec<_> = self.n_elems().from_zero_iter().collect();
         elem_ids.shuffle(&mut rng);
         res.reorder_elems(&elem_ids);
 
-        let mut face_ids = (0..self.n_faces().try_into().unwrap())
-            .map(|x| x.try_into().unwrap())
-            .collect::<Vec<T>>();
+        let mut face_ids: Vec<_> = self.n_faces().from_zero_iter().collect();
         face_ids.shuffle(&mut rng);
         res.reorder_faces(&face_ids);
 
@@ -1029,7 +1035,7 @@ pub trait Mesh<T: Idx, const D: usize, C: Simplex<T>>: Send + Sync + Sized {
                 tmp.copy_from_slice(x.as_ref());
                 tmp
             }),
-            (0..self.n_verts().try_into().unwrap()).map(|_| 1),
+            self.n_verts().from_zero_range().map(|_| 1),
         )?;
 
         match C::N_VERTS {
