@@ -145,11 +145,8 @@ impl<T: Idx> DualMesh<T, 3, Tetrahedron<T>> for DualMesh3d<T> {
         let n_elems = msh.n_elems().try_into().unwrap();
 
         // vertices: boundary
-        let mut bdy_verts: FxHashMap<T, T> = msh
-            .faces()
-            .flatten()
-            .map(|i| (i, 0.try_into().unwrap()))
-            .collect();
+        let mut bdy_verts: FxHashMap<T, T> =
+            msh.faces().flatten().map(|i| (i, Idx::ZERO)).collect();
         bdy_verts
             .iter_mut()
             .enumerate()
@@ -437,19 +434,19 @@ impl<T: Idx> DualMesh<T, 3, Tetrahedron<T>> for DualMesh3d<T> {
             assert_eq!(tmp_faces.len(), n_poly_faces - n_empty_faces);
         }
         let n = tmp_faces.len();
-        let mut new_face_idx = vec![0.try_into().unwrap(); n];
+        let mut new_face_idx = vec![Idx::ZERO; n];
         poly_to_face
             .iter()
             .filter(|&i| i.0 != T::MAX)
-            .for_each(|&i| new_face_idx[i.0.try_into().unwrap()] += 1.try_into().unwrap());
-        let mut count = 0.try_into().unwrap();
+            .for_each(|&i| new_face_idx[i.0.try_into().unwrap()] += Idx::ONE);
+        let mut count = Idx::ZERO;
         for i in &mut new_face_idx {
-            if *i == 0.try_into().unwrap() {
+            if *i == Idx::ZERO {
                 *i = T::MAX;
             } else {
                 assert!(*i <= 2.try_into().unwrap());
                 *i = count;
-                count += 1.try_into().unwrap();
+                count += Idx::ONE;
             }
         }
         if matches!(t, DualType::Median) {
@@ -470,7 +467,7 @@ impl<T: Idx> DualMesh<T, 3, Tetrahedron<T>> for DualMesh3d<T> {
         let n = poly_to_face.iter().filter(|&i| i.0 != T::MAX).count();
 
         let mut new_poly_to_face_ptr = Vec::with_capacity(poly_to_face_ptr.len());
-        new_poly_to_face_ptr.push(0.try_into().unwrap());
+        new_poly_to_face_ptr.push(Idx::ZERO);
         let mut new_poly_to_face = Vec::with_capacity(n);
         for i_elem in 0..msh.n_verts().try_into().unwrap() {
             for v in poly_to_face

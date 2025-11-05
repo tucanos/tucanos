@@ -77,16 +77,22 @@ pub trait Idx:
 {
     type ConvertError: std::error::Error + Debug;
     const MAX: Self;
+    const ONE: Self;
+    const ZERO: Self;
 }
 
 impl Idx for usize {
     const MAX: Self = Self::MAX;
     type ConvertError = Infallible;
+    const ONE: Self = 1;
+    const ZERO: Self = 0;
 }
 
 impl Idx for u32 {
     const MAX: Self = Self::MAX;
     type ConvertError = TryFromIntError;
+    const ONE: Self = 1;
+    const ZERO: Self = 0;
 }
 
 /// Hexahedron
