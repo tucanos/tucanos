@@ -21,11 +21,7 @@ pub fn read_stl<T: Idx, M: Mesh<T, 3, Triangle<T>>>(file_name: &str) -> Result<M
     );
 
     let mut elems = Vec::with_capacity(3 * stl.faces.len());
-    elems.extend(
-        stl.faces
-            .iter()
-            .map(|v| Triangle::from_iter(v.vertices.into_iter().map(|x| x.try_into().unwrap()))),
-    );
+    elems.extend(stl.faces.iter().map(|v| Triangle::from_iter(v.vertices)));
     let etags = vec![1; stl.faces.len()];
     let faces = Vec::new();
     let ftags = Vec::new();

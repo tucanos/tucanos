@@ -984,32 +984,17 @@ pub trait Mesh<T: Idx, const D: usize, C: Simplex<T>>: Send + Sync + Sized {
         match C::N_VERTS {
             4 => {
                 if let Ok(iter) = reader.read_tetrahedra() {
-                    res.add_elems_and_tags(iter.map(|(e, t)| {
-                        (
-                            C::from_iter(e.into_iter().map(|x| x.try_into().unwrap())),
-                            t as Tag,
-                        )
-                    }));
+                    res.add_elems_and_tags(iter.map(|(e, t)| (C::from_iter(e), t as Tag)));
                 }
             }
             3 => {
                 if let Ok(iter) = reader.read_triangles() {
-                    res.add_elems_and_tags(iter.map(|(e, t)| {
-                        (
-                            C::from_iter(e.into_iter().map(|x| x.try_into().unwrap())),
-                            t as Tag,
-                        )
-                    }));
+                    res.add_elems_and_tags(iter.map(|(e, t)| (C::from_iter(e), t as Tag)));
                 }
             }
             2 => {
                 if let Ok(iter) = reader.read_edges() {
-                    res.add_elems_and_tags(iter.map(|(e, t)| {
-                        (
-                            C::from_iter(e.into_iter().map(|x| x.try_into().unwrap())),
-                            t as Tag,
-                        )
-                    }));
+                    res.add_elems_and_tags(iter.map(|(e, t)| (C::from_iter(e), t as Tag)));
                 }
             }
             _ => unimplemented!(),
@@ -1018,22 +1003,12 @@ pub trait Mesh<T: Idx, const D: usize, C: Simplex<T>>: Send + Sync + Sized {
         match C::FACE::N_VERTS {
             3 => {
                 if let Ok(iter) = reader.read_triangles() {
-                    res.add_faces_and_tags(iter.map(|(e, t)| {
-                        (
-                            C::FACE::from_iter(e.into_iter().map(|x| x.try_into().unwrap())),
-                            t as Tag,
-                        )
-                    }));
+                    res.add_faces_and_tags(iter.map(|(e, t)| (C::FACE::from_iter(e), t as Tag)));
                 }
             }
             2 => {
                 if let Ok(iter) = reader.read_edges() {
-                    res.add_faces_and_tags(iter.map(|(e, t)| {
-                        (
-                            C::FACE::from_iter(e.into_iter().map(|x| x.try_into().unwrap())),
-                            t as Tag,
-                        )
-                    }));
+                    res.add_faces_and_tags(iter.map(|(e, t)| (C::FACE::from_iter(e), t as Tag)));
                 }
             }
             1 => warn!("not reading faces when elements are edges"),

@@ -38,15 +38,18 @@ where
     fn from_other<C: Simplex<T>>(other: C) -> Self {
         assert_eq!(Self::DIM, C::DIM);
         assert_eq!(Self::N_VERTS, C::N_VERTS);
-        Self::from_iter(other.into_iter())
+        Self::from_iter(other)
     }
 
-    fn from_iter<I: Iterator<Item = T>>(iter: I) -> Self {
+    fn from_iter<IT: TryInto<T>, I: IntoIterator<Item = IT>>(iter: I) -> Self
+    where
+        <IT as TryInto<T>>::Error: Debug,
+    {
         let mut res = Self::default();
         let mut count = 0;
-        for (i, j) in iter.enumerate() {
+        for (i, j) in iter.into_iter().enumerate() {
             assert!(i < Self::N_VERTS);
-            res[i] = j;
+            res[i] = j.try_into().unwrap();
             count += 1;
         }
         assert_eq!(count, Self::N_VERTS);
@@ -82,20 +85,12 @@ where
 
     /// Get the i-th edge for the simplex 0..N
     fn local_edge(i: T) -> Edge<T> {
-        Edge::<T>::from_iter(
-            Self::EDGES[i.try_into().unwrap()]
-                .into_iter()
-                .map(|x| x.try_into().unwrap()),
-        )
+        Edge::<T>::from_iter(Self::EDGES[i.try_into().unwrap()])
     }
 
     /// Get the i-th edge for the current simplex
     fn edge(&self, i: T) -> Edge<T> {
-        Edge::<T>::from_iter(
-            Self::EDGES[i.try_into().unwrap()]
-                .into_iter()
-                .map(|j| self[j]),
-        )
+        Edge::<T>::from_iter(Self::EDGES[i.try_into().unwrap()])
     }
 
     /// Get an iterator over the edges of the current simplex
@@ -265,11 +260,7 @@ impl<T: Idx> Simplex<T> for Node<T> {
     const EDGES: &'static [Edge<usize>] = &NODE2EDGES;
 
     fn local_face(i: T) -> Self::FACE {
-        Self::FACE::from_iter(
-            NODE2FACES[i.try_into().unwrap()]
-                .into_iter()
-                .map(|x| x.try_into().unwrap()),
-        )
+        Self::FACE::from_iter(NODE2FACES[i.try_into().unwrap()])
     }
 
     fn contains(&self, i: T) -> bool {
@@ -353,11 +344,7 @@ impl<T: Idx> Simplex<T> for Edge<T> {
     const EDGES: &'static [Edge<usize>] = &EDGE2EDGES;
 
     fn local_face(i: T) -> Self::FACE {
-        Self::FACE::from_iter(
-            EDGE2FACES[i.try_into().unwrap()]
-                .into_iter()
-                .map(|x| x.try_into().unwrap()),
-        )
+        Self::FACE::from_iter(EDGE2FACES[i.try_into().unwrap()])
     }
 
     fn contains(&self, i: T) -> bool {
@@ -448,11 +435,7 @@ impl<T: Idx> Simplex<T> for Triangle<T> {
     const EDGES: &'static [Edge<usize>] = &TRIANGLE2EDGES;
 
     fn local_face(i: T) -> Self::FACE {
-        Self::FACE::from_iter(
-            TRIANGLE2FACES[i.try_into().unwrap()]
-                .into_iter()
-                .map(|x| x.try_into().unwrap()),
-        )
+        Self::FACE::from_iter(TRIANGLE2FACES[i.try_into().unwrap()])
     }
 
     fn contains(&self, i: T) -> bool {
@@ -608,11 +591,7 @@ impl<T: Idx> Simplex<T> for Tetrahedron<T> {
     const EDGES: &'static [Edge<usize>] = &TETRA2EDGES;
 
     fn local_face(i: T) -> Self::FACE {
-        Self::FACE::from_iter(
-            TETRA2FACES[i.try_into().unwrap()]
-                .into_iter()
-                .map(|x| x.try_into().unwrap()),
-        )
+        Self::FACE::from_iter(TETRA2FACES[i.try_into().unwrap()])
     }
 
     fn contains(&self, i: T) -> bool {
@@ -763,13 +742,13 @@ pub fn get_face_to_elem<'a, T: Idx, C: Simplex<T> + 'a, I: ExactSizeIterator<Ite
 
 #[cfg(test)]
 mod tests {
-    use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
+    use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
 
     use crate::{
-        mesh::{
-            simplices::GSimplex, Edge, GTetrahedron, GTriangle, Simplex, Tetrahedron, Triangle,
-        },
         Vert2d, Vert3d,
+        mesh::{
+            Edge, GTetrahedron, GTriangle, Simplex, Tetrahedron, Triangle, simplices::GSimplex,
+        },
     };
 
     #[test]

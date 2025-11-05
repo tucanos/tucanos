@@ -35,17 +35,11 @@ impl<T: Idx> DualMesh2d<T> {
                 if bcoords.iter().all(|&x| x > f) {
                     DualCellCenter::Vertex(v.vert(&bcoords))
                 } else if bcoords[0] <= f {
-                    DualCellCenter::Face(Edge::<T>::from_iter(
-                        [1, 2].into_iter().map(|x| x.try_into().unwrap()),
-                    ))
+                    DualCellCenter::Face(Edge::<T>::from_iter([1, 2]))
                 } else if bcoords[1] <= f {
-                    DualCellCenter::Face(Edge::<T>::from_iter(
-                        [2, 0].into_iter().map(|x| x.try_into().unwrap()),
-                    ))
+                    DualCellCenter::Face(Edge::<T>::from_iter([2, 0]))
                 } else {
-                    DualCellCenter::Face(Edge::<T>::from_iter(
-                        [1, 0].into_iter().map(|x| x.try_into().unwrap()),
-                    ))
+                    DualCellCenter::Face(Edge::<T>::from_iter([1, 0]))
                 }
             }
         }
