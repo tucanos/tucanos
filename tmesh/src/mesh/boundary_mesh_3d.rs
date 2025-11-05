@@ -1,15 +1,15 @@
 //! Boundary of `Mesh3d`
 use crate::{
     Result, Vert3d,
-    mesh::{GenericMesh, Mesh, Simplex, Triangle},
+    mesh::{GenericMesh, Idx, Mesh, Simplex, Triangle},
 };
 use std::fs::OpenOptions;
 
 /// Triangle mesh in 3d
-pub type BoundaryMesh3d = GenericMesh<3, Triangle>;
+pub type BoundaryMesh3d<T: Idx = usize> = GenericMesh<T, 3, Triangle<T>>;
 
 /// Read a stl file
-pub fn read_stl<M: Mesh<3, Triangle>>(file_name: &str) -> Result<M> {
+pub fn read_stl<T: Idx, M: Mesh<T, 3, Triangle<T>>>(file_name: &str) -> Result<M> {
     let mut file = OpenOptions::new().read(true).open(file_name).unwrap();
     let stl = stl_io::read_stl(&mut file).unwrap();
 
@@ -24,7 +24,7 @@ pub fn read_stl<M: Mesh<3, Triangle>>(file_name: &str) -> Result<M> {
     elems.extend(
         stl.faces
             .iter()
-            .map(|v| Triangle::from_iter(v.vertices.into_iter())),
+            .map(|v| Triangle::from_iter(v.vertices.into_iter().map(|x| x.try_into().unwrap()))),
     );
     let etags = vec![1; stl.faces.len()];
     let faces = Vec::new();
@@ -43,7 +43,7 @@ mod tests {
 
     #[test]
     fn test_box() {
-        let msh = box_mesh::<Mesh3d>(1.0, 10, 2.0, 15, 1.0, 20);
+        let msh = box_mesh::<_, Mesh3d>(1.0, 10, 2.0, 15, 1.0, 20);
 
         let (mut bdy, _): (BoundaryMesh3d, _) = msh.boundary();
 
@@ -66,7 +66,7 @@ mod tests {
         let ge = GTriangle([v1, v0, v2]);
         assert_delta!(ge.vol(), 0.125, 1e-12);
 
-        let msh = box_mesh::<Mesh3d>(1.0, 10, 2.0, 15, 1.0, 20);
+        let msh = box_mesh::<_, Mesh3d>(1.0, 10, 2.0, 15, 1.0, 20);
 
         let f = msh.par_verts().map(|v| v[0]).collect::<Vec<_>>();
 

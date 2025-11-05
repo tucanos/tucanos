@@ -1,41 +1,41 @@
 //! Mesh partitioners
 use super::{GSimplex, Mesh, Simplex, hilbert::hilbert_indices};
-use crate::{Error, Result, graph::CSRGraph};
+use crate::{Error, Result, graph::CSRGraph, mesh::Idx};
 use coupe::{Partition, nalgebra::SVector};
 #[cfg(feature = "metis")]
 use std::marker::PhantomData;
 
 /// Mesh partitioners
-pub trait Partitioner: Sized {
+pub trait Partitioner<T: Idx>: Sized {
     /// Create a new mesh partitionner to partition `msh` into `n_parts`
     /// Element weights can optionally be provided
-    fn new<const D: usize, C: Simplex, M: Mesh<D, C>>(
+    fn new<const D: usize, C: Simplex<T>, M: Mesh<T, D, C>>(
         msh: &M,
-        n_parts: usize,
+        n_parts: T,
         weights: Option<Vec<f64>>,
     ) -> Result<Self>;
 
     /// Compute the element partition
-    fn compute(&self) -> Result<Vec<usize>>;
+    fn compute(&self) -> Result<Vec<T>>;
     /// Get the number of partitions
-    fn n_parts(&self) -> usize;
+    fn n_parts(&self) -> T;
     /// Get the element-to-element graph
-    fn graph(&self) -> &CSRGraph;
+    fn graph(&self) -> &CSRGraph<T>;
     /// Get the element weights
     fn weights(&self) -> impl Iterator<Item = f64> {
-        (0..self.graph().n()).map(|_| 1.0)
+        (0..self.graph().n().try_into().unwrap()).map(|_| 1.0)
     }
     /// Get the total weight of all the partitions
-    fn partition_weights(&self, parts: &[usize]) -> Vec<f64> {
-        let mut res = vec![0.0; self.n_parts()];
+    fn partition_weights(&self, parts: &[T]) -> Vec<f64> {
+        let mut res = vec![0.0; self.n_parts().try_into().unwrap()];
         for (&i_part, w) in parts.iter().zip(self.weights()) {
-            res[i_part] += w;
+            res[i_part.try_into().unwrap()] += w;
         }
         res
     }
     /// Compute the imbalance between the partitions
     /// defined as (max(part_weights) - min(part_weights)) / mean(part_weights)
-    fn partition_imbalance(&self, parts: &[usize]) -> f64 {
+    fn partition_imbalance(&self, parts: &[T]) -> f64 {
         let weights = self.partition_weights(parts);
         let (min, max, avg) = weights.iter().fold((f64::MAX, f64::MIN, 0.0), |a, &b| {
             (a.0.min(b), a.1.max(b), a.2 + b)
@@ -46,14 +46,14 @@ pub trait Partitioner: Sized {
     /// Compute the quality of the partitioning defined as the ratio
     /// of the number of faces between elements on different partitions to the total
     /// number of internal faces
-    fn partition_quality(&self, parts: &[usize]) -> f64 {
+    fn partition_quality(&self, parts: &[T]) -> f64 {
         let mut count = 0;
         let mut split = 0;
         for (i, row) in self.graph().rows().enumerate() {
             for &j in row {
-                if j != i {
+                if j != i.try_into().unwrap() {
                     count += 1;
-                    if parts[i] != parts[j] {
+                    if parts[i] != parts[j.try_into().unwrap()] {
                         split += 1;
                     }
                 }
@@ -77,17 +77,17 @@ pub enum PartitionType {
 }
 
 /// Simple geometric partitionner based on the Hilbert indices of the element centers
-pub struct HilbertPartitioner {
-    n_parts: usize,
-    graph: CSRGraph,
-    ids: Vec<usize>,
+pub struct HilbertPartitioner<T: Idx> {
+    n_parts: T,
+    graph: CSRGraph<T>,
+    ids: Vec<T>,
     weights: Vec<f64>,
 }
 
-impl Partitioner for HilbertPartitioner {
-    fn new<const D: usize, C: Simplex, M: Mesh<D, C>>(
+impl<T: Idx> Partitioner<T> for HilbertPartitioner<T> {
+    fn new<const D: usize, C: Simplex<T>, M: Mesh<T, D, C>>(
         msh: &M,
-        n_parts: usize,
+        n_parts: T,
         weights: Option<Vec<f64>>,
     ) -> Result<Self> {
         let faces = msh.all_faces();
@@ -95,7 +95,7 @@ impl Partitioner for HilbertPartitioner {
 
         let centers = msh.gelems().map(|ge| ge.center());
         let ids = hilbert_indices(centers);
-        let weights = weights.unwrap_or_else(|| vec![1.0; msh.n_elems()]);
+        let weights = weights.unwrap_or_else(|| vec![1.0; msh.n_elems().try_into().unwrap()]);
         Ok(Self {
             n_parts,
             graph,
@@ -104,50 +104,51 @@ impl Partitioner for HilbertPartitioner {
         })
     }
 
-    fn compute(&self) -> Result<Vec<usize>> {
-        let target_weight = self.weights.iter().copied().sum::<f64>() / self.n_parts as f64;
-        let mut res = vec![0; self.weights.len()];
+    fn compute(&self) -> Result<Vec<T>> {
+        let target_weight =
+            self.weights.iter().copied().sum::<f64>() / self.n_parts.try_into().unwrap() as f64;
+        let mut res = vec![0.try_into().unwrap(); self.weights.len()];
         let mut part = 0;
         let mut weight = 0.0;
         for &j in &self.ids {
             if weight > target_weight {
-                part = self.n_parts.min(part + 1);
+                part = self.n_parts.try_into().unwrap().min(part + 1);
                 weight = 0.0;
             }
-            res[j] = part;
-            weight += self.weights[j];
+            res[j.try_into().unwrap()] = part.try_into().unwrap();
+            weight += self.weights[j.try_into().unwrap()];
         }
         Ok(res)
     }
 
-    fn n_parts(&self) -> usize {
+    fn n_parts(&self) -> T {
         self.n_parts
     }
 
-    fn graph(&self) -> &CSRGraph {
+    fn graph(&self) -> &CSRGraph<T> {
         &self.graph
     }
 }
 
 /// Simple partioner based on the RCM ordering of the element-to-element
 /// connectivity
-pub struct RCMPartitioner {
-    n_parts: usize,
-    graph: CSRGraph,
-    ids: Vec<usize>,
+pub struct RCMPartitioner<T: Idx> {
+    n_parts: T,
+    graph: CSRGraph<T>,
+    ids: Vec<T>,
     weights: Vec<f64>,
 }
 
-impl Partitioner for RCMPartitioner {
-    fn new<const D: usize, C: Simplex, M: Mesh<D, C>>(
+impl<T: Idx> Partitioner<T> for RCMPartitioner<T> {
+    fn new<const D: usize, C: Simplex<T>, M: Mesh<T, D, C>>(
         msh: &M,
-        n_parts: usize,
+        n_parts: T,
         weights: Option<Vec<f64>>,
     ) -> Result<Self> {
         let faces = msh.all_faces();
         let graph = msh.element_pairs(&faces);
 
-        let weights = weights.unwrap_or_else(|| vec![1.0; msh.n_elems()]);
+        let weights = weights.unwrap_or_else(|| vec![1.0; msh.n_elems().try_into().unwrap()]);
         let ids = graph.reverse_cuthill_mckee();
         Ok(Self {
             n_parts,
@@ -156,42 +157,43 @@ impl Partitioner for RCMPartitioner {
             weights,
         })
     }
-    fn compute(&self) -> Result<Vec<usize>> {
-        let target_weight = self.weights.iter().copied().sum::<f64>() / self.n_parts as f64;
-        let mut res = vec![0; self.weights.len()];
+    fn compute(&self) -> Result<Vec<T>> {
+        let target_weight =
+            self.weights.iter().copied().sum::<f64>() / self.n_parts.try_into().unwrap() as f64;
+        let mut res = vec![0.try_into().unwrap(); self.weights.len()];
         let mut part = 0;
         let mut weight = 0.0;
         for &j in &self.ids {
             if weight > target_weight {
-                part = self.n_parts.min(part + 1);
+                part = self.n_parts.try_into().unwrap().min(part + 1);
                 weight = 0.0;
             }
-            res[j] = part;
-            weight += self.weights[j];
+            res[j.try_into().unwrap()] = part.try_into().unwrap();
+            weight += self.weights[j.try_into().unwrap()];
         }
         Ok(res)
     }
 
-    fn n_parts(&self) -> usize {
+    fn n_parts(&self) -> T {
         self.n_parts
     }
 
-    fn graph(&self) -> &CSRGraph {
+    fn graph(&self) -> &CSRGraph<T> {
         &self.graph
     }
 }
 
 /// KMeans partitionner based on `coupe` (2d)
-pub struct KMeansPartitioner2d {
-    n_parts: usize,
-    graph: CSRGraph,
+pub struct KMeansPartitioner2d<T: Idx> {
+    n_parts: T,
+    graph: CSRGraph<T>,
     centers: Vec<SVector<f64, 2>>,
     weights: Vec<f64>,
 }
-impl Partitioner for KMeansPartitioner2d {
-    fn new<const D: usize, C: Simplex, M: Mesh<D, C>>(
+impl<T: Idx> Partitioner<T> for KMeansPartitioner2d<T> {
+    fn new<const D: usize, C: Simplex<T>, M: Mesh<T, D, C>>(
         msh: &M,
-        n_parts: usize,
+        n_parts: T,
         weights: Option<Vec<f64>>,
     ) -> Result<Self> {
         match D {
@@ -203,7 +205,8 @@ impl Partitioner for KMeansPartitioner2d {
                     .gelems()
                     .map(|ge| SVector::from_row_slice(ge.center().as_slice()))
                     .collect();
-                let weights = weights.unwrap_or_else(|| vec![1.0; msh.n_elems()]);
+                let weights =
+                    weights.unwrap_or_else(|| vec![1.0; msh.n_elems().try_into().unwrap()]);
                 Ok(Self {
                     n_parts,
                     graph,
@@ -214,11 +217,11 @@ impl Partitioner for KMeansPartitioner2d {
             _ => Err(Error::from("Partitioner only available for D=2")),
         }
     }
-    fn compute(&self) -> Result<Vec<usize>> {
+    fn compute(&self) -> Result<Vec<T>> {
         let mut partition = vec![0; self.centers.len()];
 
         coupe::HilbertCurve {
-            part_count: self.n_parts(),
+            part_count: self.n_parts().try_into().unwrap(),
             ..Default::default()
         }
         .partition(&mut partition, (self.centers.as_slice(), &self.weights))?;
@@ -229,30 +232,35 @@ impl Partitioner for KMeansPartitioner2d {
         }
         .partition(&mut partition, (self.centers.as_slice(), &self.weights))?;
 
+        let partition = partition
+            .into_iter()
+            .map(|x| x.try_into().unwrap())
+            .collect();
+
         Ok(partition)
     }
 
-    fn n_parts(&self) -> usize {
+    fn n_parts(&self) -> T {
         self.n_parts
     }
 
-    fn graph(&self) -> &CSRGraph {
+    fn graph(&self) -> &CSRGraph<T> {
         &self.graph
     }
 }
 
 /// KMeans partitionner based on `coupe` (3d)
-pub struct KMeansPartitioner3d {
-    n_parts: usize,
-    graph: CSRGraph,
+pub struct KMeansPartitioner3d<T: Idx> {
+    n_parts: T,
+    graph: CSRGraph<T>,
     centers: Vec<SVector<f64, 3>>,
     weights: Vec<f64>,
 }
 
-impl Partitioner for KMeansPartitioner3d {
-    fn new<const D: usize, C: Simplex, M: Mesh<D, C>>(
+impl<T: Idx> Partitioner<T> for KMeansPartitioner3d<T> {
+    fn new<const D: usize, C: Simplex<T>, M: Mesh<T, D, C>>(
         msh: &M,
-        n_parts: usize,
+        n_parts: T,
         weights: Option<Vec<f64>>,
     ) -> Result<Self> {
         match D {
@@ -264,7 +272,8 @@ impl Partitioner for KMeansPartitioner3d {
                     .gelems()
                     .map(|ge| SVector::from_row_slice(ge.center().as_slice()))
                     .collect();
-                let weights = weights.unwrap_or_else(|| vec![1.0; msh.n_elems()]);
+                let weights =
+                    weights.unwrap_or_else(|| vec![1.0; msh.n_elems().try_into().unwrap()]);
                 Ok(Self {
                     n_parts,
                     graph,
@@ -275,11 +284,11 @@ impl Partitioner for KMeansPartitioner3d {
             _ => Err(Error::from("Partitioner only available for D=2")),
         }
     }
-    fn compute(&self) -> Result<Vec<usize>> {
+    fn compute(&self) -> Result<Vec<T>> {
         let mut partition = vec![0; self.centers.len()];
 
         coupe::HilbertCurve {
-            part_count: self.n_parts(),
+            part_count: self.n_parts().try_into().unwrap(),
             ..Default::default()
         }
         .partition(&mut partition, (self.centers.as_slice(), &self.weights))?;
@@ -289,14 +298,20 @@ impl Partitioner for KMeansPartitioner3d {
             ..Default::default()
         }
         .partition(&mut partition, (self.centers.as_slice(), &self.weights))?;
+
+        let partition = partition
+            .into_iter()
+            .map(|x| x.try_into().unwrap())
+            .collect();
+
         Ok(partition)
     }
 
-    fn n_parts(&self) -> usize {
+    fn n_parts(&self) -> T {
         self.n_parts
     }
 
-    fn graph(&self) -> &CSRGraph {
+    fn graph(&self) -> &CSRGraph<T> {
         &self.graph
     }
 }
@@ -342,7 +357,7 @@ impl MetisPartMethod for MetisKWay {
 /// Metis preconditionner
 #[cfg(feature = "metis")]
 pub struct MetisPartitioner<T: MetisPartMethod> {
-    n_parts: usize,
+    n_parts: T,
     graph: CSRGraph,
     #[allow(dead_code)]
     weights: Vec<f64>,
@@ -351,9 +366,9 @@ pub struct MetisPartitioner<T: MetisPartMethod> {
 
 #[cfg(feature = "metis")]
 impl<T: MetisPartMethod> Partitioner for MetisPartitioner<T> {
-    fn new<const D: usize, C: Simplex, M: Mesh<D, C>>(
+    fn new<const D: T, C: Simplex, M: Mesh<D, C>>(
         msh: &M,
-        n_parts: usize,
+        n_parts: T,
         weights: Option<Vec<f64>>,
     ) -> Result<Self>
     where
@@ -372,7 +387,7 @@ impl<T: MetisPartMethod> Partitioner for MetisPartitioner<T> {
             t: PhantomData::<T>,
         })
     }
-    fn compute(&self) -> Result<Vec<usize>> {
+    fn compute(&self) -> Result<Vec<T>> {
         let mut xadj = Vec::<metis::Idx>::with_capacity(self.graph.n() + 1);
         let mut adjncy = Vec::<metis::Idx>::with_capacity(self.graph.n_edges());
 
@@ -396,12 +411,12 @@ impl<T: MetisPartMethod> Partitioner for MetisPartitioner<T> {
         // metis_graph.part_recursive(&mut partition)?;
         // metis_graph.part_kway(&mut partition).unwrap()?;
 
-        // convert to usize
+        // convert to T
         let partition = partition.iter().map(|&x| x.try_into().unwrap()).collect();
         Ok(partition)
     }
 
-    fn n_parts(&self) -> usize {
+    fn n_parts(&self) -> T {
         self.n_parts
     }
 

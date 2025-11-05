@@ -1,13 +1,13 @@
 //! Tetrahedron meshes in 3d
 use crate::{
     Vert3d,
-    mesh::{GenericMesh, Hexahedron, Mesh, Quadrangle, Tetrahedron},
+    mesh::{GenericMesh, Hexahedron, Idx, Mesh, Quadrangle, Tetrahedron},
 };
 
 /// Create a `Mesh<3, 4, 3>` of a `lx` by `ly` by `lz` box by splitting a `nx` by `ny` by `nz`
 /// uniform structured grid
 #[must_use]
-pub fn box_mesh<M: Mesh<3, Tetrahedron>>(
+pub fn box_mesh<T: Idx, M: Mesh<T, 3, Tetrahedron<T>>>(
     lx: f64,
     nx: usize,
     ly: f64,
@@ -29,18 +29,22 @@ pub fn box_mesh<M: Mesh<3, Tetrahedron>>(
 
 /// Create a `Mesh<2, 3, 2>` of box by splitting a structured grid`
 #[must_use]
-pub fn nonuniform_box_mesh<M: Mesh<3, Tetrahedron>>(x: &[f64], y: &[f64], z: &[f64]) -> M {
+pub fn nonuniform_box_mesh<T: Idx, M: Mesh<T, 3, Tetrahedron<T>>>(
+    x: &[f64],
+    y: &[f64],
+    z: &[f64],
+) -> M {
     let nx = x.len();
     let ny = y.len();
     let nz = z.len();
 
-    let idx = |i, j, k| i + j * nx + k * nx * ny;
+    let idx = |i: usize, j: usize, k: usize| T::try_from(i + j * nx + k * nx * ny).unwrap();
 
     let mut verts = vec![Vert3d::zeros(); nx * ny * nz];
     for (i, &x) in x.iter().enumerate() {
         for (j, &y) in y.iter().enumerate() {
             for (k, &z) in z.iter().enumerate() {
-                verts[idx(i, j, k)] = Vert3d::new(x, y, z);
+                verts[idx(i, j, k).try_into().unwrap()] = Vert3d::new(x, y, z);
             }
         }
     }
@@ -143,7 +147,7 @@ pub fn nonuniform_box_mesh<M: Mesh<3, Tetrahedron>>(x: &[f64], y: &[f64], z: &[f
 }
 
 /// Tetrahedron mesh in 3d
-pub type Mesh3d = GenericMesh<3, Tetrahedron>;
+pub type Mesh3d<T: Idx = usize> = GenericMesh<T, 3, Tetrahedron<T>>;
 
 #[cfg(test)]
 mod tests {
@@ -158,7 +162,18 @@ mod tests {
 
     #[test]
     fn test_box() {
-        let msh = box_mesh::<Mesh3d>(1.0, 2, 1.0, 2, 1.0, 2).random_shuffle();
+        let msh = box_mesh::<_, Mesh3d>(1.0, 2, 1.0, 2, 1.0, 2).random_shuffle();
+
+        let faces = msh.all_faces();
+        msh.check(&faces).unwrap();
+
+        let vol = msh.gelems().map(|ge| ge.vol()).sum::<f64>();
+        assert_delta!(vol, 1.0, 1e-12);
+    }
+
+    #[test]
+    fn test_box_32bits() {
+        let msh = box_mesh::<u32, Mesh3d<_>>(1.0, 2, 1.0, 2, 1.0, 2).random_shuffle();
 
         let faces = msh.all_faces();
         msh.check(&faces).unwrap();
@@ -170,7 +185,7 @@ mod tests {
     #[test]
     fn test_gradient() {
         let grad = Vert3d::new(9.8, 7.6, 5.4);
-        let msh = box_mesh::<Mesh3d>(1.0, 10, 1.0, 15, 1.0, 20).random_shuffle();
+        let msh = box_mesh::<_, Mesh3d>(1.0, 10, 1.0, 15, 1.0, 20).random_shuffle();
         let f = msh
             .par_verts()
             .map(|v| grad[0] * v[0] + grad[1] * v[1] + grad[2] * v[2])
@@ -195,7 +210,7 @@ mod tests {
         let ge = GTetrahedron([v0, v2, v1, v3]);
         assert_delta!(ge.vol(), -1.0 / 6.0, 1e-12);
 
-        let msh = box_mesh::<Mesh3d>(1.0, 10, 2.0, 15, 1.0, 20).random_shuffle();
+        let msh = box_mesh::<_, Mesh3d>(1.0, 10, 2.0, 15, 1.0, 20).random_shuffle();
 
         let vol = msh.par_gelems().map(|ge| ge.vol()).sum::<f64>();
         assert_delta!(vol, 2.0, 1e-12);
@@ -215,7 +230,7 @@ mod tests {
 
     #[test]
     fn test_meshb() {
-        let msh = box_mesh::<Mesh3d>(1.0, 10, 1.0, 10, 1.0, 10);
+        let msh = box_mesh::<_, Mesh3d>(1.0, 10, 1.0, 10, 1.0, 10);
         let fname = "box3d.meshb";
         msh.write_meshb(fname).unwrap();
         let new_msh = Mesh3d::from_meshb(fname).unwrap();
@@ -227,7 +242,7 @@ mod tests {
 
     #[test]
     fn test_rcm() {
-        let msh = box_mesh::<Mesh3d>(1.0, 20, 1.0, 20, 1.0, 20).random_shuffle();
+        let msh = box_mesh::<_, Mesh3d>(1.0, 20, 1.0, 20, 1.0, 20).random_shuffle();
         let avg_bandwidth = bandwidth(msh.elems()).1;
         assert!(avg_bandwidth > 1000.0);
 
@@ -270,8 +285,8 @@ mod tests {
 
     #[test]
     fn test_part_rcm() {
-        let mut msh = box_mesh::<Mesh3d>(1.0, 20, 1.0, 20, 1.0, 20).random_shuffle();
-        let (quality, imbalance) = msh.partition::<RCMPartitioner>(4, None).unwrap();
+        let mut msh = box_mesh::<_, Mesh3d>(1.0, 20, 1.0, 20, 1.0, 20).random_shuffle();
+        let (quality, imbalance) = msh.partition::<RCMPartitioner<_>>(4, None).unwrap();
 
         assert!(quality < 0.045);
         assert!(imbalance < 0.0002);
@@ -286,7 +301,7 @@ mod tests {
 
     #[test]
     fn test_hilbert() {
-        let msh = box_mesh::<Mesh3d>(1.0, 20, 1.0, 20, 1.0, 20).random_shuffle();
+        let msh = box_mesh::<_, Mesh3d>(1.0, 20, 1.0, 20, 1.0, 20).random_shuffle();
         let avg_bandwidth = bandwidth(msh.elems()).1;
         assert!(avg_bandwidth > 1000.0);
 
@@ -328,8 +343,8 @@ mod tests {
 
     #[test]
     fn test_part_hilbert() {
-        let mut msh = box_mesh::<Mesh3d>(1.0, 20, 1.0, 20, 1.0, 20).random_shuffle();
-        let (quality, imbalance) = msh.partition::<HilbertPartitioner>(4, None).unwrap();
+        let mut msh = box_mesh::<_, Mesh3d>(1.0, 20, 1.0, 20, 1.0, 20).random_shuffle();
+        let (quality, imbalance) = msh.partition::<HilbertPartitioner<_>>(4, None).unwrap();
 
         assert!(quality < 0.04);
         assert!(imbalance < 0.0002);
@@ -344,8 +359,8 @@ mod tests {
 
     #[test]
     fn test_part_kmeans() {
-        let mut msh = box_mesh::<Mesh3d>(1.0, 6, 1.0, 5, 1.0, 5).random_shuffle();
-        let (quality, imbalance) = msh.partition::<KMeansPartitioner3d>(4, None).unwrap();
+        let mut msh = box_mesh::<_, Mesh3d>(1.0, 6, 1.0, 5, 1.0, 5).random_shuffle();
+        let (quality, imbalance) = msh.partition::<KMeansPartitioner3d<_>>(4, None).unwrap();
 
         assert!(quality < 0.11);
         assert!(imbalance < 0.04);
@@ -360,7 +375,7 @@ mod tests {
 
     #[test]
     fn test_split() {
-        let msh = box_mesh::<Mesh3d>(1.0, 2, 1.0, 2, 1.0, 2).random_shuffle();
+        let msh = box_mesh::<_, Mesh3d>(1.0, 2, 1.0, 2, 1.0, 2).random_shuffle();
 
         let msh = msh.split();
         assert_eq!(msh.n_verts(), 27);
@@ -377,7 +392,7 @@ mod tests {
 
     #[test]
     fn test_skewness_3d() {
-        let mesh = box_mesh::<Mesh3d>(1.0, 3, 1.0, 3, 1.0, 3).random_shuffle();
+        let mesh = box_mesh::<_, Mesh3d>(1.0, 3, 1.0, 3, 1.0, 3).random_shuffle();
 
         let all_faces = mesh.all_faces();
         let count = mesh
@@ -389,7 +404,7 @@ mod tests {
 
     #[test]
     fn test_edge_ratio_3d() {
-        let mesh = box_mesh::<Mesh3d>(1.0, 3, 1.0, 3, 1.0, 3).random_shuffle();
+        let mesh = box_mesh::<_, Mesh3d>(1.0, 3, 1.0, 3, 1.0, 3).random_shuffle();
 
         let count = mesh
             .edge_length_ratios()
@@ -400,7 +415,7 @@ mod tests {
 
     #[test]
     fn test_gamma_3d() {
-        let mesh = box_mesh::<Mesh3d>(1.0, 3, 1.0, 3, 1.0, 3).random_shuffle();
+        let mesh = box_mesh::<_, Mesh3d>(1.0, 3, 1.0, 3, 1.0, 3).random_shuffle();
 
         let (gamma_min, gamma_max) = mesh
             .elem_gammas()
@@ -413,11 +428,11 @@ mod tests {
 
     #[test]
     fn test_add_3d() {
-        let mut mesh1 = box_mesh::<Mesh3d>(1.0, 3, 1.0, 3, 1.0, 3).random_shuffle();
+        let mut mesh1 = box_mesh::<_, Mesh3d>(1.0, 3, 1.0, 3, 1.0, 3).random_shuffle();
         assert_eq!(mesh1.n_tagged_faces(6), 8);
         assert_eq!(mesh1.n_tagged_faces(11), 0);
 
-        let mut mesh2 = box_mesh::<Mesh3d>(1.0, 3, 1.0, 3, 1.0, 3).random_shuffle();
+        let mut mesh2 = box_mesh::<_, Mesh3d>(1.0, 3, 1.0, 3, 1.0, 3).random_shuffle();
         mesh2
             .verts_mut()
             .for_each(|x| *x += Vert3d::new(1.0, 0.5, 0.5));

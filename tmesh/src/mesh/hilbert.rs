@@ -41,7 +41,7 @@ pub fn hilbert_indices<T: Idx, const D: usize, I: ExactSizeIterator<Item = Verte
 
     let hilbert_ids = verts.map(hilbert).collect::<Vec<_>>();
 
-    let mut indices = (0..n).map(|x| x.into()).collect::<Vec<T>>();
-    indices.sort_by_key(|&i| hilbert_ids[i.into()]);
+    let mut indices = (0..n).map(|x| x.try_into().unwrap()).collect::<Vec<T>>();
+    indices.sort_by_key(|&i| hilbert_ids[i.try_into().unwrap()]);
     indices
 }

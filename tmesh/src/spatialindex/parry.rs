@@ -1,6 +1,6 @@
 use crate::{
     Vertex,
-    mesh::{Mesh, Simplex},
+    mesh::{Idx, Mesh, Simplex},
 };
 use parry2d_f64::math::Point as Point2;
 use parry2d_f64::query::{PointQuery as _, PointQueryWithLocation as _};
@@ -28,7 +28,7 @@ mod parry2d {
     };
     use std::marker::PhantomData;
 
-    use crate::mesh::{GSimplex, Mesh, Simplex};
+    use crate::mesh::{GSimplex, Idx, Mesh, Simplex};
 
     pub trait MeshToShape {
         type Shape: Shape + PointQueryWithLocation<Location = Self::Location> + Copy + Clone;
@@ -98,14 +98,18 @@ mod parry2d {
             Aabb::new(min, max)
         }
 
-        pub fn new<C: Simplex, M: Mesh<D, C>>(mesh: &M) -> Self {
+        pub fn new<T: Idx, C: Simplex<T>, M: Mesh<T, D, C>>(mesh: &M) -> Self {
             assert_eq!(D, 2);
             let data = mesh
                 .gelems()
                 .enumerate()
                 .map(|(i, ge)| (i, Self::local_aabb(&ge)));
             let tree = Bvh::from_iter(BvhBuildStrategy::Binned, data);
-            let elems = mesh.elems().flatten().collect::<Vec<_>>();
+            let elems = mesh
+                .elems()
+                .flatten()
+                .map(|x| x.try_into().unwrap())
+                .collect::<Vec<_>>();
             let verts = mesh.verts().flat_map(|x| [x[0], x[1]]).collect::<Vec<_>>();
             Self {
                 verts,
@@ -198,7 +202,7 @@ mod parry3d {
 
     use crate::{
         Vertex,
-        mesh::{GSimplex, Mesh, Simplex},
+        mesh::{GSimplex, Idx, Mesh, Simplex},
     };
     /// Create a parry Shape from a tucanos Elem
     pub trait MeshToShape {
@@ -353,14 +357,18 @@ mod parry3d {
 
             Aabb::new(min, max)
         }
-        pub fn new<C: Simplex, M: Mesh<D, C>>(mesh: &M) -> Self {
+        pub fn new<T: Idx, C: Simplex<T>, M: Mesh<T, D, C>>(mesh: &M) -> Self {
             assert_eq!(D, 3);
             let data = mesh
                 .gelems()
                 .enumerate()
                 .map(|(i, ge)| (i, Self::local_aabb(&ge)));
             let tree = Bvh::from_iter(BvhBuildStrategy::Binned, data);
-            let elems = mesh.elems().flatten().collect::<Vec<_>>();
+            let elems = mesh
+                .elems()
+                .flatten()
+                .map(|x| x.try_into().unwrap())
+                .collect::<Vec<_>>();
             let verts = mesh
                 .verts()
                 .flat_map(|x| [x[0], x[1], x[2]])
@@ -476,7 +484,7 @@ enum ParryImpl<const D: usize> {
 
 impl<const D: usize> ObjectIndex<D> {
     /// Create a PointIndex from a mesh
-    pub fn new<C: Simplex, M: Mesh<D, C>>(mesh: &M) -> Self {
+    pub fn new<T: Idx, C: Simplex<T>, M: Mesh<T, D, C>>(mesh: &M) -> Self {
         if D == 3 && C::N_VERTS == 3 {
             let coords = mesh
                 .verts()
@@ -484,7 +492,13 @@ impl<const D: usize> ObjectIndex<D> {
                 .collect();
             let elems = mesh
                 .elems()
-                .map(|e| [e[0] as u32, e[1] as u32, e[2] as u32])
+                .map(|e| {
+                    [
+                        e[0].try_into().unwrap() as u32,
+                        e[1].try_into().unwrap() as u32,
+                        e[2].try_into().unwrap() as u32,
+                    ]
+                })
                 .collect();
             Self {
                 inner: ParryImpl::Tria3D(parry3d_f64::shape::TriMesh::new(coords, elems).unwrap()),
@@ -508,7 +522,13 @@ impl<const D: usize> ObjectIndex<D> {
                 .collect();
             let elems = mesh
                 .elems()
-                .map(|e| [e[0] as u32, e[1] as u32, e[2] as u32])
+                .map(|e| {
+                    [
+                        e[0].try_into().unwrap() as u32,
+                        e[1].try_into().unwrap() as u32,
+                        e[2].try_into().unwrap() as u32,
+                    ]
+                })
                 .collect();
             Self {
                 inner: ParryImpl::Tria2D(parry2d_f64::shape::TriMesh::new(coords, elems).unwrap()),

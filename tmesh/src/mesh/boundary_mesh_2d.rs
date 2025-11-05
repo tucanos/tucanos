@@ -1,8 +1,8 @@
 //! Boundary of `Mesh2d`
-use crate::mesh::{Edge, GenericMesh};
+use crate::mesh::{Edge, GenericMesh, Idx};
 
 /// Edge mesh in 2d
-pub type BoundaryMesh2d = GenericMesh<2, Edge>;
+pub type BoundaryMesh2d<T: Idx = usize> = GenericMesh<T, 2, Edge<T>>;
 
 #[cfg(test)]
 mod tests {
@@ -16,7 +16,7 @@ mod tests {
 
     #[test]
     fn test_rectangle() {
-        let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 2.0, 20);
+        let msh = rectangle_mesh::<_, Mesh2d>(1.0, 10, 2.0, 20);
 
         let (mut bdy, ids): (BoundaryMesh2d, _) = msh.boundary();
 
@@ -45,7 +45,7 @@ mod tests {
         let ge = GEdge([v1, v0]);
         assert_delta!(ge.vol(), 0.5, 1e-12);
 
-        let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 2.0, 15);
+        let msh = rectangle_mesh::<_, Mesh2d>(1.0, 10, 2.0, 15);
 
         let f = msh.par_verts().map(|v| v[0]).collect::<Vec<_>>();
 

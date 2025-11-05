@@ -53,7 +53,7 @@ mod tests {
             Vert2d::new(0., 1.),
         ];
         let elems = vec![
-            Edge::from([0, 1]),
+            Edge::from([0_usize, 1]),
             Edge::from([1, 2]),
             Edge::from([2, 3]),
             Edge::from([3, 0]),

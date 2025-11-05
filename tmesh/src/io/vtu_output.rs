@@ -2,7 +2,7 @@ use crate::{
     Result, Tag, Vertex,
     dual::{PolyMesh, PolyMeshType, merge_polylines},
     extruded::ExtrudedMesh2d,
-    mesh::{Mesh, Prism, Simplex},
+    mesh::{Idx, Mesh, Prism, Simplex},
 };
 use base64::Engine as _;
 use quick_xml::se::to_utf8_io_writer;
@@ -39,7 +39,7 @@ pub struct VTUFile {
 
 impl VTUFile {
     /// Create a vtu Mesh writer
-    pub fn from_mesh<const D: usize, C: Simplex, M: Mesh<D, C>>(
+    pub fn from_mesh<T: Idx, const D: usize, C: Simplex<T>, M: Mesh<T, D, C>>(
         mesh: &M,
         encoding: VTUEncoding,
     ) -> Self {
@@ -50,8 +50,8 @@ impl VTUFile {
             byte_order: "LittleEndian".to_string(),
             unstructured_grid: UnstructuredGrid {
                 piece: Piece {
-                    number_of_points: mesh.n_verts(),
-                    number_of_cells: mesh.n_elems(),
+                    number_of_points: mesh.n_verts().try_into().unwrap(),
+                    number_of_cells: mesh.n_elems().try_into().unwrap(),
                     points: Points::from_verts(mesh.verts(), encoding),
                     cells: Cells::from_elems(mesh, encoding),
                     cell_data: CellData::from_etags(mesh.etags(), encoding),
@@ -64,7 +64,7 @@ impl VTUFile {
 
     /// Create a vtu ExtrudedMesh2d writer
     #[must_use]
-    pub fn from_extruded_mesh(mesh: &ExtrudedMesh2d, encoding: VTUEncoding) -> Self {
+    pub fn from_extruded_mesh<T: Idx>(mesh: &ExtrudedMesh2d<T>, encoding: VTUEncoding) -> Self {
         Self {
             grid_type: "UnstructuredGrid".to_string(),
             version: 0.1,
@@ -85,7 +85,10 @@ impl VTUFile {
     }
 
     /// Create a vtu PolyMesh writer
-    pub fn from_poly_mesh<const D: usize, M: PolyMesh<D>>(mesh: &M, encoding: VTUEncoding) -> Self {
+    pub fn from_poly_mesh<T: Idx, const D: usize, M: PolyMesh<T, D>>(
+        mesh: &M,
+        encoding: VTUEncoding,
+    ) -> Self {
         Self {
             grid_type: "UnstructuredGrid".to_string(),
             version: 0.1,
@@ -93,8 +96,8 @@ impl VTUFile {
             byte_order: "LittleEndian".to_string(),
             unstructured_grid: UnstructuredGrid {
                 piece: Piece {
-                    number_of_points: mesh.n_verts(),
-                    number_of_cells: mesh.n_elems(),
+                    number_of_points: mesh.n_verts().try_into().unwrap(),
+                    number_of_cells: mesh.n_elems().try_into().unwrap(),
                     points: Points::from_verts(mesh.verts(), encoding),
                     cells: Cells::from_poly(mesh, encoding, 0.1),
                     cell_data: CellData::from_etags(mesh.etags(), encoding),
@@ -399,7 +402,7 @@ struct Cells {
 }
 
 impl Cells {
-    fn from_elems<const D: usize, C: Simplex, M: Mesh<D, C>>(
+    fn from_elems<T: Idx, const D: usize, C: Simplex<T>, M: Mesh<T, D, C>>(
         mesh: &M,
         encoding: VTUEncoding,
     ) -> Self {
@@ -408,12 +411,12 @@ impl Cells {
         let connectivity = DataArray::new_i64(
             "connectivity",
             1,
-            C::N_VERTS * n,
-            mesh.elems().flatten().map(|x| x as i64),
+            C::N_VERTS * n.try_into().unwrap(),
+            mesh.elems().flatten().map(|x| x.try_into().unwrap() as i64),
             encoding,
         );
 
-        let data = (0..n).map(|i| (C::N_VERTS * (i + 1)) as i64);
+        let data = (0..n.try_into().unwrap()).map(|i| (C::N_VERTS * (i + 1)) as i64);
         let offsets = DataArray::new_i64("offsets", 1, data.len(), data, encoding);
 
         let cell_type: u8 = match C::N_VERTS {
@@ -423,7 +426,7 @@ impl Cells {
             _ => unreachable!(),
         };
 
-        let data = (0..n).map(|_i| cell_type);
+        let data = (0..n.try_into().unwrap()).map(|_i| cell_type);
         let types = DataArray::new_u8("types", 1, data.len(), data, encoding);
 
         Self {
@@ -431,7 +434,7 @@ impl Cells {
         }
     }
 
-    fn from_prisms<'a, I: ExactSizeIterator<Item = &'a Prism>>(
+    fn from_prisms<'a, T: Idx, I: ExactSizeIterator<Item = &'a Prism<T>>>(
         prisms: I,
         encoding: VTUEncoding,
     ) -> Self {
@@ -441,7 +444,10 @@ impl Cells {
             "connectivity",
             1,
             6 * n,
-            prisms.copied().flatten().map(|x| x as i64),
+            prisms
+                .copied()
+                .flatten()
+                .map(|x| x.try_into().unwrap() as i64),
             encoding,
         );
 
@@ -459,7 +465,7 @@ impl Cells {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn from_poly<const D: usize, M: PolyMesh<D>>(
+    fn from_poly<T: Idx, const D: usize, M: PolyMesh<T, D>>(
         mesh: &M,
         encoding: VTUEncoding,
         version: f64,
@@ -513,12 +519,17 @@ impl Cells {
             "connectivity",
             1,
             *offsets.last().unwrap(),
-            connectivity.iter().map(|&x| x as i64),
+            connectivity.iter().map(|&x| x.try_into().unwrap() as i64),
             encoding,
         );
 
-        let offsets =
-            DataArray::new_i64("offsets", 1, n, offsets.iter().map(|&i| i as i64), encoding);
+        let offsets = DataArray::new_i64(
+            "offsets",
+            1,
+            n.try_into().unwrap(),
+            offsets.iter().map(|&i| i as i64),
+            encoding,
+        );
 
         let cell_type = match mesh.poly_type() {
             PolyMeshType::Polylines => 4,
@@ -526,7 +537,13 @@ impl Cells {
             PolyMeshType::Polyhedra => 42,
         };
 
-        let types = DataArray::new_u8("types", 1, n, (0..n).map(|_| cell_type), encoding);
+        let types = DataArray::new_u8(
+            "types",
+            1,
+            n.try_into().unwrap(),
+            (0..n.try_into().unwrap()).map(|_| cell_type),
+            encoding,
+        );
 
         let mut data_array = vec![connectivity, offsets, types];
 
@@ -536,13 +553,13 @@ impl Cells {
                 let mut faceoffsets = Vec::new();
 
                 for e in mesh.elems() {
-                    faces.push(e.len());
+                    faces.push(e.len().try_into().unwrap());
                     for &(i_face, orient) in e {
                         let mut f = mesh.face(i_face).to_vec();
                         if !orient {
                             f.reverse();
                         }
-                        faces.push(f.len());
+                        faces.push(f.len().try_into().unwrap());
                         faces.extend_from_slice(&f);
                     }
                     faceoffsets.push(faces.len());
@@ -552,21 +569,21 @@ impl Cells {
                     "faces",
                     1,
                     faces.len(),
-                    faces.iter().map(|&i| i as i64),
+                    faces.iter().map(|&i| i.try_into().unwrap() as i64),
                     encoding,
                 );
 
                 let faceoffsets = DataArray::new_i64(
                     "faceoffsets",
                     1,
-                    n,
+                    n.try_into().unwrap(),
                     faceoffsets.iter().map(|&i| i as i64),
                     encoding,
                 );
                 data_array.push(faces);
                 data_array.push(faceoffsets);
             } else if (version - 2.3).abs() < 1e-6 {
-                let mut polyhedron_offsets = Vec::with_capacity(n);
+                let mut polyhedron_offsets = Vec::with_capacity(n.try_into().unwrap());
                 let mut offset = 0;
                 for e in mesh.elems() {
                     offset += e.len();
@@ -576,20 +593,21 @@ impl Cells {
                     "polyhedron_to_faces",
                     1,
                     *polyhedron_offsets.last().unwrap(),
-                    mesh.elems().flat_map(|x| x.iter().map(|&(x, _)| x as i64)),
+                    mesh.elems()
+                        .flat_map(|x| x.iter().map(|&(x, _)| x.try_into().unwrap() as i64)),
                     encoding,
                 );
 
                 let polyhedron_offsets = DataArray::new_i64(
                     "polyhedron_offsets",
                     1,
-                    n,
+                    n.try_into().unwrap(),
                     polyhedron_offsets.iter().map(|&i| i as i64),
                     encoding,
                 );
 
                 let n = mesh.n_faces();
-                let mut face_offsets = Vec::with_capacity(n);
+                let mut face_offsets = Vec::with_capacity(n.try_into().unwrap());
                 let mut offset = 0;
                 for e in mesh.faces() {
                     offset += e.len();
@@ -599,14 +617,15 @@ impl Cells {
                     "face_connectivity",
                     1,
                     *face_offsets.last().unwrap(),
-                    mesh.faces().flat_map(|x| x.iter().map(|&x| x as i64)),
+                    mesh.faces()
+                        .flat_map(|x| x.iter().map(|&x| x.try_into().unwrap() as i64)),
                     encoding,
                 );
 
                 let face_offsets = DataArray::new_i64(
                     "face_offsets",
                     1,
-                    n,
+                    n.try_into().unwrap(),
                     face_offsets.iter().map(|&i| i as i64),
                     encoding,
                 );

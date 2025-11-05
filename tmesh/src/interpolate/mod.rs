@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 
 use crate::{
     Vertex,
-    mesh::{GSimplex, Mesh, Simplex},
+    mesh::{GSimplex, Idx, Mesh, Simplex},
     spatialindex::{ObjectIndex, PointIndex},
 };
 
@@ -16,7 +16,7 @@ pub enum InterpolationMethod {
 }
 
 /// Interpolator
-pub struct Interpolator<'a, const D: usize, C: Simplex, M: Mesh<D, C>> {
+pub struct Interpolator<'a, T: Idx, const D: usize, C: Simplex<T>, M: Mesh<T, D, C>> {
     /// Mesh from which the data in interpolated
     mesh: &'a M,
     /// Interpolation method
@@ -26,9 +26,10 @@ pub struct Interpolator<'a, const D: usize, C: Simplex, M: Mesh<D, C>> {
     /// Index for linear interpolation
     elem_index: Option<ObjectIndex<D>>,
     _c: PhantomData<C>,
+    _t: PhantomData<T>,
 }
 
-impl<'a, const D: usize, C: Simplex, M: Mesh<D, C>> Interpolator<'a, D, C, M> {
+impl<'a, T: Idx, const D: usize, C: Simplex<T>, M: Mesh<T, D, C>> Interpolator<'a, T, D, C, M> {
     /// Create the interpolator (initialize the indices)
     pub fn new(mesh: &'a M, method: InterpolationMethod) -> Self {
         let (point_index, elem_index) = match method {
@@ -41,20 +42,21 @@ impl<'a, const D: usize, C: Simplex, M: Mesh<D, C>> Interpolator<'a, D, C, M> {
             point_index,
             elem_index,
             _c: PhantomData::<C>,
+            _t: PhantomData::<T>,
         }
     }
 
     /// Interpolate `f` defined at the mesh vertices at locations `verts`
     ///   `f` can be a vector of `m*n_verts` f64 or nalgebra vectors
     pub fn interpolate<
-        T: Default + std::ops::Mul<f64, Output = T> + std::ops::Add<T, Output = T> + Copy,
+        F: Default + std::ops::Mul<f64, Output = F> + std::ops::Add<F, Output = F> + Copy,
         I: ExactSizeIterator<Item = Vertex<D>>,
     >(
         &self,
-        f: &[T],
+        f: &[F],
         verts: I,
-    ) -> Vec<T> {
-        let n = self.mesh.n_verts();
+    ) -> Vec<F> {
+        let n = self.mesh.n_verts().try_into().unwrap();
         assert_eq!(f.len() % n, 0);
         let m = f.len() / n;
 
@@ -74,7 +76,7 @@ impl<'a, const D: usize, C: Simplex, M: Mesh<D, C>> Interpolator<'a, D, C, M> {
                 verts
                     .flat_map(|v| {
                         let i_elem = index.nearest_elem(&v);
-                        let e = self.mesh.elem(i_elem);
+                        let e = self.mesh.elem(i_elem.try_into().unwrap());
                         let ge = self.mesh.gelem(&e);
                         let x = ge.bcoords(&v);
                         assert!(
@@ -83,7 +85,9 @@ impl<'a, const D: usize, C: Simplex, M: Mesh<D, C>> Interpolator<'a, D, C, M> {
                         );
                         (0..m).map(move |j| {
                             let iter = e.into_iter().zip(x);
-                            iter.fold(T::default(), |a, (i, w)| a + f[m * i + j] * w)
+                            iter.fold(F::default(), |a, (i, w)| {
+                                a + f[m * i.try_into().unwrap() + j] * w
+                            })
                         })
                     })
                     .collect()
@@ -105,7 +109,7 @@ mod tests {
 
     #[test]
     fn test_interpolate_2d() {
-        let mesh = rectangle_mesh::<Mesh2d>(1.0, 9, 1.0, 9);
+        let mesh = rectangle_mesh::<_, Mesh2d>(1.0, 9, 1.0, 9);
         let interp = Interpolator::new(&mesh, InterpolationMethod::Linear(0.0));
 
         let fun = |p: Vert2d| 1.0 * p[0] + 2.0 * p[1];
@@ -113,7 +117,7 @@ mod tests {
 
         let rot = Rotation2::new(FRAC_PI_4);
 
-        let mut other = rectangle_mesh::<Mesh2d>(1.0, 9, 1.0, 9);
+        let mut other = rectangle_mesh::<_, Mesh2d>(1.0, 9, 1.0, 9);
         other.verts_mut().for_each(|x| {
             let p = Vert2d::new(0.5, 0.5);
             let tmp = 0.5 * (rot * (*x - p));
@@ -130,7 +134,7 @@ mod tests {
 
     #[test]
     fn test_interpolate_2d_nearest() {
-        let mesh = rectangle_mesh::<Mesh2d>(1.0, 17, 1.0, 17);
+        let mesh = rectangle_mesh::<_, Mesh2d>(1.0, 17, 1.0, 17);
         let interp = Interpolator::new(&mesh, InterpolationMethod::Nearest);
 
         let fun = |p: Vert2d| 1.0 * p[0] + 2.0 * p[1];
@@ -138,7 +142,7 @@ mod tests {
 
         let rot = Rotation2::new(FRAC_PI_4);
 
-        let mut other = rectangle_mesh::<Mesh2d>(1.0, 9, 1.0, 9);
+        let mut other = rectangle_mesh::<_, Mesh2d>(1.0, 9, 1.0, 9);
         other.verts_mut().for_each(|x| {
             let p = Vert2d::new(0.5, 0.5);
             let tmp = 0.5 * (rot * (*x - p));
@@ -154,7 +158,7 @@ mod tests {
 
     #[test]
     fn test_interpolate_3d() {
-        let mesh = box_mesh::<Mesh3d>(1.0, 9, 1.0, 9, 1.0, 9);
+        let mesh = box_mesh::<_, Mesh3d>(1.0, 9, 1.0, 9, 1.0, 9);
         let interp = Interpolator::new(&mesh, InterpolationMethod::Linear(0.0));
 
         let fun = |p: Vert3d| 1.0 * p[0] + 2.0 * p[1] + 3.0 * p[2];
@@ -163,7 +167,7 @@ mod tests {
 
         let rot = Rotation3::from_euler_angles(FRAC_PI_4, FRAC_PI_4, FRAC_PI_4);
 
-        let mut other = box_mesh::<Mesh3d>(1.0, 9, 1.0, 9, 1.0, 9);
+        let mut other = box_mesh::<_, Mesh3d>(1.0, 9, 1.0, 9, 1.0, 9);
         other.verts_mut().for_each(|x| {
             let p = Vert3d::new(0.5, 0.5, 0.5);
             let tmp = 0.5 * (rot * (*x - p));
@@ -179,7 +183,7 @@ mod tests {
 
     #[test]
     fn test_interpolate_3d_nearest() {
-        let mesh = box_mesh::<Mesh3d>(1.0, 9, 1.0, 9, 1.0, 9);
+        let mesh = box_mesh::<_, Mesh3d>(1.0, 9, 1.0, 9, 1.0, 9);
         let interp = Interpolator::new(&mesh, InterpolationMethod::Linear(0.0));
 
         let fun = |p: Vert3d| 1.0 * p[0] + 2.0 * p[1] + 3.0 * p[2];
@@ -188,7 +192,7 @@ mod tests {
 
         let rot = Rotation3::from_euler_angles(FRAC_PI_4, FRAC_PI_4, FRAC_PI_4);
 
-        let mut other = box_mesh::<Mesh3d>(1.0, 9, 1.0, 9, 1.0, 9);
+        let mut other = box_mesh::<_, Mesh3d>(1.0, 9, 1.0, 9, 1.0, 9);
         other.verts_mut().for_each(|x| {
             let p = Vert3d::new(0.5, 0.5, 0.5);
             let tmp = 0.5 * (rot * (*x - p));

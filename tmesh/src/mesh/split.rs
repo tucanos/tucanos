@@ -1,13 +1,13 @@
 use super::Edge;
 use crate::{
     Tag,
-    mesh::{Simplex, Tetrahedron, Triangle},
+    mesh::{Idx, Simplex, Tetrahedron, Triangle},
 };
 use rustc_hash::FxHashMap;
 
-pub fn split_edgs<C: Simplex, I: ExactSizeIterator<Item = (C, Tag)>>(
+pub fn split_edgs<T: Idx, C: Simplex<T>, I: ExactSizeIterator<Item = (C, Tag)>>(
     elems_and_tags: I,
-    edges: &FxHashMap<Edge, usize>,
+    edges: &FxHashMap<Edge<T>, T>,
 ) -> (Vec<C>, Vec<Tag>) {
     assert_eq!(C::N_VERTS, 2);
     let new_n_elems = 2 * elems_and_tags.len();
@@ -28,9 +28,9 @@ pub fn split_edgs<C: Simplex, I: ExactSizeIterator<Item = (C, Tag)>>(
     (elems, etags)
 }
 
-pub fn split_tris<C: Simplex, I: ExactSizeIterator<Item = (C, Tag)>>(
+pub fn split_tris<T: Idx, C: Simplex<T>, I: ExactSizeIterator<Item = (C, Tag)>>(
     elems_and_tags: I,
-    edges: &FxHashMap<Edge, usize>,
+    edges: &FxHashMap<Edge<T>, T>,
 ) -> (Vec<C>, Vec<Tag>) {
     assert_eq!(C::N_VERTS, 3);
 
@@ -64,9 +64,9 @@ pub fn split_tris<C: Simplex, I: ExactSizeIterator<Item = (C, Tag)>>(
     (elems, etags)
 }
 
-pub fn split_tets<C: Simplex, I: ExactSizeIterator<Item = (C, Tag)>>(
+pub fn split_tets<T: Idx, C: Simplex<T>, I: ExactSizeIterator<Item = (C, Tag)>>(
     elems_and_tags: I,
-    edges: &FxHashMap<Edge, usize>,
+    edges: &FxHashMap<Edge<T>, T>,
 ) -> (Vec<C>, Vec<Tag>) {
     assert_eq!(C::N_VERTS, 4);
 

@@ -1,13 +1,18 @@
 //! Triangle meshes in 2d
 use crate::{
     Vert2d,
-    mesh::{Edge, GenericMesh, Mesh, Quadrangle, Triangle},
+    mesh::{Edge, GenericMesh, Idx, Mesh, Quadrangle, Triangle},
 };
 
 /// Create a `Mesh<2, 3, 2>` of a `lx` by `ly` rectangle by splitting a `nx` by `ny`
 /// uniform structured grid
 #[must_use]
-pub fn rectangle_mesh<M: Mesh<2, Triangle>>(lx: f64, nx: usize, ly: f64, ny: usize) -> M {
+pub fn rectangle_mesh<T: Idx, M: Mesh<T, 2, Triangle<T>>>(
+    lx: f64,
+    nx: usize,
+    ly: f64,
+    ny: usize,
+) -> M {
     let dx = lx / (nx as f64 - 1.);
     let x_1d = (0..nx).map(|i| i as f64 * dx).collect::<Vec<_>>();
 
@@ -19,16 +24,16 @@ pub fn rectangle_mesh<M: Mesh<2, Triangle>>(lx: f64, nx: usize, ly: f64, ny: usi
 
 /// Create a `Mesh<2, 3, 2>` of rectangle by splitting a structured grid
 #[must_use]
-pub fn nonuniform_rectangle_mesh<M: Mesh<2, Triangle>>(x: &[f64], y: &[f64]) -> M {
+pub fn nonuniform_rectangle_mesh<T: Idx, M: Mesh<T, 2, Triangle<T>>>(x: &[f64], y: &[f64]) -> M {
     let nx = x.len();
     let ny = y.len();
 
-    let idx = |i, j| i + j * nx;
+    let idx = |i: usize, j: usize| T::try_from(i + j * nx).unwrap();
 
     let mut verts = vec![Vert2d::zeros(); nx * ny];
     for (i, &x) in x.iter().enumerate() {
         for (j, &y) in y.iter().enumerate() {
-            verts[idx(i, j)] = Vert2d::new(x, y);
+            verts[idx(i, j).try_into().unwrap()] = Vert2d::new(x, y);
         }
     }
 
@@ -73,7 +78,7 @@ pub fn nonuniform_rectangle_mesh<M: Mesh<2, Triangle>>(x: &[f64], y: &[f64]) -> 
 }
 
 /// Triangle mesh in 2d
-pub type Mesh2d = GenericMesh<2, Triangle>;
+pub type Mesh2d<T: Idx = usize> = GenericMesh<T, 2, Triangle<T>>;
 
 #[cfg(test)]
 mod tests {
@@ -88,7 +93,7 @@ mod tests {
 
     #[test]
     fn test_2d_simple_1() {
-        let msh = rectangle_mesh::<Mesh2d>(1.0, 2, 1.0, 2);
+        let msh = rectangle_mesh::<_, Mesh2d>(1.0, 2, 1.0, 2);
 
         let faces = msh.all_faces();
         msh.check(&faces).unwrap();
@@ -112,7 +117,7 @@ mod tests {
 
     #[test]
     fn test_2d_simple_2() {
-        let msh = rectangle_mesh::<Mesh2d>(1.0, 3, 1.0, 2);
+        let msh = rectangle_mesh::<_, Mesh2d>(1.0, 3, 1.0, 2);
 
         let faces = msh.all_faces();
         msh.check(&faces).unwrap();
@@ -132,7 +137,7 @@ mod tests {
 
     #[test]
     fn test_2d_rect() {
-        let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 2.0, 15).random_shuffle();
+        let msh = rectangle_mesh::<_, Mesh2d>(1.0, 10, 2.0, 15).random_shuffle();
 
         let faces = msh.all_faces();
         msh.check(&faces).unwrap();
@@ -147,7 +152,7 @@ mod tests {
     #[test]
     fn test_gradient() {
         let grad = Vert2d::new(9.8, 7.6);
-        let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 1.0, 10).random_shuffle();
+        let msh = rectangle_mesh::<_, Mesh2d>(1.0, 10, 1.0, 10).random_shuffle();
         let f = msh
             .par_verts()
             .map(|v| grad[0] * v[0] + grad[1] * v[1])
@@ -171,7 +176,7 @@ mod tests {
         let ge = GTriangle([v0, v2, v1]);
         assert_delta!(ge.vol(), -0.5, 1e-12);
 
-        let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 2.0, 15).random_shuffle();
+        let msh = rectangle_mesh::<_, Mesh2d>(1.0, 10, 2.0, 15).random_shuffle();
 
         let vol = msh.par_gelems().map(|ge| ge.vol()).sum::<f64>();
         assert_delta!(vol, 2.0, 1e-12);
@@ -191,7 +196,7 @@ mod tests {
 
     #[test]
     fn test_meshb() {
-        let msh: Mesh2d = rectangle_mesh::<Mesh2d>(1.0, 100, 1.0, 100);
+        let msh: Mesh2d = rectangle_mesh::<_, Mesh2d>(1.0, 100, 1.0, 100);
         let fname = "rect2d.meshb";
         msh.write_meshb(fname).unwrap();
         let new_msh = Mesh2d::from_meshb(fname).unwrap();
@@ -203,7 +208,7 @@ mod tests {
 
     #[test]
     fn test_rcm() {
-        let msh = rectangle_mesh::<Mesh2d>(1.0, 100, 1.0, 100).random_shuffle();
+        let msh = rectangle_mesh::<_, Mesh2d>(1.0, 100, 1.0, 100).random_shuffle();
         let avg_bandwidth = bandwidth(msh.elems()).1;
         assert!(avg_bandwidth > 1000.0);
 
@@ -246,7 +251,7 @@ mod tests {
 
     #[test]
     fn test_split() {
-        let msh = rectangle_mesh::<Mesh2d>(1.0, 2, 1.0, 2).random_shuffle();
+        let msh = rectangle_mesh::<_, Mesh2d>(1.0, 2, 1.0, 2).random_shuffle();
 
         let msh = msh.split();
         assert_eq!(msh.n_verts(), 9);
@@ -263,7 +268,7 @@ mod tests {
 
     #[test]
     fn test_skewness_2d() {
-        let mesh = rectangle_mesh::<Mesh2d>(1.0, 3, 1.0, 3).random_shuffle();
+        let mesh = rectangle_mesh::<_, Mesh2d>(1.0, 3, 1.0, 3).random_shuffle();
 
         let all_faces = mesh.all_faces();
         let count = mesh
@@ -275,7 +280,7 @@ mod tests {
 
     #[test]
     fn test_edge_ratio_2d() {
-        let mesh = rectangle_mesh::<Mesh2d>(1.0, 3, 1.0, 3).random_shuffle();
+        let mesh = rectangle_mesh::<_, Mesh2d>(1.0, 3, 1.0, 3).random_shuffle();
 
         let count = mesh
             .edge_length_ratios()
@@ -286,7 +291,7 @@ mod tests {
 
     #[test]
     fn test_gamma_2d() {
-        let mesh = rectangle_mesh::<Mesh2d>(1.0, 3, 1.0, 3).random_shuffle();
+        let mesh = rectangle_mesh::<_, Mesh2d>(1.0, 3, 1.0, 3).random_shuffle();
 
         let count = mesh
             .elem_gammas()

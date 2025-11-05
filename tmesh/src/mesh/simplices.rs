@@ -9,7 +9,7 @@ use std::hash::Hash;
 use std::ops::{Index, IndexMut};
 
 /// Simplex elements
-pub trait Simplex<T: Idx + PartialEq>:
+pub trait Simplex<T: Idx>:
     Sized
     + Index<usize, Output = T>
     + IndexMut<usize, Output = T>
@@ -28,13 +28,12 @@ where
     <Self as Simplex<T>>::FACE: 'static,
 {
     type FACE: Simplex<T>;
-    type GEOM<const D: usize>: GSimplex<T, D>;
+    type GEOM<const D: usize>: GSimplex<D>;
     const DIM: usize;
     const N_VERTS: usize;
     const N_EDGES: usize;
     const N_FACES: usize;
-    const EDGES: &'static [Edge<T>];
-    const FACES: &'static [Self::FACE];
+    const EDGES: &'static [Edge<usize>];
 
     fn from_other<C: Simplex<T>>(other: C) -> Self {
         assert_eq!(Self::DIM, C::DIM);
@@ -81,12 +80,21 @@ where
         self.contains(edg[0]) && self.contains(edg[1])
     }
 
-    /// Get the i-th edge for the current simplex
-    fn edge(&self, i: T) -> Edge<T> {
-        Edge<T>::from_iter(
+    /// Get the i-th edge for the simplex 0..N
+    fn local_edge(i: T) -> Edge<T> {
+        Edge::<T>::from_iter(
             Self::EDGES[i.try_into().unwrap()]
                 .into_iter()
-                .map(|j| self[j]),
+                .map(|x| x.try_into().unwrap()),
+        )
+    }
+
+    /// Get the i-th edge for the current simplex
+    fn edge(&self, i: T) -> Edge<T> {
+        Edge::<T>::from_iter(
+            Self::EDGES[i.try_into().unwrap()]
+                .into_iter()
+                .map(|j| self[j.try_into().unwrap()]),
         )
     }
 
@@ -95,13 +103,16 @@ where
         (0..Self::N_EDGES).map(|i| self.edge(i.try_into().unwrap()))
     }
 
+    /// Get the i-th face for the simplex 0..N
+    fn local_face(i: T) -> Self::FACE;
+
     /// Get the i-th face for the current simplex
     fn face(&self, i: T) -> Self::FACE {
-        Self::FACE::from_iter(
-            Self::FACES[i.try_into().unwrap()]
-                .into_iter()
-                .map(|j| self[j]),
-        )
+        let mut f = Self::local_face(i);
+        for i in 0..Self::N_VERTS {
+            f[i] = self[f[i.try_into().unwrap()].try_into().unwrap()];
+        }
+        f
     }
 
     /// Get an iterator over the faces of the current simplex
@@ -123,7 +134,7 @@ where
     fn invert(&mut self);
 }
 
-pub trait GSimplex<T: Into<usize> + From<usize> + PartialEq, const D: usize>:
+pub trait GSimplex<const D: usize>:
     Sized
     + Index<usize, Output = Vertex<D>>
     + IndexMut<usize, Output = Vertex<D>>
@@ -142,8 +153,8 @@ pub trait GSimplex<T: Into<usize> + From<usize> + PartialEq, const D: usize>:
         + Default
         + Index<usize, Output = f64>
         + IndexMut<usize, Output = f64>;
-    type TOPO: Simplex<T>;
-    type FACE: GSimplex<T, D>;
+    type TOPO<T: Idx>: Simplex<T>;
+    type FACE: GSimplex<D>;
     const N_VERTS: usize;
 
     fn from_iter<I: Iterator<Item = Vertex<D>>>(iter: I) -> Self {
@@ -159,12 +170,9 @@ pub trait GSimplex<T: Into<usize> + From<usize> + PartialEq, const D: usize>:
     }
 
     /// Get the i-th face for the current simplex
-    fn face(&self, i: T) -> Self::FACE {
-        Self::FACE::from_iter(
-            Self::TOPO::FACES[i.try_into().unwrap()]
-                .into_iter()
-                .map(|j| self[j.try_into().unwrap()]),
-        )
+    fn face<T: Idx>(&self, i: T) -> Self::FACE {
+        let f = <Self::TOPO<T> as Simplex<T>>::FACE::local_face(i);
+        Self::FACE::from_iter(f.into_iter().map(|j| self[j.try_into().unwrap()]))
     }
 
     /// Check if a normal can be computed in D dimensions
@@ -202,10 +210,10 @@ pub trait GSimplex<T: Into<usize> + From<usize> + PartialEq, const D: usize>:
     fn project(&self, v: &Vertex<D>) -> Vertex<D> {
         self.project_inside(v).map_or_else(
             || {
-                let mut p = self.face(0.try_into().unwrap()).project(v);
+                let mut p = self.face::<usize>(0).project(v);
                 let mut d = (v - p).norm_squared();
-                for j in 1..Self::TOPO::N_FACES {
-                    let p1 = self.face(j.try_into().unwrap()).project(v);
+                for j in 1..Self::TOPO::<usize>::N_FACES {
+                    let p1 = self.face::<usize>(j).project(v);
                     let d1 = (v - p1).norm_squared();
                     if d1 < d {
                         d = d1;
@@ -244,20 +252,27 @@ impl<const D: usize> Default for GNode<D> {
     }
 }
 
-const NODE2EDGES: [Edge<T>; 0] = [];
-const NODE2FACES: [Node; 1] = [Node([0])];
+const NODE2EDGES: [Edge<usize>; 0] = [];
+const NODE2FACES: [Node<usize>; 1] = [Node([0])];
 
-impl<T: Into<usize> + From<usize> + PartialEq> Simplex<T> for Node<T> {
-    type FACE = Self;
+impl<T: Idx> Simplex<T> for Node<T> {
+    type FACE = Node<T>;
     type GEOM<const D: usize> = GNode<D>;
     const DIM: usize = 0;
     const N_VERTS: usize = 1;
     const N_EDGES: usize = 0;
     const N_FACES: usize = 1;
-    const EDGES: &'static [Edge<T>] = &NODE2EDGES;
-    const FACES: &'static [Self::FACE] = &NODE2FACES;
+    const EDGES: &'static [Edge<usize>] = &NODE2EDGES;
 
-    fn contains(&self, i: usize) -> bool {
+    fn local_face(i: T) -> Self::FACE {
+        Self::FACE::from_iter(
+            NODE2FACES[i.try_into().unwrap()]
+                .into_iter()
+                .map(|x| x.try_into().unwrap()),
+        )
+    }
+
+    fn contains(&self, i: T) -> bool {
         self.0.contains(&i)
     }
 
@@ -279,7 +294,7 @@ impl<T: Into<usize> + From<usize> + PartialEq> Simplex<T> for Node<T> {
 impl<const D: usize> GSimplex<D> for GNode<D> {
     const N_VERTS: usize = 1;
     type BCOORDS = [f64; 1];
-    type TOPO = Node;
+    type TOPO<T: Idx> = Node<T>;
     type FACE = Self;
 
     fn vol(&self) -> f64 {
@@ -319,26 +334,33 @@ impl<const D: usize> GSimplex<D> for GNode<D> {
     }
 }
 
-impl<const D: usize> Default for GEdge<T, D> {
+impl<const D: usize> Default for GEdge<D> {
     fn default() -> Self {
         Self([Vertex::zeros(); 2])
     }
 }
 
-const EDGE2EDGES: [Edge<T>; 1] = [Edge<T>([0, 1])];
-const EDGE2FACES: [Node; 2] = [Node([0]), Node([1])];
+const EDGE2EDGES: [Edge<usize>; 1] = [Edge([0, 1])];
+const EDGE2FACES: [Node<usize>; 2] = [Node([0]), Node([1])];
 
-impl Simplex for Edge<T> {
-    type FACE = Node;
-    type GEOM<const D: usize> = GEdge<T, D>;
+impl<T: Idx> Simplex<T> for Edge<T> {
+    type FACE = Node<T>;
+    type GEOM<const D: usize> = GEdge<D>;
     const DIM: usize = 1;
     const N_VERTS: usize = 2;
     const N_EDGES: usize = 1;
     const N_FACES: usize = 2;
-    const EDGES: &'static [Self] = &EDGE2EDGES;
-    const FACES: &'static [Self::FACE] = &EDGE2FACES;
+    const EDGES: &'static [Edge<usize>] = &EDGE2EDGES;
 
-    fn contains(&self, i: usize) -> bool {
+    fn local_face(i: T) -> Self::FACE {
+        Self::FACE::from_iter(
+            EDGE2FACES[i.try_into().unwrap()]
+                .into_iter()
+                .map(|x| x.try_into().unwrap()),
+        )
+    }
+
+    fn contains(&self, i: T) -> bool {
         self.0.contains(&i)
     }
 
@@ -367,9 +389,9 @@ impl Simplex for Edge<T> {
     }
 }
 
-impl<const D: usize> GSimplex<D> for GEdge<T, D> {
+impl<const D: usize> GSimplex<D> for GEdge<D> {
     type BCOORDS = [f64; 2];
-    type TOPO = Edge<T>;
+    type TOPO<T: Idx> = Edge<T>;
     type FACE = GNode<D>;
     const N_VERTS: usize = 2;
 
@@ -413,20 +435,27 @@ impl<const D: usize> Default for GTriangle<D> {
     }
 }
 
-const TRIANGLE2EDGES: [Edge<T>; 3] = [Edge<T>([0, 1]), Edge<T>([1, 2]), Edge<T>([2, 0])];
-const TRIANGLE2FACES: [Edge<T>; 3] = [Edge<T>([0, 1]), Edge<T>([1, 2]), Edge<T>([2, 0])];
+const TRIANGLE2EDGES: [Edge<usize>; 3] = [Edge([0, 1]), Edge([1, 2]), Edge([2, 0])];
+const TRIANGLE2FACES: [Edge<usize>; 3] = [Edge([0, 1]), Edge([1, 2]), Edge([2, 0])];
 
-impl Simplex for Triangle {
+impl<T: Idx> Simplex<T> for Triangle<T> {
     type FACE = Edge<T>;
     type GEOM<const D: usize> = GTriangle<D>;
     const DIM: usize = 2;
     const N_VERTS: usize = 3;
     const N_EDGES: usize = 3;
     const N_FACES: usize = 3;
-    const EDGES: &'static [Edge<T>] = &TRIANGLE2EDGES;
-    const FACES: &'static [Self::FACE] = &TRIANGLE2FACES;
+    const EDGES: &'static [Edge<usize>] = &TRIANGLE2EDGES;
 
-    fn contains(&self, i: usize) -> bool {
+    fn local_face(i: T) -> Self::FACE {
+        Self::FACE::from_iter(
+            NODE2FACES[i.try_into().unwrap()]
+                .into_iter()
+                .map(|x| x.try_into().unwrap()),
+        )
+    }
+
+    fn contains(&self, i: T) -> bool {
         self.0.contains(&i)
     }
 
@@ -458,8 +487,8 @@ impl Simplex for Triangle {
 
 impl<const D: usize> GSimplex<D> for GTriangle<D> {
     type BCOORDS = [f64; 3];
-    type TOPO = Triangle;
-    type FACE = GEdge<T , D>;
+    type TOPO<T: Idx> = Triangle<T>;
+    type FACE = GEdge<D>;
     const N_VERTS: usize = 3;
 
     fn has_normal() -> bool {
@@ -554,32 +583,39 @@ impl<const D: usize> Default for GTetrahedron<D> {
     }
 }
 
-const TETRA2EDGES: [Edge<T>; 6] = [
-    Edge<T>([0, 1]),
-    Edge<T>([1, 2]),
-    Edge<T>([2, 0]),
-    Edge<T>([0, 3]),
-    Edge<T>([1, 3]),
-    Edge<T>([2, 3]),
+const TETRA2EDGES: [Edge<usize>; 6] = [
+    Edge([0, 1]),
+    Edge([1, 2]),
+    Edge([2, 0]),
+    Edge([0, 3]),
+    Edge([1, 3]),
+    Edge([2, 3]),
 ];
-const TETRA2FACES: [Triangle; 4] = [
+const TETRA2FACES: [Triangle<usize>; 4] = [
     Triangle([1, 2, 3]),
     Triangle([2, 0, 3]),
     Triangle([0, 1, 3]),
     Triangle([0, 2, 1]),
 ];
 
-impl Simplex for Tetrahedron {
-    type FACE = Triangle;
+impl<T: Idx> Simplex<T> for Tetrahedron<T> {
+    type FACE = Triangle<T>;
     type GEOM<const D: usize> = GTetrahedron<D>;
     const DIM: usize = 3;
     const N_VERTS: usize = 4;
     const N_EDGES: usize = 6;
     const N_FACES: usize = 4;
-    const EDGES: &'static [Edge<T>] = &TETRA2EDGES;
-    const FACES: &'static [Self::FACE] = &TETRA2FACES;
+    const EDGES: &'static [Edge<usize>] = &TETRA2EDGES;
 
-    fn contains(&self, i: usize) -> bool {
+    fn local_face(i: T) -> Self::FACE {
+        Self::FACE::from_iter(
+            TETRA2FACES[i.try_into().unwrap()]
+                .into_iter()
+                .map(|x| x.try_into().unwrap()),
+        )
+    }
+
+    fn contains(&self, i: T) -> bool {
         self.0.contains(&i)
     }
 
@@ -601,12 +637,12 @@ impl Simplex for Tetrahedron {
     }
 
     fn is_same(&self, other: &Self) -> bool {
-        let f = self.face(0);
+        let f = self.face(0.try_into().unwrap());
         other
             .0
             .iter()
             .position(|&x| x == self[0])
-            .is_some_and(|i| f.is_same(&other.face(i)))
+            .is_some_and(|i| f.is_same(&other.face(i.try_into().unwrap())))
     }
 
     fn invert(&mut self) {
@@ -616,7 +652,7 @@ impl Simplex for Tetrahedron {
 
 impl<const D: usize> GSimplex<D> for GTetrahedron<D> {
     type BCOORDS = [f64; 4];
-    type TOPO = Tetrahedron;
+    type TOPO<T: Idx> = Tetrahedron<T>;
     type FACE = GTriangle<D>;
     const N_VERTS: usize = 4;
 
@@ -637,10 +673,10 @@ impl<const D: usize> GSimplex<D> for GTetrahedron<D> {
     }
 
     fn radius(&self) -> f64 {
-        let a0 = self.face(0).vol();
-        let a1 = self.face(1).vol();
-        let a2 = self.face(2).vol();
-        let a3 = self.face(3).vol();
+        let a0 = self.face(0_usize).vol();
+        let a1 = self.face(1_usize).vol();
+        let a2 = self.face(2_usize).vol();
+        let a3 = self.face(3_usize).vol();
         let v = self.vol();
         3.0 * v / (a0 + a1 + a2 + a3)
     }
@@ -694,10 +730,10 @@ impl<const D: usize> GSimplex<D> for GTetrahedron<D> {
 
         let r = tmp.sqrt() / 24.0 / vol;
 
-        let s1 = self.face(0).vol();
-        let s2 = self.face(1).vol();
-        let s3 = self.face(2).vol();
-        let s4 = self.face(3).vol();
+        let s1 = self.face(0_usize).vol();
+        let s2 = self.face(1_usize).vol();
+        let s3 = self.face(2_usize).vol();
+        let s4 = self.face(3_usize).vol();
         let rho = 9.0 * vol / (s1 + s2 + s3 + s4);
 
         rho / r
@@ -706,13 +742,13 @@ impl<const D: usize> GSimplex<D> for GTetrahedron<D> {
 
 /// Compute a `FxHashMap` that maps face-to-vertex connectivity (sorted) to a vector of element indices
 #[must_use]
-pub fn get_face_to_elem<'a, C: Simplex + 'a, I: ExactSizeIterator<Item = &'a C>>(
+pub fn get_face_to_elem<'a, T: Idx, C: Simplex<T> + 'a, I: ExactSizeIterator<Item = &'a C>>(
     elems: I,
 ) -> FxHashMap<C::FACE, twovec::Vec<usize>> {
     let mut map: FxHashMap<C::FACE, twovec::Vec<usize>> = FxHashMap::default();
     for (i_elem, elem) in elems.enumerate() {
         for i_face in 0..C::N_FACES {
-            let f = elem.face(i_face).sorted();
+            let f = elem.face(i_face.try_into().unwrap()).sorted();
             let n = map.get_mut(&f);
             if let Some(n) = n {
                 n.push(i_elem);
@@ -738,7 +774,7 @@ mod tests {
 
     #[test]
     fn test_is_same() {
-        let e = Edge([10, 12]);
+        let e = Edge([10_usize, 12]);
         let o = Edge([10, 10]);
         assert!(!e.is_same(&o));
         let o = Edge([12, 10]);

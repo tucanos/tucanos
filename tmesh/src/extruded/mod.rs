@@ -3,31 +3,31 @@ use crate::{
     Error, Result, Tag, Vert2d, Vert3d,
     dual::{DualMesh2d, PolyMesh, PolyMeshType, SimplePolyMesh, merge_polylines},
     io::{VTUEncoding, VTUFile},
-    mesh::{Edge, Mesh, Mesh2d, Prism, Quadrangle, Triangle},
+    mesh::{Edge, Idx, Mesh, Mesh2d, Prism, Quadrangle, Triangle},
 };
 use std::iter;
 
 /// Extrusion of a `Mesh2d` along `z`
-pub struct ExtrudedMesh2d {
+pub struct ExtrudedMesh2d<T: Idx> {
     verts: Vec<Vert3d>,
-    prisms: Vec<Prism>,
+    prisms: Vec<Prism<T>>,
     prism_tags: Vec<Tag>,
-    tris: Vec<Triangle>,
+    tris: Vec<Triangle<T>>,
     tri_tags: Vec<Tag>,
-    quads: Vec<Quadrangle>,
+    quads: Vec<Quadrangle<T>>,
     quad_tags: Vec<Tag>,
 }
 
-impl ExtrudedMesh2d {
+impl<T: Idx> ExtrudedMesh2d<T> {
     /// Create a new mesh from coordinates, connectivities and tags
     #[must_use]
     pub const fn new(
         verts: Vec<Vert3d>,
-        prisms: Vec<Prism>,
+        prisms: Vec<Prism<T>>,
         prism_tags: Vec<Tag>,
-        tris: Vec<Triangle>,
+        tris: Vec<Triangle<T>>,
         tri_tags: Vec<Tag>,
-        quads: Vec<Quadrangle>,
+        quads: Vec<Quadrangle<T>>,
         quad_tags: Vec<Tag>,
     ) -> Self {
         Self {
@@ -43,7 +43,7 @@ impl ExtrudedMesh2d {
 
     /// Extrude a `Mesh2d` by a distance `h` along direction `z`
     #[must_use]
-    pub fn from_mesh2d(msh: &Mesh2d, h: f64) -> Self {
+    pub fn from_mesh2d(msh: &Mesh2d<T>, h: f64) -> Self {
         let n = msh.n_verts();
         let verts = msh
             .verts()
@@ -65,8 +65,8 @@ impl ExtrudedMesh2d {
             .collect();
         // Assign distinct tags to bottom and top triangles.
         let n_elems = msh.n_elems();
-        let tri_tags = iter::repeat_n(Tag::MAX, n_elems)
-            .chain(iter::repeat_n(Tag::MAX - 1, n_elems))
+        let tri_tags = iter::repeat_n(Tag::MAX, n_elems.try_into().unwrap())
+            .chain(iter::repeat_n(Tag::MAX - 1, n_elems.try_into().unwrap()))
             .collect();
         let quads = msh
             .faces()
@@ -84,7 +84,7 @@ impl ExtrudedMesh2d {
     }
 
     /// Get a `Mesh2d` from the z=0 face
-    pub fn to_mesh2d(&self) -> Result<Mesh2d> {
+    pub fn to_mesh2d(&self) -> Result<Mesh2d<T>> {
         let n = self.verts.len() / 2;
 
         let mut ok = true;
@@ -144,7 +144,7 @@ impl ExtrudedMesh2d {
 
     /// Sequential iterator over the prisms
     #[must_use]
-    pub fn prisms(&self) -> impl ExactSizeIterator<Item = &Prism> + '_ {
+    pub fn prisms(&self) -> impl ExactSizeIterator<Item = &Prism<T>> + '_ {
         self.prisms.iter()
     }
 
@@ -162,7 +162,7 @@ impl ExtrudedMesh2d {
 
     /// Sequential iterator over the triangles
     #[must_use]
-    pub fn tris(&self) -> impl ExactSizeIterator<Item = &Triangle> + '_ {
+    pub fn tris(&self) -> impl ExactSizeIterator<Item = &Triangle<T>> + '_ {
         self.tris.iter()
     }
 
@@ -180,7 +180,7 @@ impl ExtrudedMesh2d {
 
     /// Sequential iterator over the quadrangles
     #[must_use]
-    pub fn quads(&self) -> impl ExactSizeIterator<Item = &Quadrangle> + '_ {
+    pub fn quads(&self) -> impl ExactSizeIterator<Item = &Quadrangle<T>> + '_ {
         self.quads.iter()
     }
 
@@ -200,19 +200,19 @@ impl ExtrudedMesh2d {
     }
 }
 
-impl Mesh2d {
+impl<T: Idx> Mesh2d<T> {
     /// Extrude the mesh by a distance `h` along direction `z`
     #[must_use]
-    pub fn extrude(&self, h: f64) -> ExtrudedMesh2d {
+    pub fn extrude(&self, h: f64) -> ExtrudedMesh2d<T> {
         ExtrudedMesh2d::from_mesh2d(self, h)
     }
 }
 
-impl DualMesh2d {
+impl<T: Idx> DualMesh2d<T> {
     /// Extrude the mesh by a distance `h` along direction `z`
     #[must_use]
-    pub fn extrude(&self, h: f64) -> SimplePolyMesh<3> {
-        let mut res = SimplePolyMesh::<3>::empty(PolyMeshType::Polyhedra);
+    pub fn extrude(&self, h: f64) -> SimplePolyMesh<T, 3> {
+        let mut res = SimplePolyMesh::<_, 3>::empty(PolyMeshType::Polyhedra);
 
         let n = self.n_verts();
         for v in self.verts() {
@@ -269,7 +269,7 @@ mod tests {
 
     #[test]
     fn test_extrude_mesh() {
-        let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 2.0, 15);
+        let msh = rectangle_mesh::<_, Mesh2d>(1.0, 10, 2.0, 15);
         let extruded = ExtrudedMesh2d::from_mesh2d(&msh, 1.0);
         // extruded.write_vtk("extruded.vtu").unwrap();
 
@@ -279,7 +279,7 @@ mod tests {
 
     #[test]
     fn test_extrude_dual() {
-        let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 2.0, 15);
+        let msh = rectangle_mesh::<_, Mesh2d>(1.0, 10, 2.0, 15);
         let dual = DualMesh2d::new(&msh, DualType::Median);
         let _extruded = dual.extrude(1.0);
         // extruded.write_vtk("extruded_self.vtu").unwrap();

@@ -2,7 +2,7 @@
 use crate::{
     Error, Result, Tag, Vertex,
     io::{VTUEncoding, VTUFile},
-    mesh::{Mesh, Simplex},
+    mesh::{Idx, Mesh, Simplex},
 };
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
@@ -22,93 +22,103 @@ pub enum PolyMeshType {
 ///   - faces are represented by the indices of their vertices (oriented)
 ///   - elements are indices of their faces and flags indicating if the face is oriented
 ///     outwards or inwards
-pub trait PolyMesh<const D: usize>: Sync + Sized {
+pub trait PolyMesh<T: Idx, const D: usize>: Sync + Sized {
     /// Element type
     fn poly_type(&self) -> PolyMeshType;
 
     /// Number of vertices
-    fn n_verts(&self) -> usize;
+    fn n_verts(&self) -> T;
 
     /// Get the `i`th vertex
-    fn vert(&self, i: usize) -> Vertex<D>;
+    fn vert(&self, i: T) -> Vertex<D>;
 
     /// Parallel iterator over the mesh vertices
     fn par_verts(&self) -> impl IndexedParallelIterator<Item = Vertex<D>> + Clone + '_ {
-        (0..self.n_verts()).into_par_iter().map(|i| self.vert(i))
+        (0..self.n_verts().try_into().unwrap())
+            .into_par_iter()
+            .map(|i| self.vert(i.try_into().unwrap()))
     }
 
     /// Sequential iterator over the mesh vertices
     fn verts(&self) -> impl ExactSizeIterator<Item = Vertex<D>> + Clone + '_ {
-        (0..self.n_verts()).map(|i| self.vert(i))
+        (0..self.n_verts().try_into().unwrap()).map(|i| self.vert(i.try_into().unwrap()))
     }
 
     /// Number of elements
-    fn n_elems(&self) -> usize;
+    fn n_elems(&self) -> T;
 
     /// Get the `i`th face
-    fn elem(&self, i: usize) -> &[(usize, bool)];
+    fn elem(&self, i: T) -> &[(T, bool)];
 
     /// Number of vertices in the `i`the element
-    fn elem_n_verts(&self, i: usize) -> usize {
+    fn elem_n_verts(&self, i: T) -> T {
         let mut verts = FxHashSet::with_hasher(FxBuildHasher);
         for &(j, _) in self.elem(i) {
             for k in self.face(j) {
                 verts.insert(k);
             }
         }
-        verts.len()
+        verts.len().try_into().unwrap()
     }
 
     /// Parallel iterator over the mesh elements
-    fn par_elems(&self) -> impl IndexedParallelIterator<Item = &[(usize, bool)]> + Clone + '_ {
-        (0..self.n_elems()).into_par_iter().map(|i| self.elem(i))
+    fn par_elems(&self) -> impl IndexedParallelIterator<Item = &[(T, bool)]> + Clone + '_ {
+        (0..self.n_elems().try_into().unwrap())
+            .into_par_iter()
+            .map(|i| self.elem(i.try_into().unwrap()))
     }
 
     /// Sequantial iterator over the mesh elements
-    fn elems(&self) -> impl ExactSizeIterator<Item = &[(usize, bool)]> + Clone + '_ {
-        (0..self.n_elems()).map(|i| self.elem(i))
+    fn elems(&self) -> impl ExactSizeIterator<Item = &[(T, bool)]> + Clone + '_ {
+        (0..self.n_elems().try_into().unwrap()).map(|i| self.elem(i.try_into().unwrap()))
     }
 
     /// Get the tag of the `i`the element
-    fn etag(&self, i: usize) -> Tag;
+    fn etag(&self, i: T) -> Tag;
 
     /// Parallel iterator over the element tags
     fn par_etags(&self) -> impl IndexedParallelIterator<Item = Tag> + Clone + '_ {
-        (0..self.n_elems()).into_par_iter().map(|i| self.etag(i))
+        (0..self.n_elems().try_into().unwrap())
+            .into_par_iter()
+            .map(|i| self.etag(i.try_into().unwrap()))
     }
 
     /// Sequential iterator over the element tags
     fn etags(&self) -> impl ExactSizeIterator<Item = Tag> + Clone + '_ {
-        (0..self.n_elems()).map(|i| self.etag(i))
+        (0..self.n_elems().try_into().unwrap()).map(|i| self.etag(i.try_into().unwrap()))
     }
 
     /// Number of faces
-    fn n_faces(&self) -> usize;
+    fn n_faces(&self) -> T;
 
     /// Get the `i`the face
-    fn face(&self, i: usize) -> &[usize];
+    fn face(&self, i: T) -> &[T];
 
     /// Parallel iterator over the faces
-    fn par_faces(&self) -> impl IndexedParallelIterator<Item = &[usize]> + Clone + '_ {
-        (0..self.n_faces()).into_par_iter().map(|i| self.face(i))
+    fn par_faces(&self) -> impl IndexedParallelIterator<Item = &[T]> + Clone + '_ {
+        (0..self.n_faces().try_into().unwrap())
+            .into_par_iter()
+            .map(|i| self.face(i.try_into().unwrap()))
     }
 
     /// Sequential iterator over the faces
-    fn faces(&self) -> impl ExactSizeIterator<Item = &[usize]> + Clone + '_ {
-        (0..self.n_faces()).map(|i| self.face(i))
+    fn faces(&self) -> impl ExactSizeIterator<Item = &[T]> + Clone + '_ {
+        (0..self.n_faces().try_into().unwrap()).map(|i| self.face(i.try_into().unwrap()))
     }
 
     /// Get the tag of the `i`th face
-    fn ftag(&self, i: usize) -> Tag;
+    fn ftag(&self, i: T) -> Tag;
 
     /// Parallel iterator over the face tags
     fn par_ftags(&self) -> impl IndexedParallelIterator<Item = Tag> + Clone + '_ {
-        (0..self.n_faces()).into_par_iter().map(|i| self.ftag(i))
+        (0..self.n_faces().try_into().unwrap())
+            .into_par_iter()
+            .map(|i| self.ftag(i.try_into().unwrap()))
     }
 
     /// Sequential iterator over the face tags
     fn ftags(&self) -> impl ExactSizeIterator<Item = Tag> + Clone + '_ {
-        (0..self.n_faces()).map(|i| self.ftag(i))
+        (0..self.n_faces().try_into().unwrap()).map(|i| self.ftag(i.try_into().unwrap()))
     }
 
     /// Export the mesh to a `.vtu` file
@@ -122,29 +132,29 @@ pub trait PolyMesh<const D: usize>: Sync + Sized {
 }
 
 /// General PolyMesh<D>
-pub struct SimplePolyMesh<const D: usize> {
+pub struct SimplePolyMesh<T: Idx, const D: usize> {
     poly_type: PolyMeshType,
     verts: Vec<Vertex<D>>,
-    face_to_node_ptr: Vec<usize>,
-    face_to_node: Vec<usize>,
+    face_to_node_ptr: Vec<T>,
+    face_to_node: Vec<T>,
     ftags: Vec<Tag>,
-    elem_to_face_ptr: Vec<usize>,
-    elem_to_face: Vec<(usize, bool)>,
+    elem_to_face_ptr: Vec<T>,
+    elem_to_face: Vec<(T, bool)>,
     etags: Vec<Tag>,
 }
 
-impl<const D: usize> SimplePolyMesh<D> {
+impl<T: Idx, const D: usize> SimplePolyMesh<T, D> {
     /// Create a new mesh from coordinates, connectivities and tags
     #[allow(clippy::too_many_arguments)]
     #[must_use]
     pub const fn new(
         poly_type: PolyMeshType,
         verts: Vec<Vertex<D>>,
-        face_to_node_ptr: Vec<usize>,
-        face_to_node: Vec<usize>,
+        face_to_node_ptr: Vec<T>,
+        face_to_node: Vec<T>,
         ftags: Vec<Tag>,
-        elem_to_face_ptr: Vec<usize>,
-        elem_to_face: Vec<(usize, bool)>,
+        elem_to_face_ptr: Vec<T>,
+        elem_to_face: Vec<(T, bool)>,
         etags: Vec<Tag>,
     ) -> Self {
         Self {
@@ -165,59 +175,63 @@ impl<const D: usize> SimplePolyMesh<D> {
         Self {
             poly_type,
             verts: Vec::new(),
-            face_to_node_ptr: vec![0],
+            face_to_node_ptr: vec![0.try_into().unwrap()],
             face_to_node: Vec::new(),
             ftags: Vec::new(),
-            elem_to_face_ptr: vec![0],
+            elem_to_face_ptr: vec![0.try_into().unwrap()],
             elem_to_face: Vec::new(),
             etags: Vec::new(),
         }
     }
 
     /// Insert a vertex and return its index
-    pub fn insert_vert(&mut self, v: Vertex<D>) -> usize {
+    pub fn insert_vert(&mut self, v: Vertex<D>) -> T {
         self.verts.push(v);
-        self.verts.len() - 1
+        (self.verts.len() - 1).try_into().unwrap()
     }
 
     /// Insert a face and return its index
-    pub fn insert_face(&mut self, f: &[usize], t: Tag) -> usize {
+    pub fn insert_face(&mut self, f: &[T], t: Tag) -> T {
         self.face_to_node.extend(f);
-        self.face_to_node_ptr.push(self.face_to_node.len());
+        self.face_to_node_ptr
+            .push(self.face_to_node.len().try_into().unwrap());
         self.ftags.push(t);
-        self.ftags.len() - 1
+        (self.ftags.len() - 1).try_into().unwrap()
     }
 
     /// Insert an element and return its index
-    pub fn insert_elem(&mut self, e: &[(usize, bool)], t: Tag) -> usize {
+    pub fn insert_elem(&mut self, e: &[(T, bool)], t: Tag) -> T {
         self.elem_to_face.extend(e);
-        self.elem_to_face_ptr.push(self.elem_to_face.len());
+        self.elem_to_face_ptr
+            .push(self.elem_to_face.len().try_into().unwrap());
         self.etags.push(t);
-        self.etags.len() - 1
+        (self.etags.len() - 1).try_into().unwrap()
     }
 
     /// Simplify a `PolyMesh<D>` by merging its faces connecting the same two elements
     #[allow(clippy::too_many_lines)]
-    pub fn simplify<T: PolyMesh<D>>(mesh: &T, simplify: bool) -> Self {
+    pub fn simplify<P: PolyMesh<T, D>>(mesh: &P, simplify: bool) -> Self {
         let poly_type = mesh.poly_type();
 
         // simplify faces
-        let mut face2elems = vec![[usize::MAX, usize::MAX]; mesh.n_faces()];
+        let mut face2elems = vec![[T::MAX, T::MAX]; mesh.n_faces().try_into().unwrap()];
         for (i_elem, elem) in mesh.elems().enumerate() {
+            let i_elem = i_elem.try_into().unwrap();
             for &(i_face, orient) in elem {
+                let i_face = i_face.try_into().unwrap();
                 if orient {
-                    assert_eq!(face2elems[i_face][0], usize::MAX);
+                    assert_eq!(face2elems[i_face][0], T::MAX);
                     face2elems[i_face][0] = i_elem;
                 } else {
-                    assert_eq!(face2elems[i_face][1], usize::MAX);
+                    assert_eq!(face2elems[i_face][1], T::MAX);
                     face2elems[i_face][1] = i_elem;
                 }
             }
         }
 
-        let mut face_groups =
-            FxHashMap::<[usize; 2], Vec<(usize, bool)>>::with_hasher(FxBuildHasher);
+        let mut face_groups = FxHashMap::<[T; 2], Vec<(T, bool)>>::with_hasher(FxBuildHasher);
         for (i_face, elems) in face2elems.iter().enumerate() {
+            let i_face = i_face.try_into().unwrap();
             if let Some(x) = face_groups.get_mut(elems) {
                 x.push((i_face, true));
             } else if let Some(x) = face_groups.get_mut(&[elems[1], elems[0]]) {
@@ -229,12 +243,12 @@ impl<const D: usize> SimplePolyMesh<D> {
 
         let mut new_faces = Vec::new();
         let mut new_faces_ptr = Vec::new();
-        new_faces_ptr.push(0);
+        new_faces_ptr.push(0.try_into().unwrap());
         let mut new_faces_elems = Vec::new();
         let mut new_ftags = Vec::new();
         for (elems, faces) in face_groups {
-            assert_ne!(elems[0], usize::MAX);
-            if elems[1] != usize::MAX && simplify {
+            assert_ne!(elems[0], T::MAX);
+            if elems[1] != T::MAX && simplify {
                 // copy faces to reorient if needed
                 let mut tmp_ptr = Vec::new();
                 tmp_ptr.push(0);
@@ -273,53 +287,63 @@ impl<const D: usize> SimplePolyMesh<D> {
                     }
                 }
 
-                new_faces_ptr.push(new_faces.len());
+                new_faces_ptr.push(new_faces.len().try_into().unwrap());
                 new_faces_elems.push(elems);
                 new_ftags.push(0);
             } else {
                 for (i_face, _) in faces {
                     new_faces.extend_from_slice(mesh.face(i_face));
-                    new_faces_ptr.push(new_faces.len());
+                    new_faces_ptr.push(new_faces.len().try_into().unwrap());
                     new_faces_elems.push(elems);
                     new_ftags.push(mesh.ftag(i_face));
                 }
             }
         }
 
-        let mut new_elems_ptr = vec![0; mesh.n_elems() + 1];
+        let mut new_elems_ptr: Vec<T> =
+            vec![0.try_into().unwrap(); mesh.n_elems().try_into().unwrap() + 1];
         for &[i0, i1] in &new_faces_elems {
-            new_elems_ptr[i0 + 1] += 1;
-            if i1 != usize::MAX {
-                new_elems_ptr[i1 + 1] += 1;
+            new_elems_ptr[i0.try_into().unwrap() + 1] += 1.try_into().unwrap();
+            if i1 != T::MAX {
+                new_elems_ptr[i1.try_into().unwrap() + 1] += 1.try_into().unwrap();
             }
         }
-        for i in 0..mesh.n_elems() {
+        for i in 0..mesh.n_elems().try_into().unwrap() {
             new_elems_ptr[i + 1] += new_elems_ptr[i];
         }
-        let mut new_elems = vec![(usize::MAX, false); *new_elems_ptr.last().unwrap()];
+        let n = *new_elems_ptr.last().unwrap();
+        let mut new_elems = vec![(T::MAX, false); n.try_into().unwrap()];
         for (i_face, &[i0, i1]) in new_faces_elems.iter().enumerate() {
             let mut ok = false;
             for v in new_elems
                 .iter_mut()
-                .take(new_elems_ptr[i0 + 1])
-                .skip(new_elems_ptr[i0])
+                .take(
+                    new_elems_ptr[i0.try_into().unwrap() + 1]
+                        .try_into()
+                        .unwrap(),
+                )
+                .skip(new_elems_ptr[i0.try_into().unwrap()].try_into().unwrap())
             {
-                if v.0 == usize::MAX {
-                    *v = (i_face, true);
+                if v.0 == T::MAX {
+                    *v = (i_face.try_into().unwrap(), true);
                     ok = true;
                     break;
                 }
             }
             assert!(ok);
-            if i1 != usize::MAX {
+            if i1 != T::MAX {
                 let mut ok = false;
                 for v in new_elems
                     .iter_mut()
-                    .take(new_elems_ptr[i1 + 1])
-                    .skip(new_elems_ptr[i1])
+                    .take(
+                        new_elems_ptr[i1.try_into().unwrap() + 1]
+                            .try_into()
+                            .unwrap(),
+                    )
+                    .skip(new_elems_ptr[i1.try_into().unwrap()].try_into().unwrap())
                 {
-                    if v.0 == usize::MAX {
-                        *v = (i_face, false);
+                    if v.0 == T::MAX {
+                        *v = (i_face.try_into().unwrap(), false);
                         ok = true;
                         break;
                     }
@@ -340,26 +364,28 @@ impl<const D: usize> SimplePolyMesh<D> {
         };
 
         // unused vertices
-        let mut new_ids = vec![usize::MAX; mesh.n_verts()];
+        let mut new_ids = vec![T::MAX; mesh.n_verts().try_into().unwrap()];
         let mut new_verts = Vec::new();
-        let mut next = 0;
+        let mut next = 0.try_into().unwrap();
         for face in res.faces() {
             for &i in face {
-                if new_ids[i] == usize::MAX {
-                    new_ids[i] = next;
+                if new_ids[i.try_into().unwrap()] == T::MAX {
+                    new_ids[i.try_into().unwrap()] = next;
                     new_verts.push(mesh.vert(i));
-                    next += 1;
+                    next += 1.try_into().unwrap();
                 }
             }
         }
-        res.face_to_node.iter_mut().for_each(|i| *i = new_ids[*i]);
+        res.face_to_node
+            .iter_mut()
+            .for_each(|i| *i = new_ids[(*i).try_into().unwrap()]);
         res.verts = new_verts;
 
         res
     }
 
     /// PolyMesh representation of a `Mesh<D, C, F>`
-    pub fn from_mesh<C: Simplex, M: Mesh<D, C>>(mesh: &M) -> Self {
+    pub fn from_mesh<C: Simplex<T>, M: Mesh<T, D, C>>(mesh: &M) -> Self {
         let poly_type = match C::N_VERTS {
             4 => PolyMeshType::Polyhedra,
             3 => PolyMeshType::Polygons,
@@ -373,28 +399,37 @@ impl<const D: usize> SimplePolyMesh<D> {
             .map(|(f, t)| (f.sorted(), t))
             .collect::<FxHashMap<_, _>>();
 
-        let mut elem_to_face_ptr = vec![0; mesh.n_elems() + 1];
-        let mut elem_to_face = vec![(usize::MAX, true); mesh.n_elems() * C::N_VERTS];
-        let mut face_to_node_ptr = vec![0; all_faces.len() + 1];
-        let mut face_to_node = vec![0; all_faces.len() * C::FACE::N_VERTS];
+        let mut elem_to_face_ptr: Vec<T> =
+            vec![0.try_into().unwrap(); mesh.n_elems().try_into().unwrap() + 1];
+        let mut elem_to_face =
+            vec![(T::MAX, true); mesh.n_elems().try_into().unwrap() * C::N_VERTS];
+        let mut face_to_node_ptr: Vec<T> = vec![0.try_into().unwrap(); all_faces.len() + 1];
+        let mut face_to_node = vec![0.try_into().unwrap(); all_faces.len() * C::FACE::N_VERTS];
         let mut ftags = vec![0; all_faces.len()];
 
-        for i_elem in 0..mesh.n_elems() {
-            elem_to_face_ptr[i_elem + 1] = C::N_VERTS * (i_elem + 1);
+        for i_elem in 0..mesh.n_elems().try_into().unwrap() {
+            elem_to_face_ptr[i_elem + 1] = (C::N_VERTS * (i_elem + 1)).try_into().unwrap();
         }
         for (f, &[i_face, i0, i1]) in &all_faces {
-            face_to_node_ptr[i_face + 1] = C::FACE::N_VERTS * (i_face + 1);
+            face_to_node_ptr[i_face.try_into().unwrap() + 1] = (C::FACE::N_VERTS
+                * (i_face.try_into().unwrap() + 1))
+                .try_into()
+                .unwrap();
             for k in 0..C::FACE::N_VERTS {
-                face_to_node[C::FACE::N_VERTS * i_face + k] = f[k];
+                face_to_node[C::FACE::N_VERTS * i_face.try_into().unwrap() + k] = f[k];
             }
-            if i0 != usize::MAX {
+            if i0 != T::MAX {
                 let mut ok = false;
                 for v in elem_to_face
                     .iter_mut()
-                    .take(elem_to_face_ptr[i0 + 1])
-                    .skip(elem_to_face_ptr[i0])
+                    .take(
+                        elem_to_face_ptr[i0.try_into().unwrap() + 1]
+                            .try_into()
+                            .unwrap(),
+                    )
+                    .skip(elem_to_face_ptr[i0.try_into().unwrap()].try_into().unwrap())
                 {
-                    if v.0 == usize::MAX {
+                    if v.0 == T::MAX {
                         *v = (i_face, true);
                         ok = true;
                         break;
@@ -402,14 +437,18 @@ impl<const D: usize> SimplePolyMesh<D> {
                 }
                 assert!(ok);
             }
-            if i1 != usize::MAX {
+            if i1 != T::MAX {
                 let mut ok = false;
                 for v in elem_to_face
                     .iter_mut()
-                    .take(elem_to_face_ptr[i1 + 1])
-                    .skip(elem_to_face_ptr[i1])
+                    .take(
+                        elem_to_face_ptr[i1.try_into().unwrap() + 1]
+                            .try_into()
+                            .unwrap(),
+                    )
+                    .skip(elem_to_face_ptr[i1.try_into().unwrap()].try_into().unwrap())
                 {
-                    if v.0 == usize::MAX {
+                    if v.0 == T::MAX {
                         *v = (i_face, false);
                         ok = true;
                         break;
@@ -417,11 +456,11 @@ impl<const D: usize> SimplePolyMesh<D> {
                 }
                 assert!(ok);
             }
-            if i0 == usize::MAX && i1 == usize::MAX {
+            if i0 == T::MAX && i1 == T::MAX {
                 let f = f.sorted();
-                ftags[i_face] = *tagged_faces.get(&f).unwrap();
+                ftags[i_face.try_into().unwrap()] = *tagged_faces.get(&f).unwrap();
             } else {
-                ftags[i_face] = 0;
+                ftags[i_face.try_into().unwrap()] = 0;
             }
         }
 
@@ -438,49 +477,57 @@ impl<const D: usize> SimplePolyMesh<D> {
     }
 }
 
-impl<const D: usize> PolyMesh<D> for SimplePolyMesh<D> {
+impl<T: Idx, const D: usize> PolyMesh<T, D> for SimplePolyMesh<T, D> {
     fn poly_type(&self) -> PolyMeshType {
         self.poly_type
     }
 
-    fn n_verts(&self) -> usize {
-        self.verts.len()
+    fn n_verts(&self) -> T {
+        self.verts.len().try_into().unwrap()
     }
 
-    fn vert(&self, i: usize) -> Vertex<D> {
-        self.verts[i]
+    fn vert(&self, i: T) -> Vertex<D> {
+        self.verts[i.try_into().unwrap()]
     }
 
-    fn n_elems(&self) -> usize {
-        self.elem_to_face_ptr.len() - 1
+    fn n_elems(&self) -> T {
+        (self.elem_to_face_ptr.len() - 1).try_into().unwrap()
     }
 
-    fn elem(&self, i: usize) -> &[(usize, bool)] {
-        let start = self.elem_to_face_ptr[i];
-        let end = self.elem_to_face_ptr[i + 1];
+    fn elem(&self, i: T) -> &[(T, bool)] {
+        let start = self.elem_to_face_ptr[i.try_into().unwrap()]
+            .try_into()
+            .unwrap();
+        let end = self.elem_to_face_ptr[i.try_into().unwrap() + 1]
+            .try_into()
+            .unwrap();
         &self.elem_to_face[start..end]
     }
 
-    fn etag(&self, i: usize) -> Tag {
-        self.etags[i]
+    fn etag(&self, i: T) -> Tag {
+        self.etags[i.try_into().unwrap()]
     }
 
-    fn n_faces(&self) -> usize {
-        self.face_to_node_ptr.len() - 1
+    fn n_faces(&self) -> T {
+        (self.face_to_node_ptr.len() - 1).try_into().unwrap()
     }
 
-    fn face(&self, i: usize) -> &[usize] {
-        let start = self.face_to_node_ptr[i];
-        let end = self.face_to_node_ptr[i + 1];
+    fn face(&self, i: T) -> &[T] {
+        let start = self.face_to_node_ptr[i.try_into().unwrap()]
+            .try_into()
+            .unwrap();
+        let end = self.face_to_node_ptr[i.try_into().unwrap() + 1]
+            .try_into()
+            .unwrap();
         &self.face_to_node[start..end]
     }
 
-    fn ftag(&self, i: usize) -> Tag {
-        self.ftags[i]
+    fn ftag(&self, i: T) -> Tag {
+        self.ftags[i.try_into().unwrap()]
     }
 }
 
-pub fn merge_polylines(polylines: &[&[usize]]) -> Vec<Vec<usize>> {
+pub fn merge_polylines<T: Idx>(polylines: &[&[T]]) -> Vec<Vec<T>> {
     let mut res = Vec::new();
     let (polyline, next) = try_merge_polylines(polylines);
     res.push(polyline);
@@ -490,7 +537,7 @@ pub fn merge_polylines(polylines: &[&[usize]]) -> Vec<Vec<usize>> {
     res
 }
 
-fn try_merge_polylines<'a>(polylines: &[&'a [usize]]) -> (Vec<usize>, Vec<&'a [usize]>) {
+fn try_merge_polylines<'a, T: Idx>(polylines: &[&'a [T]]) -> (Vec<T>, Vec<&'a [T]>) {
     let mut mask = vec![true; polylines.len()];
     let mut connectivity = Vec::with_capacity(polylines.len());
 
@@ -538,7 +585,7 @@ fn try_merge_polylines<'a>(polylines: &[&'a [usize]]) -> (Vec<usize>, Vec<&'a [u
     (connectivity, unmerged)
 }
 
-fn polygon_edges(face: &[usize]) -> impl ExactSizeIterator<Item = [usize; 2]> + '_ {
+fn polygon_edges<T: Idx>(face: &[T]) -> impl ExactSizeIterator<Item = [T; 2]> + '_ {
     let n_edgs = face.len();
     (0..n_edgs).map(move |i_edg| {
         if i_edg == n_edgs - 1 {
@@ -549,7 +596,7 @@ fn polygon_edges(face: &[usize]) -> impl ExactSizeIterator<Item = [usize; 2]> + 
     })
 }
 
-pub fn merge_polygons(polylines: &[&[usize]]) -> Vec<Vec<usize>> {
+pub fn merge_polygons<T: Idx>(polylines: &[&[T]]) -> Vec<Vec<T>> {
     let mut res = Vec::new();
     let (polyline, next) = try_merge_polygons(polylines);
     res.push(polyline);
@@ -559,7 +606,7 @@ pub fn merge_polygons(polylines: &[&[usize]]) -> Vec<Vec<usize>> {
     res
 }
 
-fn try_merge_two_polygons(p0: &[usize], p1: &[usize]) -> Result<Vec<usize>> {
+fn try_merge_two_polygons<T: Idx>(p0: &[T], p1: &[T]) -> Result<Vec<T>> {
     for (i0, e0) in polygon_edges(p0).enumerate() {
         for (i1, e1) in polygon_edges(p1).enumerate() {
             if e0[0] == e1[1] && e0[1] == e1[0] {
@@ -595,7 +642,7 @@ fn try_merge_two_polygons(p0: &[usize], p1: &[usize]) -> Result<Vec<usize>> {
     Err(Error::from("unable to merge faces"))
 }
 
-fn try_merge_polygons<'a>(polygons: &[&'a [usize]]) -> (Vec<usize>, Vec<&'a [usize]>) {
+fn try_merge_polygons<'a, T: Idx>(polygons: &[&'a [T]]) -> (Vec<T>, Vec<&'a [T]>) {
     let mut mask = vec![true; polygons.len()];
     let mut connectivity = Vec::with_capacity(polygons.len());
 
