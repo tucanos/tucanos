@@ -63,7 +63,7 @@ impl<T: Idx> CSRGraph<T> {
                 .flatten()
                 .filter(|&i| i != T::MAX)
                 .max()
-                .unwrap_or_else(|| T::ZERO)
+                .unwrap_or(T::ZERO)
                 + T::ONE
         });
         let n = elems.clone().flatten().filter(|&i| i != T::MAX).count();
