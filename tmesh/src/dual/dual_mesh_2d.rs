@@ -95,16 +95,16 @@ impl<T: Idx> DualMesh<T, 2, Triangle<T>> for DualMesh2d<T> {
     fn new<M: Mesh<T, 2, Triangle<T>>>(msh: &M, t: DualType) -> Self {
         // edges
         let all_edges = msh.edges();
-        let n_edges: T = all_edges.len().try_into().unwrap();
+        let n_edges = all_edges.len();
 
-        let n_elems = msh.n_elems();
+        let n_elems = msh.n_elems().try_into().unwrap();
 
         // vertices: boundary
         let mut bdy_verts: FxHashMap<T, T> = msh.faces().flatten().map(|i| (i, T::ZERO)).collect();
-        let n_bdy_verts = bdy_verts.len().try_into().unwrap();
+        let n_bdy_verts = bdy_verts.len();
 
-        let n: T = n_bdy_verts + n_edges + n_elems;
-        let mut verts = Vec::with_capacity(n.try_into().unwrap());
+        let n = n_bdy_verts + n_edges + n_elems;
+        let mut verts = Vec::with_capacity(n);
         for (&i_old, i_new) in &mut bdy_verts {
             *i_new = verts.len().try_into().unwrap();
             verts.push(msh.vert(i_old));
@@ -112,15 +112,15 @@ impl<T: Idx> DualMesh<T, 2, Triangle<T>> for DualMesh2d<T> {
         let vert_ids_bdy = |i: T| *bdy_verts.get(&i).unwrap();
 
         // vertices: edge centers
-        verts.resize(verts.len() + n_edges.try_into().unwrap(), Vert2d::zeros());
-        let vert_idx_edge = |i: T| i + n_bdy_verts;
+        verts.resize(verts.len() + n_edges, Vert2d::zeros());
+        let vert_idx_edge = |i: T| i + n_bdy_verts.try_into().unwrap();
         for (&edge, &i_edge) in &all_edges {
             let ge = GEdge::from([msh.vert(edge[0]), msh.vert(edge[1])]);
             verts[vert_idx_edge(i_edge).try_into().unwrap()] = ge.center();
         }
 
         // vertices: triangle centers
-        let mut vert_idx_elem = vec![T::MAX; n_elems.try_into().unwrap()];
+        let mut vert_idx_elem = vec![T::MAX; n_elems];
         for (i_elem, e) in msh.elems().enumerate() {
             let ge = msh.gelem(&e);
             let center = Self::get_tri_center(&ge, t);
@@ -145,7 +145,8 @@ impl<T: Idx> DualMesh<T, 2, Triangle<T>> for DualMesh2d<T> {
         let mut faces = Vec::with_capacity(n_poly_faces);
         let mut ftags = Vec::with_capacity(n_poly_faces);
 
-        let mut poly_to_face_ptr = vec![0; msh.n_verts().try_into().unwrap() + 1];
+        let n_verts = msh.n_verts().try_into().unwrap();
+        let mut poly_to_face_ptr = vec![0; n_verts + 1];
 
         // internal faces
         for e in msh.elems() {
@@ -166,9 +167,8 @@ impl<T: Idx> DualMesh<T, 2, Triangle<T>> for DualMesh2d<T> {
             poly_to_face_ptr[i + 1] += poly_to_face_ptr[i];
         }
 
-        let mut poly_to_face =
-            vec![(T::MAX, true); poly_to_face_ptr[msh.n_verts().try_into().unwrap()]];
-        let mut edge_normals = vec![Vert2d::zeros(); n_edges.try_into().unwrap()];
+        let mut poly_to_face = vec![(T::MAX, true); poly_to_face_ptr[n_verts]];
+        let mut edge_normals = vec![Vert2d::zeros(); n_edges];
 
         let mut n_empty_faces = 0;
         // build internal faces
@@ -190,7 +190,7 @@ impl<T: Idx> DualMesh<T, 2, Triangle<T>> for DualMesh2d<T> {
                     ]);
                     edge_normals[i_edge.try_into().unwrap()] += sgn * gf.normal();
 
-                    let i_new_face = faces.len();
+                    let i_new_face = faces.len().try_into().unwrap();
                     faces.push(face);
                     ftags.push(0);
 
@@ -199,7 +199,7 @@ impl<T: Idx> DualMesh<T, 2, Triangle<T>> for DualMesh2d<T> {
                         ..poly_to_face_ptr[edg[0].try_into().unwrap() + 1]];
                     for j in slice {
                         if j.0 == T::MAX {
-                            *j = (i_new_face.try_into().unwrap(), true);
+                            *j = (i_new_face, true);
                             ok = true;
                             break;
                         }
@@ -211,7 +211,7 @@ impl<T: Idx> DualMesh<T, 2, Triangle<T>> for DualMesh2d<T> {
                         ..poly_to_face_ptr[edg[1].try_into().unwrap() + 1]];
                     for j in slice {
                         if j.0 == T::MAX {
-                            *j = (i_new_face.try_into().unwrap(), false);
+                            *j = (i_new_face, false);
                             ok = true;
                             break;
                         }
@@ -238,7 +238,7 @@ impl<T: Idx> DualMesh<T, 2, Triangle<T>> for DualMesh2d<T> {
                 ]);
                 bdy_faces.push((f[0], tag, gf.normal()));
 
-                let i_new_face = faces.len();
+                let i_new_face = faces.len().try_into().unwrap();
                 faces.push(face);
                 ftags.push(tag);
 
@@ -247,7 +247,7 @@ impl<T: Idx> DualMesh<T, 2, Triangle<T>> for DualMesh2d<T> {
                     ..poly_to_face_ptr[f[0].try_into().unwrap() + 1]];
                 for j in slice {
                     if j.0 == T::MAX {
-                        *j = (i_new_face.try_into().unwrap(), true);
+                        *j = (i_new_face, true);
                         ok = true;
                         break;
                     }
@@ -261,7 +261,7 @@ impl<T: Idx> DualMesh<T, 2, Triangle<T>> for DualMesh2d<T> {
                 ]);
                 bdy_faces.push((f[0], tag, gf.normal()));
 
-                let i_new_face = faces.len();
+                let i_new_face = faces.len().try_into().unwrap();
                 faces.push(face);
                 ftags.push(tag);
 
@@ -270,7 +270,7 @@ impl<T: Idx> DualMesh<T, 2, Triangle<T>> for DualMesh2d<T> {
                     ..poly_to_face_ptr[f[1].try_into().unwrap() + 1]];
                 for j in slice {
                     if j.0 == T::MAX {
-                        *j = (i_new_face.try_into().unwrap(), true);
+                        *j = (i_new_face, true);
                         ok = true;
                         break;
                     }
@@ -303,7 +303,7 @@ impl<T: Idx> DualMesh<T, 2, Triangle<T>> for DualMesh2d<T> {
 
         assert!(!new_poly_to_face.iter().any(|&i| i.0 == T::MAX));
 
-        let mut edges = vec![Edge::<T>::default(); n_edges.try_into().unwrap()];
+        let mut edges = vec![Edge::<T>::default(); n_edges];
         for (&edg, &i_edg) in &all_edges {
             edges[i_edg.try_into().unwrap()] = edg;
         }
