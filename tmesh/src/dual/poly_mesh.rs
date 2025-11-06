@@ -175,10 +175,10 @@ impl<T: Idx, const D: usize> SimplePolyMesh<T, D> {
         Self {
             poly_type,
             verts: Vec::new(),
-            face_to_node_ptr: vec![0.try_into().unwrap()],
+            face_to_node_ptr: vec![T::ZERO],
             face_to_node: Vec::new(),
             ftags: Vec::new(),
-            elem_to_face_ptr: vec![0.try_into().unwrap()],
+            elem_to_face_ptr: vec![T::ZERO],
             elem_to_face: Vec::new(),
             etags: Vec::new(),
         }
@@ -243,7 +243,7 @@ impl<T: Idx, const D: usize> SimplePolyMesh<T, D> {
 
         let mut new_faces = Vec::new();
         let mut new_faces_ptr = Vec::new();
-        new_faces_ptr.push(0.try_into().unwrap());
+        new_faces_ptr.push(T::ZERO);
         let mut new_faces_elems = Vec::new();
         let mut new_ftags = Vec::new();
         for (elems, faces) in face_groups {
@@ -300,8 +300,7 @@ impl<T: Idx, const D: usize> SimplePolyMesh<T, D> {
             }
         }
 
-        let mut new_elems_ptr: Vec<T> =
-            vec![0.try_into().unwrap(); mesh.n_elems().try_into().unwrap() + 1];
+        let mut new_elems_ptr: Vec<T> = vec![T::ZERO; mesh.n_elems().try_into().unwrap() + 1];
         for &[i0, i1] in &new_faces_elems {
             new_elems_ptr[i0.try_into().unwrap() + 1] += 1.try_into().unwrap();
             if i1 != T::MAX {
@@ -367,13 +366,13 @@ impl<T: Idx, const D: usize> SimplePolyMesh<T, D> {
         // unused vertices
         let mut new_ids = vec![T::MAX; mesh.n_verts().try_into().unwrap()];
         let mut new_verts = Vec::new();
-        let mut next = 0.try_into().unwrap();
+        let mut next = T::ZERO;
         for face in res.faces() {
             for &i in face {
                 if new_ids[i.try_into().unwrap()] == T::MAX {
                     new_ids[i.try_into().unwrap()] = next;
                     new_verts.push(mesh.vert(i));
-                    next += 1.try_into().unwrap();
+                    next += T::ONE;
                 }
             }
         }
@@ -400,12 +399,11 @@ impl<T: Idx, const D: usize> SimplePolyMesh<T, D> {
             .map(|(f, t)| (f.sorted(), t))
             .collect::<FxHashMap<_, _>>();
 
-        let mut elem_to_face_ptr: Vec<T> =
-            vec![0.try_into().unwrap(); mesh.n_elems().try_into().unwrap() + 1];
+        let mut elem_to_face_ptr: Vec<T> = vec![T::ZERO; mesh.n_elems().try_into().unwrap() + 1];
         let mut elem_to_face =
             vec![(T::MAX, true); mesh.n_elems().try_into().unwrap() * C::N_VERTS];
-        let mut face_to_node_ptr: Vec<T> = vec![0.try_into().unwrap(); all_faces.len() + 1];
-        let mut face_to_node = vec![0.try_into().unwrap(); all_faces.len() * C::FACE::N_VERTS];
+        let mut face_to_node_ptr: Vec<T> = vec![T::ZERO; all_faces.len() + 1];
+        let mut face_to_node = vec![T::ZERO; all_faces.len() * C::FACE::N_VERTS];
         let mut ftags = vec![0; all_faces.len()];
 
         for i_elem in 0..mesh.n_elems().try_into().unwrap() {

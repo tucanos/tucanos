@@ -620,7 +620,7 @@ impl<T: Idx> Simplex<T> for Tetrahedron<T> {
     }
 
     fn is_same(&self, other: &Self) -> bool {
-        let f = self.face(0.try_into().unwrap());
+        let f = self.face(T::ZERO);
         other
             .0
             .iter()

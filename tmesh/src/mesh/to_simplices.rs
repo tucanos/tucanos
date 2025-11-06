@@ -104,7 +104,7 @@ pub fn pyr2tets<T: Idx>(pyr: &Pyramid<T>) -> [Tetrahedron<T>; 2] {
 pub fn pri2tets<T: Idx>(pri: &Prism<T>) -> [Tetrahedron<T>; 3] {
     let imin = argmin(&pri.0);
 
-    let mut idx = [0.try_into().unwrap(); 6];
+    let mut idx = [T::ZERO; 6];
     for i in 0..6 {
         idx[i] = pri[INDIRECTION_PRI[imin][i]];
     }
@@ -141,7 +141,7 @@ pub fn pri2tets<T: Idx>(pri: &Prism<T>) -> [Tetrahedron<T>; 3] {
 pub fn hex2tets<T: Idx>(hex: &Hexahedron<T>) -> ([Tetrahedron<T>; 5], Option<Tetrahedron<T>>) {
     let imin = argmin(&hex.0);
 
-    let mut idx = [0.try_into().unwrap(); 8];
+    let mut idx = [T::ZERO; 8];
     for i in 0..8 {
         idx[i] = hex[INDIRECTION_HEX[imin][i]];
     }

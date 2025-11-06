@@ -107,7 +107,7 @@ impl<T: Idx> Partitioner<T> for HilbertPartitioner<T> {
     fn compute(&self) -> Result<Vec<T>> {
         let target_weight =
             self.weights.iter().copied().sum::<f64>() / self.n_parts.try_into().unwrap() as f64;
-        let mut res = vec![0.try_into().unwrap(); self.weights.len()];
+        let mut res = vec![T::ZERO; self.weights.len()];
         let mut part = 0;
         let mut weight = 0.0;
         for &j in &self.ids {
@@ -160,7 +160,7 @@ impl<T: Idx> Partitioner<T> for RCMPartitioner<T> {
     fn compute(&self) -> Result<Vec<T>> {
         let target_weight =
             self.weights.iter().copied().sum::<f64>() / self.n_parts.try_into().unwrap() as f64;
-        let mut res = vec![0.try_into().unwrap(); self.weights.len()];
+        let mut res = vec![T::ZERO; self.weights.len()];
         let mut part = 0;
         let mut weight = 0.0;
         for &j in &self.ids {

@@ -100,11 +100,7 @@ impl<T: Idx> DualMesh<T, 2, Triangle<T>> for DualMesh2d<T> {
         let n_elems = msh.n_elems();
 
         // vertices: boundary
-        let mut bdy_verts: FxHashMap<T, T> = msh
-            .faces()
-            .flatten()
-            .map(|i| (i, 0.try_into().unwrap()))
-            .collect();
+        let mut bdy_verts: FxHashMap<T, T> = msh.faces().flatten().map(|i| (i, T::ZERO)).collect();
         let n_bdy_verts = bdy_verts.len().try_into().unwrap();
 
         let n: T = n_bdy_verts + n_edges + n_elems;
@@ -290,7 +286,7 @@ impl<T: Idx> DualMesh<T, 2, Triangle<T>> for DualMesh2d<T> {
         let n = poly_to_face.iter().filter(|&i| i.0 != T::MAX).count();
 
         let mut new_poly_to_face_ptr = Vec::with_capacity(poly_to_face_ptr.len());
-        new_poly_to_face_ptr.push(0.try_into().unwrap());
+        new_poly_to_face_ptr.push(T::ZERO);
         let mut new_poly_to_face = Vec::with_capacity(n);
         for i_elem in 0..msh.n_verts().try_into().unwrap() {
             for v in poly_to_face

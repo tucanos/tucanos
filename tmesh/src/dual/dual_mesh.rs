@@ -296,7 +296,7 @@ pub trait DualMesh<T: Idx, const D: usize, C: Simplex<T>>: PolyMesh<T, D> {
 
         let mut new_ids = vec![T::MAX; self.n_verts().try_into().unwrap()];
         let mut vert_ids = Vec::new();
-        let mut next = 0.try_into().unwrap();
+        let mut next = T::ZERO;
 
         let n_faces = self
             .faces()
@@ -307,7 +307,7 @@ pub trait DualMesh<T: Idx, const D: usize, C: Simplex<T>>: PolyMesh<T, D> {
                     if new_ids[i.try_into().unwrap()] == T::MAX {
                         new_ids[i.try_into().unwrap()] = next;
                         vert_ids.push(i);
-                        next += 1.try_into().unwrap();
+                        next += T::ONE;
                     }
                 }
             })

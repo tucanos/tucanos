@@ -18,11 +18,11 @@ fn argsort<T: Idx>(data: &[T]) -> Vec<T> {
 #[must_use]
 pub fn reindex<T: Idx, const N: usize>(elems: &[[T; N]]) -> (Vec<[T; N]>, FxHashMap<T, T>) {
     let mut map = FxHashMap::with_hasher(FxBuildHasher);
-    let mut next: T = 0.try_into().unwrap();
+    let mut next: T = T::ZERO;
     for i in elems.iter().copied().flatten() {
         if let std::collections::hash_map::Entry::Vacant(e) = map.entry(i) {
             e.insert(next);
-            next += 1.try_into().unwrap();
+            next += T::ONE;
         }
     }
 
@@ -63,20 +63,20 @@ impl<T: Idx> CSRGraph<T> {
                 .flatten()
                 .filter(|&i| i != T::MAX)
                 .max()
-                .unwrap_or_else(|| 0.try_into().unwrap())
-                + 1.try_into().unwrap()
+                .unwrap_or_else(|| T::ZERO)
+                + T::ONE
         });
         let n = elems.clone().flatten().filter(|&i| i != T::MAX).count();
 
         let mut res = Self {
-            ptr: vec![0.try_into().unwrap(); nv.try_into().unwrap() + 1],
+            ptr: vec![T::ZERO; nv.try_into().unwrap() + 1],
             indices: vec![T::MAX; n],
             values: None,
-            m: 0.try_into().unwrap(),
+            m: T::ZERO,
         };
 
         for i in elems.flatten().filter(|&i| i != T::MAX) {
-            res.ptr[i.try_into().unwrap() + 1] += 1.try_into().unwrap();
+            res.ptr[i.try_into().unwrap() + 1] += T::ONE;
         }
 
         for i in 0..nv.try_into().unwrap() {
@@ -159,7 +159,7 @@ impl<T: Idx> CSRGraph<T> {
     ) -> Self {
         let mut res = Self::set_ptr(elems.clone(), n_verts);
         res.m = elems.len().try_into().unwrap();
-        let mut values = vec![0.try_into().unwrap(); res.indices.len()];
+        let mut values = vec![T::ZERO; res.indices.len()];
 
         for (i, e) in elems.enumerate() {
             for (v, i_vert) in e.into_iter().filter(|&i| i != T::MAX).enumerate() {
@@ -251,13 +251,13 @@ impl<T: Idx> CSRGraph<T> {
     #[must_use]
     pub fn reverse_cuthill_mckee(&self) -> Vec<T> {
         // strongly inspired from scipy
-        let mut order = vec![0.try_into().unwrap(); self.n().try_into().unwrap()];
+        let mut order = vec![T::ZERO; self.n().try_into().unwrap()];
         let degree = self.node_degrees();
         let inds = argsort(&degree);
         let mut flg = vec![true; self.n().try_into().unwrap()];
         let rev_inds = argsort(&inds);
         let mut tmp_degrees =
-            vec![0.try_into().unwrap(); degree.iter().copied().max().unwrap().try_into().unwrap()];
+            vec![T::ZERO; degree.iter().copied().max().unwrap().try_into().unwrap()];
         let mut n = 0;
 
         for idx in 0..self.n().try_into().unwrap() {
@@ -330,7 +330,7 @@ impl<T: Idx> CSRGraph<T> {
             new_ids[j.try_into().unwrap()] = i.try_into().unwrap();
             m += 1;
         }
-        let mut ptr = vec![0.try_into().unwrap()];
+        let mut ptr = vec![T::ZERO];
         let mut indices = Vec::new();
         let mut values = Vec::new();
         for (old_i, &new_i) in new_ids.iter().enumerate() {
@@ -398,13 +398,13 @@ impl<T: Idx> ConnectedComponents<T> {
 
     fn compute(&mut self, g: &CSRGraph<T>) -> Result<()> {
         let mut start = 0;
-        let mut component = 0.try_into().unwrap();
+        let mut component = T::ZERO;
         while start < g.n().try_into().unwrap() {
             self.compute_from(g, &[start.try_into().unwrap()], component);
             while start < g.n().try_into().unwrap() && self.vtag[start] < T::MAX {
                 start += 1;
             }
-            component += 1.try_into().unwrap();
+            component += T::ONE;
             if component == T::MAX {
                 return Err(Error::from("too many connected components"));
             }

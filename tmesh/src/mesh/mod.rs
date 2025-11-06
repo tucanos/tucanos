@@ -832,8 +832,7 @@ pub trait Mesh<T: Idx, const D: usize, C: Simplex<T>>: Send + Sync + Sized {
     fn reorder_vertices(&self, vert_indices: &[T]) -> Self {
         assert_eq!(vert_indices.len(), self.n_verts().try_into().unwrap());
 
-        let mut new_vert_indices: Vec<T> =
-            vec![0.try_into().unwrap(); self.n_verts().try_into().unwrap()];
+        let mut new_vert_indices: Vec<T> = vec![T::ZERO; self.n_verts().try_into().unwrap()];
         vert_indices.iter().enumerate().for_each(|(i, &new_i)| {
             new_vert_indices[new_i.try_into().unwrap()] = i.try_into().unwrap();
         });
@@ -1167,7 +1166,7 @@ pub trait Mesh<T: Idx, const D: usize, C: Simplex<T>>: Send + Sync + Sized {
     fn extract_faces<M: Mesh<T, D, C::FACE>, G: Fn(Tag) -> bool>(&self, filter: G) -> (M, Vec<T>) {
         let mut new_ids = vec![T::MAX; self.n_verts().try_into().unwrap()];
         let mut vert_ids = Vec::new();
-        let mut next = 0.try_into().unwrap();
+        let mut next = T::ZERO;
 
         let n_faces = self
             .faces()
@@ -1178,7 +1177,7 @@ pub trait Mesh<T: Idx, const D: usize, C: Simplex<T>>: Send + Sync + Sized {
                     if new_ids[i.try_into().unwrap()] == T::MAX {
                         new_ids[i.try_into().unwrap()] = next;
                         vert_ids.push(i);
-                        next += 1.try_into().unwrap();
+                        next += T::ONE;
                     }
                 }
             })
@@ -1515,7 +1514,7 @@ pub trait Mesh<T: Idx, const D: usize, C: Simplex<T>>: Send + Sync + Sized {
         for (e, t) in other.elems().zip(other.etags()) {
             if elem_filter(t) {
                 for i in e {
-                    new_vert_ids[i.try_into().unwrap()] = T::MAX - 1.try_into().unwrap();
+                    new_vert_ids[i.try_into().unwrap()] = T::MAX - T::ONE;
                 }
             }
         }
@@ -1551,10 +1550,10 @@ pub trait Mesh<T: Idx, const D: usize, C: Simplex<T>>: Send + Sync + Sized {
         let mut next = n_verts;
         let mut added_verts = Vec::new();
         new_vert_ids.iter_mut().enumerate().for_each(|(i, x)| {
-            if *x == T::MAX - 1.try_into().unwrap() {
+            if *x == T::MAX - T::ONE {
                 added_verts.push(i);
                 *x = next;
-                next += 1.try_into().unwrap();
+                next += T::ONE;
                 self.add_verts(std::iter::once(other.vert(i.try_into().unwrap())));
             }
         });
