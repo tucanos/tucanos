@@ -356,55 +356,52 @@ impl MetisPartMethod for MetisKWay {
 
 /// Metis preconditionner
 #[cfg(feature = "metis")]
-pub struct MetisPartitioner<T: MetisPartMethod> {
+pub struct MetisPartitioner<T: Idx, T2: MetisPartMethod> {
     n_parts: T,
-    graph: CSRGraph,
+    graph: CSRGraph<T>,
     #[allow(dead_code)]
     weights: Vec<f64>,
-    t: PhantomData<T>,
+    t: PhantomData<T2>,
 }
 
 #[cfg(feature = "metis")]
-impl<T: MetisPartMethod> Partitioner for MetisPartitioner<T> {
-    fn new<const D: T, C: Simplex, M: Mesh<D, C>>(
+impl<T: Idx, T2: MetisPartMethod> Partitioner<T> for MetisPartitioner<T, T2> {
+    fn new<const D: usize, C: Simplex<T>, M: Mesh<T, D, C>>(
         msh: &M,
         n_parts: T,
         weights: Option<Vec<f64>>,
-    ) -> Result<Self>
-    where
-        Cell<C>: Simplex<C>,
-        Face<F>: Simplex<F>,
-    {
+    ) -> Result<Self> {
         let faces = msh.all_faces();
         let graph = msh.element_pairs(&faces);
 
-        let weights = weights.unwrap_or_else(|| vec![1.0; msh.n_elems()]);
+        let weights = weights.unwrap_or_else(|| vec![1.0; msh.n_elems().try_into().unwrap()]);
 
         Ok(Self {
             n_parts,
             graph,
             weights,
-            t: PhantomData::<T>,
+            t: PhantomData::<T2>,
         })
     }
     fn compute(&self) -> Result<Vec<T>> {
-        let mut xadj = Vec::<metis::Idx>::with_capacity(self.graph.n() + 1);
-        let mut adjncy = Vec::<metis::Idx>::with_capacity(self.graph.n_edges());
+        let mut xadj = Vec::<metis::Idx>::with_capacity(self.graph.n().try_into().unwrap() + 1);
+        let mut adjncy = Vec::<metis::Idx>::with_capacity(self.graph.n_edges().try_into().unwrap());
 
         xadj.push(0);
         for row in self.graph.rows() {
             for &j in row {
+                let j: usize = j.try_into().unwrap();
                 adjncy.push(j.try_into().unwrap());
             }
             xadj.push(adjncy.len().try_into().unwrap());
         }
 
-        let metis_graph =
-            metis::Graph::new(1, self.n_parts.try_into().unwrap(), &mut xadj, &mut adjncy);
+        let n_parts: usize = self.n_parts.try_into().unwrap();
+        let metis_graph = metis::Graph::new(1, n_parts.try_into().unwrap(), &mut xadj, &mut adjncy);
 
-        let mut partition = vec![0; self.graph.n()];
+        let mut partition = vec![0; self.graph.n().try_into().unwrap()];
 
-        let _ = match T::method() {
+        let _ = match T2::method() {
             MetisMethod::Recursive => metis_graph.part_recursive(&mut partition)?,
             MetisMethod::KWay => metis_graph.part_kway(&mut partition)?,
         };
@@ -412,7 +409,13 @@ impl<T: MetisPartMethod> Partitioner for MetisPartitioner<T> {
         // metis_graph.part_kway(&mut partition).unwrap()?;
 
         // convert to T
-        let partition = partition.iter().map(|&x| x.try_into().unwrap()).collect();
+        let partition = partition
+            .iter()
+            .map(|&x| {
+                let x: usize = x.try_into().unwrap();
+                x.try_into().unwrap()
+            })
+            .collect();
         Ok(partition)
     }
 
@@ -420,7 +423,7 @@ impl<T: MetisPartMethod> Partitioner for MetisPartitioner<T> {
         self.n_parts
     }
 
-    fn graph(&self) -> &CSRGraph {
+    fn graph(&self) -> &CSRGraph<T> {
         &self.graph
     }
 }
@@ -492,7 +495,7 @@ mod tests {
         let msh: Mesh3d = box_mesh(1.0, 10, 1.0, 15, 1.0, 20);
         let msh = msh.random_shuffle();
 
-        let partitioner = MetisPartitioner::<MetisRecursive>::new(&msh, 4, None).unwrap();
+        let partitioner = MetisPartitioner::<_, MetisRecursive>::new(&msh, 4, None).unwrap();
         let parts = partitioner.compute().unwrap();
 
         assert!(partitioner.partition_quality(&parts) < 0.041);

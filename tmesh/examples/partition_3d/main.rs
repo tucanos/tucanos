@@ -113,7 +113,7 @@ fn main() -> Result<()> {
     {
         let start = Instant::now();
         let (quality, imbalance) =
-            msh.partition::<MetisPartitioner<MetisRecursive>>(n_parts, None)?;
+            msh.partition::<MetisPartitioner<_, MetisRecursive>>(n_parts, None)?;
         let t = start.elapsed();
         println!(
             "MetisPartitioner<MetisRecursive>: {:.2e}s, quality={:.2e}, imbalance={:.2e}",
@@ -129,7 +129,8 @@ fn main() -> Result<()> {
         }
 
         let start = Instant::now();
-        let (quality, imbalance) = msh.partition::<MetisPartitioner<MetisKWay>>(n_parts, None)?;
+        let (quality, imbalance) =
+            msh.partition::<MetisPartitioner<_, MetisKWay>>(n_parts, None)?;
         let t = start.elapsed();
         println!(
             "MetisPartitioner<MetisKWay>: {:.2e}s, quality={:.2e}, imbalance={:.2e}",
