@@ -9,7 +9,7 @@ use tmesh::mesh::{Mesh, partition::PartitionType};
 use tucanos::{
     Result, Tag, TopoTag,
     geometry::Geometry,
-    mesh::{GElem, HasTmeshImpl, Point, SimplexMesh, Tetrahedron, Topology},
+    mesh::{GElem, HasTmeshImpl, Vertex, SimplexMesh, Tetrahedron, Topology},
     metric::{AnisoMetric3d, Metric},
     remesher::{ParallelRemesher, ParallelRemesherParams, Remesher, RemesherParams},
 };
@@ -61,19 +61,19 @@ impl Simple3dGeometry {
         }
     }
 
-    fn normal(&self, pt: &Point<3>, tag: TopoTag) -> Point<3> {
+    fn normal(&self, pt: &Vertex<3>, tag: TopoTag) -> Vertex<3> {
         let n = match tag.0 {
             2 => match tag.1 {
-                SYMMETRY_TAG => Point::<3>::new(0.0, 0.0, -1.0),
+                SYMMETRY_TAG => Vertex::<3>::new(0.0, 0.0, -1.0),
                 FARFIELD_TAG => {
                     let r = pt.norm();
                     1. / r * *pt
                 }
                 WING_TAG => {
                     let (nx, ny) = self.ellipse.normal(pt[0], pt[1]);
-                    -Point::<3>::new(nx, ny, 0.0)
+                    -Vertex::<3>::new(nx, ny, 0.0)
                 }
-                WINGTIP_TAG => Point::<3>::new(0.0, 0.0, -1.0),
+                WINGTIP_TAG => Vertex::<3>::new(0.0, 0.0, -1.0),
                 _ => panic!("Invalid tag {tag:?}"),
             },
             _ => panic!("Invalid tag {tag:?}"),
@@ -87,7 +87,7 @@ impl Geometry<3> for Simple3dGeometry {
         Ok(())
     }
 
-    fn project(&self, pt: &mut Point<3>, tag: &TopoTag) -> f64 {
+    fn project(&self, pt: &mut Vertex<3>, tag: &TopoTag) -> f64 {
         let old = *pt;
 
         if tag.1 < 0 {
@@ -96,23 +96,23 @@ impl Geometry<3> for Simple3dGeometry {
 
         *pt = match tag.0 {
             2 => match tag.1 {
-                SYMMETRY_TAG => Point::<3>::new(old[0], old[1], 0.0),
+                SYMMETRY_TAG => Vertex::<3>::new(old[0], old[1], 0.0),
                 FARFIELD_TAG => {
                     let r = old.norm();
                     (self.r / r) * old
                 }
                 WING_TAG => {
                     let (x, y) = self.ellipse.project(old[0], old[1]);
-                    Point::<3>::new(x, y, old[2].clamp(0.0, 1.0))
+                    Vertex::<3>::new(x, y, old[2].clamp(0.0, 1.0))
                 }
                 WINGTIP_TAG => {
                     let x = old[0];
                     let y = old[1];
                     if self.ellipse.is_in(x, y) {
-                        Point::<3>::new(x, y, 1.0)
+                        Vertex::<3>::new(x, y, 1.0)
                     } else {
                         let (x, y) = self.ellipse.project(x, y);
-                        Point::<3>::new(x, y, 1.0)
+                        Vertex::<3>::new(x, y, 1.0)
                     }
                 }
 
@@ -131,15 +131,15 @@ impl Geometry<3> for Simple3dGeometry {
                 if parents[0] == WING_TAG {
                     if parents[1] == WINGTIP_TAG {
                         let (x, y) = self.ellipse.project(x, y);
-                        Point::<3>::new(x, y, 1.0)
+                        Vertex::<3>::new(x, y, 1.0)
                     } else {
                         assert_eq!(parents[1], SYMMETRY_TAG);
                         let (x, y) = self.ellipse.project(x, y);
-                        Point::<3>::new(x, y, 0.0)
+                        Vertex::<3>::new(x, y, 0.0)
                     }
                 } else if parents[0] == FARFIELD_TAG {
                     let r = x.hypot(y);
-                    self.r / r * Point::<3>::new(x, y, 0.0)
+                    self.r / r * Vertex::<3>::new(x, y, 0.0)
                 } else {
                     unreachable!("{parents:?}");
                 }
@@ -150,7 +150,7 @@ impl Geometry<3> for Simple3dGeometry {
         (*pt - old).norm()
     }
 
-    fn angle(&self, pt: &Point<3>, n: &Point<3>, tag: &TopoTag) -> f64 {
+    fn angle(&self, pt: &Vertex<3>, n: &Vertex<3>, tag: &TopoTag) -> f64 {
         let n_ref = self.normal(pt, *tag);
         let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
         f64::acos(cos_a).to_degrees()

@@ -1,13 +1,17 @@
 use crate::{
     Result, Tag,
     geometry::LinearGeometry,
-    mesh::{Edge, HasTmeshImpl, Point, SimplexMesh, Tetrahedron, Triangle},
+    mesh::{SimplexMesh, SubSimplexMesh},
     metric::{AnisoMetric2d, AnisoMetric3d},
 };
 use log::debug;
 use rustc_hash::FxHashSet;
+use tmesh::{
+    Vert2d,
+    mesh::{Edge, Idx, Mesh, Tetrahedron, Triangle},
+};
 
-impl SimplexMesh<3, Tetrahedron> {
+impl<T: Idx> SimplexMesh<T, 3, Tetrahedron<T>> {
     /// Compute an anisotropic metric based on the boundary curvature
     /// - geom : the geometry on which the curvature is computed
     /// - r_h: the curvature radius to element size ratio
@@ -17,7 +21,7 @@ impl SimplexMesh<3, Tetrahedron> {
     #[allow(clippy::too_many_arguments)]
     pub fn curvature_metric(
         &self,
-        geom: &LinearGeometry<3, Triangle>,
+        geom: &LinearGeometry<T, 3, Triangle<T>>,
         r_h: f64,
         beta: f64,
         t: f64,
@@ -28,18 +32,18 @@ impl SimplexMesh<3, Tetrahedron> {
     ) -> Result<Vec<AnisoMetric3d>> {
         debug!("Compute the curvature metric with r/h = {r_h} and gradation = {beta}");
 
-        let (bdy, boundary_vertex_ids) = self.boundary();
+        let (bdy, boundary_vertex_ids) = self.boundary::<SimplexMesh<_, _, _>>();
         let bdy_tags: FxHashSet<Tag> = bdy.etags().collect();
 
         // Initialize the metric field
         let m = AnisoMetric3d::default();
-        let n_verts = self.n_verts() as usize;
+        let n_verts = self.n_verts().try_into().unwrap();
         let mut curvature_metric = vec![m; n_verts];
         let mut flg = vec![false; n_verts];
 
         // Set the metric at the boundary vertices
         for tag in bdy_tags {
-            let ids = bdy.extract_tag(tag).parent_vert_ids;
+            let ids = SubSimplexMesh::new(&bdy, |t| t == tag).parent_vert_ids;
             let use_h_n = h_n_tags.is_some_and(|h_n_tags| h_n_tags.contains(&tag));
             ids.iter()
                 .map(|&i| (i, boundary_vertex_ids[i as usize]))
@@ -70,8 +74,9 @@ impl SimplexMesh<3, Tetrahedron> {
                     u *= hu;
                     v *= hv;
 
-                    curvature_metric[i_vert as usize] = AnisoMetric3d::from_sizes(&n, &u, &v);
-                    flg[i_vert as usize] = true;
+                    curvature_metric[i_vert.try_into().unwrap()] =
+                        AnisoMetric3d::from_sizes(&n, &u, &v);
+                    flg[i_vert.try_into().unwrap()] = true;
                 });
         }
 
@@ -81,7 +86,7 @@ impl SimplexMesh<3, Tetrahedron> {
     }
 }
 
-impl SimplexMesh<2, Triangle> {
+impl<T: Idx> SimplexMesh<T, 2, Triangle<T>> {
     /// Compute an anisotropic metric based on the boundary curvature
     /// - geom : the geometry on which the curvature is computed
     /// - r_h: the curvature radius to element size ratio
@@ -91,7 +96,7 @@ impl SimplexMesh<2, Triangle> {
     #[allow(clippy::too_many_arguments)]
     pub fn curvature_metric(
         &self,
-        geom: &LinearGeometry<2, Edge>,
+        geom: &LinearGeometry<T, 2, Edge<T>>,
         r_h: f64,
         beta: f64,
         t: f64,
@@ -102,18 +107,18 @@ impl SimplexMesh<2, Triangle> {
     ) -> Result<Vec<AnisoMetric2d>> {
         debug!("Compute the curvature metric with r/h = {r_h} and gradation = {beta}");
 
-        let (bdy, boundary_vertex_ids) = self.boundary();
+        let (bdy, boundary_vertex_ids) = self.boundary::<SimplexMesh<_, _, _>>();
         let bdy_tags: FxHashSet<Tag> = bdy.etags().collect();
 
         // Initialize the metric field
         let m = AnisoMetric2d::default();
-        let n_verts = self.n_verts() as usize;
+        let n_verts = self.n_verts().try_into().unwrap();
         let mut curvature_metric = vec![m; n_verts];
         let mut flg = vec![false; n_verts];
 
         // Set the metric at the boundary vertices
         for tag in bdy_tags {
-            let ids = bdy.extract_tag(tag).parent_vert_ids;
+            let ids = SubSimplexMesh::new(&bdy, |t| t == tag).parent_vert_ids;
             let use_h_n = h_n_tags.is_some_and(|h_n_tags| h_n_tags.contains(&tag));
             ids.iter()
                 .map(|&i| (i, boundary_vertex_ids[i as usize]))
@@ -136,11 +141,12 @@ impl SimplexMesh<2, Triangle> {
                     }
                     u.normalize_mut();
 
-                    let n = hn * Point::<2>::new(-u[1], u[0]);
+                    let n = hn * Vert2d::new(-u[1], u[0]);
                     u *= hu;
 
-                    curvature_metric[i_vert as usize] = AnisoMetric2d::from_sizes(&n, &u);
-                    flg[i_vert as usize] = true;
+                    curvature_metric[i_vert.try_into().unwrap()] =
+                        AnisoMetric2d::from_sizes(&n, &u);
+                    flg[i_vert.try_into().unwrap()] = true;
                 });
         }
 
@@ -155,12 +161,14 @@ mod tests {
     use crate::{
         ANISO_MAX, Result,
         geometry::LinearGeometry,
-        mesh::Point,
-        mesh::test_meshes::test_mesh_3d,
+        mesh::{SimplexMesh, test_meshes::test_mesh_3d},
         metric::{AnisoMetric3d, Metric},
     };
     use nalgebra::SVector;
-    use tmesh::mesh::Mesh;
+    use tmesh::{
+        Vert3d,
+        mesh::{Mesh, MutMesh},
+    };
 
     #[test]
     #[allow(clippy::too_many_lines)]
@@ -169,20 +177,20 @@ mod tests {
         let (r_in, r_out) = (0.1, 0.5);
         let mut mesh = test_mesh_3d().split().split().split();
 
-        mesh.mut_verts().for_each(|p| {
+        mesh.verts_mut().for_each(|p| {
             let r = r_in + (r_out - r_in) * p[0];
             let theta = 3.0 * p[1];
             let z = p[2];
             let x = r * f64::cos(theta);
             let y = r * f64::sin(theta);
-            *p = Point::<3>::new(x, y, z);
+            *p = Vert3d::new(x, y, z);
         });
 
         mesh.compute_topology();
         mesh.compute_vertex_to_vertices();
 
         // build the geometry
-        let (bdy, bdy_ids) = mesh.boundary();
+        let (bdy, bdy_ids) = mesh.boundary::<SimplexMesh<_, _, _>>();
 
         // tag vertices on the interior & exterior cylinders
         let mut bdy_flg = vec![0; bdy.n_verts() as usize];
@@ -261,9 +269,9 @@ mod tests {
 
         // test metric
         let mfunc = |_p| {
-            let v0 = Point::<3>::new(0.2, 0., 0.);
-            let v1 = Point::<3>::new(0.0, 0.1, 0.);
-            let v2 = Point::<3>::new(0., 0.0, 1e-4);
+            let v0 = Vert3d::new(0.2, 0., 0.);
+            let v1 = Vert3d::new(0.0, 0.1, 0.);
+            let v2 = Vert3d::new(0., 0.0, 1e-4);
             AnisoMetric3d::from_sizes(&v0, &v1, &v2)
         };
         let mut m: Vec<_> = mesh.verts().map(mfunc).collect();

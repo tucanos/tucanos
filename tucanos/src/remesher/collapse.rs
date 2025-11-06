@@ -2,7 +2,6 @@ use super::Remesher;
 use crate::{
     Result,
     geometry::Geometry,
-    mesh::{Elem, HasTmeshImpl, SimplexMesh},
     metric::Metric,
     remesher::{
         cavity::{Cavity, CavityCheckStatus, FilledCavity, FilledCavityType},
@@ -11,7 +10,7 @@ use crate::{
     },
 };
 use log::{debug, trace};
-
+use tmesh::mesh::{Idx, Simplex};
 #[derive(Clone, Debug)]
 pub struct CollapseParams {
     // Length below which collapse is applied
@@ -44,10 +43,7 @@ impl Default for CollapseParams {
     }
 }
 
-impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M>
-where
-    SimplexMesh<D, E>: HasTmeshImpl<D, E>,
-{
+impl<T: Idx, const D: usize, C: Simplex<T>, M: Metric<D>> Remesher<T, D, C, M> {
     /// Loop over the edges and collapse them if
     /// - their length is smaller that 1/sqrt(2)
     /// - no edge larger than
@@ -81,13 +77,14 @@ where
             let dims_and_lengths: Vec<_> = self.dims_and_lengths_iter().collect();
             let indices = argsort_edges_increasing_length(&dims_and_lengths);
 
-            let mut n_collapses = 0;
-            let mut n_fails = 0;
+            let mut n_collapses = T::ZERO;
+            let mut n_fails = T::ZERO;
             for i_edge in indices {
                 let edg = edges[i_edge];
                 if dims_and_lengths[i_edge].1 < params.l {
                     trace!("Try to collapse edgs {edg:?}");
-                    let (mut i0, mut i1) = edg.into();
+                    let mut i0 = edg[0];
+                    let mut i1 = edg[1];
                     if !self.verts.contains_key(&i0) {
                         trace!("Cannot collapse: vertex deleted");
                         continue;
@@ -125,9 +122,7 @@ where
 
                     // too difficult otherwise!
                     if !cavity.tagged_faces.is_empty()
-                        && !cavity
-                            .tagged_faces()
-                            .any(|(f, _)| f.contains_vertex(local_i1))
+                        && !cavity.tagged_faces().any(|(f, _)| f.contains(local_i1))
                     {
                         continue;
                     }
@@ -159,29 +154,29 @@ where
 
                         for (f, t) in filled_cavity.faces() {
                             let f = cavity.global_elem(&f);
-                            assert!(!f.contains_vertex(i1));
-                            self.insert_elem(E::from_vertex_and_face(i1, &f), t)?;
+                            assert!(!f.contains(i1));
+                            self.insert_elem(C::from_vertex_and_face(i1, &f), t)?;
                         }
                         for (f, _) in cavity.global_tagged_faces() {
                             self.remove_tagged_face(f)?;
                         }
                         for (b, t) in filled_cavity.tagged_faces_boundary_global() {
-                            assert!(!b.contains_vertex(i1));
+                            assert!(!b.contains(i1));
                             // self.add_tagged_face(E::Face::from_vertex_and_face(i1, &b), t)?;
                             if self
-                                .add_tagged_face(E::Face::from_vertex_and_face(i1, &b), t)
+                                .add_tagged_face(C::FACE::from_vertex_and_face(i1, &b), t)
                                 .is_err()
                             {
                                 panic!(
                                     "error with face {:?}",
-                                    E::Face::from_vertex_and_face(i1, &b)
+                                    C::FACE::from_vertex_and_face(i1, &b)
                                 );
                             }
                         }
 
-                        n_collapses += 1;
+                        n_collapses += T::ONE;
                     } else {
-                        n_fails += 1;
+                        n_fails += T::ONE;
                     }
                 }
             }
@@ -195,7 +190,7 @@ where
                 n_fails,
                 self,
             )));
-            if n_collapses == 0 || n_iter == params.max_iter {
+            if n_collapses == T::ZERO || n_iter == params.max_iter {
                 if debug {
                     self.check().unwrap();
                 }

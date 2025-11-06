@@ -35,6 +35,15 @@ where
     const N_FACES: usize;
     const EDGES: &'static [Edge<usize>];
 
+    type DATA<T2: Default + Clone + Copy + Debug>: IntoIterator<Item = T2>
+        + Debug
+        + Clone
+        + Copy
+        + Default
+        + Index<usize, Output = T2>
+        + IndexMut<usize, Output = T2>
+        + AsRef<[T2]>;
+
     fn from_other<C: Simplex<T>>(other: C) -> Self {
         assert_eq!(Self::DIM, C::DIM);
         assert_eq!(Self::N_VERTS, C::N_VERTS);
@@ -50,6 +59,20 @@ where
         for (i, j) in iter.into_iter().enumerate() {
             assert!(i < Self::N_VERTS);
             res[i] = j.try_into().unwrap();
+            count += 1;
+        }
+        assert_eq!(count, Self::N_VERTS);
+        res
+    }
+
+    fn data_from_iter<T2: Default + Clone + Copy + Debug, I: IntoIterator<Item = T2>>(
+        iter: I,
+    ) -> Self::DATA<T2> {
+        let mut res = Self::DATA::default();
+        let mut count = 0;
+        for (i, j) in iter.into_iter().enumerate() {
+            assert!(i < Self::N_VERTS);
+            res[i] = j;
             count += 1;
         }
         assert_eq!(count, Self::N_VERTS);
@@ -152,6 +175,7 @@ pub trait GSimplex<const D: usize>:
         + Default
         + Index<usize, Output = f64>
         + IndexMut<usize, Output = f64>;
+
     type TOPO<T: Idx>: Simplex<T>;
     type FACE: GSimplex<D>;
     const N_VERTS: usize;
@@ -166,6 +190,22 @@ pub trait GSimplex<const D: usize>:
         }
         assert_eq!(count, Self::N_VERTS);
         res
+    }
+
+    /// Create an element from a vertex Id and the opposite face
+    fn from_vertex_and_face(v: &Vertex<D>, f: &Self::FACE) -> Self {
+        let mut e = Self::default();
+        e[0] = *v;
+        for i in 1..Self::N_VERTS {
+            e[i] = f[i - 1];
+        }
+        e
+    }
+
+    /// Get the i-th edge for the current simplex
+    fn edge<T: Idx>(&self, i: T) -> Vertex<D> {
+        let f = <Self::TOPO<T> as Simplex<T>>::local_edge(i);
+        self[f[1].try_into().unwrap()] - self[f[0].try_into().unwrap()]
     }
 
     /// Get the i-th face for the current simplex
@@ -262,6 +302,7 @@ impl<T: Idx> Simplex<T> for Node<T> {
     const N_EDGES: usize = 0;
     const N_FACES: usize = 1;
     const EDGES: &'static [Edge<usize>] = &NODE2EDGES;
+    type DATA<T2: Default + Clone + Copy + Debug> = [T2; 0];
 
     fn local_face(i: T) -> Self::FACE {
         Self::FACE::from_iter(NODE2FACES[i.try_into().unwrap()])
@@ -346,6 +387,7 @@ impl<T: Idx> Simplex<T> for Edge<T> {
     const N_EDGES: usize = 1;
     const N_FACES: usize = 2;
     const EDGES: &'static [Edge<usize>] = &EDGE2EDGES;
+    type DATA<T2: Default + Clone + Copy + Debug> = [T2; 2];
 
     fn local_face(i: T) -> Self::FACE {
         Self::FACE::from_iter(EDGE2FACES[i.try_into().unwrap()])
@@ -437,6 +479,7 @@ impl<T: Idx> Simplex<T> for Triangle<T> {
     const N_EDGES: usize = 3;
     const N_FACES: usize = 3;
     const EDGES: &'static [Edge<usize>] = &TRIANGLE2EDGES;
+    type DATA<T2: Default + Clone + Copy + Debug> = [T2; 3];
 
     fn local_face(i: T) -> Self::FACE {
         Self::FACE::from_iter(TRIANGLE2FACES[i.try_into().unwrap()])
@@ -593,6 +636,7 @@ impl<T: Idx> Simplex<T> for Tetrahedron<T> {
     const N_EDGES: usize = 6;
     const N_FACES: usize = 4;
     const EDGES: &'static [Edge<usize>] = &TETRA2EDGES;
+    type DATA<T2: Default + Clone + Copy + Debug> = [T2; 4];
 
     fn local_face(i: T) -> Self::FACE {
         Self::FACE::from_iter(TETRA2FACES[i.try_into().unwrap()])
@@ -725,18 +769,18 @@ impl<const D: usize> GSimplex<D> for GTetrahedron<D> {
 
 /// Compute a `FxHashMap` that maps face-to-vertex connectivity (sorted) to a vector of element indices
 #[must_use]
-pub fn get_face_to_elem<'a, T: Idx, C: Simplex<T> + 'a, I: ExactSizeIterator<Item = &'a C>>(
+pub fn get_face_to_elem<T: Idx, C: Simplex<T>, I: ExactSizeIterator<Item = C>>(
     elems: I,
-) -> FxHashMap<C::FACE, twovec::Vec<usize>> {
-    let mut map: FxHashMap<C::FACE, twovec::Vec<usize>> = FxHashMap::default();
+) -> FxHashMap<C::FACE, twovec::Vec<T>> {
+    let mut map: FxHashMap<C::FACE, twovec::Vec<T>> = FxHashMap::default();
     for (i_elem, elem) in elems.enumerate() {
         for i_face in 0..C::N_FACES {
             let f = elem.face(i_face.try_into().unwrap()).sorted();
             let n = map.get_mut(&f);
             if let Some(n) = n {
-                n.push(i_elem);
+                n.push(i_elem.try_into().unwrap());
             } else {
-                map.insert(f, twovec::Vec::with_single(i_elem));
+                map.insert(f, twovec::Vec::with_single(i_elem.try_into().unwrap()));
             }
         }
     }

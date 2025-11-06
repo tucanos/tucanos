@@ -1,15 +1,12 @@
-use crate::{
-    Error, Idx, Result,
-    mesh::{Elem, SimplexMesh},
-    metric::Metric,
-};
+use crate::{Error, Result, mesh::SimplexMesh, metric::Metric};
 use log::{debug, warn};
 use rayon::prelude::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
     IntoParallelRefMutIterator, ParallelIterator,
 };
+use tmesh::mesh::{Idx, Mesh, Simplex};
 
-impl<const D: usize, E: Elem> SimplexMesh<D, E> {
+impl<T: Idx, const D: usize, C: Simplex<T>> SimplexMesh<T, D, C> {
     /// Compute the scaling factor $`\alpha`$ such that complexity of the bounded metric field
     /// equals a target number of elements
     /// ```math
@@ -31,13 +28,14 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         m: &[M],
         h_min: f64,
         h_max: f64,
-        n_elems: Idx,
-        max_iter: Idx,
+        n_elems: T,
+        max_iter: u32,
     ) -> f64 {
         let mut fac = 1.0;
         let mut scale = 1.0;
 
         let mut sizes: Vec<_> = m.iter().flat_map(Metric::sizes).collect();
+        let n_elems = n_elems.try_into().unwrap() as f64;
 
         for iter in 0..max_iter {
             sizes.par_iter_mut().for_each(|x| *x *= fac);
@@ -48,14 +46,14 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 self.complexity_from_sizes::<M>(&sizes, h_min, h_max)
             };
             debug!("Iteration {iter}, complexity = {c:.2e}, scale = {scale:.2e}");
-            if f64::abs(c - f64::from(n_elems)) < 0.05 * f64::from(n_elems) {
+            if f64::abs(c - n_elems) < 0.05 * n_elems {
                 return scale;
             }
             if iter == max_iter - 1 {
                 warn!("Target complexity {n_elems} not reached: complexity {c:.2e}");
                 return -1.0;
             }
-            fac = f64::powf(f64::from(n_elems) / c, -1. / f64::from(E::DIM));
+            fac = f64::powf(n_elems / c, -1. / C::DIM as f64);
             scale *= fac;
         }
         -1.0
@@ -104,11 +102,11 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         m: &mut [M],
         h_min: f64,
         h_max: f64,
-        n_elems: Idx,
+        n_elems: T,
         fixed_m: Option<&[M]>,
         implied_m: Option<&[M]>,
         step: Option<f64>,
-        max_iter: Idx,
+        max_iter: u32,
     ) -> Result<f64> {
         debug!(
             "Scaling the metric (h_min = {h_min}, h_max = {h_max}, n_elems = {n_elems}, max_iter = {max_iter})"
@@ -136,13 +134,15 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             return Err(Error::from("Unable to scale the metric (simple)"));
         }
 
+        let n_elems = n_elems.try_into().unwrap() as f64;
+
         if fixed_m.is_some() || implied_m.is_some() {
-            let fixed_m = (0..self.n_verts())
+            let fixed_m = (0..self.n_verts().try_into().unwrap())
                 .into_par_iter()
-                .map(|i| fixed_m.map(|x| &x[i as usize]));
-            let implied_m = (0..self.n_verts())
+                .map(|i| fixed_m.map(|x| &x[i]));
+            let implied_m = (0..self.n_verts().try_into().unwrap())
                 .into_par_iter()
-                .map(|i| implied_m.map(|x| &x[i as usize]));
+                .map(|i| implied_m.map(|x| &x[i]));
 
             if max_iter > 0 {
                 let constrain_m = fixed_m.clone().zip(implied_m.clone()).map(|(m_f, m_i)| {
@@ -240,11 +240,10 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
 #[cfg(test)]
 mod tests {
-    use tmesh::mesh::Mesh;
+    use tmesh::{Vert2d, Vert3d, mesh::Mesh};
 
     use crate::{
-        Idx, Result,
-        mesh::Point,
+        Result,
         mesh::test_meshes::{test_mesh_2d, test_mesh_3d},
         metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric},
     };
@@ -254,7 +253,7 @@ mod tests {
         let mut mesh = test_mesh_2d().split().split();
         mesh.compute_volumes();
 
-        let h = vec![0.1; mesh.n_verts() as usize];
+        let h = vec![0.1; mesh.n_verts().try_into().unwrap()];
         let mut m: Vec<_> = h.iter().map(|&x| IsoMetric::<2>::from(x)).collect();
 
         let c0 = mesh
@@ -271,8 +270,8 @@ mod tests {
         mesh.compute_volumes();
 
         let mfunc = |_p| {
-            let v0 = Point::<2>::new(0.5, 0.);
-            let v1 = Point::<2>::new(0.0, 4.0);
+            let v0 = Vert2d::new(0.5, 0.);
+            let v1 = Vert2d::new(0.0, 4.0);
             AnisoMetric2d::from_sizes(&v0, &v1)
         };
 
@@ -291,13 +290,13 @@ mod tests {
         let mut mesh = test_mesh_3d().split().split();
         mesh.compute_volumes();
 
-        let h = vec![0.1; mesh.n_verts() as usize];
+        let h = vec![0.1; mesh.n_verts().try_into().unwrap()];
         let mut m: Vec<_> = h.iter().map(|&x| IsoMetric::<3>::from(x)).collect();
 
         let c0 = mesh.scale_metric(&mut m, 0.0, 0.05, 1000, None, None, None, 10);
         assert!(c0.is_err());
 
-        let n_target = (1.0 / f64::powi(0.05, 3) * 15.0) as Idx;
+        let n_target = (1.0 / f64::powi(0.05, 3) * 15.0) as u32;
         let c0 = mesh.scale_metric(&mut m, 0.0, 0.05, n_target, None, None, None, 10)?;
         assert!(c0 > 0.0);
         let c1 = mesh.complexity(&m, 0.0, 0.05);
@@ -312,9 +311,9 @@ mod tests {
         mesh.compute_volumes();
 
         let mfunc = |_p| {
-            let v0 = Point::<3>::new(0.5, 0., 0.);
-            let v1 = Point::<3>::new(0.0, 4.0, 0.);
-            let v2 = Point::<3>::new(0.0, 0., 6.0);
+            let v0 = Vert3d::new(0.5, 0., 0.);
+            let v1 = Vert3d::new(0.0, 4.0, 0.);
+            let v2 = Vert3d::new(0.0, 0., 6.0);
             AnisoMetric3d::from_sizes(&v0, &v1, &v2)
         };
 
@@ -323,7 +322,7 @@ mod tests {
         let c0 = mesh.scale_metric(&mut m, 0.0, 0.05, 1000, None, None, None, 10);
         assert!(c0.is_err());
 
-        let n_target = (1.0 / f64::powi(0.05, 3) * 50.0) as Idx;
+        let n_target = (1.0 / f64::powi(0.05, 3) * 50.0) as u32;
         let c0 = mesh.scale_metric(&mut m, 0.0, 0.05, n_target, None, None, None, 10)?;
         assert!(c0 > 0.0);
         let c1 = mesh.complexity(&m, 0.0, 0.05);
@@ -336,14 +335,14 @@ mod tests {
         let mut mesh = test_mesh_3d().split().split();
         mesh.compute_volumes();
 
-        let h = vec![0.1; mesh.n_verts() as usize];
+        let h = vec![0.1; mesh.n_verts().try_into().unwrap()];
         let mut m: Vec<_> = h.iter().map(|&x| IsoMetric::<3>::from(x)).collect();
         let fixed_m: Vec<_> = mesh
             .verts()
             .map(|p| IsoMetric::<3>::from(0.1 + p[0] + p[1]))
             .collect();
 
-        let n_target = (1.0 / f64::powi(0.05, 3) * 15.0) as Idx;
+        let n_target = (1.0 / f64::powi(0.05, 3) * 15.0) as u32;
 
         let c0 = mesh.scale_metric(&mut m, 0.0, 0.05, n_target, Some(&fixed_m), None, None, 10)?;
         assert!(c0 > 0.0);

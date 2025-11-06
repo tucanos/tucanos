@@ -3,17 +3,22 @@ use super::smooth::SmoothParams;
 use super::split::SplitParams;
 use super::stats::{InitStats, Stats, StepStats};
 use super::swap::SwapParams;
-use crate::mesh::HasTmeshImpl;
 use crate::{
-    Dim, Error, Idx, Result, Tag, TopoTag,
+    Dim, Error, Result, Tag, TopoTag,
     geometry::Geometry,
-    mesh::{Elem, GElem, Point, SimplexMesh, Topology, get_face_to_elem},
+    mesh::{SimplexMesh, Topology},
     metric::Metric,
 };
 use log::debug;
 use rustc_hash::FxHashMap;
 use sorted_vec::SortedVec;
+use std::marker::PhantomData;
 use std::{cmp::Ordering, fs::File, io::Write, time::Instant};
+use tmesh::mesh::{Edge, Mesh};
+use tmesh::{
+    Vertex,
+    mesh::{GSimplex, Idx, Simplex, get_face_to_elem},
+};
 
 // /// Get edged indices such that they are sorted by increasing tag dimension and then by
 // /// increasing edge length
@@ -43,49 +48,47 @@ pub(super) fn argsort_edges_decreasing_length(f: &[(Dim, f64)]) -> Vec<usize> {
 
 /// Vertex information
 #[derive(Debug)]
-pub(super) struct VtxInfo<const D: usize, M: Metric<D>> {
+pub(super) struct VtxInfo<T: Idx, const D: usize, M: Metric<D>> {
     /// Vertex coordinates
-    pub(super) vx: Point<D>,
+    pub(super) vx: Vertex<D>,
     /// Tag
     pub(super) tag: TopoTag,
     /// Metric
     pub(super) m: M,
     /// Elements containing the vertex
-    pub(super) els: SortedVec<Idx>,
+    pub(super) els: SortedVec<T>,
 }
 
 /// Element information
 #[derive(Clone, Copy)]
-pub(super) struct ElemInfo<E: Elem> {
+pub(super) struct ElemInfo<T: Idx, C: Simplex<T>> {
     /// Element connectivity
-    pub(super) el: E,
+    pub(super) el: C,
     /// Tag
     pub(super) tag: Tag,
     /// Quality
     pub(super) q: f64,
+    _t: PhantomData<T>,
 }
 
 /// Remesher for simplex meshes of elements E in dimension D
-pub struct Remesher<const D: usize, E: Elem, M: Metric<D>>
-where
-    SimplexMesh<D, E>: HasTmeshImpl<D, E>,
-{
+pub struct Remesher<T: Idx, const D: usize, C: Simplex<T>, M: Metric<D>> {
     /// The topology information
     pub(super) topo: Topology,
     /// Vertices
-    pub(super) verts: FxHashMap<Idx, VtxInfo<D, M>>,
+    pub(super) verts: FxHashMap<T, VtxInfo<T, D, M>>,
     /// Elements
-    pub(super) elems: FxHashMap<Idx, ElemInfo<E>>,
+    pub(super) elems: FxHashMap<T, ElemInfo<T, C>>,
     /// Edges
-    pub(super) edges: FxHashMap<[Idx; 2], i16>,
+    pub(super) edges: FxHashMap<Edge<T>, i16>,
     /// Tagged faces
-    pub(super) tagged_faces: FxHashMap<E::Face, Tag>,
+    pub(super) tagged_faces: FxHashMap<C::FACE, Tag>,
     /// Next vertex Id
-    next_vert: Idx,
+    next_vert: T,
     /// Next element Id
-    next_elem: Idx,
+    next_elem: T,
     /// Statistics
-    pub(super) stats: Vec<StepStats>,
+    pub(super) stats: Vec<StepStats<T>>,
 }
 
 #[derive(Clone, Debug)]
@@ -107,7 +110,7 @@ pub struct RemesherParams {
 
 impl RemesherParams {
     #[must_use]
-    pub fn new(max_angle: f64, n_steps: Idx) -> Self {
+    pub fn new(max_angle: f64, n_steps: u32) -> Self {
         let mut steps = Vec::new();
         for _ in 0..n_steps {
             steps.push(RemeshingStep::Collapse(CollapseParams {
@@ -166,17 +169,14 @@ impl RemesherParams {
     }
 }
 
-impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M>
-where
-    SimplexMesh<D, E>: HasTmeshImpl<D, E>,
-{
+impl<T: Idx, const D: usize, C: Simplex<T>, M: Metric<D>> Remesher<T, D, C, M> {
     /// Initialize the remesher
-    pub fn new<G: Geometry<D>>(mesh: &SimplexMesh<D, E>, m: &[M], geom: &G) -> Result<Self> {
+    pub fn new<G: Geometry<D>>(mesh: &SimplexMesh<T, D, C>, m: &[M], geom: &G) -> Result<Self> {
         Self::new_with_iter(mesh, m.iter().copied(), geom)
     }
 
     pub fn new_with_iter<G: Geometry<D>, IT>(
-        mesh: &SimplexMesh<D, E>,
+        mesh: &SimplexMesh<T, D, C>,
         metric: IT,
         geom: &G,
     ) -> Result<Self>
@@ -184,12 +184,11 @@ where
         IT: Iterator<Item = M> + ExactSizeIterator,
     {
         debug!(
-            "Initialize the remesher with {} {D}D vertices / {} {}",
+            "Initialize the remesher with {} {D}D vertices / {} elements",
             mesh.n_verts(),
             mesh.n_elems(),
-            E::NAME
         );
-        assert_eq!(metric.len(), mesh.n_verts() as usize);
+        assert_eq!(metric.len(), mesh.n_verts().try_into().unwrap());
 
         // Get the topology
         let topo = mesh.get_topology()?;
@@ -198,21 +197,21 @@ where
         // Check that the geometry and topology are consistent
         geom.check(topo)?;
         let (mut verts, mut elems) = (FxHashMap::default(), FxHashMap::default());
-        verts.reserve(mesh.n_verts() as usize);
-        elems.reserve(mesh.n_elems() as usize);
+        verts.reserve(mesh.n_verts().try_into().unwrap());
+        elems.reserve(mesh.n_elems().try_into().unwrap());
         let mut res = Self {
             topo: topo.clone(),
             verts,
             elems,
             tagged_faces: FxHashMap::default(),
             edges: FxHashMap::default(),
-            next_vert: 0,
-            next_elem: 0,
+            next_vert: T::ZERO,
+            next_elem: T::ZERO,
             stats: Vec::new(),
         };
 
         // Insert the vertices
-        assert_eq!(mesh.n_verts() as usize, vtag.len());
+        assert_eq!(mesh.n_verts().try_into().unwrap(), vtag.len());
         for ((p, tag), m) in mesh.verts().zip(vtag.iter()).zip(metric) {
             res.insert_vertex(p, tag, m);
         }
@@ -236,9 +235,9 @@ where
         Ok(res)
     }
 
-    fn check_vert_to_elems(&self, i_elem: Idx, e: &E) -> Result<()> {
-        for i_vert in e.iter() {
-            let res = self.verts.get(i_vert);
+    fn check_vert_to_elems(&self, i_elem: T, e: &C) -> Result<()> {
+        for i_vert in e.into_iter() {
+            let res = self.verts.get(&i_vert);
             if res.is_none() {
                 return Err(Error::from("Vertex not found"));
             }
@@ -250,18 +249,17 @@ where
         Ok(())
     }
 
-    fn check_elem_volume(&self, e: &E) -> Result<()> {
-        let ge = self.gelem(e);
+    fn check_elem_volume(&self, e: &C) -> Result<()> {
+        let (ge, _) = self.gelem(e);
         if ge.vol() < 0. {
             return Err(Error::from("Negative volume"));
         }
         Ok(())
     }
 
-    fn check_edges(&self, e: &E) -> Result<()> {
-        for i_edge in 0..E::N_EDGES {
-            let mut edg = e.edge(i_edge);
-            edg.sort_unstable();
+    fn check_edges(&self, e: &C) -> Result<()> {
+        for i_edge in 0..C::N_EDGES {
+            let edg = e.edge(i_edge.try_into().unwrap()).sorted();
             if !self.edges.contains_key(&edg) {
                 return Err(Error::from("Missing edge"));
             }
@@ -269,11 +267,11 @@ where
         Ok(())
     }
 
-    fn check_faces(&self, i_elem: Idx, e: &ElemInfo<E>) -> Result<()> {
+    fn check_faces(&self, i_elem: T, e: &ElemInfo<T, C>) -> Result<()> {
         let etag = e.tag;
 
-        for i_face in 0..E::N_FACES {
-            let f = e.el.face(i_face);
+        for i_face in 0..C::N_FACES {
+            let f = e.el.face(i_face.try_into().unwrap());
 
             // filter the other elements containing the face
             let iels = self
@@ -284,7 +282,7 @@ where
                 .iter()
                 .filter(|i| {
                     let other = self.elems.get(i).unwrap().el;
-                    **i != i_elem && f.iter().all(|j| other.contains(*j))
+                    **i != i_elem && f.into_iter().all(|j| other.contains(j))
                 })
                 .collect::<Vec<_>>();
 
@@ -350,9 +348,9 @@ where
 
         for edg in self.edges.keys() {
             // Check that the edge vertices are ok
-            for i in edg {
+            for i in edg.into_iter() {
                 // Does the vertex exist ?
-                let vert = self.verts.get(i);
+                let vert = self.verts.get(&i);
                 if vert.is_none() {
                     return Err(Error::from("Invalid edge (missing vertex)"));
                 }
@@ -360,7 +358,7 @@ where
                 // Do all the elements contain the edge ?
                 for i_elem in &vert.unwrap().els {
                     let e = &self.elems.get(i_elem).unwrap().el;
-                    if !e.contains_edge(*edg) && vert.is_none() {
+                    if !e.contains_edge(edg) && vert.is_none() {
                         return Err(Error::from("Invalid edge"));
                     }
                 }
@@ -368,7 +366,7 @@ where
         }
 
         for (face, tag) in &self.tagged_faces {
-            if face.iter().any(|i| !self.verts.contains_key(i)) {
+            if face.into_iter().any(|i| !self.verts.contains_key(&i)) {
                 return Err(Error::from(&format!(
                     "Invalid tagged face {face:?} - tag={tag}"
                 )));
@@ -380,22 +378,24 @@ where
 
     /// Create a `SimplexMesh`
     #[must_use]
-    pub fn to_mesh(&self, only_bdy_faces: bool) -> SimplexMesh<D, E> {
+    pub fn to_mesh(&self, only_bdy_faces: bool) -> SimplexMesh<T, D, C> {
         debug!("Build a mesh");
 
-        let vidx: FxHashMap<Idx, Idx> = self
+        let vidx: FxHashMap<T, T> = self
             .verts
             .iter()
             .enumerate()
-            .map(|(i, (k, _v))| (*k, i as Idx))
+            .map(|(i, (k, _v))| (*k, i.try_into().unwrap()))
             .collect();
 
         let verts = self.verts.values().map(|v| v.vx).collect();
 
-        let mut elems = Vec::with_capacity(self.n_elems() as usize);
-        let mut etags = Vec::with_capacity(self.n_elems() as usize);
+        let mut elems = Vec::with_capacity(self.n_elems().try_into().unwrap());
+        let mut etags = Vec::with_capacity(self.n_elems().try_into().unwrap());
         for e in self.elems.values() {
-            elems.push(E::from_iter(e.el.iter().map(|&i| *vidx.get(&i).unwrap())));
+            elems.push(C::from_iter(
+                e.el.into_iter().map(|i| *vidx.get(&i).unwrap()),
+            ));
             etags.push(e.tag);
         }
 
@@ -404,19 +404,18 @@ where
         let mut ftags = Vec::new();
 
         for (face, &ftag) in &self.tagged_faces {
-            let face = E::Face::from_iter(face.iter().map(|&i| *vidx.get(&i).unwrap()));
+            let face = C::FACE::from_iter(face.into_iter().map(|i| *vidx.get(&i).unwrap()));
             let face = face.sorted();
             let iels = f2e.get(&face).unwrap();
             if iels.len() == 1 {
                 // Orient the face outwards
-                let elem = elems[iels[0] as usize];
+                let elem = elems[iels[0].try_into().unwrap()];
                 let mut ok = false;
-                for i_face in 0..E::N_FACES {
-                    let mut f = elem.face(i_face);
-                    f.sort();
-                    let is_same = !f.iter().zip(face.iter()).any(|(x, y)| x != y);
+                for i_face in 0..C::N_FACES {
+                    let f = elem.face(i_face.try_into().unwrap()).sorted();
+                    let is_same = !f.into_iter().zip(face.into_iter()).any(|(x, y)| x != y);
                     if is_same {
-                        let f = elem.face(i_face);
+                        let f = elem.face(i_face.try_into().unwrap());
                         faces.push(f);
                         ftags.push(ftag);
                         ok = true;
@@ -430,11 +429,11 @@ where
             }
         }
 
-        SimplexMesh::<D, E>::new(verts, elems, etags, faces, ftags)
+        SimplexMesh::<T, D, C>::new_with_vec(verts, elems, etags, faces, ftags)
     }
 
     /// Insert a new vertex, and get its index
-    pub fn insert_vertex(&mut self, pt: Point<D>, tag: &TopoTag, m: M) -> Idx {
+    pub fn insert_vertex(&mut self, pt: Vertex<D>, tag: &TopoTag, m: M) -> T {
         self.verts.insert(
             self.next_vert,
             VtxInfo {
@@ -444,12 +443,12 @@ where
                 els: SortedVec::default(),
             },
         );
-        self.next_vert += 1;
-        self.next_vert - 1
+        self.next_vert += T::ONE;
+        self.next_vert - T::ONE
     }
 
     /// Remove a vertex
-    pub fn remove_vertex(&mut self, idx: Idx) -> Result<()> {
+    pub fn remove_vertex(&mut self, idx: T) -> Result<()> {
         let vx = self.verts.get(&idx);
         if vx.is_none() {
             return Err(Error::from("Vertex not present"));
@@ -463,42 +462,51 @@ where
 
     /// Get the coordinates, tag and metric of a vertex
     #[must_use]
-    pub fn get_vertex(&self, i: Idx) -> Option<(Point<D>, TopoTag, M)> {
+    pub fn get_vertex(&self, i: T) -> Option<(Vertex<D>, TopoTag, M)> {
         self.verts.get(&i).map(|v| (v.vx, v.tag, v.m))
     }
 
     /// Return indices of elements around a `i` vertex
     #[must_use]
-    pub fn vertex_elements(&self, i: Idx) -> &[Idx] {
+    pub fn vertex_elements(&self, i: T) -> &[T] {
         &self.verts.get(&i).unwrap().els
     }
 
     /// Get the number of vertices
     #[must_use]
-    pub fn n_verts(&self) -> Idx {
-        self.verts.len() as Idx
+    pub fn n_verts(&self) -> T {
+        self.verts.len().try_into().unwrap()
     }
 
     /// Get the number of elements that contain an edge
     #[must_use]
-    pub fn elem_count(&self, edg: [Idx; 2]) -> i16 {
-        self.edges.get(&edg).copied().unwrap_or(0)
+    pub fn elem_count(&self, edg: &Edge<T>) -> i16 {
+        self.edges.get(edg).copied().unwrap_or(0)
     }
 
     /// Insert a new element
-    pub fn insert_elem(&mut self, el: E, tag: Tag) -> Result<()> {
-        let ge = self.gelem(&el);
-        let q = ge.quality();
+    pub fn insert_elem(&mut self, el: C, tag: Tag) -> Result<()> {
+        let (ge, m) = self.gelem(&el);
+
+        let q = SimplexMesh::<T, D, C>::quality(&ge, &m);
         if q <= 0.0 {
             return Err(Error::from(&format!(
                 "Invalid element: {el:?} / {ge:?}, quality: {q}"
             )));
         }
-        self.elems.insert(self.next_elem, ElemInfo { el, tag, q });
+        self.elems.insert(
+            self.next_elem,
+            ElemInfo {
+                el,
+                tag,
+                q,
+                _t: PhantomData,
+            },
+        );
 
         // update the vertex-to-element info
-        for idx in el.iter() {
-            let vx = self.verts.get_mut(idx);
+        for idx in el {
+            let vx = self.verts.get_mut(&idx);
             if vx.is_none() {
                 return Err(Error::from("Element vertex not present"));
             }
@@ -507,9 +515,8 @@ where
         }
 
         // update the edges
-        for i_edge in 0..E::N_EDGES {
-            let mut edg = el.edge(i_edge);
-            edg.sort_unstable();
+        for i_edge in 0..C::N_EDGES {
+            let edg = el.edge(i_edge.try_into().unwrap()).sorted();
             let e = self.edges.get_mut(&edg);
             if let Some(e) = e {
                 *e += 1;
@@ -517,12 +524,12 @@ where
                 self.edges.insert(edg, 1);
             }
         }
-        self.next_elem += 1;
+        self.next_elem += T::ONE;
         Ok(())
     }
 
     /// Remove an element
-    pub fn remove_elem(&mut self, idx: Idx) -> Result<()> {
+    pub fn remove_elem(&mut self, idx: T) -> Result<()> {
         let el = self.elems.get(&idx);
         if el.is_none() {
             return Err(Error::from("Element not present"));
@@ -530,14 +537,13 @@ where
         let el = &el.unwrap().el;
 
         // update the vertex-to-element info
-        for i in el.iter() {
-            self.verts.get_mut(i).unwrap().els.remove_item(&idx);
+        for i in el.into_iter() {
+            self.verts.get_mut(&i).unwrap().els.remove_item(&idx);
         }
 
         // update the edges
-        for i_edge in 0..E::N_EDGES {
-            let mut edg = el.edge(i_edge);
-            edg.sort_unstable();
+        for i_edge in 0..C::N_EDGES {
+            let edg = el.edge(i_edge.try_into().unwrap()).sorted();
             let e = self.edges.get_mut(&edg).unwrap();
             if *e == 1 {
                 self.edges.remove(&edg);
@@ -551,51 +557,54 @@ where
 
     /// Get the i-th element
     #[must_use]
-    pub(super) fn get_elem(&self, i: Idx) -> Option<ElemInfo<E>> {
+    pub(super) fn get_elem(&self, i: T) -> Option<ElemInfo<T, C>> {
         self.elems.get(&i).copied()
     }
 
     /// Get the number of elements
     #[must_use]
-    pub fn n_elems(&self) -> Idx {
-        self.elems.len() as Idx
+    pub fn n_elems(&self) -> T {
+        self.elems.len().try_into().unwrap()
     }
 
     /// Get the number of edges
     #[must_use]
-    pub fn n_edges(&self) -> Idx {
-        self.edges.len() as Idx
+    pub fn n_edges(&self) -> T {
+        self.edges.len().try_into().unwrap()
     }
 
     /// Get the geometrical element corresponding to elem
-    pub(super) fn gelem(&self, elem: &E) -> E::Geom<D, M> {
-        E::Geom::from_verts(elem.iter().map(|j| {
-            let pt = self.verts.get(j).unwrap();
-            (pt.vx, pt.m)
-        }))
+    pub(super) fn gelem(&self, elem: &C) -> (C::GEOM<D>, C::DATA<M>) {
+        let mut ge = C::GEOM::default();
+        let mut m = C::DATA::default();
+        for (i, j) in elem.into_iter().enumerate() {
+            let pt = self.verts.get(&j).unwrap();
+            ge[i] = pt.vx;
+            m[i] = pt.m;
+        }
+        (ge, m)
     }
 
     /// Get the geometrical face corresponding to face
-    pub(super) fn gface(&self, face: &E::Face) -> <E::Geom<D, M> as GElem<D, M>>::Face {
-        <E::Geom<D, M> as GElem<D, M>>::Face::from_verts(face.iter().map(|j| {
-            let pt = self.verts.get(j).unwrap();
-            (pt.vx, pt.m)
-        }))
+    pub(super) fn gface(&self, face: &C::FACE) -> <C::GEOM<D> as GSimplex<D>>::FACE {
+        <C::GEOM<D> as GSimplex<D>>::FACE::from_iter(
+            face.into_iter().map(|j| self.verts.get(&j).unwrap().vx),
+        )
     }
 
     /// Return the tag of a face
-    pub(super) fn face_tag(&self, face: &E::Face) -> Option<Tag> {
+    pub(super) fn face_tag(&self, face: &C::FACE) -> Option<Tag> {
         let face = face.sorted();
         self.tagged_faces.get(&face).copied()
     }
 
     /// Return the tag of a face
-    pub(super) fn add_tagged_face(&mut self, face: E::Face, tag: Tag) -> Result<()> {
+    pub(super) fn add_tagged_face(&mut self, face: C::FACE, tag: Tag) -> Result<()> {
         let face = face.sorted();
         if self.tagged_faces.contains_key(&face) {
             return Err(Error::from("Tagged face already present"));
         }
-        if face.iter().any(|i| !self.verts.contains_key(i)) {
+        if face.into_iter().any(|i| !self.verts.contains_key(&i)) {
             return Err(Error::from("At least a vertex is not in the mesh"));
         }
         self.tagged_faces.insert(face, tag);
@@ -603,7 +612,7 @@ where
     }
 
     /// Return the tag of a face
-    pub(super) fn remove_tagged_face(&mut self, face: E::Face) -> Result<()> {
+    pub(super) fn remove_tagged_face(&mut self, face: C::FACE) -> Result<()> {
         let face = face.sorted();
         if !self.tagged_faces.contains_key(&face) {
             return Err(Error::from("Tagged face not present"));
@@ -616,21 +625,20 @@ where
     #[must_use]
     pub fn complexity(&self) -> f64 {
         let mut c = 0.0;
-        let weights = vec![1. / f64::from(E::N_VERTS); E::N_VERTS as usize];
+        let weights = vec![1. / C::N_VERTS as f64; C::N_VERTS.try_into().unwrap()];
 
         for e in self.elems.values() {
-            let ge = self.gelem(&e.el);
+            let (ge, m) = self.gelem(&e.el);
             let vol = ge.vol();
-            let metrics = e.el.iter().map(|i| &self.verts.get(i).unwrap().m);
-            let wm = weights.iter().copied().zip(metrics);
+            let wm = weights.iter().copied().zip(m.as_ref());
             let m = M::interpolate(wm);
-            c += vol / (E::Geom::<D, M>::IDEAL_VOL * m.vol());
+            c += vol / m.vol();
         }
-        c
+        c / SimplexMesh::<T, D, C>::ideal_vol()
     }
 
     /// Compute the length of an edge in metric space
-    fn scaled_edge_length(&self, edg: [Idx; 2]) -> f64 {
+    fn scaled_edge_length(&self, edg: &Edge<T>) -> f64 {
         let p0 = self.verts.get(&edg[0]).unwrap();
         let p1 = self.verts.get(&edg[1]).unwrap();
 
@@ -638,7 +646,7 @@ where
     }
 
     /// Compute the length of an edge in metric space and the dimension of its topo entity
-    fn dim_and_scaled_edge_length(&self, edg: [Idx; 2]) -> (Dim, f64) {
+    fn dim_and_scaled_edge_length(&self, edg: &Edge<T>) -> (Dim, f64) {
         let p0 = self.verts.get(&edg[0]).unwrap();
         let p1 = self.verts.get(&edg[1]).unwrap();
 
@@ -656,14 +664,14 @@ where
 
     /// Get an iterator over edge length
     pub fn lengths_iter(&self) -> impl Iterator<Item = f64> + '_ {
-        self.edges.keys().map(|k| self.scaled_edge_length(*k))
+        self.edges.keys().map(|k| self.scaled_edge_length(k))
     }
 
     /// Get an iterator over edge topo dimension and length
     pub(super) fn dims_and_lengths_iter(&self) -> impl Iterator<Item = (Dim, f64)> + '_ {
         self.edges
             .keys()
-            .map(|k| self.dim_and_scaled_edge_length(*k))
+            .map(|k| self.dim_and_scaled_edge_length(k))
     }
 
     /// Get the edge lengths
@@ -730,7 +738,7 @@ where
 
     /// Return the stats at each remeshing step
     #[must_use]
-    pub fn stats(&self) -> &[StepStats] {
+    pub fn stats(&self) -> &[StepStats<T>] {
         &self.stats
     }
 
@@ -747,12 +755,12 @@ where
     }
 
     /// Check the edge lengths
-    pub fn check_edge_lengths_analytical<F: Fn(&Point<D>) -> M>(&self, f: F) -> (f64, f64, f64) {
+    pub fn check_edge_lengths_analytical<F: Fn(&Vertex<D>) -> M>(&self, f: F) -> (f64, f64, f64) {
         let (mut mini, mut maxi, mut avg) = (f64::MAX, 0.0_f64, 0.0_f64);
         let mut count = 0;
-        for [i0, i1] in self.edges.keys() {
-            let p0 = &self.verts.get(i0).unwrap().vx;
-            let p1 = &self.verts.get(i1).unwrap().vx;
+        for edg in self.edges.keys() {
+            let p0 = &self.verts.get(&edg[0]).unwrap().vx;
+            let p1 = &self.verts.get(&edg[1]).unwrap().vx;
             let m0 = f(p0);
             let m1 = f(p1);
             let l = M::edge_length(p0, &m0, p1, &m1);
@@ -772,7 +780,7 @@ mod tests_topo {
         Tag,
         geometry::NoGeometry,
         mesh::{
-            HasTmeshImpl, Point,
+            SimplexMesh, SubSimplexMesh,
             test_meshes::{test_mesh_2d, test_mesh_3d},
         },
         metric::IsoMetric,
@@ -780,27 +788,30 @@ mod tests_topo {
     };
     use rustc_hash::{FxHashMap, FxHashSet};
     use std::collections::hash_map::Entry;
-    use tmesh::mesh::Mesh;
+    use tmesh::{
+        Vert2d, Vert3d,
+        mesh::{Mesh, MutMesh},
+    };
 
-    fn test_topo_2d(etags: [Tag; 2], ftags: [Tag; 4], add_boundary_faces: bool, n_split: i32) {
+    fn test_topo_2d(etags: [Tag; 2], ftags: [Tag; 4], fix: bool, n_split: i32) {
         let mut mesh = test_mesh_2d();
-        mesh.mut_etags().zip(etags).for_each(|(e, t)| *e = t);
-        mesh.mut_ftags().zip(ftags).for_each(|(e, t)| *e = t);
+        mesh.etags_mut().zip(etags).for_each(|(e, t)| *e = t);
+        mesh.ftags_mut().zip(ftags).for_each(|(e, t)| *e = t);
 
-        if add_boundary_faces {
-            mesh.add_boundary_faces();
+        if fix {
+            mesh.fix();
         }
         for _ in 0..n_split {
             mesh = mesh.split();
         }
 
-        let bdy = mesh.boundary().0;
+        let bdy = mesh.boundary::<SimplexMesh<_, _, _>>().0;
         let ftags = mesh.ftags().collect::<FxHashSet<_>>();
         let mut stats = FxHashMap::default();
         for tag in ftags {
             if let Entry::Vacant(v) = stats.entry(tag) {
-                let smsh = bdy.extract_tag(tag).mesh;
-                let center = smsh.verts().sum::<Point<2>>() / f64::from(smsh.n_verts());
+                let smsh = SubSimplexMesh::new(&bdy, |t| t == tag).mesh;
+                let center = smsh.verts().sum::<Vert2d>() / f64::from(smsh.n_verts());
                 v.insert((smsh.vol(), center));
             }
         }
@@ -819,12 +830,12 @@ mod tests_topo {
         mesh.check_simple().unwrap();
 
         let ftags = mesh.ftags().collect::<FxHashSet<_>>();
-        let bdy = mesh.boundary().0;
+        let bdy = mesh.boundary::<SimplexMesh<_, _, _>>().0;
         assert_eq!(ftags.len(), stats.len());
         for (&tag, (vol, center)) in &stats {
-            let smsh = bdy.extract_tag(tag).mesh;
+            let smsh = SubSimplexMesh::new(&bdy, |t| t == tag).mesh;
             assert!((vol - smsh.vol()).abs() < 1e-10 * vol);
-            let new_center = smsh.verts().sum::<Point<2>>() / f64::from(smsh.n_verts());
+            let new_center = smsh.verts().sum::<Vert2d>() / f64::from(smsh.n_verts());
             assert!((center - new_center).norm() < 1e-10);
         }
     }
@@ -887,7 +898,7 @@ mod tests_topo {
 
     fn test_topo_3d(ftags: [Tag; 12], n_split: i32) {
         let mut mesh = test_mesh_3d();
-        mesh.mut_ftags().zip(ftags).for_each(|(e, t)| *e = t);
+        mesh.ftags_mut().zip(ftags).for_each(|(e, t)| *e = t);
 
         for _ in 0..n_split {
             mesh = mesh.split();
@@ -897,12 +908,12 @@ mod tests_topo {
         mesh.compute_face_to_elems();
         mesh.check_simple().unwrap();
 
-        let bdy = mesh.boundary().0;
+        let bdy = mesh.boundary::<SimplexMesh<_, _, _>>().0;
         let mut stats = FxHashMap::default();
         for tag in ftags {
             if let Entry::Vacant(v) = stats.entry(tag) {
-                let smsh = bdy.extract_tag(tag).mesh;
-                let center = smsh.verts().sum::<Point<3>>() / f64::from(smsh.n_verts());
+                let smsh = SubSimplexMesh::new(&bdy, |t| t == tag).mesh;
+                let center = smsh.verts().sum::<Vert3d>() / f64::from(smsh.n_verts());
                 v.insert((smsh.vol(), center));
             }
         }
@@ -916,12 +927,12 @@ mod tests_topo {
         mesh.check_simple().unwrap();
 
         let ftags = mesh.ftags().collect::<FxHashSet<_>>();
-        let bdy = mesh.boundary().0;
+        let bdy = mesh.boundary::<SimplexMesh<_, _, _>>().0;
         assert_eq!(ftags.len(), stats.len());
         for (&tag, (vol, center)) in &stats {
-            let smsh = bdy.extract_tag(tag).mesh;
+            let smsh = SubSimplexMesh::new(&bdy, |t| t == tag).mesh;
             assert!((vol - smsh.vol()).abs() < 1e-10 * vol);
-            let new_center = smsh.verts().sum::<Point<3>>() / f64::from(smsh.n_verts());
+            let new_center = smsh.verts().sum::<Vert3d>() / f64::from(smsh.n_verts());
             assert!((center - new_center).norm() < 1e-10);
         }
     }
@@ -959,14 +970,17 @@ mod tests_topo {
 
 #[cfg(test)]
 mod tests {
-    use tmesh::mesh::Mesh;
+    use tmesh::{
+        Vert2d, Vert3d,
+        mesh::{Edge, GSimplex, Idx, Mesh, MutMesh, Simplex, Tetrahedron, Triangle},
+    };
 
     use super::RemesherParams;
     use crate::{
         Result,
         geometry::{LinearGeometry, NoGeometry},
         mesh::{
-            Edge, Elem, GElem, Point, SimplexMesh, Tetrahedron, Triangle,
+            SimplexMesh,
             test_meshes::{
                 ConcentricCircles, ConcentricSpheres, GeomHalfCircle2d, SphereGeometry,
                 concentric_circles_mesh, concentric_spheres_mesh, h_2d, h_3d, sphere_mesh,
@@ -987,9 +1001,9 @@ mod tests {
     #[test]
     fn test_init() -> Result<()> {
         let mut mesh = test_mesh_2d();
-        mesh.add_boundary_faces();
+        mesh.fix();
         mesh.compute_topology();
-        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
+        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts().try_into().unwrap()];
         let geom = NoGeometry();
         let remesher = Remesher::new(&mesh, &h, &geom)?;
 
@@ -1008,25 +1022,23 @@ mod tests {
         assert_eq!(mesh.n_faces(), 4);
 
         for (c, tag) in mesh.gelems().map(|ge| ge.center()).zip(mesh.etags()) {
-            let mut p = Point::<2>::zeros();
-            match tag {
-                1 => p.copy_from_slice(&[2. / 3., 1. / 3.]),
-                2 => p.copy_from_slice(&[1. / 3., 2. / 3.]),
+            let p = match tag {
+                1 => Vert2d::new(2. / 3., 1. / 3.),
+                2 => Vert2d::new(1. / 3., 2. / 3.),
                 _ => unreachable!(),
-            }
+            };
             let d = (c - p).norm();
             assert!(d < 1e-8);
         }
 
         for (c, tag) in mesh.gfaces().map(|ge| ge.center()).zip(mesh.ftags()) {
-            let mut p = Point::<2>::zeros();
-            match tag {
-                1 => p.copy_from_slice(&[0.5, 0.]),
-                2 => p.copy_from_slice(&[1., 0.5]),
-                3 => p.copy_from_slice(&[0.5, 1.]),
-                4 => p.copy_from_slice(&[0., 0.5]),
+            let p = match tag {
+                1 => Vert2d::new(0.5, 0.),
+                2 => Vert2d::new(1., 0.5),
+                3 => Vert2d::new(0.5, 1.),
+                4 => Vert2d::new(0., 0.5),
                 _ => unreachable!(),
-            }
+            };
             let d = (c - p).norm();
             assert!(d < 1e-8);
         }
@@ -1039,7 +1051,7 @@ mod tests {
     fn test_remove_vertex_error() {
         let mut mesh = test_mesh_2d();
         mesh.compute_topology();
-        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
+        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts().try_into().unwrap()];
 
         let mut remesher = Remesher::new(&mesh, &h, &NoGeometry()).unwrap();
 
@@ -1050,10 +1062,10 @@ mod tests {
     #[should_panic]
     fn test_remove_vertex_error_2() {
         let mut mesh = test_mesh_2d();
-        mesh.add_boundary_faces();
+        mesh.fix();
         mesh.compute_topology();
 
-        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
+        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts().try_into().unwrap()];
 
         let mut remesher = Remesher::new(&mesh, &h, &NoGeometry()).unwrap();
 
@@ -1063,10 +1075,10 @@ mod tests {
     #[test]
     fn test_remove_elem() -> Result<()> {
         let mut mesh = test_mesh_2d();
-        mesh.add_boundary_faces();
+        mesh.fix();
         mesh.compute_topology();
 
-        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
+        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts().try_into().unwrap()];
 
         let geom = NoGeometry();
         let mut remesher = Remesher::new(&mesh, &h, &geom)?;
@@ -1085,10 +1097,10 @@ mod tests {
     #[should_panic]
     fn test_remove_elem_2() {
         let mut mesh = test_mesh_2d();
-        mesh.add_boundary_faces();
+        mesh.fix();
         mesh.compute_topology();
 
-        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
+        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts().try_into().unwrap()];
 
         let mut remesher = Remesher::new(&mesh, &h, &NoGeometry()).unwrap();
 
@@ -1098,7 +1110,7 @@ mod tests {
     #[test]
     fn test_split_2d() -> Result<()> {
         let mut mesh = test_mesh_2d().split().split();
-        mesh.add_boundary_faces();
+        mesh.fix();
         mesh.compute_topology();
 
         let h: Vec<_> = mesh
@@ -1125,11 +1137,11 @@ mod tests {
     #[test]
     fn test_swap_2d() -> Result<()> {
         let mut mesh = test_mesh_2d().split().split();
-        mesh.add_boundary_faces();
+        mesh.fix();
         mesh.compute_topology();
 
         // collapse to lower the quality
-        let h = vec![IsoMetric::<2>::from(2.); mesh.n_verts() as usize];
+        let h = vec![IsoMetric::<2>::from(2.); mesh.n_verts().try_into().unwrap()];
         let geom = NoGeometry();
         let mut remesher = Remesher::new(&mesh, &h, &geom)?;
         remesher.check()?;
@@ -1147,7 +1159,7 @@ mod tests {
         // swap
         let mut mesh = remesher.to_mesh(false);
         mesh.compute_topology();
-        let h = vec![IsoMetric::<2>::from(2.); mesh.n_verts() as usize];
+        let h = vec![IsoMetric::<2>::from(2.); mesh.n_verts().try_into().unwrap()];
         let mut remesher = Remesher::new(&mesh, &h, &geom)?;
 
         let params = SwapParams {
@@ -1170,10 +1182,10 @@ mod tests {
     #[test]
     fn test_collapse_2d() -> Result<()> {
         let mut mesh = test_mesh_2d().split().split();
-        mesh.add_boundary_faces();
+        mesh.fix();
         mesh.compute_topology();
 
-        let h = vec![IsoMetric::<2>::from(2.); mesh.n_verts() as usize];
+        let h = vec![IsoMetric::<2>::from(2.); mesh.n_verts().try_into().unwrap()];
         let geom = NoGeometry();
         let mut remesher = Remesher::new(&mesh, &h, &geom)?;
         remesher.check()?;
@@ -1196,31 +1208,31 @@ mod tests {
     #[test]
     fn test_smooth_laplacian_2d() -> Result<()> {
         let coords = vec![
-            Point::<2>::new(0., 0.),
-            Point::<2>::new(1., 0.),
-            Point::<2>::new(1., 1.0),
-            Point::<2>::new(0., 1.0),
-            Point::<2>::new(0.1, 0.1),
+            Vert2d::new(0., 0.),
+            Vert2d::new(1., 0.),
+            Vert2d::new(1., 1.0),
+            Vert2d::new(0., 1.0),
+            Vert2d::new(0.1, 0.1),
         ];
         let elems = vec![
-            Triangle::from_slice(&[0, 1, 4]),
-            Triangle::from_slice(&[1, 2, 4]),
-            Triangle::from_slice(&[2, 3, 4]),
-            Triangle::from_slice(&[3, 0, 4]),
+            Triangle::from([0_usize, 1, 4]),
+            Triangle::from([1, 2, 4]),
+            Triangle::from([2, 3, 4]),
+            Triangle::from([3, 0, 4]),
         ];
         let etags = vec![1, 1, 1, 1];
         let faces = vec![
-            Edge::from_slice(&[0, 1]),
-            Edge::from_slice(&[1, 2]),
-            Edge::from_slice(&[2, 3]),
-            Edge::from_slice(&[3, 0]),
+            Edge::from([0, 1]),
+            Edge::from([1, 2]),
+            Edge::from([2, 3]),
+            Edge::from([3, 0]),
         ];
         let ftags = vec![1, 2, 3, 4];
 
-        let mut mesh = SimplexMesh::new(coords, elems, etags, faces, ftags);
+        let mut mesh = SimplexMesh::new_with_vec(coords, elems, etags, faces, ftags);
         mesh.compute_topology();
 
-        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
+        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts().try_into().unwrap()];
         let geom = NoGeometry();
         let mut remesher = Remesher::new(&mesh, &h, &geom)?;
 
@@ -1232,7 +1244,7 @@ mod tests {
         };
         remesher.smooth(&params, &geom, true)?;
         let pt = remesher.verts.get(&4).unwrap().vx;
-        let center = Point::<2>::new(0.5, 0.5);
+        let center = Vert2d::new(0.5, 0.5);
         assert!((pt - center).norm() < 1e-12);
 
         remesher.check()?;
@@ -1253,24 +1265,24 @@ mod tests {
             Point::<2>::new(0.1, 0.1),
         ];
         let elems = vec![
-            Triangle::from_slice(&[0, 1, 4]),
-            Triangle::from_slice(&[1, 2, 4]),
-            Triangle::from_slice(&[2, 3, 4]),
-            Triangle::from_slice(&[3, 0, 4]),
+            Triangle::from([0, 1, 4]),
+            Triangle::from([1, 2, 4]),
+            Triangle::from([2, 3, 4]),
+            Triangle::from([3, 0, 4]),
         ];
         let etags = vec![1, 1, 1, 1];
         let faces = vec![
-            Edge::from_slice(&[0, 1]),
-            Edge::from_slice(&[1, 2]),
-            Edge::from_slice(&[2, 3]),
-            Edge::from_slice(&[3, 0]),
+            Edge::from([0, 1]),
+            Edge::from([1, 2]),
+            Edge::from([2, 3]),
+            Edge::from([3, 0]),
         ];
         let ftags = vec![1, 2, 3, 4];
 
         let mut mesh = SimplexMesh::new(coords, elems, etags, faces, ftags);
         mesh.compute_topology();
 
-        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
+        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts().try_into().unwrap()];
         let geom = NoGeometry();
         let mut remesher = Remesher::new(&mesh, &h, &geom)?;
 
@@ -1282,7 +1294,7 @@ mod tests {
         };
         remesher.smooth(&params, &geom, true)?;
         let pt = remesher.verts.get(&4).unwrap().vx;
-        let center = Point::<2>::new(0.5, 0.5);
+        let center = Vert2d::new(0.5, 0.5);
         assert!((pt - center).norm() < 0.05);
 
         remesher.check()?;
@@ -1295,28 +1307,28 @@ mod tests {
     #[test]
     fn test_smooth_laplacian_2d_aniso() -> Result<()> {
         let coords = vec![
-            Point::<2>::new(0., 0.),
-            Point::<2>::new(1., 0.),
-            Point::<2>::new(1., 0.1),
-            Point::<2>::new(0., 0.1),
-            Point::<2>::new(0.01, 0.01),
+            Vert2d::new(0., 0.),
+            Vert2d::new(1., 0.),
+            Vert2d::new(1., 0.1),
+            Vert2d::new(0., 0.1),
+            Vert2d::new(0.01, 0.01),
         ];
         let elems = vec![
-            Triangle::from_slice(&[0, 1, 4]),
-            Triangle::from_slice(&[1, 2, 4]),
-            Triangle::from_slice(&[2, 3, 4]),
-            Triangle::from_slice(&[3, 0, 4]),
+            Triangle::from([0_u32, 1, 4]),
+            Triangle::from([1, 2, 4]),
+            Triangle::from([2, 3, 4]),
+            Triangle::from([3, 0, 4]),
         ];
         let etags = vec![1, 1, 1, 1];
         let faces = vec![
-            Edge::from_slice(&[0, 1]),
-            Edge::from_slice(&[1, 2]),
-            Edge::from_slice(&[2, 3]),
-            Edge::from_slice(&[3, 0]),
+            Edge::from([0, 1]),
+            Edge::from([1, 2]),
+            Edge::from([2, 3]),
+            Edge::from([3, 0]),
         ];
         let ftags = vec![1, 2, 3, 4];
 
-        let mut mesh = SimplexMesh::new(coords, elems, etags, faces, ftags);
+        let mut mesh = SimplexMesh::new_with_vec(coords, elems, etags, faces, ftags);
         mesh.compute_topology();
 
         let h = vec![
@@ -1337,7 +1349,7 @@ mod tests {
         };
         remesher.smooth(&params, &geom, true)?;
         let pt = remesher.verts.get(&4).unwrap().vx;
-        let center = Point::<2>::new(0.5, 0.05);
+        let center = Vert2d::new(0.5, 0.05);
         assert!((pt - center).norm() < 1e-12);
 
         remesher.check()?;
@@ -1350,31 +1362,31 @@ mod tests {
     #[test]
     fn test_smooth_omega_2d() -> Result<()> {
         let coords = vec![
-            Point::<2>::new(0., 0.),
-            Point::<2>::new(1., 0.),
-            Point::<2>::new(1., 1.),
-            Point::<2>::new(0., 1.),
-            Point::<2>::new(0.1, 0.1),
+            Vert2d::new(0., 0.),
+            Vert2d::new(1., 0.),
+            Vert2d::new(1., 1.),
+            Vert2d::new(0., 1.),
+            Vert2d::new(0.1, 0.1),
         ];
         let elems = vec![
-            Triangle::from_slice(&[0, 1, 4]),
-            Triangle::from_slice(&[1, 2, 4]),
-            Triangle::from_slice(&[2, 3, 4]),
-            Triangle::from_slice(&[3, 0, 4]),
+            Triangle::from([0_u32, 1, 4]),
+            Triangle::from([1, 2, 4]),
+            Triangle::from([2, 3, 4]),
+            Triangle::from([3, 0, 4]),
         ];
         let etags = vec![1, 1, 1, 1];
         let faces = vec![
-            Edge::from_slice(&[0, 1]),
-            Edge::from_slice(&[1, 2]),
-            Edge::from_slice(&[2, 3]),
-            Edge::from_slice(&[3, 0]),
+            Edge::from([0, 1]),
+            Edge::from([1, 2]),
+            Edge::from([2, 3]),
+            Edge::from([3, 0]),
         ];
         let ftags = vec![1, 2, 3, 4];
 
-        let mut mesh = SimplexMesh::new(coords, elems, etags, faces, ftags);
+        let mut mesh = SimplexMesh::new_with_vec(coords, elems, etags, faces, ftags);
         mesh.compute_topology();
 
-        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts() as usize];
+        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts().try_into().unwrap()];
         let geom = NoGeometry();
         let mut remesher = Remesher::new(&mesh, &h, &geom)?;
 
@@ -1386,7 +1398,7 @@ mod tests {
         };
         remesher.smooth(&params, &geom, true)?;
         let pt = remesher.verts.get(&4).unwrap().vx;
-        let center = Point::<2>::new(0.5, 0.5);
+        let center = Vert2d::new(0.5, 0.5);
         assert!((pt - center).norm() < 0.01);
 
         remesher.check()?;
@@ -1399,28 +1411,28 @@ mod tests {
     #[test]
     fn test_smooth_omega_2d_aniso() -> Result<()> {
         let coords = vec![
-            Point::<2>::new(0., 0.),
-            Point::<2>::new(1., 0.),
-            Point::<2>::new(1., 0.1),
-            Point::<2>::new(0., 0.1),
-            Point::<2>::new(0.01, 0.01),
+            Vert2d::new(0., 0.),
+            Vert2d::new(1., 0.),
+            Vert2d::new(1., 0.1),
+            Vert2d::new(0., 0.1),
+            Vert2d::new(0.01, 0.01),
         ];
         let elems = vec![
-            Triangle::from_slice(&[0, 1, 4]),
-            Triangle::from_slice(&[1, 2, 4]),
-            Triangle::from_slice(&[2, 3, 4]),
-            Triangle::from_slice(&[3, 0, 4]),
+            Triangle::from([0_u32, 1, 4]),
+            Triangle::from([1, 2, 4]),
+            Triangle::from([2, 3, 4]),
+            Triangle::from([3, 0, 4]),
         ];
         let etags = vec![1, 1, 1, 1];
         let faces = vec![
-            Edge::from_slice(&[0, 1]),
-            Edge::from_slice(&[1, 2]),
-            Edge::from_slice(&[2, 3]),
-            Edge::from_slice(&[3, 0]),
+            Edge::from([0, 1]),
+            Edge::from([1, 2]),
+            Edge::from([2, 3]),
+            Edge::from([3, 0]),
         ];
         let ftags = vec![1, 2, 3, 4];
 
-        let mut mesh = SimplexMesh::new(coords, elems, etags, faces, ftags);
+        let mut mesh = SimplexMesh::new_with_vec(coords, elems, etags, faces, ftags);
         mesh.compute_topology();
 
         let h = vec![
@@ -1441,7 +1453,7 @@ mod tests {
         };
         remesher.smooth(&params, &geom, true)?;
         let pt = remesher.verts.get(&4).unwrap().vx;
-        let center = Point::<2>::new(0.5, 0.05);
+        let center = Vert2d::new(0.5, 0.05);
         assert!((pt - center).norm() < 0.01);
 
         remesher.check()?;
@@ -1454,7 +1466,7 @@ mod tests {
     #[test]
     fn test_adapt_2d() -> Result<()> {
         let mut mesh = test_mesh_2d().split().split();
-        mesh.add_boundary_faces();
+        mesh.fix();
         mesh.compute_topology();
 
         for iter in 0..10 {
@@ -1484,13 +1496,13 @@ mod tests {
     #[test]
     fn test_adapt_aniso_2d() -> Result<()> {
         let mut mesh = test_mesh_2d();
-        mesh.mut_etags().for_each(|t| *t = 1);
+        mesh.etags_mut().for_each(|t| *t = 1);
         mesh.compute_topology();
 
-        let mfunc = |pt: Point<2>| {
+        let mfunc = |pt: Vert2d| {
             let y = pt[1];
-            let v0 = Point::<2>::new(0.5, 0.);
-            let v1 = Point::<2>::new(0., 0.05 + 0.15 * y);
+            let v0 = Vert2d::new(0.5, 0.);
+            let v1 = Vert2d::new(0., 0.05 + 0.15 * y);
             AnisoMetric2d::from_sizes(&v0, &v1)
         };
 
@@ -1563,7 +1575,7 @@ mod tests {
         let mut mesh = test_mesh_3d_single_tet();
         mesh.compute_topology();
 
-        let h = vec![IsoMetric::<3>::from(0.25); mesh.n_verts() as usize];
+        let h = vec![IsoMetric::<3>::from(0.25); mesh.n_verts().try_into().unwrap()];
         let geom = NoGeometry();
         let mut remesher = Remesher::new(&mesh, &h, &geom)?;
         remesher.check()?;
@@ -1615,7 +1627,7 @@ mod tests {
         let mut mesh = test_mesh_3d().split().split();
         mesh.compute_topology();
 
-        let h = vec![IsoMetric::<3>::from(2.); mesh.n_verts() as usize];
+        let h = vec![IsoMetric::<3>::from(2.); mesh.n_verts().try_into().unwrap()];
         let geom = NoGeometry();
         let mut remesher = Remesher::new(&mesh, &h, &geom)?;
         remesher.check()?;
@@ -1641,7 +1653,7 @@ mod tests {
         mesh.compute_topology();
 
         // collapse to lower the quality
-        let h = vec![IsoMetric::<3>::from(2.); mesh.n_verts() as usize];
+        let h = vec![IsoMetric::<3>::from(2.); mesh.n_verts().try_into().unwrap()];
         let geom = NoGeometry();
         let mut remesher = Remesher::new(&mesh, &h, &geom)?;
 
@@ -1671,7 +1683,7 @@ mod tests {
         mesh.compute_topology();
 
         // collapse to lower the quality
-        let h = vec![IsoMetric::<3>::from(2.); mesh.n_verts() as usize];
+        let h = vec![IsoMetric::<3>::from(2.); mesh.n_verts().try_into().unwrap()];
         let geom = NoGeometry();
         let mut remesher = Remesher::new(&mesh, &h, &geom)?;
         remesher.check()?;
@@ -1691,7 +1703,7 @@ mod tests {
         let mut mesh = remesher.to_mesh(true);
         mesh.compute_topology();
 
-        let h = vec![IsoMetric::<3>::from(2.); mesh.n_verts() as usize];
+        let h = vec![IsoMetric::<3>::from(2.); mesh.n_verts().try_into().unwrap()];
         let geom = NoGeometry();
         let mut remesher = Remesher::new(&mesh, &h, &geom)?;
 
@@ -1711,14 +1723,16 @@ mod tests {
         Ok(())
     }
 
-    fn get_implied_metric_3d(
-        mesh: &SimplexMesh<3, Tetrahedron>,
-        pt: Point<3>,
+    fn get_implied_metric_3d<T: Idx>(
+        mesh: &SimplexMesh<T, 3, Tetrahedron<T>>,
+        pt: Vert3d,
     ) -> Option<AnisoMetric3d> {
         for ge in mesh.gelems() {
             let bcoords = ge.bcoords(&pt);
-            if bcoords.min() > -1e-12 {
-                return Some(ge.implied_metric());
+            if bcoords.into_iter().all(|x| x > -1e-12) {
+                return Some(SimplexMesh::<T, 3, Tetrahedron<T>>::gelem_implied_metric(
+                    &ge,
+                ));
             }
         }
         None
@@ -1731,10 +1745,7 @@ mod tests {
 
         let geom = NoGeometry();
 
-        let pts = [
-            Point::<3>::new(0.5, 0.35, 0.35),
-            Point::<3>::new(0.0, 0.0, 0.0),
-        ];
+        let pts = [Vert3d::new(0.5, 0.35, 0.35), Vert3d::new(0.0, 0.0, 0.0)];
 
         for iter in 0..3 {
             let h: Vec<_> = mesh
@@ -1776,9 +1787,9 @@ mod tests {
         mesh.compute_topology();
 
         let mfunc = |_p| {
-            let v0 = Point::<3>::new(0.5, 0., 0.);
-            let v1 = Point::<3>::new(0.0, 0.5, 0.);
-            let v2 = Point::<3>::new(0., 0.0, 0.2);
+            let v0 = Vert3d::new(0.5, 0., 0.);
+            let v1 = Vert3d::new(0.0, 0.5, 0.);
+            let v2 = Vert3d::new(0., 0.0, 0.2);
             AnisoMetric3d::from_sizes(&v0, &v1, &v2)
         };
 
@@ -1817,9 +1828,9 @@ mod tests {
         let mut mesh = sphere_mesh(3);
 
         let mfunc = |_p| {
-            let v0 = Point::<3>::new(0.5, 0., 0.);
-            let v1 = Point::<3>::new(0.0, 0.5, 0.);
-            let v2 = Point::<3>::new(0., 0.0, 0.1);
+            let v0 = Vert3d::new(0.5, 0., 0.);
+            let v1 = Vert3d::new(0.0, 0.5, 0.);
+            let v2 = Vert3d::new(0., 0.0, 0.1);
             AnisoMetric3d::from_sizes(&v0, &v1, &v2)
         };
 
@@ -1861,13 +1872,13 @@ mod tests {
     #[test]
     fn test_complexity_2d() -> Result<()> {
         let mut mesh = test_mesh_2d().split().split();
-        mesh.add_boundary_faces();
+        mesh.fix();
         mesh.compute_topology();
         mesh.compute_volumes();
 
         let mfunc = |_p| {
-            let v0 = Point::<2>::new(0.1, 0.);
-            let v1 = Point::<2>::new(0.0, 0.01);
+            let v0 = Vert2d::new(0.1, 0.);
+            let v1 = Vert2d::new(0.0, 0.01);
             AnisoMetric2d::from_sizes(&v0, &v1)
         };
         let c_ref = 4. / f64::sqrt(3.0) / (0.1 * 0.01);
@@ -1892,9 +1903,9 @@ mod tests {
         mesh.compute_volumes();
 
         let mfunc = |_p| {
-            let v0 = Point::<3>::new(0.1, 0., 0.);
-            let v1 = Point::<3>::new(0.0, 0.01, 0.);
-            let v2 = Point::<3>::new(0., 0.0, 2.);
+            let v0 = Vert3d::new(0.1, 0., 0.);
+            let v1 = Vert3d::new(0.0, 0.01, 0.);
+            let v2 = Vert3d::new(0., 0.0, 2.);
             AnisoMetric3d::from_sizes(&v0, &v1, &v2)
         };
         let c_ref = 6. * f64::sqrt(2.0) / (0.1 * 0.01 * 2.0);
@@ -1920,31 +1931,31 @@ mod tests {
     fn test_iso3d() -> Result<()> {
         // test used in tucanos-ffi-test
         let verts = [0., 0., 0., 1., 0., 0., 0., 1., 0., 0., 0., 1.];
-        let elems = [0, 1, 2, 3];
+        let elems = [0_u32, 1, 2, 3];
         let faces = [0, 2, 1, 0, 1, 3, 1, 2, 3, 2, 0, 3];
         let metric = [0.1; 4];
 
         let verts = verts
             .chunks(3)
-            .map(Point::<3>::from_column_slice)
+            .map(Vert3d::from_column_slice)
             .collect::<Vec<_>>();
         let elems = elems
-            .chunks(Tetrahedron::N_VERTS as usize)
-            .map(Tetrahedron::from_slice)
+            .chunks(Tetrahedron::<u32>::N_VERTS)
+            .map(|x| Tetrahedron::<u32>::from_iter(x.into_iter().copied()))
             .collect::<Vec<_>>();
         let etags = vec![1; elems.len()];
         let faces = faces
-            .chunks(Triangle::N_VERTS as usize)
-            .map(Triangle::from_slice)
+            .chunks(Triangle::<u32>::N_VERTS)
+            .map(|x| Triangle::<u32>::from_iter(x.into_iter().copied()))
             .collect::<Vec<_>>();
         let ftags = vec![1, 2, 3, 4];
         let metric = metric
             .iter()
             .map(|&x| IsoMetric::<3>::from(x))
             .collect::<Vec<_>>();
-        let mut mesh = SimplexMesh::<3, Tetrahedron>::new(verts, elems, etags, faces, ftags);
+        let mut mesh = SimplexMesh::new_with_vec(verts, elems, etags, faces, ftags);
         mesh.compute_topology();
-        let bdy = mesh.boundary().0;
+        let bdy = mesh.boundary::<SimplexMesh<_, _, _>>().0;
         let geom = LinearGeometry::new(&mesh, bdy)?;
         let mut remesher = Remesher::new(&mesh, &metric, &geom)?;
         remesher.remesh(&RemesherParams::default(), &geom)?;
@@ -1965,16 +1976,16 @@ mod tests {
 
         let verts = verts
             .chunks(3)
-            .map(Point::<3>::from_column_slice)
+            .map(Vert3d::from_column_slice)
             .collect::<Vec<_>>();
         let elems = elems
-            .chunks(Tetrahedron::N_VERTS as usize)
-            .map(Tetrahedron::from_slice)
+            .chunks(Tetrahedron::<u32>::N_VERTS)
+            .map(|x| Tetrahedron::<u32>::from_iter(x.into_iter().copied()))
             .collect::<Vec<_>>();
         let etags = vec![1; elems.len()];
         let faces = faces
-            .chunks(Triangle::N_VERTS as usize)
-            .map(Triangle::from_slice)
+            .chunks(Triangle::<u32>::N_VERTS)
+            .map(|x| Triangle::<u32>::from_iter(x.into_iter().copied()))
             .collect::<Vec<_>>();
         let ftags = vec![1, 2, 3, 4];
         let metric = metric
@@ -1982,9 +1993,9 @@ mod tests {
             .map(|x| AnisoMetric3d::from_slice(x))
             .collect::<Vec<_>>();
 
-        let mut mesh = SimplexMesh::<3, Tetrahedron>::new(verts, elems, etags, faces, ftags);
+        let mut mesh = SimplexMesh::new_with_vec(verts, elems, etags, faces, ftags);
         mesh.compute_topology();
-        let bdy = mesh.boundary().0;
+        let bdy = mesh.boundary::<SimplexMesh<_, _, _>>().0;
         let geom = LinearGeometry::new(&mesh, bdy)?;
         let mut remesher = Remesher::new(&mesh, &metric, &geom)?;
         remesher.remesh(&RemesherParams::default(), &geom)?;

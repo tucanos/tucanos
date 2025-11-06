@@ -1,8 +1,8 @@
 use super::Remesher;
 use crate::{
-    Dim, Idx, Result,
+    Dim, Result,
     geometry::Geometry,
-    mesh::{AsSliceF64, Elem, GElem, HasTmeshImpl, Point, SimplexMesh},
+    mesh::SimplexMesh,
     metric::Metric,
     min_iter,
     remesher::{
@@ -13,6 +13,10 @@ use crate::{
 use log::{debug, trace};
 #[cfg(feature = "nlopt")]
 use nlopt::{Algorithm, Nlopt, Target};
+use tmesh::{
+    Vertex,
+    mesh::{GSimplex, Idx, Simplex},
+};
 
 /// Smoothing methods
 /// For all methods except NLOpt, a set of valid neighbors $`N(i)`$ is built as a subset
@@ -71,23 +75,21 @@ impl Default for SmoothParams {
     }
 }
 
-impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M>
-where
-    SimplexMesh<D, E>: HasTmeshImpl<D, E>,
-{
+impl<T: Idx, const D: usize, C: Simplex<T>, M: Metric<D>> Remesher<T, D, C, M> {
     /// Get the vertices in a vertex cavity usable for smoothing, i.e. with tag that is a children of the cavity vertes
     /// TODO: move to Cavity
-    fn get_smoothing_neighbors(&self, cavity: &Cavity<D, E, M>) -> (bool, Vec<Idx>) {
-        let mut res = Vec::<Idx>::with_capacity(cavity.n_verts() as usize);
+    fn get_smoothing_neighbors(&self, cavity: &Cavity<T, D, C, M>) -> (bool, Vec<T>) {
+        let mut res = Vec::<T>::with_capacity(cavity.n_verts().try_into().unwrap());
         let Seed::Vertex(i0) = cavity.seed else {
             unreachable!()
         };
 
-        let m0 = &cavity.metrics[i0 as usize];
-        let t0 = cavity.tags[i0 as usize];
+        let m0 = &cavity.metrics[i0.try_into().unwrap()];
+        let t0 = cavity.tags[i0.try_into().unwrap()];
 
         let mut local_minimum = true;
-        for i1 in 0..cavity.n_verts() {
+        for i1 in 0..cavity.n_verts().try_into().unwrap() {
+            let i1 = i1.try_into().unwrap();
             if i1 == i0 {
                 continue;
             }
@@ -95,7 +97,7 @@ where
                 continue;
             }
             // check tag
-            let t1 = cavity.tags[i1 as usize];
+            let t1 = cavity.tags[i1.try_into().unwrap()];
             let tag = self.topo.parent(t0, t1);
             if tag.is_none() {
                 continue;
@@ -107,7 +109,7 @@ where
 
             res.push(i1);
 
-            let m1 = &cavity.metrics[i1 as usize];
+            let m1 = &cavity.metrics[i1.try_into().unwrap()];
             if m1.vol() < 1.01 * m0.vol() {
                 local_minimum = false;
             }
@@ -116,14 +118,14 @@ where
         (local_minimum, res)
     }
 
-    fn smooth_laplacian(cavity: &Cavity<D, E, M>, neighbors: &[Idx]) -> Point<D> {
+    fn smooth_laplacian(cavity: &Cavity<T, D, C, M>, neighbors: &[T]) -> Vertex<D> {
         let Seed::Vertex(i0) = cavity.seed else {
             unreachable!()
         };
         let (p0, _, _) = cavity.vert(i0);
-        let mut p0_new = Point::<D>::zeros();
-        for i1 in neighbors {
-            let p1 = &cavity.points[*i1 as usize];
+        let mut p0_new = Vertex::<D>::zeros();
+        for &i1 in neighbors {
+            let p1 = &cavity.points[i1.try_into().unwrap()];
             let e = p0 - p1;
             p0_new -= e;
         }
@@ -132,15 +134,15 @@ where
         p0_new
     }
 
-    fn smooth_laplacian_2(cavity: &Cavity<D, E, M>, neighbors: &[Idx]) -> Point<D> {
+    fn smooth_laplacian_2(cavity: &Cavity<T, D, C, M>, neighbors: &[T]) -> Vertex<D> {
         let Seed::Vertex(i0) = cavity.seed else {
             unreachable!()
         };
         let (p0, _, m0) = cavity.vert(i0);
-        let mut p0_new = Point::<D>::zeros();
+        let mut p0_new = Vertex::<D>::zeros();
         let mut w = 0.0;
-        for i1 in neighbors {
-            let p1 = &cavity.points[*i1 as usize];
+        for &i1 in neighbors {
+            let p1 = &cavity.points[i1.try_into().unwrap()];
             let e = p0 - p1;
             let l = m0.length(&e);
             p0_new += l * p1;
@@ -150,14 +152,14 @@ where
         p0_new
     }
 
-    fn smooth_avro(cavity: &Cavity<D, E, M>, neighbors: &[Idx]) -> Point<D> {
+    fn smooth_avro(cavity: &Cavity<T, D, C, M>, neighbors: &[T]) -> Vertex<D> {
         let Seed::Vertex(i0) = cavity.seed else {
             unreachable!()
         };
         let (p0, _, m0) = cavity.vert(i0);
-        let mut p0_new = Point::<D>::zeros();
-        for i1 in neighbors {
-            let p1 = &cavity.points[*i1 as usize];
+        let mut p0_new = Vertex::<D>::zeros();
+        for &i1 in neighbors {
+            let p1 = &cavity.points[i1.try_into().unwrap()];
             let e = p0 - p1;
             let omega = 0.2;
             let l = m0.length(&e);
@@ -170,20 +172,20 @@ where
     }
 
     #[cfg(feature = "nlopt")]
-    fn smooth_nlopt(cavity: &Cavity<D, E, M>, neighbors: &[Idx]) -> Point<D> {
+    fn smooth_nlopt(cavity: &Cavity<T, D, C, M>, neighbors: &[Idx]) -> Vertex<D> {
         let Seed::Vertex(i0) = cavity.seed else {
             unreachable!()
         };
         let (_, t0, m0) = cavity.vert(i0);
         if t0.0 == E::DIM as Dim {
-            let mut p0_new = Point::<D>::zeros();
+            let mut p0_new = Vertex::<D>::zeros();
             let mut qmax = cavity.q_min;
             let gfaces: Vec<_> = cavity.faces().map(|(f, _)| cavity.gface(&f)).collect();
 
             for i_elem in 0..cavity.n_elems() {
                 let ge = cavity.gelem(i_elem);
 
-                let n = E::N_VERTS as usize;
+                let n = E::N_VERTS.try_into().unwrap();
                 let mut x = vec![0.0; n];
 
                 let func = |x: &[f64], _grad: Option<&mut [f64]>, _params: &mut ()| -> f64 {
@@ -215,7 +217,7 @@ where
                 if res.unwrap().1 > qmax {
                     qmax = res.unwrap().1;
                     let mut sum = 0.0;
-                    for i in (1..E::N_VERTS as usize).rev() {
+                    for i in (1..E::N_VERTS.try_into().unwrap()).rev() {
                         x[i] = x[i - 1];
                         sum += x[i];
                     }
@@ -235,21 +237,21 @@ where
         &mut self,
         params: &SmoothParams,
         geom: &G,
-        cavity: &mut Cavity<D, E, M>,
-        verts: &[Idx],
-    ) -> (Idx, Idx, Idx) {
-        let (mut n_fails, mut n_min, mut n_smooth) = (0, 0, 0);
+        cavity: &mut Cavity<T, D, C, M>,
+        verts: &[T],
+    ) -> (T, T, T) {
+        let (mut n_fails, mut n_min, mut n_smooth) = (T::ZERO, T::ZERO, T::ZERO);
         for i0 in verts.iter().copied() {
             trace!("Try to smooth vertex {i0}");
             cavity.init_from_vertex(i0, self);
             let Seed::Vertex(i0_local) = cavity.seed else {
                 unreachable!()
             };
-            if cavity.tags[i0_local as usize].0 == 0 {
+            if cavity.tags[i0_local.try_into().unwrap()].0 == 0 {
                 continue;
             }
 
-            if cavity.tags[i0_local as usize].1 < 0 {
+            if cavity.tags[i0_local.try_into().unwrap()].1 < 0 {
                 continue;
             }
 
@@ -257,7 +259,7 @@ where
 
             if params.keep_local_minima && is_local_minimum {
                 trace!("Won't smooth, local minimum of m");
-                n_min += 1;
+                n_min += T::ONE;
                 continue;
             }
 
@@ -266,9 +268,9 @@ where
                 continue;
             }
 
-            let p0 = &cavity.points[i0_local as usize];
-            let m0 = &cavity.metrics[i0_local as usize];
-            let t0 = &cavity.tags[i0_local as usize];
+            let p0 = &cavity.points[i0_local.try_into().unwrap()];
+            let m0 = &cavity.metrics[i0_local.try_into().unwrap()];
+            let t0 = &cavity.tags[i0_local.try_into().unwrap()];
 
             let mut h0_new = Default::default();
             let p0_smoothed = match params.method {
@@ -279,13 +281,13 @@ where
                 SmoothingMethod::NLOpt => Self::smooth_nlopt(cavity, &neighbors),
             };
 
-            let mut p0_new = Point::<D>::zeros();
+            let mut p0_new = Vertex::<D>::zeros();
             let mut valid = false;
 
             for omega in params.relax.iter().copied() {
                 p0_new = (1.0 - omega) * p0 + omega * p0_smoothed;
 
-                if t0.0 < E::DIM as Dim {
+                if t0.0 < C::DIM as Dim {
                     geom.project(&mut p0_new, t0);
                 }
 
@@ -310,21 +312,23 @@ where
             }
 
             if !valid {
-                n_fails += 1;
+                n_fails += T::ONE;
                 trace!("Smooth, no smoothing is valid");
                 continue;
             }
 
             // Smoothing is valid, interpolate the metric at the new vertex location
             let mut best = f64::NEG_INFINITY;
-            for i_elem in 0..cavity.n_elems() {
-                let ge = cavity.gelem(i_elem);
+            for i_elem in 0..cavity.n_elems().try_into().unwrap() {
+                let (ge, _) = cavity.gelem(i_elem.try_into().unwrap());
                 let x = ge.bcoords(&p0_new);
-                let cmin = min_iter(x.as_slice_f64().iter().copied());
+                let cmin = min_iter(x.into_iter());
                 if cmin > best {
-                    let elem = &cavity.elems[i_elem as usize];
-                    let metrics = elem.iter().map(|i| &cavity.metrics[*i as usize]);
-                    let wm = x.as_slice_f64().iter().copied().zip(metrics);
+                    let elem: &C = &cavity.elems[i_elem];
+                    let metrics = elem
+                        .into_iter()
+                        .map(|i| &cavity.metrics[i.try_into().unwrap()]);
+                    let wm = x.into_iter().zip(metrics);
                     h0_new = M::interpolate(wm);
                     best = cmin;
                     if best > 0.0 {
@@ -343,10 +347,10 @@ where
 
             for (i_local, i_global) in cavity.global_elem_ids.iter().enumerate() {
                 // update the quality
-                let ge = cavity.gelem(i_local as Idx); // todo: precompute all ge
-                self.elems.get_mut(i_global).unwrap().q = ge.quality();
+                let (ge, m) = cavity.gelem(i_local.try_into().unwrap()); // todo: precompute all ge
+                self.elems.get_mut(i_global).unwrap().q = SimplexMesh::<T, D, C>::quality(&ge, &m);
             }
-            n_smooth += 1;
+            n_smooth += T::ONE;
         }
 
         (n_fails, n_min, n_smooth)

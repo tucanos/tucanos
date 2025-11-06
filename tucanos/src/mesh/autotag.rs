@@ -1,12 +1,14 @@
-use crate::{
-    Idx, Result, Tag,
-    mesh::{Elem, GElem, Point, SimplexMesh},
-};
+use crate::{Result, Tag, mesh::SimplexMesh};
 use log::debug;
 use std::collections::HashMap;
-use tmesh::{graph::CSRGraph, spatialindex::ObjectIndex};
+use tmesh::{
+    Vertex,
+    graph::CSRGraph,
+    mesh::{GSimplex, Idx, Mesh, MutMesh, Simplex},
+    spatialindex::ObjectIndex,
+};
 
-impl<const D: usize, E: Elem> SimplexMesh<D, E> {
+impl<T: Idx, const D: usize, C: Simplex<T>> SimplexMesh<T, D, C> {
     /// Automatically tag the (surface) mesh elements as follows
     ///   - A graph is built such that two elements are connected if :
     ///       - they share a face that has only belongs to these two elements
@@ -14,7 +16,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     ///   - The new element tag is the index of the connected component of this graph
     ///     to which the element belongs
     pub fn autotag(&mut self, angle_deg: f64) -> Result<HashMap<Tag, Vec<Tag>>> {
-        assert_eq!(D - 1, E::DIM as usize);
+        assert_eq!(D - 1, C::DIM as usize);
 
         let f2e = self.get_face_to_elems()?;
         let threshold = angle_deg.to_radians().cos();
@@ -22,8 +24,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let mut e2e = Vec::with_capacity(f2e.len());
         for elems in f2e.values() {
             if elems.len() == 2 {
-                let n0 = self.gelem(self.elem(elems[0])).normal();
-                let n1 = self.gelem(self.elem(elems[1])).normal();
+                let n0 = self.gelem(&self.elem(elems[0])).normal().normalize();
+                let n1 = self.gelem(&self.elem(elems[1])).normal().normalize();
                 if n0.dot(&n1) > threshold {
                     e2e.push([elems[0], elems[1]]);
                 }
@@ -35,7 +37,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         let mut new_tags: HashMap<Tag, Vec<Tag>> = HashMap::new();
         let mut tags = HashMap::new();
         let mut next = 1;
-        self.mut_etags().zip(components).for_each(|(t, c)| {
+        self.etags_mut().zip(components).for_each(|(t, c)| {
             if let Some(new_tag) = tags.get(&(*t, c)) {
                 *t = *new_tag;
             } else {
@@ -54,13 +56,13 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
     /// Automatically tag the mesh faces applying `autotag` to the mesh boundary
     pub fn autotag_bdy(&mut self, angle_deg: f64) -> Result<HashMap<Tag, Vec<Tag>>> {
-        assert_eq!(D, E::DIM as usize);
+        assert_eq!(D, C::DIM as usize);
 
-        let mut bdy = self.boundary().0;
+        let mut bdy = self.boundary::<SimplexMesh<T, D, C::FACE>>().0;
         bdy.compute_face_to_elems();
         let new_tags = bdy.autotag(angle_deg)?;
 
-        self.mut_ftags()
+        self.ftags_mut()
             .zip(bdy.etags())
             .for_each(|(t, new_t)| *t = new_t);
 
@@ -70,30 +72,30 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// Transfer the tag information to another mesh.
     /// For each element or face in `mesh` (depending on the dimension), its tag is updated
     /// to the tag of the element of `self` onto which the element center is projected.
-    pub fn transfer_tags<E2: Elem>(
+    pub fn transfer_tags<C2: Simplex<T>>(
         &self,
         tree: &ObjectIndex<D>,
-        mesh: &mut SimplexMesh<D, E2>,
+        mesh: &mut SimplexMesh<T, D, C2>,
     ) -> Result<()> {
-        let get_tag = |pt: &Point<D>| {
+        let get_tag = |pt: &Vertex<D>| {
             let idx = tree.nearest_elem(pt);
-            self.etag(idx as Idx)
+            self.etag(idx.try_into().unwrap())
         };
 
-        if E2::DIM == E::DIM {
+        if C2::DIM == C::DIM {
             debug!("Computing the mesh element tags");
             let tags = mesh
                 .gelems()
                 .map(|ge| get_tag(&ge.center()))
                 .collect::<Vec<_>>();
-            mesh.mut_etags().zip(tags).for_each(|(t, new_t)| *t = new_t);
-        } else if E2::DIM == E::DIM + 1 {
+            mesh.etags_mut().zip(tags).for_each(|(t, new_t)| *t = new_t);
+        } else if C2::DIM == C::DIM + 1 {
             debug!("Computing the mesh face tags");
             let tags = mesh
                 .gfaces()
                 .map(|gf| get_tag(&gf.center()))
                 .collect::<Vec<_>>();
-            mesh.mut_ftags().zip(tags).for_each(|(t, new_t)| *t = new_t);
+            mesh.ftags_mut().zip(tags).for_each(|(t, new_t)| *t = new_t);
         } else {
             panic!("Invalid mesh element dimension");
         }
@@ -104,15 +106,21 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
 #[cfg(test)]
 mod tests {
-    use tmesh::{mesh::Mesh, spatialindex::ObjectIndex};
+    use tmesh::{
+        mesh::{Mesh, MutMesh},
+        spatialindex::ObjectIndex,
+    };
 
-    use crate::mesh::test_meshes::{test_mesh_2d, test_mesh_3d};
+    use crate::mesh::{
+        SimplexMesh,
+        test_meshes::{test_mesh_2d, test_mesh_3d},
+    };
     use std::collections::HashMap;
 
     #[test]
     fn test_square() {
         let mut mesh = test_mesh_2d().split();
-        mesh.mut_ftags().for_each(|t| *t = 1);
+        mesh.ftags_mut().for_each(|t| *t = 1);
 
         let new_tags = mesh.autotag_bdy(30.0).unwrap();
         assert_eq!(new_tags.len(), 1);
@@ -123,7 +131,7 @@ mod tests {
     fn test_square_2() {
         let mut mesh = test_mesh_2d().split();
         let tmp = mesh.faces().collect::<Vec<_>>();
-        mesh.mut_ftags().zip(tmp).for_each(|(t, f)| {
+        mesh.ftags_mut().zip(tmp).for_each(|(t, f)| {
             if f[0] == 0 || f[1] == 0 {
                 *t = 1;
             } else {
@@ -141,7 +149,7 @@ mod tests {
     fn test_cube() {
         let mut mesh = test_mesh_3d().split();
         let tmp = mesh.faces().collect::<Vec<_>>();
-        mesh.mut_ftags().zip(tmp).for_each(|(t, f)| {
+        mesh.ftags_mut().zip(tmp).for_each(|(t, f)| {
             if f[0] == 0 || f[1] == 0 || f[2] == 1 {
                 *t = 1;
             } else {
@@ -159,9 +167,9 @@ mod tests {
     fn test_cube_geom() {
         let mut mesh = test_mesh_3d().split();
         let tmp = mesh.faces().collect::<Vec<_>>();
-        mesh.mut_ftags().zip(tmp).for_each(|(t, _)| *t = 1);
+        mesh.ftags_mut().zip(tmp).for_each(|(t, _)| *t = 1);
 
-        let mut bdy = mesh.boundary().0.split();
+        let mut bdy = mesh.boundary::<SimplexMesh<_, _, _>>().0.split();
         bdy.compute_face_to_elems();
         let new_tags = bdy.autotag(30.0).unwrap();
 

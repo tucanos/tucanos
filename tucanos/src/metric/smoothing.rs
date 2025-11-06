@@ -1,12 +1,9 @@
-use crate::{
-    Result,
-    mesh::{Elem, SimplexMesh},
-    metric::Metric,
-};
+use crate::{Result, mesh::SimplexMesh, metric::Metric};
 use log::debug;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
+use tmesh::mesh::{Idx, Mesh, Simplex};
 
-impl<const D: usize, E: Elem> SimplexMesh<D, E> {
+impl<T: Idx, const D: usize, C: Simplex<T>> SimplexMesh<T, D, C> {
     /// Smooth a metric field to avoid numerical artifacts
     /// For each mesh vertex $`i`$, a set a suitable neighbors $`N(i)`$ is built as
     /// a subset of the neighbors of $`i`$ ($`i`$ is included) ignoring the vertices with the metrics with
@@ -18,7 +15,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     /// TODO: doc
     pub fn smooth_metric<M: Metric<D>>(&self, m: &[M]) -> Result<Vec<M>> {
         debug!("Apply metric smoothing");
-        let n = self.n_verts() as usize;
+        let n = self.n_verts().try_into().unwrap();
         assert_eq!(m.len(), n);
 
         let v2v = self.get_vertex_to_vertices()?;
@@ -32,18 +29,18 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 let vol = m_v.vol();
                 let mut min_vol = vol;
                 let mut max_vol = vol;
-                let mut min_idx = 0;
-                let mut max_idx = 0;
-                let neighbors = v2v.row(i_vert);
-                for i_neigh in neighbors {
-                    let m_n = &m[*i_neigh];
+                let mut min_idx = T::ZERO;
+                let mut max_idx = T::ZERO;
+                let neighbors = v2v.row(i_vert.try_into().unwrap());
+                for &i_neigh in neighbors {
+                    let m_n = &m[i_neigh.try_into().unwrap()];
                     let vol = m_n.vol();
                     if vol < min_vol {
                         min_vol = vol;
-                        min_idx = i_neigh + 1;
+                        min_idx = i_neigh + T::ONE;
                     } else if vol > max_vol {
                         max_vol = vol;
-                        max_idx = i_neigh + 1;
+                        max_idx = i_neigh + T::ONE;
                     }
                 }
 
@@ -57,14 +54,14 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 };
                 let w = 1. / n as f64;
 
-                if min_idx != 0 && max_idx != 0 {
+                if min_idx != T::ZERO && max_idx != T::ZERO {
                     weights.push(w);
                     metrics.push(&m[i_vert]);
                 }
-                for i_neigh in neighbors {
-                    if min_idx != i_neigh + 1 && max_idx != i_neigh + 1 {
+                for &i_neigh in neighbors {
+                    if min_idx != i_neigh + T::ONE && max_idx != i_neigh + T::ONE {
                         weights.push(w);
-                        metrics.push(&m[*i_neigh]);
+                        metrics.push(&m[i_neigh.try_into().unwrap()]);
                     }
                 }
 
@@ -77,10 +74,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
 #[cfg(test)]
 mod tests {
-    use tmesh::mesh::Mesh;
+    use tmesh::{Vert2d, Vert3d, mesh::Mesh};
 
     use crate::{
-        mesh::Point,
         mesh::test_meshes::{test_mesh_2d, test_mesh_3d},
         metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
         min_iter,
@@ -114,19 +110,19 @@ mod tests {
 
         mesh.compute_vertex_to_vertices();
 
-        let v0 = Point::<2>::new(0.5, 0.);
-        let v1 = Point::<2>::new(0.0, 4.0);
+        let v0 = Vert2d::new(0.5, 0.);
+        let v1 = Vert2d::new(0.0, 4.0);
 
         let mut m: Vec<_> = (0..mesh.n_verts())
             .map(|_| AnisoMetric2d::from_sizes(&v0, &v1))
             .collect();
 
-        let v0 = Point::<2>::new(0.05, 0.);
-        let v1 = Point::<2>::new(0.0, 4.0);
+        let v0 = Vert2d::new(0.05, 0.);
+        let v1 = Vert2d::new(0.0, 4.0);
         m[2] = AnisoMetric2d::from_sizes(&v0, &v1);
 
-        let v0 = Point::<2>::new(0.5, 0.);
-        let v1 = Point::<2>::new(0.0, 40.0);
+        let v0 = Vert2d::new(0.5, 0.);
+        let v1 = Vert2d::new(0.0, 40.0);
         m[5] = AnisoMetric2d::from_sizes(&v0, &v1);
 
         let m = mesh.smooth_metric(&m).unwrap();
@@ -166,22 +162,22 @@ mod tests {
 
         mesh.compute_vertex_to_vertices();
 
-        let v0 = Point::<3>::new(0.5, 0.0, 0.0);
-        let v1 = Point::<3>::new(0.0, 4.0, 0.0);
-        let v2 = Point::<3>::new(0.0, 0.0, 0.1);
+        let v0 = Vert3d::new(0.5, 0.0, 0.0);
+        let v1 = Vert3d::new(0.0, 4.0, 0.0);
+        let v2 = Vert3d::new(0.0, 0.0, 0.1);
 
         let mut m: Vec<_> = (0..mesh.n_verts())
             .map(|_| AnisoMetric3d::from_sizes(&v0, &v1, &v2))
             .collect();
 
-        let v0 = Point::<3>::new(0.05, 0.0, 0.0);
-        let v1 = Point::<3>::new(0.0, 4.0, 0.0);
-        let v2 = Point::<3>::new(0.0, 0.0, 0.1);
+        let v0 = Vert3d::new(0.05, 0.0, 0.0);
+        let v1 = Vert3d::new(0.0, 4.0, 0.0);
+        let v2 = Vert3d::new(0.0, 0.0, 0.1);
         m[2] = AnisoMetric3d::from_sizes(&v0, &v1, &v2);
 
-        let v0 = Point::<3>::new(0.5, 0.0, 0.0);
-        let v1 = Point::<3>::new(0.0, 4.0, 0.0);
-        let v2 = Point::<3>::new(0.0, 0.0, 1.0);
+        let v0 = Vert3d::new(0.5, 0.0, 0.0);
+        let v1 = Vert3d::new(0.0, 4.0, 0.0);
+        let v2 = Vert3d::new(0.0, 0.0, 1.0);
         m[5] = AnisoMetric3d::from_sizes(&v0, &v1, &v2);
 
         let m = mesh.smooth_metric(&m).unwrap();

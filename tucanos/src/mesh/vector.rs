@@ -1,4 +1,9 @@
-use crate::{Idx, Tag, mesh::Elem};
+use tmesh::{
+    Vertex,
+    mesh::{Idx, Simplex},
+};
+
+use crate::Tag;
 
 pub trait FromNativePointer: Send {
     type PointerType: std::fmt::Debug;
@@ -15,17 +20,17 @@ impl FromNativePointer for Tag {
     }
 }
 
-impl<E: Elem> FromNativePointer for E {
-    type PointerType = Idx;
-    const SIZE: usize = E::N_VERTS as usize;
+impl<T: Idx, C: Simplex<T>> FromNativePointer for C {
+    type PointerType = T;
+    const SIZE: usize = C::N_VERTS;
 
     fn from_ptr(ptr: *const Self::PointerType) -> Self {
-        let pts = unsafe { std::slice::from_raw_parts(ptr, E::N_VERTS as usize) };
-        E::from_slice(pts)
+        let pts = unsafe { std::slice::from_raw_parts(ptr, C::N_VERTS) };
+        C::from_iter(pts)
     }
 }
 
-impl<const D: usize> FromNativePointer for crate::mesh::Point<D> {
+impl<const D: usize> FromNativePointer for Vertex<D> {
     type PointerType = f64;
     const SIZE: usize = D;
     fn from_ptr(ptr: *const Self::PointerType) -> Self {
@@ -177,8 +182,8 @@ where
         self.data.len() == 0
     }
 
-    pub fn index(&self, i: Idx) -> T {
-        let i = i as usize;
+    pub fn index(&self, i: usize) -> T {
+        let i = i.try_into().unwrap();
         match &self.data {
             VectorImpl::Std(x) => x[i],
             VectorImpl::Native((p, s)) => {
@@ -189,8 +194,7 @@ where
         }
     }
 
-    pub fn index_mut(&mut self, i: Idx) -> &mut T {
-        let i = i as usize;
+    pub fn index_mut(&mut self, i: usize) -> &mut T {
         match &mut self.data {
             VectorImpl::Std(x) => &mut x[i],
             VectorImpl::Native(_) => panic!("Cannot use index_mut native vectors"),
@@ -208,6 +212,13 @@ where
         match &mut self.data {
             VectorImpl::Std(x) => x.reserve(additional),
             VectorImpl::Native(_) => panic!("Cannot reserve native vectors"),
+        }
+    }
+
+    pub fn extend<I: ExactSizeIterator<Item = T>>(&mut self, data: I) {
+        self.reserve(data.len());
+        for x in data {
+            self.push(x);
         }
     }
 

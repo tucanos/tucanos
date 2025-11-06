@@ -1,9 +1,4 @@
-use crate::{
-    Result,
-    mesh::GElem,
-    mesh::{Elem, SimplexMesh},
-    metric::Metric,
-};
+use crate::{Result, mesh::SimplexMesh, metric::Metric};
 use log::debug;
 use rayon::{
     prelude::{
@@ -12,8 +7,45 @@ use rayon::{
     },
     slice::ParallelSlice,
 };
+use tmesh::mesh::{GSimplex, Idx, Mesh, Simplex};
 
-impl<const D: usize, E: Elem> SimplexMesh<D, E> {
+impl<T: Idx, const D: usize, C: Simplex<T>> SimplexMesh<T, D, C> {
+    pub fn ideal_vol() -> f64 {
+        if D == 2 && C::N_VERTS == 3 {
+            3.0_f64.sqrt() / 4.0
+        } else if D == 3 && C::N_VERTS == 4 {
+            1.0 / (6.0 * std::f64::consts::SQRT_2)
+        } else {
+            unreachable!("Invalid dimension / element type");
+        }
+    }
+    /// Get the quality of element $`K`$, defined as
+    /// ```math
+    /// q(K) = \beta_d \frac{|K|_{\mathcal M}^{2/d}}{\sum_e ||e||_{\mathcal M}^2}
+    /// ```
+    /// where
+    ///  - $`|K|_{\mathcal M}`$ is the volume element in metric space. It is computed
+    ///    on a discrete mesh as the ratio of the volume in physical space to the minimum
+    ///    of the volumes of the metrics at each vertex
+    ///  - the sum on the denominator is performed over all the edges of the element
+    ///  - $`\beta_d`$ is a normalization factor such that $`q = 1`$ of equilateral elements
+    ///     - $`\beta_2 = 1 / (6\sqrt{2}) `$
+    ///     - $`\beta_3 = \sqrt{3}/ 4 `$
+    pub fn quality<M: Metric<D>>(ge: &C::GEOM<D>, m: &C::DATA<M>) -> f64 {
+        let m = M::min_metric(m.as_ref());
+        let vol = ge.vol();
+
+        let mut l = 0.0;
+        for i in 0..C::N_EDGES {
+            let e = ge.edge(i);
+            l += f64::powi(m.length(&e), 2);
+        }
+        let l = l / 6.0;
+        let vol = vol / m.vol() / Self::ideal_vol();
+
+        f64::powf(vol, 2. / C::DIM as f64) / l
+    }
+
     /// Get the metric information (min/max size, max anisotropy, complexity)
     pub fn metric_info<M: Metric<D>>(&self, m: &[M]) -> (f64, f64, f64, f64) {
         let (h_min, h_max, aniso_max) = m
@@ -43,8 +75,10 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn qualities<M: Metric<D>>(&self, m: &[M]) -> Vec<f64> {
         self.par_elems()
             .map(|e| {
-                let ge = E::Geom::from_verts(e.iter().map(|&i| (self.vert(i), m[i as usize])));
-                ge.quality()
+                let ge = self.gelem(&e);
+                let m = C::data_from_iter(e.into_iter().map(|i| m[i.try_into().unwrap()]));
+
+                Self::quality(&ge, &m)
             })
             .collect()
     }
@@ -55,12 +89,12 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
         Ok(edgs
             .par_iter()
-            .map(|&[i0, i1]| {
+            .map(|&e| {
                 M::edge_length(
-                    &self.vert(i0),
-                    &m[i0 as usize],
-                    &self.vert(i1),
-                    &m[i1 as usize],
+                    &self.vert(e[0]),
+                    &m[e[0].try_into().unwrap()],
+                    &self.vert(e[1]),
+                    &m[e[1].try_into().unwrap()],
                 )
             })
             .collect())
@@ -72,8 +106,8 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn elem_data_to_vertex_data_metric<M: Metric<D>>(&self, v: &[M]) -> Result<Vec<M>> {
         debug!("Convert metric element data to vertex data");
 
-        let n_elems = self.n_elems() as usize;
-        let n_verts = self.n_verts() as usize;
+        let n_elems = self.n_elems().try_into().unwrap();
+        let n_verts = self.n_verts().try_into().unwrap();
         assert_eq!(v.len(), n_elems);
 
         let mut res = vec![M::default(); n_verts];
@@ -86,16 +120,16 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             .zip(node_vol.par_iter())
             .enumerate()
             .for_each(|(i_vert, (m_vert, vert_vol))| {
-                let elems = v2e.row(i_vert);
+                let elems = v2e.row(i_vert.try_into().unwrap());
                 let n_elems = elems.len();
                 let mut weights = Vec::with_capacity(n_elems);
                 let mut metrics = Vec::with_capacity(n_elems);
                 weights.extend(
                     elems
                         .iter()
-                        .map(|i| elem_vol[*i] / f64::from(E::N_VERTS) / vert_vol),
+                        .map(|&i| elem_vol[i.try_into().unwrap()] / C::N_VERTS as f64 / vert_vol),
                 );
-                metrics.extend(elems.iter().map(|&i| v[i]));
+                metrics.extend(elems.iter().map(|&i| v[i.try_into().unwrap()]));
                 let wm = weights.iter().copied().zip(metrics.iter());
                 *m_vert = M::interpolate(wm);
             });
@@ -109,21 +143,21 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn vertex_data_to_elem_data_metric<M: Metric<D>>(&self, v: &[M]) -> Result<Vec<M>> {
         debug!("Convert metric vertex data to element data");
 
-        let n_elems = self.n_elems() as usize;
-        let n_verts = self.n_verts() as usize;
+        let n_elems = self.n_elems().try_into().unwrap();
+        let n_verts = self.n_verts().try_into().unwrap();
         assert_eq!(v.len(), n_verts);
 
         let mut res = vec![M::default(); n_elems];
 
-        let f = 1. / f64::from(E::N_VERTS);
+        let f = 1. / C::N_VERTS as f64;
 
         res.par_iter_mut()
             .zip(self.par_elems())
             .for_each(|(m_elem, e)| {
-                let mut weights = Vec::with_capacity(E::N_VERTS as usize);
-                let mut metrics = Vec::with_capacity(E::N_VERTS as usize);
-                weights.resize(E::N_VERTS as usize, f);
-                metrics.extend(e.iter().map(|&i| v[i as usize]));
+                let mut weights = Vec::with_capacity(C::N_VERTS.try_into().unwrap());
+                let mut metrics = Vec::with_capacity(C::N_VERTS.try_into().unwrap());
+                weights.resize(C::N_VERTS.try_into().unwrap(), f);
+                metrics.extend(e.into_iter().map(|i| v[i.try_into().unwrap()]));
                 let wm = weights.iter().copied().zip(metrics.iter());
                 *m_elem = M::interpolate(wm);
             });
@@ -138,7 +172,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         h_min: f64,
         h_max: f64,
     ) -> f64 {
-        let n_verts = self.n_verts() as usize;
+        let n_verts = self.n_verts().try_into().unwrap();
         assert_eq!(sizes.len(), n_verts * D);
 
         let vols = self.get_vertex_volumes().unwrap();
@@ -150,7 +184,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 let vol = s
                     .iter()
                     .fold(1.0, |a, b| a * f64::min(h_max, f64::max(h_min, *b)));
-                v / (E::Geom::<D, M>::IDEAL_VOL * vol)
+                v / (Self::ideal_vol() * vol)
             })
             .sum::<f64>()
     }
@@ -161,7 +195,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         h_min: f64,
         h_max: f64,
     ) -> f64 {
-        let n_verts = self.n_verts() as usize;
+        let n_verts = self.n_verts().try_into().unwrap();
         assert_eq!(m.len(), n_verts);
 
         let vols = self.get_vertex_volumes().unwrap();
@@ -172,7 +206,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 let vol = s
                     .iter()
                     .fold(1.0, |a, b| a * f64::min(h_max, f64::max(h_min, *b)));
-                v / (E::Geom::<D, M>::IDEAL_VOL * vol)
+                v / (Self::ideal_vol() * vol)
             })
             .sum::<f64>()
     }
@@ -200,10 +234,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 
 #[cfg(test)]
 mod tests {
-    use tmesh::mesh::Mesh;
+    use tmesh::{Vert2d, Vert3d, mesh::Mesh};
 
     use crate::{
-        mesh::Point,
         mesh::test_meshes::{test_mesh_2d, test_mesh_3d},
         metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric},
     };
@@ -213,7 +246,7 @@ mod tests {
         let mut mesh = test_mesh_2d().split().split();
         mesh.compute_volumes();
 
-        let h = vec![0.1; mesh.n_verts() as usize];
+        let h = vec![0.1; mesh.n_verts().try_into().unwrap()];
         let m: Vec<_> = h.iter().map(|&x| IsoMetric::<2>::from(x)).collect();
 
         let c = mesh.complexity(&m, 0.0, f64::MAX);
@@ -229,8 +262,8 @@ mod tests {
         mesh.compute_volumes();
 
         let mfunc = |_p| {
-            let v0 = Point::<2>::new(0.5, 0.);
-            let v1 = Point::<2>::new(0.0, 4.0);
+            let v0 = Vert2d::new(0.5, 0.);
+            let v1 = Vert2d::new(0.0, 4.0);
             AnisoMetric2d::from_sizes(&v0, &v1)
         };
 
@@ -248,7 +281,7 @@ mod tests {
         let mut mesh = test_mesh_3d().split().split();
         mesh.compute_volumes();
 
-        let h = vec![0.1; mesh.n_verts() as usize];
+        let h = vec![0.1; mesh.n_verts().try_into().unwrap()];
         let m: Vec<_> = h.iter().map(|&x| IsoMetric::<3>::from(x)).collect();
 
         let c = mesh.complexity(&m, 0.0, f64::MAX);
@@ -264,9 +297,9 @@ mod tests {
         mesh.compute_volumes();
 
         let mfunc = |_p| {
-            let v0 = Point::<3>::new(0.5, 0., 0.);
-            let v1 = Point::<3>::new(0.0, 4.0, 0.);
-            let v2 = Point::<3>::new(0.0, 0., 6.0);
+            let v0 = Vert3d::new(0.5, 0., 0.);
+            let v1 = Vert3d::new(0.0, 4.0, 0.);
+            let v2 = Vert3d::new(0.0, 0., 6.0);
             AnisoMetric3d::from_sizes(&v0, &v1, &v2)
         };
 

@@ -1,9 +1,10 @@
-use crate::{
-    H_MAX, Idx, Result,
-    mesh::{Edge, Elem, GElem, Point, SimplexMesh, Triangle},
-};
+use crate::{H_MAX, Result, mesh::SimplexMesh};
 use log::debug;
 use nalgebra::{SMatrix, SVector, SymmetricEigen};
+use tmesh::{
+    Vert2d, Vert3d, Vertex,
+    mesh::{Edge, GSimplex, Idx, Mesh, Simplex, Triangle},
+};
 
 /// Compute the surface normals at the mesh vertices
 /// NB: it should not be used across non smooth patches
@@ -15,22 +16,24 @@ use nalgebra::{SMatrix, SVector, SymmetricEigen};
 /// accurate normal estimates than other weighting approaches,
 /// and is exact for vertices that lie on a sphere."
 #[must_use]
-pub fn compute_vertex_normals<const D: usize, E: Elem>(mesh: &SimplexMesh<D, E>) -> Vec<Point<D>> {
+pub fn compute_vertex_normals<T: Idx, const D: usize, C: Simplex<T>>(
+    mesh: &SimplexMesh<T, D, C>,
+) -> Vec<Vertex<D>> {
     debug!("Compute the surface normals at the vertices");
 
-    let mut normals = vec![Point::<D>::zeros(); mesh.n_verts() as usize];
+    let mut normals = vec![Vertex::<D>::zeros(); mesh.n_verts().try_into().unwrap()];
 
     for e in mesh.elems() {
-        let ge = mesh.gelem(e);
+        let ge = mesh.gelem(&e);
         let n = ge.normal();
         let w = ge.vol();
         for i_vert in e {
-            normals[i_vert as usize] += w * n;
+            normals[i_vert.try_into().unwrap()] += w * n;
         }
     }
 
-    for i_vert in 0..mesh.n_verts() {
-        normals[i_vert as usize].normalize_mut();
+    for i_vert in 0..mesh.n_verts().try_into().unwrap() {
+        normals[i_vert].normalize_mut();
     }
 
     normals
@@ -55,16 +58,16 @@ fn bound_curvature(x: f64) -> f64 {
 /// NB: curvature should not be computed across non smooth patches
 /// NB: curvature estimation is not accurate near the boundaires
 #[must_use]
-pub fn compute_curvature_tensor_2d(smesh: &SimplexMesh<2, Edge>) -> Vec<Point<2>> {
+pub fn compute_curvature_tensor_2d<T: Idx>(smesh: &SimplexMesh<T, 2, Edge<T>>) -> Vec<Vert2d> {
     debug!("Compute curvature tensors (2d)");
     let vertex_normals = compute_vertex_normals(smesh);
 
-    let mut elem_u = Vec::with_capacity(smesh.n_verts() as usize);
+    let mut elem_u = Vec::with_capacity(smesh.n_verts().try_into().unwrap());
 
     for e in smesh.elems() {
         // Compute the element-based curvature
-        let n0 = &vertex_normals[e[0] as usize];
-        let n1 = &vertex_normals[e[1] as usize];
+        let n0 = &vertex_normals[e[0].try_into().unwrap()];
+        let n1 = &vertex_normals[e[1].try_into().unwrap()];
         let dn = n1 - n0;
 
         // local basis
@@ -89,9 +92,9 @@ pub fn compute_curvature_tensor_2d(smesh: &SimplexMesh<2, Edge>) -> Vec<Point<2>
 /// NB: curvature should not be computed across non smooth patches
 /// NB: curvature estimation is not accurate near the boundaires
 #[must_use]
-pub fn compute_curvature_tensor(
-    smesh: &SimplexMesh<3, Triangle>,
-) -> (Vec<Point<3>>, Vec<Point<3>>) {
+pub fn compute_curvature_tensor<T: Idx>(
+    smesh: &SimplexMesh<T, 3, Triangle<T>>,
+) -> (Vec<Vert3d>, Vec<Vert3d>) {
     debug!("Compute curvature tensors");
     let vertex_normals = compute_vertex_normals(smesh);
 
@@ -99,18 +102,18 @@ pub fn compute_curvature_tensor(
     // let nrows = 6;
     // let ncols = 3;
 
-    let mut elem_u = Vec::with_capacity(smesh.n_verts() as usize);
-    let mut elem_v = Vec::with_capacity(smesh.n_verts() as usize);
+    let mut elem_u = Vec::with_capacity(smesh.n_verts().try_into().unwrap());
+    let mut elem_v = Vec::with_capacity(smesh.n_verts().try_into().unwrap());
 
     for e in smesh.elems() {
         // Compute the element-based curvature
-        let ge = smesh.gelem(e);
+        let ge = smesh.gelem(&e);
         let n = ge.normal();
 
-        let edgs = [ge.edge(0), ge.edge(1), ge.edge(2)];
-        let n0 = &vertex_normals[e[0] as usize];
-        let n1 = &vertex_normals[e[1] as usize];
-        let n2 = &vertex_normals[e[2] as usize];
+        let edgs = [ge.edge(0_usize), ge.edge(1_usize), ge.edge(2_usize)];
+        let n0 = &vertex_normals[e[0].try_into().unwrap()];
+        let n1 = &vertex_normals[e[1].try_into().unwrap()];
+        let n2 = &vertex_normals[e[2].try_into().unwrap()];
         let dn = [n1 - n0, n2 - n0, n2 - n1];
 
         // local basis
@@ -185,10 +188,10 @@ pub fn compute_curvature_tensor(
     (elem_u, elem_v)
 }
 
-pub fn fix_curvature<const D: usize, E: Elem>(
-    smesh: &SimplexMesh<D, E>,
-    u: &mut [Point<D>],
-    mut v: Option<&mut [Point<D>]>,
+pub fn fix_curvature<T: Idx, const D: usize, C: Simplex<T>>(
+    smesh: &SimplexMesh<T, D, C>,
+    u: &mut [Vertex<D>],
+    mut v: Option<&mut [Vertex<D>]>,
 ) -> Result<()> {
     debug!("Fix curvature tensors near the patch boundaries");
 
@@ -198,18 +201,18 @@ pub fn fix_curvature<const D: usize, E: Elem>(
         assert!(v.is_some());
     }
 
-    let (_, bdy_ids) = smesh.boundary();
-    let mut bdy_flag = vec![false; smesh.n_verts() as usize];
+    let (_, bdy_ids) = smesh.boundary::<SimplexMesh<T, D, C::FACE>>();
+    let mut bdy_flag = vec![false; smesh.n_verts().try_into().unwrap()];
     for i in bdy_ids {
-        bdy_flag[i as usize] = true;
+        bdy_flag[i.try_into().unwrap()] = true;
     }
 
     let e2e = smesh.get_elem_to_elems()?;
-    let mut flg = Vec::with_capacity(smesh.n_elems() as usize);
+    let mut flg = Vec::with_capacity(smesh.n_elems().try_into().unwrap());
 
     let mut to_fix = 0;
     for e in smesh.elems() {
-        let is_boundary = e.iter().copied().any(|i| bdy_flag[i as usize]);
+        let is_boundary = e.into_iter().any(|i| bdy_flag[i.try_into().unwrap()]);
         flg.push(is_boundary);
         if is_boundary {
             to_fix += 1;
@@ -221,23 +224,23 @@ pub fn fix_curvature<const D: usize, E: Elem>(
     while to_fix > 0 {
         debug!("iteration {}: {} elements to fix", n_iter + 1, to_fix);
         let mut fixed = Vec::with_capacity(to_fix);
-        for i_elem in 0..smesh.n_elems() as usize {
+        for i_elem in 0..smesh.n_elems().try_into().unwrap() {
             if flg[i_elem] {
                 // Use any of the valid neighbors
                 // TODO: take the closest
                 let valid_neighbors = e2e
-                    .row(i_elem)
+                    .row(i_elem.try_into().unwrap())
                     .iter()
                     .copied()
-                    .filter(|i| !flg[*i])
-                    .filter(|i| etags[*i] == etags[i_elem]);
+                    .filter(|&i| !flg[i.try_into().unwrap()])
+                    .filter(|&i| etags[i.try_into().unwrap()] == etags[i_elem]);
                 let mut min_dist = f64::MAX;
-                let e = smesh.elem(i_elem as Idx);
-                let c = smesh.gelem(e).center();
+                let e = smesh.elem(i_elem.try_into().unwrap());
+                let c = smesh.gelem(&e).center();
                 let mut i_neighbor = None;
                 for i in valid_neighbors {
-                    let e2 = smesh.elem(i as Idx);
-                    let c2 = smesh.gelem(e2).center();
+                    let e2 = smesh.elem(i);
+                    let c2 = smesh.gelem(&e2).center();
                     let dist = (c2 - c).norm();
                     if dist < min_dist {
                         min_dist = dist;
@@ -246,6 +249,7 @@ pub fn fix_curvature<const D: usize, E: Elem>(
                 }
 
                 if let Some(i_neighbor) = i_neighbor {
+                    let i_neighbor = i_neighbor.try_into().unwrap();
                     if D == 2 {
                         u[i_elem].normalize_mut();
                         u[i_elem] *= u[i_neighbor].norm();
@@ -293,11 +297,11 @@ pub fn fix_curvature<const D: usize, E: Elem>(
 }
 
 pub trait HasCurvature<const D: usize> {
-    fn compute_curvature(&self) -> (Vec<Point<D>>, Option<Vec<Point<D>>>);
+    fn compute_curvature(&self) -> (Vec<Vertex<D>>, Option<Vec<Vertex<D>>>);
 }
 
-impl HasCurvature<2> for SimplexMesh<2, Edge> {
-    fn compute_curvature(&self) -> (Vec<Point<2>>, Option<Vec<Point<2>>>) {
+impl<T: Idx> HasCurvature<2> for SimplexMesh<T, 2, Edge<T>> {
+    fn compute_curvature(&self) -> (Vec<Vert2d>, Option<Vec<Vert2d>>) {
         let mut u = compute_curvature_tensor_2d(self);
         fix_curvature(self, &mut u, None).unwrap();
 
@@ -305,8 +309,8 @@ impl HasCurvature<2> for SimplexMesh<2, Edge> {
     }
 }
 
-impl HasCurvature<3> for SimplexMesh<3, Triangle> {
-    fn compute_curvature(&self) -> (Vec<Point<3>>, Option<Vec<Point<3>>>) {
+impl<T: Idx> HasCurvature<3> for SimplexMesh<T, 3, Triangle<T>> {
+    fn compute_curvature(&self) -> (Vec<Vert3d>, Option<Vec<Vert3d>>) {
         let (mut u, mut v) = compute_curvature_tensor(self);
         fix_curvature(self, &mut u, Some(&mut v)).unwrap();
         (u, Some(v))
@@ -315,11 +319,14 @@ impl HasCurvature<3> for SimplexMesh<3, Triangle> {
 
 #[cfg(test)]
 mod tests {
-    use tmesh::mesh::Mesh;
+    use tmesh::{
+        Vert2d, Vert3d,
+        mesh::{Edge, GSimplex, Mesh, MutMesh},
+    };
 
     use crate::{
         H_MAX, Result,
-        mesh::{GElem, Point, SimplexMesh, Triangle, test_meshes::test_mesh_2d},
+        mesh::{SimplexMesh, test_meshes::test_mesh_2d},
     };
 
     use super::{compute_curvature_tensor, compute_curvature_tensor_2d, fix_curvature};
@@ -330,29 +337,29 @@ mod tests {
         let r_out = 0.5;
 
         let mesh = test_mesh_2d().split().split().split().split().split();
-        let (mut mesh, _) = mesh.boundary();
+        let (mut mesh, ids) = mesh.boundary::<SimplexMesh<u32, 2, Edge<u32>>>();
 
-        mesh.mut_verts().for_each(|p| {
+        mesh.verts_mut().for_each(|p| {
             let r = r_in + (r_out - r_in) * p[0];
             let theta = 3.0 * p[1];
             let x = r * f64::cos(theta);
             let y = r * f64::sin(theta);
-            *p = Point::<2>::new(x, y);
+            *p = Vert2d::new(x, y);
         });
 
         let u = compute_curvature_tensor_2d(&mesh);
 
         // Get the indices of corner vertices
-        mesh.add_boundary_faces();
+        mesh.fix();
 
-        let mut bdy_flag = vec![false; mesh.n_verts() as usize];
-        for i in mesh.boundary().1 {
+        let mut bdy_flag = vec![false; mesh.n_verts().try_into().unwrap()];
+        for i in ids {
             bdy_flag[i as usize] = true;
         }
 
         for (i_elem, (e, t)) in mesh.elems().zip(mesh.etags()).enumerate() {
             let u = u[i_elem];
-            let ge = mesh.gelem(e);
+            let ge = mesh.gelem(&e);
             let c = ge.center();
 
             let is_boundary = e.into_iter().any(|i| bdy_flag[i as usize]);
@@ -384,25 +391,25 @@ mod tests {
         let r_out = 0.5;
 
         let mesh = test_mesh_2d().split().split().split().split().split();
-        let (mut mesh, _) = mesh.boundary();
+        let (mut mesh, _) = mesh.boundary::<SimplexMesh<u32, 2, Edge<u32>>>();
 
-        mesh.mut_verts().for_each(|p| {
+        mesh.verts_mut().for_each(|p| {
             let r = r_in + (r_out - r_in) * p[0];
             let theta = 3.0 * p[1];
             let x = r * f64::cos(theta);
             let y = r * f64::sin(theta);
-            *p = Point::<2>::new(x, y);
+            *p = Vert2d::new(x, y);
         });
 
         mesh.compute_elem_to_elems();
-        mesh.add_boundary_faces();
+        mesh.fix();
 
         let mut u = compute_curvature_tensor_2d(&mesh);
         fix_curvature(&mesh, &mut u, None)?;
 
         for (i_elem, (e, t)) in mesh.elems().zip(mesh.etags()).enumerate() {
             let u = u[i_elem];
-            let ge = mesh.gelem(e);
+            let ge = mesh.gelem(&e);
             let c = ge.center();
 
             match t {
@@ -440,11 +447,11 @@ mod tests {
                 let theta = 3.0 * p[1];
                 let x = radius * f64::cos(theta);
                 let y = radius * f64::sin(theta);
-                Point::<3>::new(x, y, z)
+                Vert3d::new(x, y, z)
             })
             .collect();
 
-        let mut surf = SimplexMesh::<3, Triangle>::new(
+        let mut surf = SimplexMesh::new_with_vec(
             verts,
             mesh.elems().collect::<Vec<_>>(),
             mesh.etags().collect::<Vec<_>>(),
@@ -452,9 +459,10 @@ mod tests {
             Vec::new(),
         );
         // Get the indices of boundary vertices
-        surf.add_boundary_faces();
-        let mut bdy_flag = vec![false; surf.n_verts() as usize];
-        for i in surf.boundary().1 {
+        surf.fix();
+        let mut bdy_flag = vec![false; surf.n_verts().try_into().unwrap()];
+        let (_, ids) = surf.boundary::<SimplexMesh<u32, 3, Edge<u32>>>();
+        for i in ids {
             bdy_flag[i as usize] = true;
         }
 
@@ -463,20 +471,20 @@ mod tests {
         for (i_elem, e) in surf.elems().enumerate() {
             let mut u = u[i_elem];
             let mut v = v[i_elem];
-            let ge = surf.gelem(e);
+            let ge = surf.gelem(&e);
             let c = ge.center();
 
             let is_boundary = e.into_iter().any(|i| bdy_flag[i as usize]);
             if !is_boundary {
                 assert!(u.norm() < 1.1 / H_MAX);
                 assert!(u.norm() > 1e-17);
-                let u_ref = Point::<3>::new(0.0, 0.0, 1.0);
+                let u_ref = Vert3d::new(0.0, 0.0, 1.0);
                 u.normalize_mut();
                 let cos_a = u.dot(&u_ref);
                 assert!(f64::abs(cos_a) > 0.98);
 
                 assert!(f64::abs(v.norm() - 1. / radius) < 1e-6 / radius);
-                let mut v_ref = Point::<3>::new(-c[1], c[0], 0.0);
+                let mut v_ref = Vert3d::new(-c[1], c[0], 0.0);
                 v_ref.normalize_mut();
                 v.normalize_mut();
                 let cos_a = v.dot(&v_ref);
@@ -498,18 +506,18 @@ mod tests {
                 let theta = 3.0 * p[1];
                 let x = radius * f64::cos(theta);
                 let y = radius * f64::sin(theta);
-                Point::<3>::new(x, y, z)
+                Vert3d::new(x, y, z)
             })
             .collect();
 
-        let mut surf = SimplexMesh::<3, Triangle>::new(
+        let mut surf = SimplexMesh::new_with_vec(
             verts,
             mesh.elems().collect::<Vec<_>>(),
             mesh.etags().collect::<Vec<_>>(),
             Vec::new(),
             Vec::new(),
         );
-        surf.add_boundary_faces();
+        surf.fix();
         surf.compute_elem_to_elems();
 
         let (mut u, mut v) = compute_curvature_tensor(&surf);
@@ -518,18 +526,18 @@ mod tests {
         for (i_elem, e) in surf.elems().enumerate() {
             let mut u = u[i_elem];
             let mut v = v[i_elem];
-            let ge = surf.gelem(e);
+            let ge = surf.gelem(&e);
             let c = ge.center();
 
             assert!(u.norm() < 1.1 / H_MAX);
             assert!(u.norm() > 1e-17);
-            let u_ref = Point::<3>::new(0.0, 0.0, 1.0);
+            let u_ref = Vert3d::new(0.0, 0.0, 1.0);
             u.normalize_mut();
             let cos_a = u.dot(&u_ref);
             assert!(f64::abs(cos_a) > 0.98);
 
             assert!(f64::abs(v.norm() - 1. / radius) < 1e-3 / radius);
-            let mut v_ref = Point::<3>::new(-c[1], c[0], 0.0);
+            let mut v_ref = Vert3d::new(-c[1], c[0], 0.0);
             v_ref.normalize_mut();
             v.normalize_mut();
             let cos_a = v.dot(&v_ref);

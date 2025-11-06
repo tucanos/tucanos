@@ -1,16 +1,16 @@
 use super::Remesher;
 use crate::{
+    Dim, Result,
     geometry::Geometry,
-    mesh::{Elem, GElem, HasTmeshImpl, SimplexMesh},
     metric::Metric,
     remesher::{
         cavity::{Cavity, CavityCheckStatus, FilledCavity, FilledCavityType, Seed},
         sequential::argsort_edges_decreasing_length,
         stats::{SplitStats, StepStats},
     },
-    Dim, Idx, Result,
 };
 use log::{debug, trace};
+use tmesh::mesh::{GSimplex, Idx, Simplex};
 
 #[derive(Clone, Debug)]
 pub struct SplitParams {
@@ -47,10 +47,7 @@ impl Default for SplitParams {
     }
 }
 
-impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M>
-where
-    SimplexMesh<D, E>: HasTmeshImpl<D, E>,
-{
+impl<T: Idx, const D: usize, C: Simplex<T>, M: Metric<D>> Remesher<T, D, C, M> {
     /// Loop over the edges and split them if
     /// - their length is larger that `l_0`
     /// - no edge smaller than
@@ -87,11 +84,11 @@ where
             // loop through the edges by increasing dimension and decreasing length
             let indices = argsort_edges_decreasing_length(&dims_and_lengths);
 
-            let mut n_splits = 0;
-            let mut n_fails = 0;
-            let mut n_extended = 0;
-            let mut n_extension_failed = 0;
-            let mut n_removed = 0;
+            let mut n_splits = T::ZERO;
+            let mut n_fails = T::ZERO;
+            let mut n_extended = T::ZERO;
+            let mut n_extension_failed = T::ZERO;
+            let mut n_removed = T::ZERO;
             for i_edge in indices {
                 let edg = edges[i_edge];
                 let length = dims_and_lengths[i_edge].1;
@@ -109,8 +106,8 @@ where
                     let tag = self
                         .topo
                         .parent(
-                            cavity.tags[local_edg[0] as usize],
-                            cavity.tags[local_edg[1] as usize],
+                            cavity.tags[local_edg[0].try_into().unwrap()],
+                            cavity.tags[local_edg[1].try_into().unwrap()],
                         )
                         .unwrap();
 
@@ -120,7 +117,7 @@ where
                     }
 
                     // projection if needed
-                    if tag.0 < E::DIM as Dim {
+                    if tag.0 < C::DIM as Dim {
                         geom.project(&mut edge_center, &tag);
                     }
 
@@ -128,7 +125,7 @@ where
                     let filled_cavity = FilledCavity::new(&cavity, ftype);
 
                     // lower the min quality threshold if the min quality in the cavity increases
-                    let q_min = if tag.0 == E::DIM as Dim {
+                    let q_min = if tag.0 == C::DIM as Dim {
                         q_min.min(cavity.q_min * params.min_q_rel)
                     } else {
                         q_min.min(cavity.q_min * params.min_q_rel_bdy)
@@ -143,8 +140,8 @@ where
                         let ip = self.insert_vertex(edge_center, &tag, new_metric);
                         for (face, tag) in filled_cavity.faces() {
                             let f = cavity.global_elem(&face);
-                            assert!(!f.contains_edge(edg));
-                            let e = E::from_vertex_and_face(ip, &f);
+                            assert!(!f.contains_edge(&edg));
+                            let e = C::from_vertex_and_face(ip, &f);
                             self.insert_elem(e, tag)?;
                         }
                         for (f, _) in cavity.global_tagged_faces() {
@@ -152,26 +149,26 @@ where
                         }
 
                         for (b, t) in filled_cavity.tagged_faces_boundary_global() {
-                            self.add_tagged_face(E::Face::from_vertex_and_face(ip, &b), t)?;
+                            self.add_tagged_face(C::FACE::from_vertex_and_face(ip, &b), t)?;
                         }
-                        n_splits += 1;
-                    } else if matches!(status, CavityCheckStatus::Invalid) && tag.0 < E::DIM as Dim
+                        n_splits += T::ONE;
+                    } else if matches!(status, CavityCheckStatus::Invalid) && tag.0 < C::DIM as Dim
                     {
                         if cavity.elems.len() == 1 {
                             // If the cavity contains one element with two (1 in 2D) tagged faces with the same tag
                             // then we remove the element from the mesh
 
                             let e = cavity.global_elem(&cavity.elems[0]);
-                            let mut tags = vec![0; E::N_FACES as usize];
+                            let mut tags = vec![0; C::N_FACES];
                             let mut face_tag = 0;
                             let mut n_tagged = 0;
                             let mut same_tags = true;
-                            for i in 0..E::N_FACES {
-                                let f = e.face(i);
+                            for i in 0..C::N_FACES {
+                                let f = e.face(i.try_into().unwrap());
                                 let f = f.sorted();
                                 let tag = self.tagged_faces.get(&f);
                                 if let Some(tag) = tag {
-                                    tags[i as usize] = *tag;
+                                    tags[i] = *tag;
                                     n_tagged += 1;
                                     if face_tag == 0 {
                                         face_tag = *tag;
@@ -181,18 +178,18 @@ where
                                 }
                             }
 
-                            if n_tagged == E::Face::DIM && same_tags {
+                            if n_tagged == C::FACE::DIM && same_tags {
                                 // remove the element
                                 self.remove_elem(cavity.global_elem_ids[0])?;
                                 for (i, &t) in tags.iter().enumerate() {
-                                    let f = e.face(i as Idx);
+                                    let f = e.face(i.try_into().unwrap());
                                     if t == face_tag {
                                         self.remove_tagged_face(f)?;
                                     } else {
                                         self.add_tagged_face(f, face_tag)?;
                                     }
                                 }
-                                n_removed += 1;
+                                n_removed += T::ONE;
                             }
                         } else {
                             // Extend the cavity until it can be filled
@@ -203,8 +200,7 @@ where
                                 for (face, tag) in cavity.faces() {
                                     let f = cavity.global_elem(&face);
                                     let gf = self.gface(&f);
-                                    let ge =
-                                        E::Geom::from_vert_and_face(&edge_center, &new_metric, &gf);
+                                    let ge = C::GEOM::from_vertex_and_face(&edge_center, &gf);
                                     if ge.vol() <= 0.0 {
                                         trace!("f = {gf:?}, vol < 0");
                                         tmp.push((face, tag));
@@ -245,8 +241,8 @@ where
                                     let ip = self.insert_vertex(edge_center, &tag, new_metric);
                                     for (face, tag) in filled_cavity.faces() {
                                         let f = cavity.global_elem(&face);
-                                        assert!(!f.contains_edge(edg));
-                                        let e = E::from_vertex_and_face(ip, &f);
+                                        assert!(!f.contains_edge(&edg));
+                                        let e = C::from_vertex_and_face(ip, &f);
                                         self.insert_elem(e, tag)?;
                                     }
                                     for (f, _) in cavity.global_tagged_faces() {
@@ -255,7 +251,7 @@ where
 
                                     for (b, t) in filled_cavity.tagged_faces_boundary_global() {
                                         self.add_tagged_face(
-                                            E::Face::from_vertex_and_face(ip, &b),
+                                            C::FACE::from_vertex_and_face(ip, &b),
                                             t,
                                         )?;
                                     }
@@ -264,34 +260,34 @@ where
                                         assert!(v.els.is_empty());
                                         self.verts.remove(&i);
                                     }
-                                    n_splits += 1;
-                                    n_extended += 1;
+                                    n_splits += T::ONE;
+                                    n_extended += T::ONE;
                                 } else {
                                     trace!("Cannot split: {status:?}");
-                                    n_fails += 1;
+                                    n_fails += T::ONE;
                                 }
                             } else {
-                                n_fails += 1;
-                                n_extension_failed += 1;
+                                n_fails += T::ONE;
+                                n_extension_failed += T::ONE;
                             }
                         }
                     } else {
-                        n_fails += 1;
+                        n_fails += T::ONE;
                     }
                 }
             }
 
             debug!("Iteration {n_iter}: {n_splits} edges split ({n_fails} failed)");
-            if n_extended > 0 || n_extension_failed > 0 {
+            if n_extended > T::ZERO || n_extension_failed > T::ZERO {
                 debug!("{n_extended} cavity extended, {n_extension_failed} extension failed");
             }
-            if n_removed > 0 {
+            if n_removed > T::ZERO {
                 debug!("{n_removed} elements removed");
             }
             self.stats
                 .push(StepStats::Split(SplitStats::new(n_splits, n_fails, self)));
 
-            if n_splits == 0 || n_iter == params.max_iter {
+            if n_splits == T::ZERO || n_iter == params.max_iter {
                 if debug {
                     self.check().unwrap();
                 }

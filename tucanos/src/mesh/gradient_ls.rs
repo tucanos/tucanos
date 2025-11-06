@@ -1,7 +1,4 @@
-use crate::{
-    Error, Idx, Result,
-    mesh::{Elem, Point, SimplexMesh},
-};
+use crate::{Error, Result, mesh::SimplexMesh};
 
 use log::debug;
 use rayon::{
@@ -12,13 +9,12 @@ use rayon::{
     slice::ParallelSliceMut,
 };
 use rustc_hash::FxHashSet;
+use tmesh::{
+    Vertex,
+    mesh::{Idx, Mesh, Simplex},
+};
 
-use super::HasTmeshImpl;
-
-impl<const D: usize, E: Elem> SimplexMesh<D, E>
-where
-    Self: HasTmeshImpl<D, E>,
-{
+impl<T: Idx, const D: usize, C: Simplex<T>> SimplexMesh<T, D, C> {
     /// Compute a linear or quadratic approximation of a function defined at the mesh vertices
     ///
     /// A weighted least squares is used: the function $`f`$ is approximated as around $`x_i`$
@@ -50,7 +46,7 @@ where
     ///
     /// If the number of neighbors is not sufficient for this problem to be solved, or if the problem is
     /// too ill-conditioned, None is returned
-    fn least_squares<const N: usize, I: ExactSizeIterator<Item = (Point<D>, f64, f64)>>(
+    fn least_squares<const N: usize, I: ExactSizeIterator<Item = (Vertex<D>, f64, f64)>>(
         dx_df_w: I,
         w0: Option<f64>,
     ) -> Option<nalgebra::DVector<f64>> {
@@ -126,16 +122,16 @@ where
     /// $`W_0`$ is set here to $`\sqrt{2} \max(W_j)`$.
     pub fn smooth(&self, f: &[f64], weight_exp: i32) -> Result<Vec<f64>> {
         debug!("Compute smoothing using 1st order LS (weight = {weight_exp})");
-        let n = self.n_verts() as usize;
+        let n = self.n_verts().try_into().unwrap();
         assert_eq!(f.len(), n);
         let mut res = vec![0.0; n];
 
         let v2v = self.get_vertex_to_vertices()?;
         res.par_iter_mut().enumerate().for_each(|(i_vert, s)| {
-            let neighbors = v2v.row(i_vert);
+            let neighbors = v2v.row(i_vert.try_into().unwrap());
             let dx_df_w = neighbors.iter().map(|&i| {
-                let dx = self.vert(i as Idx) - self.vert(i_vert as Idx);
-                let df = f[i] - f[i_vert];
+                let dx = self.vert(i) - self.vert(i_vert.try_into().unwrap());
+                let df = f[i.try_into().unwrap()] - f[i_vert];
                 let w = if weight_exp > 0 {
                     1. / dx.norm().powi(weight_exp)
                 } else {
@@ -183,13 +179,13 @@ where
     ) -> bool {
         let v2v = self.get_vertex_to_vertices().unwrap();
         for _ in 0..max_iter {
-            for i_vert in 0..self.n_verts() as usize {
+            for i_vert in 0..self.n_verts().try_into().unwrap() {
                 if failed[i_vert] {
                     let mut n = 0;
-                    for i_other in v2v.row(i_vert).iter().copied() {
-                        if !failed[i_other] {
+                    for i_other in v2v.row(i_vert.try_into().unwrap()).iter().copied() {
+                        if !failed[i_other.try_into().unwrap()] {
                             for i in 0..m {
-                                res[m * i_vert + i] += res[m * i_other + i];
+                                res[m * i_vert + i] += res[m * i_other.try_into().unwrap() + i];
                             }
                             n += 1;
                         }
@@ -219,11 +215,11 @@ where
     /// $`W_0`$ is set here to $`\sqrt{2} \max(W_j)`$.
     pub fn gradient(&self, f: &[f64], weight_exp: i32) -> Result<Vec<f64>> {
         debug!("Compute gradient using 1st order LS (weight = {weight_exp})");
-        let n = self.n_verts() as usize;
+        let n = self.n_verts().try_into().unwrap();
         assert_eq!(f.len(), n);
 
         let mut res = vec![0.0; D * n];
-        let mut failed = vec![false; self.n_verts() as usize];
+        let mut failed = vec![false; self.n_verts().try_into().unwrap()];
 
         let flg = self.boundary_flag();
 
@@ -239,10 +235,10 @@ where
                         *x = 0.0;
                     }
                 } else {
-                    let neighbors = v2v.row(i_vert);
+                    let neighbors = v2v.row(i_vert.try_into().unwrap());
                     let dx_df_w = neighbors.iter().map(|&i| {
-                        let dx = self.vert(i as Idx) - self.vert(i_vert as Idx);
-                        let df = f[i] - f[i_vert];
+                        let dx = self.vert(i) - self.vert(i_vert.try_into().unwrap());
+                        let df = f[i.try_into().unwrap()] - f[i_vert];
                         let w = if weight_exp > 0 {
                             1. / dx.norm().powi(weight_exp)
                         } else {
@@ -314,18 +310,18 @@ where
         if use_second_order_neighbors {
             debug!("  using second order neighbors");
         }
-        let n = self.n_verts() as usize;
+        let n = self.n_verts().try_into().unwrap();
         assert_eq!(f.len(), n);
 
         let mut res = vec![0.0; D * (D + 1) / 2 * n];
-        let mut failed = vec![false; self.n_verts() as usize];
+        let mut failed = vec![false; self.n_verts().try_into().unwrap()];
 
         let v2v = self.get_vertex_to_vertices()?;
         res.par_chunks_mut(D * (D + 1) / 2)
             .zip(failed.par_iter_mut())
             .enumerate()
             .for_each(|(i_vert, (hess, fail))| {
-                let first_order_neighbors = v2v.row(i_vert);
+                let first_order_neighbors = v2v.row(i_vert.try_into().unwrap());
                 let mut neighbors = first_order_neighbors
                     .iter()
                     .map(|&i| (i, 1))
@@ -334,12 +330,12 @@ where
                     for &i in first_order_neighbors {
                         neighbors.extend(v2v.row(i).iter().map(|&i| (i, 2)));
                     }
-                    neighbors.remove(&(i_vert, 2));
+                    neighbors.remove(&(i_vert.try_into().unwrap(), 2));
                 }
 
                 let dx_df_w = neighbors.iter().map(|&(i, order)| {
-                    let dx = self.vert(i as Idx) - self.vert(i_vert as Idx);
-                    let df = f[i] - f[i_vert];
+                    let dx = self.vert(i) - self.vert(i_vert.try_into().unwrap());
+                    let df = f[i.try_into().unwrap()] - f[i_vert];
                     let w = weight_exp.map_or(if order == 1 { 1.0 } else { 0.1 }, |weight_exp| {
                         if weight_exp > 0 {
                             1. / dx.norm().powi(weight_exp)
@@ -413,13 +409,13 @@ mod tests {
 
         let f: Vec<_> = mesh.verts().map(|p| p[0] + 2.0 * p[1]).collect();
         let res = mesh.smooth(&f, 2)?;
-        for i_vert in 0..mesh.n_verts() as usize {
+        for i_vert in 0..mesh.n_verts().try_into().unwrap() {
             assert!(f64::abs(res[i_vert] - f[i_vert]) < 1e-10);
         }
 
         let f: Vec<_> = mesh.verts().map(|p| p[0] * p[1]).collect();
         let res = mesh.smooth(&f, 2)?;
-        for i_vert in 0..mesh.n_verts() as usize {
+        for i_vert in 0..mesh.n_verts().try_into().unwrap() {
             assert!(f64::abs(res[i_vert] - f[i_vert]) < 1e-2);
         }
 
@@ -438,13 +434,13 @@ mod tests {
             .map(|p| p[0] + 2.0 * p[1] + 3.0 * p[2])
             .collect();
         let res = mesh.smooth(&f, 2)?;
-        for i_vert in 0..mesh.n_verts() as usize {
+        for i_vert in 0..mesh.n_verts().try_into().unwrap() {
             assert!(f64::abs(res[i_vert] - f[i_vert]) < 1e-10);
         }
 
         let f: Vec<_> = mesh.verts().map(|p| p[0] * p[1] * p[2]).collect();
         let res = mesh.smooth(&f, 2)?;
-        for i_vert in 0..mesh.n_verts() as usize {
+        for i_vert in 0..mesh.n_verts().try_into().unwrap() {
             assert!(f64::abs(res[i_vert] - f[i_vert]) < 2e-2);
         }
 
@@ -460,7 +456,7 @@ mod tests {
 
         let f: Vec<_> = mesh.verts().map(|p| p[0] + 2.0 * p[1]).collect();
         let res = mesh.gradient(&f, 2)?;
-        for i_vert in 0..mesh.n_verts() as usize {
+        for i_vert in 0..mesh.n_verts().try_into().unwrap() {
             assert!(f64::abs(res[2 * i_vert] - 1.) < 1e-10);
             assert!(f64::abs(res[2 * i_vert + 1] - 2.) < 1e-10);
         }
@@ -513,7 +509,7 @@ mod tests {
             .map(|p| p[0] + 2.0 * p[1] + 3.0 * p[2])
             .collect();
         let res = mesh.gradient(&f, 2)?;
-        for i_vert in 0..mesh.n_verts() as usize {
+        for i_vert in 0..mesh.n_verts().try_into().unwrap() {
             assert!(f64::abs(res[3 * i_vert] - 1.) < 1e-10);
             assert!(f64::abs(res[3 * i_vert + 1] - 2.) < 1e-10);
             assert!(f64::abs(res[3 * i_vert + 2] - 3.) < 1e-10);
@@ -571,7 +567,7 @@ mod tests {
 
         // with only the 1st order neighbors
         let res = mesh.hessian(&f, Some(2), false)?;
-        for i_vert in 0..mesh.n_verts() as usize {
+        for i_vert in 0..mesh.n_verts().try_into().unwrap() {
             assert!(f64::abs(res[3 * i_vert] - 2.) < 1e-10);
             assert!(f64::abs(res[3 * i_vert + 1] - 4.) < 1e-10);
             assert!(f64::abs(res[3 * i_vert + 2] - 3.) < 1e-10);
@@ -579,7 +575,7 @@ mod tests {
 
         // with the 2nd order neighbors
         let res = mesh.hessian(&f, Some(2), true)?;
-        for i_vert in 0..mesh.n_verts() as usize {
+        for i_vert in 0..mesh.n_verts().try_into().unwrap() {
             assert!(f64::abs(res[3 * i_vert] - 2.) < 1e-10);
             assert!(f64::abs(res[3 * i_vert + 1] - 4.) < 1e-10);
             assert!(f64::abs(res[3 * i_vert + 2] - 3.) < 1e-10);
@@ -609,7 +605,7 @@ mod tests {
 
         // with only the 1st order neighbors
         let res = mesh.hessian(&f, Some(2), false)?;
-        for i_vert in 0..mesh.n_verts() as usize {
+        for i_vert in 0..mesh.n_verts().try_into().unwrap() {
             assert!(f64::abs(res[6 * i_vert] - 2.) < 1e-10);
             assert!(f64::abs(res[6 * i_vert + 1] - 4.) < 1e-10);
             assert!(f64::abs(res[6 * i_vert + 2] - 6.) < 1e-10);
@@ -620,7 +616,7 @@ mod tests {
 
         // with the 2nd order neighbors
         let res = mesh.hessian(&f, Some(2), true)?;
-        for i_vert in 0..mesh.n_verts() as usize {
+        for i_vert in 0..mesh.n_verts().try_into().unwrap() {
             assert!(f64::abs(res[6 * i_vert] - 2.) < 1e-10);
             assert!(f64::abs(res[6 * i_vert + 1] - 4.) < 1e-10);
             assert!(f64::abs(res[6 * i_vert + 2] - 6.) < 1e-10);

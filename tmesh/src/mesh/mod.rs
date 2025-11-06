@@ -10,7 +10,7 @@ mod mesh_2d;
 mod mesh_3d;
 mod simplices;
 mod to_simplices;
-mod twovec;
+pub mod twovec;
 
 mod split;
 
@@ -73,6 +73,7 @@ pub trait Idx:
     + Default
     + Send
     + Sync
+    + serde::Serialize
     + 'static
 {
     type ConvertError: std::error::Error + Debug;
@@ -80,10 +81,10 @@ pub trait Idx:
     const ONE: Self;
     const ZERO: Self;
 
-    fn from_zero_range(self) -> std::ops::Range<usize> {
+    fn range_from_zero(self) -> std::ops::Range<usize> {
         0..self.try_into().unwrap()
     }
-    fn from_zero_iter<IV>(self) -> impl ExactSizeIterator<Item = IV>
+    fn iter_from_zero<IV>(self) -> impl ExactSizeIterator<Item = IV>
     where
         IV: TryFrom<usize>,
         <IV as TryFrom<usize>>::Error: Debug,
@@ -673,6 +674,15 @@ pub trait Mesh<T: Idx, const D: usize, C: Simplex<T>>: Send + Sync + Sized {
     ///   - element to vertex connectivities
     ///   - element orientations
     ///   - boundary faces and faces connecting elements with different tags are present
+    fn check_simple(&self) -> Result<()> {
+        self.check(&self.all_faces())
+    }
+
+    /// Check the mesh validity
+    ///   - connectivity and tag sizes
+    ///   - element to vertex connectivities
+    ///   - element orientations
+    ///   - boundary faces and faces connecting elements with different tags are present
     fn check(&self, all_faces: &FxHashMap<C::FACE, [T; 3]>) -> Result<()> {
         // lengths
         if self.par_elems().len() != self.par_etags().len() {
@@ -784,7 +794,7 @@ pub trait Mesh<T: Idx, const D: usize, C: Simplex<T>>: Send + Sync + Sized {
         nalgebra::Const<D>: nalgebra::Dim,
     {
         self.n_verts()
-            .from_zero_range()
+            .range_from_zero()
             .into_par_iter()
             .map(move |i| {
                 let x = self.vert(i.try_into().unwrap());
@@ -959,16 +969,16 @@ pub trait Mesh<T: Idx, const D: usize, C: Simplex<T>>: Send + Sync + Sized {
     fn random_shuffle(&self) -> Self {
         let mut rng = StdRng::seed_from_u64(1234);
 
-        let mut vert_ids: Vec<_> = self.n_verts().from_zero_iter().collect();
+        let mut vert_ids: Vec<_> = self.n_verts().iter_from_zero().collect();
         vert_ids.shuffle(&mut rng);
 
         let mut res = self.reorder_vertices(&vert_ids);
 
-        let mut elem_ids: Vec<_> = self.n_elems().from_zero_iter().collect();
+        let mut elem_ids: Vec<_> = self.n_elems().iter_from_zero().collect();
         elem_ids.shuffle(&mut rng);
         res.reorder_elems(&elem_ids);
 
-        let mut face_ids: Vec<_> = self.n_faces().from_zero_iter().collect();
+        let mut face_ids: Vec<_> = self.n_faces().iter_from_zero().collect();
         face_ids.shuffle(&mut rng);
         res.reorder_faces(&face_ids);
 
@@ -1034,7 +1044,7 @@ pub trait Mesh<T: Idx, const D: usize, C: Simplex<T>>: Send + Sync + Sized {
                 tmp.copy_from_slice(x.as_ref());
                 tmp
             }),
-            self.n_verts().from_zero_range().map(|_| 1),
+            self.n_verts().range_from_zero().map(|_| 1),
         )?;
 
         match C::N_VERTS {

@@ -6,7 +6,7 @@ use coupe::{Partition, nalgebra::SVector};
 use std::marker::PhantomData;
 
 /// Mesh partitioners
-pub trait Partitioner<T: Idx>: Sized {
+pub trait Partitioner<T: Idx>: Sized + Send + Sync {
     /// Create a new mesh partitionner to partition `msh` into `n_parts`
     /// Element weights can optionally be provided
     fn new<const D: usize, C: Simplex<T>, M: Mesh<T, D, C>>(
@@ -327,7 +327,7 @@ pub enum MetisMethod {
 
 #[cfg(feature = "metis")]
 /// Metis partitioning method
-pub trait MetisPartMethod {
+pub trait MetisPartMethod: Send + Sync {
     /// Metis partitioning method
     fn method() -> MetisMethod;
 }

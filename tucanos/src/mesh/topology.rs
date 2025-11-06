@@ -1,13 +1,11 @@
-use crate::{
-    Dim, Idx, Result, Tag, TopoTag,
-    mesh::{Elem, get_face_to_elem, vector::Vector},
-};
+use crate::{Dim, Result, Tag, TopoTag, mesh::vector::Vector};
 use core::result;
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize, ser::SerializeStruct};
 use std::fmt;
 use std::{collections::HashSet, fs::File, io::Write};
 use tmesh::graph::CSRGraph;
+use tmesh::mesh::{Idx, Simplex, get_face_to_elem};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TopoNode {
@@ -58,7 +56,7 @@ impl Topology {
     pub fn new(dim: Dim) -> Self {
         Self {
             dim,
-            entities: vec![vec![]; (dim + 1) as usize],
+            entities: vec![vec![]; (dim + 1).try_into().unwrap()],
             parents: FxHashMap::default(),
         }
     }
@@ -218,19 +216,19 @@ impl Topology {
         self.parents.get(&(topo0, topo1)).copied()
     }
 
-    fn update_from_elems<E: Elem>(
+    fn update_from_elems<T: Idx, C: Simplex<T>>(
         &mut self,
-        elems: &Vector<E>,
+        elems: &Vector<C>,
         etags: &Vector<Tag>,
         vtags: &mut [TopoTag],
     ) {
         elems.iter().zip(etags.iter()).for_each(|(e, t)| {
-            e.iter().for_each(|&i| {
-                let i = i as usize;
+            e.into_iter().for_each(|i| {
+                let i = i.try_into().unwrap();
                 if vtags[i].1 != 0 && vtags[i].1 != t {
-                    vtags[i] = (E::DIM as Dim, 0);
+                    vtags[i] = (C::DIM as Dim, 0);
                 } else {
-                    let tag = (E::DIM as Dim, t);
+                    let tag = (C::DIM as Dim, t);
                     if self.get(tag).is_none() {
                         self.insert(tag, &[]);
                     }
@@ -240,22 +238,22 @@ impl Topology {
         });
     }
 
-    fn update_from_faces<E: Elem>(
+    fn update_from_faces<T: Idx, C: Simplex<T>>(
         &mut self,
-        elems: &Vector<E>,
+        elems: &Vector<C>,
         etags: &Vector<Tag>,
-        faces: &Vector<E::Face>,
+        faces: &Vector<C::FACE>,
         ftags: &Vector<Tag>,
         vtags: &mut [TopoTag],
     ) {
         let face2elem = get_face_to_elem(elems.iter());
         faces.iter().zip(ftags.iter()).for_each(|(f, t)| {
-            let tag = (E::Face::DIM as Dim, t);
+            let tag = (C::FACE::DIM as Dim, t);
             let parents = face2elem
                 .get(&f.sorted())
                 .unwrap()
                 .iter()
-                .map(|&i| etags.index(i))
+                .map(|&i| etags.index(i.try_into().unwrap()))
                 .collect::<Vec<_>>();
             assert!(!parents.is_empty());
             if let Some(node) = self.get(tag) {
@@ -266,12 +264,12 @@ impl Topology {
             } else {
                 self.insert(tag, &parents);
             }
-            f.iter().for_each(|&i| {
-                let i = i as usize;
-                if vtags[i].0 == E::Face::DIM as Dim && (vtags[i].1 == 0 || vtags[i].1 != t) {
-                    vtags[i] = (E::Face::DIM as Dim, 0);
+            f.into_iter().for_each(|i| {
+                let i = i.try_into().unwrap();
+                if vtags[i].0 == C::FACE::DIM as Dim && (vtags[i].1 == 0 || vtags[i].1 != t) {
+                    vtags[i] = (C::FACE::DIM as Dim, 0);
                 } else {
-                    vtags[i] = (E::Face::DIM as Dim, t);
+                    vtags[i] = (C::FACE::DIM as Dim, t);
                 }
             });
         });
@@ -285,13 +283,17 @@ impl Topology {
             .unwrap_or(0)
     }
 
-    fn check_untagged<E: Elem>(&self, elems: &Vector<E>, etags: &Vector<Tag>) -> bool {
-        let dim = E::Face::DIM as Dim;
+    fn check_untagged<T: Idx, C: Simplex<T>>(
+        &self,
+        elems: &Vector<C>,
+        etags: &Vector<Tag>,
+    ) -> bool {
+        let dim = C::FACE::DIM as Dim;
         let edg2face = get_face_to_elem(elems.iter());
         for e2f in edg2face.values() {
             let ftags = e2f
                 .iter()
-                .map(|&i_face| etags.index(i_face))
+                .map(|&i_face| etags.index(i_face.try_into().unwrap()))
                 .collect::<FxHashSet<_>>();
             let should_be_tagged = e2f.len() != 2 || ftags.len() != 1;
             if should_be_tagged
@@ -305,13 +307,13 @@ impl Topology {
         true
     }
 
-    fn update_and_get_children<E: Elem>(
+    fn update_and_get_children<T: Idx, C: Simplex<T>>(
         &mut self,
-        faces: &Vector<E>,
+        faces: &Vector<C>,
         ftags: &Vector<Tag>,
         vtags: &mut [TopoTag],
-    ) -> (Vec<E::Face>, Vec<Tag>, Tag) {
-        let dim = E::Face::DIM as Dim;
+    ) -> (Vec<C::FACE>, Vec<Tag>, Tag) {
+        let dim = C::FACE::DIM as Dim;
         let edg2face = get_face_to_elem(faces.iter());
         let mut next_tag = self.max_tag(dim);
         let mut edgs = Vec::new();
@@ -319,7 +321,7 @@ impl Topology {
         for (e, e2f) in &edg2face {
             let ftags = e2f
                 .iter()
-                .map(|&i_face| ftags.index(i_face))
+                .map(|&i_face| ftags.index(i_face.try_into().unwrap()))
                 .collect::<FxHashSet<_>>();
             let should_be_tagged = e2f.len() != 2 || ftags.len() != 1;
             if should_be_tagged {
@@ -336,8 +338,8 @@ impl Topology {
                     self.insert_iter((dim, flg * next_tag), ftags.iter().copied());
                     flg * next_tag
                 };
-                e.iter().for_each(|&i| {
-                    let i = i as usize;
+                e.into_iter().for_each(|i| {
+                    let i = i.try_into().unwrap();
                     if vtags[i].0 == dim && (vtags[i].1 == 0 || vtags[i].1 != t) {
                         vtags[i] = (dim, 0);
                     } else {
@@ -351,28 +353,28 @@ impl Topology {
         (edgs, etags, next_tag)
     }
 
-    fn check_and_fix<E: Elem>(
+    fn check_and_fix<T: Idx, C: Simplex<T>>(
         &mut self,
-        elems: &Vector<E>,
+        elems: &Vector<C>,
         etags: &Vector<Tag>,
         vtags: &mut [TopoTag],
     ) {
-        let vert2elems = CSRGraph::transpose(elems.iter(), Some(vtags.len()));
+        let vert2elems = CSRGraph::transpose(elems.iter(), Some(vtags.len().try_into().unwrap()));
         for (i_vert, vtag) in vtags.iter_mut().enumerate() {
-            let ids = vert2elems.row(i_vert);
+            let ids = vert2elems.row(i_vert.try_into().unwrap());
             let mut tags = ids
                 .iter()
-                .map(|&i| etags.index(i as Idx))
+                .map(|&i| etags.index(i.try_into().unwrap()))
                 .collect::<FxHashSet<_>>();
-            if vtag.0 > E::DIM as Dim {
+            if vtag.0 > C::DIM as Dim {
                 assert!(vtag.1 != 0);
             }
             if tags.len() > 1 {
-                if vtag.0 == E::DIM as Dim {
+                if vtag.0 == C::DIM as Dim {
                     if vtag.1 != 0 {
                         tags.insert(vtag.1);
                     }
-                    let dim = E::Face::DIM as Dim;
+                    let dim = C::FACE::DIM as Dim;
                     if let Some(node) = self.get_from_parents_iter(dim + 1, tags.iter().copied()) {
                         *vtag = node.tag;
                     } else {
@@ -390,15 +392,15 @@ impl Topology {
                 if tags
                     .iter()
                     .copied()
-                    .any(|t| !self.is_child((E::DIM as Dim, t), *vtag))
+                    .any(|t| !self.is_child((C::DIM as Dim, t), *vtag))
                 {
                     // assert_eq!(
                     //     vtag.1,
                     //     0,
                     //     "Cannot fix tag {vtag:?}: parents dim = {}, tags = {tags:?}\n{self}",
-                    //     E::DIM
+                    //     C::DIM
                     // );
-                    let dim = E::Face::DIM as Dim;
+                    let dim = C::FACE::DIM as Dim;
                     if let Some(node) = self.get_from_parents_iter(dim + 1, tags.iter().copied()) {
                         *vtag = node.tag;
                     } else {
@@ -415,33 +417,33 @@ impl Topology {
 
                 for &t in &tags {
                     assert!(
-                        self.is_child((E::DIM as Dim, t), *vtag),
+                        self.is_child((C::DIM as Dim, t), *vtag),
                         "{vtag:?} is not a children of {:?}\n{self}",
-                        (E::DIM as Dim, t)
+                        (C::DIM as Dim, t)
                     );
                 }
             }
         }
     }
 
-    pub fn update_from_elems_and_faces<E: Elem>(
+    pub fn update_from_elems_and_faces<T: Idx, C: Simplex<T>>(
         &mut self,
-        elems: &Vector<E>,
+        elems: &Vector<C>,
         etags: &Vector<Tag>,
-        faces: &Vector<E::Face>,
+        faces: &Vector<C::FACE>,
         ftags: &Vector<Tag>,
     ) -> Vec<TopoTag> {
         assert!(
-            E::DIM == 2 || E::DIM == 3,
+            C::DIM == 2 || C::DIM == 3,
             "Invalid element dimension {}",
-            E::DIM
+            C::DIM
         );
         assert!(!etags.iter().any(|t| t == 0));
         assert!(!ftags.iter().any(|t| t == 0));
 
-        let n_verts = elems.iter().flatten().max().unwrap() + 1;
+        let n_verts = elems.iter().flatten().max().unwrap() + T::ONE;
 
-        let mut vtags = vec![(E::DIM as Dim, 0); n_verts as usize];
+        let mut vtags = vec![(C::DIM as Dim, 0); n_verts.try_into().unwrap()];
 
         // Tag vertices based on element tags
         // (will not be valid if the vertex belongs to elements with different tags)
@@ -457,7 +459,7 @@ impl Topology {
             "All the faces were not properly tagged"
         );
 
-        if E::DIM == 3 {
+        if C::DIM == 3 {
             let (edgs, edgtags, _next_edg_tag) =
                 self.update_and_get_children(faces, ftags, &mut vtags);
             let edgs = edgs.into();
@@ -516,12 +518,15 @@ impl Topology {
 
 #[cfg(test)]
 mod tests {
-    use tmesh::mesh::Mesh;
+    use tmesh::{
+        Vertex,
+        mesh::{Mesh, MutMesh, Tetrahedron, Triangle},
+    };
 
     use crate::{
         Tag,
         mesh::{
-            HasTmeshImpl, Point, SimplexMesh, Tetrahedron, Topology, Triangle,
+            SimplexMesh, Topology,
             test_meshes::{test_mesh_2d, test_mesh_2d_nobdy, test_mesh_3d},
         },
     };
@@ -614,7 +619,7 @@ mod tests {
     #[should_panic]
     fn test_invalid_2d_1() {
         let mut mesh = test_mesh_2d();
-        mesh.mut_ftags().for_each(|tag| *tag = 1);
+        mesh.ftags_mut().for_each(|tag| *tag = 1);
         mesh.compute_topology();
     }
 
@@ -629,7 +634,7 @@ mod tests {
     #[should_panic]
     fn test_invalid_2d_3() {
         let mut mesh = test_mesh_2d();
-        mesh.mut_ftags()
+        mesh.ftags_mut()
             .zip([2, 1, 1, 3])
             .for_each(|(tag, v)| *tag = v);
         mesh.compute_topology();
@@ -639,7 +644,7 @@ mod tests {
     #[should_panic]
     fn test_invalid_2d_4() {
         let mut mesh = test_mesh_2d();
-        mesh.mut_ftags()
+        mesh.ftags_mut()
             .zip([1, 1, 2, 2])
             .for_each(|(tag, v)| *tag = v);
         mesh.compute_topology();
@@ -648,10 +653,10 @@ mod tests {
     #[test]
     fn test_valid_2d_1() {
         let mut mesh = test_mesh_2d();
-        mesh.mut_ftags()
+        mesh.ftags_mut()
             .zip([1, 1, 2, 2])
             .for_each(|(tag, v)| *tag = v);
-        mesh.add_boundary_faces();
+        mesh.fix();
         let topo = mesh.compute_topology();
 
         assert_eq!(topo.entities[0].len(), 1);
@@ -662,10 +667,10 @@ mod tests {
     #[test]
     fn test_valid_2d_1_split() {
         let mut mesh = test_mesh_2d();
-        mesh.mut_ftags()
+        mesh.ftags_mut()
             .zip([1, 1, 2, 2])
             .for_each(|(tag, v)| *tag = v);
-        mesh.add_boundary_faces();
+        mesh.fix();
 
         let mut mesh = mesh.split().split();
         let topo = mesh.compute_topology();
@@ -678,7 +683,7 @@ mod tests {
     #[test]
     fn test_valid_2d_2() {
         let mut mesh = test_mesh_2d();
-        mesh.add_boundary_faces();
+        mesh.fix();
 
         mesh.compute_topology();
         let topo = mesh.get_topology().unwrap();
@@ -691,7 +696,7 @@ mod tests {
     #[test]
     fn test_valid_2d_2_split() {
         let mut mesh = test_mesh_2d();
-        mesh.add_boundary_faces();
+        mesh.fix();
 
         let mut mesh = mesh.split().split();
         mesh.compute_topology();
@@ -717,19 +722,19 @@ mod tests {
     #[test]
     fn test_corner_2d_1() {
         let verts = vec![
-            Point::<2>::new(0.0, 0.0),
-            Point::<2>::new(1.0, 0.0),
-            Point::<2>::new(2.0, 0.0),
-            Point::<2>::new(0.0, 1.0),
-            Point::<2>::new(2.0, 1.0),
+            Vertex::<2>::new(0.0, 0.0),
+            Vertex::<2>::new(1.0, 0.0),
+            Vertex::<2>::new(2.0, 0.0),
+            Vertex::<2>::new(0.0, 1.0),
+            Vertex::<2>::new(2.0, 1.0),
         ];
-        let elems = vec![Triangle::new(0, 1, 3), Triangle::new(1, 2, 4)];
+        let elems = vec![Triangle::from([0_u32, 1, 3]), Triangle::from([1, 2, 4])];
         let etags = vec![1, 1];
         let faces = vec![];
         let ftags = vec![];
 
-        let mut mesh = SimplexMesh::new(verts, elems, etags, faces, ftags);
-        mesh.add_boundary_faces();
+        let mut mesh = SimplexMesh::new_with_vec(verts, elems, etags, faces, ftags);
+        mesh.fix();
         mesh.compute_topology();
         let topo = mesh.get_topology().unwrap();
 
@@ -741,19 +746,19 @@ mod tests {
     #[test]
     fn test_corner_2d_2() {
         let verts = vec![
-            Point::<2>::new(0.0, 0.0),
-            Point::<2>::new(1.0, 0.0),
-            Point::<2>::new(2.0, 0.0),
-            Point::<2>::new(0.0, 1.0),
-            Point::<2>::new(2.0, 1.0),
+            Vertex::<2>::new(0.0, 0.0),
+            Vertex::<2>::new(1.0, 0.0),
+            Vertex::<2>::new(2.0, 0.0),
+            Vertex::<2>::new(0.0, 1.0),
+            Vertex::<2>::new(2.0, 1.0),
         ];
-        let elems = vec![Triangle::new(0, 1, 3), Triangle::new(1, 2, 4)];
+        let elems = vec![Triangle::from([0_usize, 1, 3]), Triangle::from([1, 2, 4])];
         let etags = vec![1, 2];
         let faces = vec![];
         let ftags = vec![];
 
-        let mut mesh = SimplexMesh::new(verts, elems, etags, faces, ftags);
-        mesh.add_boundary_faces();
+        let mut mesh = SimplexMesh::new_with_vec(verts, elems, etags, faces, ftags);
+        mesh.fix();
         mesh.compute_topology();
         let topo = mesh.get_topology().unwrap();
 
@@ -765,21 +770,21 @@ mod tests {
     #[test]
     fn test_corner_2d_2_split() {
         let verts = vec![
-            Point::<2>::new(0.0, 0.0),
-            Point::<2>::new(1.0, 0.0),
-            Point::<2>::new(2.0, 0.0),
-            Point::<2>::new(0.0, 1.0),
-            Point::<2>::new(2.0, 1.0),
+            Vertex::<2>::new(0.0, 0.0),
+            Vertex::<2>::new(1.0, 0.0),
+            Vertex::<2>::new(2.0, 0.0),
+            Vertex::<2>::new(0.0, 1.0),
+            Vertex::<2>::new(2.0, 1.0),
         ];
-        let elems = vec![Triangle::new(0, 1, 3), Triangle::new(1, 2, 4)];
+        let elems = vec![Triangle::from([0_u32, 1, 3]), Triangle::from([1, 2, 4])];
         let etags = vec![1, 2];
         let faces = vec![];
         let ftags = vec![];
 
-        let mut mesh = SimplexMesh::new(verts, elems, etags, faces, ftags)
+        let mut mesh = SimplexMesh::new_with_vec(verts, elems, etags, faces, ftags)
             .split()
             .split();
-        mesh.add_boundary_faces();
+        mesh.fix();
         mesh.compute_topology();
         let topo = mesh.get_topology().unwrap();
 
@@ -791,21 +796,24 @@ mod tests {
     #[test]
     fn test_corner_3d_1() {
         let verts = vec![
-            Point::<3>::new(0.0, 0.0, 0.0),
-            Point::<3>::new(1.0, 0.0, 0.0),
-            Point::<3>::new(0.0, 1.0, 0.0),
-            Point::<3>::new(0.0, 0.0, 1.0),
-            Point::<3>::new(1.0, 0.0, 1.0),
-            Point::<3>::new(0.0, 1.0, 1.0),
-            Point::<3>::new(0.0, 0.0, 0.5),
+            Vertex::<3>::new(0.0, 0.0, 0.0),
+            Vertex::<3>::new(1.0, 0.0, 0.0),
+            Vertex::<3>::new(0.0, 1.0, 0.0),
+            Vertex::<3>::new(0.0, 0.0, 1.0),
+            Vertex::<3>::new(1.0, 0.0, 1.0),
+            Vertex::<3>::new(0.0, 1.0, 1.0),
+            Vertex::<3>::new(0.0, 0.0, 0.5),
         ];
-        let elems = vec![Tetrahedron::new(0, 1, 2, 6), Tetrahedron::new(3, 5, 4, 6)];
+        let elems = vec![
+            Tetrahedron::from([0_u32, 1, 2, 6]),
+            Tetrahedron::from([3, 5, 4, 6]),
+        ];
         let etags = vec![1, 2];
         let faces = vec![];
         let ftags = vec![];
 
-        let mut mesh = SimplexMesh::new(verts, elems, etags, faces, ftags);
-        mesh.add_boundary_faces();
+        let mut mesh = SimplexMesh::new_with_vec(verts, elems, etags, faces, ftags);
+        mesh.fix();
         mesh.compute_face_to_elems();
         mesh.check_simple().unwrap();
         mesh.compute_topology();
@@ -819,21 +827,24 @@ mod tests {
     #[test]
     fn test_corner_3d_1_split() {
         let verts = vec![
-            Point::<3>::new(0.0, 0.0, 0.0),
-            Point::<3>::new(1.0, 0.0, 0.0),
-            Point::<3>::new(0.0, 1.0, 0.0),
-            Point::<3>::new(0.0, 0.0, 1.0),
-            Point::<3>::new(1.0, 0.0, 1.0),
-            Point::<3>::new(0.0, 1.0, 1.0),
-            Point::<3>::new(0.0, 0.0, 0.5),
+            Vertex::<3>::new(0.0, 0.0, 0.0),
+            Vertex::<3>::new(1.0, 0.0, 0.0),
+            Vertex::<3>::new(0.0, 1.0, 0.0),
+            Vertex::<3>::new(0.0, 0.0, 1.0),
+            Vertex::<3>::new(1.0, 0.0, 1.0),
+            Vertex::<3>::new(0.0, 1.0, 1.0),
+            Vertex::<3>::new(0.0, 0.0, 0.5),
         ];
-        let elems = vec![Tetrahedron::new(0, 1, 2, 6), Tetrahedron::new(3, 5, 4, 6)];
+        let elems = vec![
+            Tetrahedron::from([0_u32, 1, 2, 6]),
+            Tetrahedron::from([3, 5, 4, 6]),
+        ];
         let etags = vec![1, 2];
         let faces = vec![];
         let ftags = vec![];
 
-        let mut mesh = SimplexMesh::new(verts, elems, etags, faces, ftags);
-        mesh.add_boundary_faces();
+        let mut mesh = SimplexMesh::new_with_vec(verts, elems, etags, faces, ftags);
+        mesh.fix();
 
         let mut mesh = mesh.split().split();
         mesh.compute_face_to_elems();
@@ -849,22 +860,25 @@ mod tests {
     #[test]
     fn test_corner_3d_2() {
         let verts = vec![
-            Point::<3>::new(0.0, 0.0, 0.0),
-            Point::<3>::new(1.0, 0.0, 0.0),
-            Point::<3>::new(0.0, 1.0, 0.0),
-            Point::<3>::new(0.0, 0.0, 1.0),
-            Point::<3>::new(1.0, 0.0, 1.0),
-            Point::<3>::new(0.0, 1.0, 1.0),
-            Point::<3>::new(0.0, 0.0, 0.5),
+            Vertex::<3>::new(0.0, 0.0, 0.0),
+            Vertex::<3>::new(1.0, 0.0, 0.0),
+            Vertex::<3>::new(0.0, 1.0, 0.0),
+            Vertex::<3>::new(0.0, 0.0, 1.0),
+            Vertex::<3>::new(1.0, 0.0, 1.0),
+            Vertex::<3>::new(0.0, 1.0, 1.0),
+            Vertex::<3>::new(0.0, 0.0, 0.5),
         ];
-        let elems = vec![Tetrahedron::new(0, 1, 2, 6), Tetrahedron::new(3, 5, 4, 6)];
+        let elems = vec![
+            Tetrahedron::from([0_u32, 1, 2, 6]),
+            Tetrahedron::from([3, 5, 4, 6]),
+        ];
         let etags = vec![1, 2];
         let faces = vec![];
         let ftags = vec![];
 
-        let mut mesh = SimplexMesh::new(verts, elems, etags, faces, ftags);
-        mesh.add_boundary_faces();
-        mesh.mut_etags().for_each(|t| *t = 1);
+        let mut mesh = SimplexMesh::new_with_vec(verts, elems, etags, faces, ftags);
+        mesh.fix();
+        mesh.etags_mut().for_each(|t| *t = 1);
         mesh.compute_face_to_elems();
         mesh.check_simple().unwrap();
         mesh.compute_topology();
@@ -878,22 +892,25 @@ mod tests {
     #[test]
     fn test_corner_3d_2_split() {
         let verts = vec![
-            Point::<3>::new(0.0, 0.0, 0.0),
-            Point::<3>::new(1.0, 0.0, 0.0),
-            Point::<3>::new(0.0, 1.0, 0.0),
-            Point::<3>::new(0.0, 0.0, 1.0),
-            Point::<3>::new(1.0, 0.0, 1.0),
-            Point::<3>::new(0.0, 1.0, 1.0),
-            Point::<3>::new(0.0, 0.0, 0.5),
+            Vertex::<3>::new(0.0, 0.0, 0.0),
+            Vertex::<3>::new(1.0, 0.0, 0.0),
+            Vertex::<3>::new(0.0, 1.0, 0.0),
+            Vertex::<3>::new(0.0, 0.0, 1.0),
+            Vertex::<3>::new(1.0, 0.0, 1.0),
+            Vertex::<3>::new(0.0, 1.0, 1.0),
+            Vertex::<3>::new(0.0, 0.0, 0.5),
         ];
-        let elems = vec![Tetrahedron::new(0, 1, 2, 6), Tetrahedron::new(3, 5, 4, 6)];
+        let elems = vec![
+            Tetrahedron::from([0_u32, 1, 2, 6]),
+            Tetrahedron::from([3, 5, 4, 6]),
+        ];
         let etags = vec![1, 2];
         let faces = vec![];
         let ftags = vec![];
 
-        let mut mesh = SimplexMesh::new(verts, elems, etags, faces, ftags);
-        mesh.add_boundary_faces();
-        mesh.mut_etags().for_each(|t| *t = 1);
+        let mut mesh = SimplexMesh::new_with_vec(verts, elems, etags, faces, ftags);
+        mesh.fix();
+        mesh.etags_mut().for_each(|t| *t = 1);
 
         let mut mesh = mesh.split().split();
         mesh.compute_face_to_elems();

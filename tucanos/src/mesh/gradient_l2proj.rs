@@ -1,15 +1,16 @@
-use crate::{
-    Result,
-    mesh::{Elem, GElem, Point, SimplexMesh},
-};
+use crate::{Result, mesh::SimplexMesh};
 use log::debug;
 use nalgebra::SMatrix;
 use rayon::{
     iter::{IndexedParallelIterator, ParallelIterator},
     slice::ParallelSliceMut,
 };
+use tmesh::{
+    Vertex,
+    mesh::{GSimplex, Idx, Mesh, Simplex},
+};
 
-impl<const D: usize, E: Elem> SimplexMesh<D, E> {
+impl<T: Idx, const D: usize, C: Simplex<T>> SimplexMesh<T, D, C> {
     /// Compute the gradient of a scalar field defined at the mesh vertices
     /// as the L2 projection of the element-based gradient. The gradient at vertex
     /// $`i`$ is approximated as
@@ -21,19 +22,19 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn gradient_l2proj(&self, f: &[f64]) -> Result<Vec<f64>> {
         debug!("Compute gradient using L2 projection");
 
-        assert_eq!(f.len(), self.n_verts() as usize);
+        assert_eq!(f.len(), self.n_verts().try_into().unwrap());
 
-        let mut tmp = vec![0.0; D * self.n_elems() as usize];
+        let mut tmp = vec![0.0; D * self.n_elems().try_into().unwrap()];
 
         tmp.par_chunks_mut(D)
             .zip(self.par_elems())
             .for_each(|(g, e)| {
-                let ge = self.gelem(e);
-                let mut grad = Point::<D>::zeros();
-                for i_face in 0..E::N_FACES {
-                    let i_vert = e[i_face as usize] as usize;
-                    let gf = ge.gface(i_face);
-                    grad += f[i_vert] * gf.scaled_normal();
+                let ge = self.gelem(&e);
+                let mut grad = Vertex::<D>::zeros();
+                for i_face in 0..C::N_FACES {
+                    let i_vert = e[i_face.try_into().unwrap()].try_into().unwrap();
+                    let gf = ge.face(i_face);
+                    grad += f[i_vert] * gf.normal();
                 }
                 g.iter_mut().zip(grad.iter()).for_each(|(x, y)| *x = *y);
             });
@@ -47,11 +48,11 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             _ => unreachable!(),
         };
 
-        let mut res = vec![0.0; D * self.n_verts() as usize];
+        let mut res = vec![0.0; D * self.n_verts().try_into().unwrap()];
         res.par_chunks_mut(D).enumerate().for_each(|(i_vert, g)| {
-            for &i_elem in v2e.row(i_vert) {
+            for &i_elem in v2e.row(i_vert.try_into().unwrap()) {
                 for i in 0..D {
-                    g[i] += tmp[D * i_elem + i];
+                    g[i] += tmp[D * i_elem.try_into().unwrap() + i];
                 }
             }
             for x in g.iter_mut() {
@@ -68,7 +69,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
     pub fn hessian_l2proj(&self, gradf: &[f64]) -> Result<Vec<f64>> {
         debug!("Compute hessian using L2 projection");
 
-        assert_eq!(gradf.len(), D * self.n_verts() as usize);
+        assert_eq!(gradf.len(), D * self.n_verts().try_into().unwrap());
 
         let indices = if D == 2 {
             vec![0, 3, 1]
@@ -79,20 +80,20 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
         };
         let n = indices.len();
 
-        let mut tmp = vec![0.0; n * self.n_elems() as usize];
+        let mut tmp = vec![0.0; n * self.n_elems().try_into().unwrap()];
 
         tmp.par_chunks_mut(n)
             .zip(self.par_elems())
             .for_each(|(h, e)| {
-                let ge = self.gelem(e);
+                let ge = self.gelem(&e);
                 let mut hess = SMatrix::<f64, D, D>::zeros();
-                for i_face in 0..E::N_FACES {
-                    let i_vert = e[i_face as usize] as usize;
+                for i_face in 0..C::N_FACES {
+                    let i_vert = e[i_face.try_into().unwrap()].try_into().unwrap();
                     let start = D * i_vert;
                     let end = start + D;
                     let grad = &gradf[start..end];
-                    let gf = ge.gface(i_face);
-                    let n = gf.scaled_normal();
+                    let gf = ge.face(i_face);
+                    let n = gf.normal();
                     for i in 0..D {
                         for j in 0..D {
                             hess[D * i + j] += grad[i] * n[j];
@@ -106,7 +107,7 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
                 }
             });
 
-        let mut res = vec![0.0; n * self.n_verts() as usize];
+        let mut res = vec![0.0; n * self.n_verts().try_into().unwrap()];
 
         let vol = self.get_vertex_volumes()?;
         let v2e = self.get_vertex_to_elems()?;
@@ -117,9 +118,9 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
             _ => unreachable!(),
         };
         res.par_chunks_mut(n).enumerate().for_each(|(i_vert, g)| {
-            for &i_elem in v2e.row(i_vert) {
+            for &i_elem in v2e.row(i_vert.try_into().unwrap()) {
                 for i in 0..n {
-                    g[i] += tmp[n * i_elem + i];
+                    g[i] += tmp[n * i_elem.try_into().unwrap() + i];
                 }
             }
             for x in g.iter_mut() {
@@ -133,12 +134,15 @@ impl<const D: usize, E: Elem> SimplexMesh<D, E> {
 #[cfg(test)]
 mod tests {
 
-    use tmesh::mesh::Mesh;
+    use tmesh::{
+        Vert2d, Vert3d,
+        mesh::{Edge, Mesh},
+    };
 
     use crate::{
         Result,
         mesh::{
-            Elem, Point,
+            SimplexMesh,
             test_meshes::{test_mesh_2d, test_mesh_3d},
         },
     };
@@ -153,7 +157,7 @@ mod tests {
 
         let f: Vec<_> = mesh.verts().map(|p| p[0] + 2.0 * p[1]).collect();
         let res = mesh.gradient_l2proj(&f)?;
-        for i_vert in 0..mesh.n_verts() as usize {
+        for i_vert in 0..mesh.n_verts().try_into().unwrap() {
             assert!(f64::abs(res[2 * i_vert] - 1.) < 1e-10);
             assert!(f64::abs(res[2 * i_vert + 1] - 2.) < 1e-10);
         }
@@ -161,15 +165,15 @@ mod tests {
         Ok(())
     }
 
-    fn f_2d(p: Point<2>) -> f64 {
+    fn f_2d(p: Vert2d) -> f64 {
         p[0] * p[0] + 2.0 * p[1] * p[1] + 3.0 * p[0] * p[1]
     }
 
-    fn gradf_2d(p: Point<2>) -> [f64; 2] {
+    fn gradf_2d(p: Vert2d) -> [f64; 2] {
         [2.0 * p[0] + 3.0 * p[1], 3.0 * p[0] + 4.0 * p[1]]
     }
 
-    const fn hess_2d(_p: Point<2>) -> [f64; 3] {
+    const fn hess_2d(_p: Vert2d) -> [f64; 3] {
         [2.0, 4.0, 3.0]
     }
 
@@ -221,13 +225,14 @@ mod tests {
         let hess = mesh.hessian_l2proj(&grad)?;
 
         // flag the internal vertices, that don't belong to a cell that touches the boundary
-        let mut flg = vec![0; mesh.n_verts() as usize];
-        for i in mesh.boundary().1 {
+        let mut flg = vec![0; mesh.n_verts().try_into().unwrap()];
+        let (_, ids) = mesh.boundary::<SimplexMesh<u32, 2, Edge<u32>>>();
+        for i in ids {
             flg[i as usize] = 1;
         }
         mesh.elems().for_each(|e| {
-            if e.iter().any(|&i| flg[i as usize] == 1) {
-                for &i in e.iter() {
+            if e.into_iter().any(|i| flg[i as usize] == 1) {
+                for i in e {
                     if flg[i as usize] == 0 {
                         flg[i as usize] = 2;
                     }
@@ -247,7 +252,7 @@ mod tests {
         Ok(())
     }
 
-    fn f_3d(p: Point<3>) -> f64 {
+    fn f_3d(p: Vert3d) -> f64 {
         p[0] * p[0]
             + 2.0 * p[1] * p[1]
             + 3.0 * p[2] * p[2]
@@ -256,7 +261,7 @@ mod tests {
             + 6.0 * p[0] * p[2]
     }
 
-    fn gradf_3d(p: Point<3>) -> [f64; 3] {
+    fn gradf_3d(p: Vert3d) -> [f64; 3] {
         [
             2.0 * p[0] + 4.0 * p[1] + 6.0 * p[2],
             4.0 * p[0] + 4.0 * p[1] + 5.0 * p[2],
@@ -281,7 +286,7 @@ mod tests {
             .map(|p| p[0] + 2.0 * p[1] + 3.0 * p[2])
             .collect();
         let res = mesh.gradient_l2proj(&f)?;
-        for i_vert in 0..mesh.n_verts() as usize {
+        for i_vert in 0..mesh.n_verts().try_into().unwrap() {
             assert!(f64::abs(res[3 * i_vert] - 1.) < 1e-10);
             assert!(f64::abs(res[3 * i_vert + 1] - 2.) < 1e-10);
             assert!(f64::abs(res[3 * i_vert + 2] - 3.) < 1e-10);
@@ -342,13 +347,13 @@ mod tests {
 
         // // flag the internal vertices, that don't belong to a cell that touches the boundary
         // let (_, bdy_ids) = mesh.boundary();
-        // let mut flg = vec![0; mesh.n_verts() as usize];
-        // bdy_ids.iter().for_each(|&i| flg[i as usize] = 1);
+        // let mut flg = vec![0; mesh.n_verts().try_into().unwrap()];
+        // bdy_ids.iter().for_each(|&i| flg[i.try_into().unwrap()] = 1);
         // mesh.elems().for_each(|e| {
-        //     if e.iter().any(|&i| flg[i as usize] == 1) {
+        //     if e.iter().any(|&i| flg[i.try_into().unwrap()] == 1) {
         //         for &i in e.iter() {
-        //             if flg[i as usize] == 0 {
-        //                 flg[i as usize] = 2;
+        //             if flg[i.try_into().unwrap()] == 0 {
+        //                 flg[i.try_into().unwrap()] = 2;
         //             }
         //         }
         //     }

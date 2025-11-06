@@ -28,6 +28,10 @@ impl<T: Copy> Vec<T> {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub const fn with_single(v: T) -> Self {
         Self { data: Data::One(v) }
     }

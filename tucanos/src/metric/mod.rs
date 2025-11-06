@@ -7,7 +7,7 @@ mod scaling;
 mod smoothing;
 
 use crate::metric::reduction::{control_step, simultaneous_reduction, step};
-use crate::{Error, Result, mesh::Point};
+use crate::{Error, Result};
 use crate::{H_MAX, S_MAX, S_MIN, S_RATIO_MAX};
 use nalgebra::allocator::Allocator;
 use nalgebra::{Const, DefaultAllocator, SMatrix, SVector};
@@ -16,6 +16,7 @@ use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::ops::Index;
+use tmesh::Vertex;
 
 /// Metric in D-dimensions (iso or anisotropic)
 pub trait Metric<const D: usize>:
@@ -27,7 +28,7 @@ pub trait Metric<const D: usize>:
     /// Check if the metric is valid (i.e. positive)
     fn check(&self) -> Result<()>;
     /// Compute the length of an edge in metric space
-    fn length(&self, e: &Point<D>) -> f64;
+    fn length(&self, e: &Vertex<D>) -> f64;
     /// Compute the volume associated with the metric
     fn vol(&self) -> f64;
     /// Interpolate between different metrics to return a valid metric
@@ -45,7 +46,7 @@ pub trait Metric<const D: usize>:
     fn intersect(&self, other: &Self) -> Self;
     /// Span a metric field at location e with a maximum gradation of bets
     #[must_use]
-    fn span(&self, e: &Point<D>, beta: f64, t: f64) -> Self;
+    fn span(&self, e: &Vertex<D>, beta: f64, t: f64) -> Self;
     /// Check if metrics are different with a given tolerance
     fn differs_from(&self, other: &Self, tol: f64) -> bool;
     /// Compute the step between two metrics, i.e. the min and max of
@@ -79,7 +80,7 @@ pub trait Metric<const D: usize>:
     /// l_\mathcal M(e) = l_0 \frac{\ln(a)} { a  - 1}
     /// ```
     ///
-    fn edge_length(p0: &Point<D>, m0: &Self, p1: &Point<D>, m1: &Self) -> f64 {
+    fn edge_length(p0: &Vertex<D>, m0: &Self, p1: &Vertex<D>, m1: &Self) -> f64 {
         let e = p1 - p0;
         let l0 = m0.length(&e);
         let l1 = m1.length(&e);
@@ -93,14 +94,15 @@ pub trait Metric<const D: usize>:
         }
     }
     /// Find the metric with the minimum volume
-    fn min_metric<'a, I: Iterator<Item = &'a Self>>(mut metrics: I) -> &'a Self {
-        let m = metrics.next().unwrap();
+    fn min_metric(metrics: &[Self]) -> Self {
+        assert!(!metrics.is_empty());
+        let m = metrics[0];
         let mut vol = m.vol();
         let mut res = m;
-        for m in metrics {
+        for m in &metrics[1..] {
             let volm = m.vol();
             if volm < vol {
-                res = m;
+                res = *m;
                 vol = volm;
             }
         }
@@ -145,7 +147,7 @@ impl<const D: usize> Metric<D> for IsoMetric<D> {
     /// ```math
     /// l_\mathcal M(e) = \frac{||e||_2}{h}
     /// ```
-    fn length(&self, e: &Point<D>) -> f64 {
+    fn length(&self, e: &Vertex<D>) -> f64 {
         e.norm() / self.0
     }
 
@@ -194,7 +196,7 @@ impl<const D: usize> Metric<D> for IsoMetric<D> {
     }
 
     // assumption: linear variation of h along e (see "Size gradation control of anisotropic meshes", F. Alauzet, 2010)
-    fn span(&self, e: &Point<D>, beta: f64, _t: f64) -> Self {
+    fn span(&self, e: &Vertex<D>, beta: f64, _t: f64) -> Self {
         let f = 1. + self.length(e) * f64::ln(beta);
         Self::from(self.0 * f)
     }
@@ -333,7 +335,7 @@ where
     /// ```math
     /// l_\mathcal M(e) =  \sqrt{e^T \mathcal M e}
     /// ```
-    fn length(&self, e: &Point<D>) -> f64 {
+    fn length(&self, e: &Vertex<D>) -> f64 {
         (self.as_mat() * e).dot(e).sqrt()
     }
 
@@ -455,7 +457,7 @@ where
     /// "Feature-based and goal-oriented anisotropic mesh adaptation for RANS
     /// applications in aeronautics and aerospace", F. Alauzet & L. Frazza, 2021
     ///
-    fn span(&self, e: &Point<D>, beta: f64, t: f64) -> Self {
+    fn span(&self, e: &Vertex<D>, beta: f64, t: f64) -> Self {
         let nrm = e.norm();
         let mat = self.as_mat();
         let mut eig = mat.symmetric_eigen();
@@ -521,7 +523,7 @@ impl AnisoMetric2d {
     /// Create a metric from 2 orthogonal vectors
     /// The length of the vectors will be the characteric length along this direction
     #[must_use]
-    pub fn from_sizes(s0: &Point<2>, s1: &Point<2>) -> Self {
+    pub fn from_sizes(s0: &Vertex<2>, s1: &Vertex<2>) -> Self {
         let n0 = s0.norm();
         let n1 = s1.norm();
         let s0 = s0 / n0;
@@ -681,7 +683,7 @@ impl AnisoMetric3d {
     /// Create a metric from 2 orthogonal vectors
     /// The length of the vectors will be the characteric length along this direction
     #[must_use]
-    pub fn from_sizes(s0: &Point<3>, s1: &Point<3>, s2: &Point<3>) -> Self {
+    pub fn from_sizes(s0: &Vertex<3>, s1: &Vertex<3>, s2: &Vertex<3>) -> Self {
         let n0 = s0.norm();
         let n1 = s1.norm();
         let n2 = s2.norm();
@@ -797,25 +799,26 @@ impl Index<usize> for AnisoMetric3d {
 #[cfg(test)]
 mod tests {
     use super::{AnisoMetric, AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric};
-    use crate::{Result, S_RATIO_MAX, mesh::Point};
+    use crate::{Result, S_RATIO_MAX};
     use nalgebra::{SMatrix, SVector};
+    use tmesh::{Vert2d, Vert3d};
 
     #[test]
     fn test_aniso_2d() -> Result<()> {
-        let v0 = Point::<2>::new(1.0, 0.);
-        let v1 = Point::<2>::new(0., 0.1);
+        let v0 = Vert2d::new(1.0, 0.);
+        let v1 = Vert2d::new(0., 0.1);
         let m = AnisoMetric2d::from_sizes(&v0, &v1);
 
         m.check()?;
         assert!(f64::abs(m.vol() - 0.1) < 1e-12);
 
-        let e = Point::<2>::new(1.0, 0.0);
+        let e = Vert2d::new(1.0, 0.0);
         assert!(f64::abs(m.length(&e) - 1.0) < 1e-12);
 
-        let e = Point::<2>::new(0.0, 1.0);
+        let e = Vert2d::new(0.0, 1.0);
         assert!(f64::abs(m.length(&e) - 10.) < 1e-12);
 
-        let e = Point::<2>::new(1.0, 1.0);
+        let e = Vert2d::new(1.0, 1.0);
         assert!(f64::abs(m.length(&e) - f64::sqrt(101.)) < 1e-12);
 
         Ok(())
@@ -854,24 +857,24 @@ mod tests {
 
     #[test]
     fn test_aniso_3d() -> Result<()> {
-        let v0 = Point::<3>::new(1.0, 0., 0.);
-        let v1 = Point::<3>::new(0., 0.1, 0.);
-        let v2 = Point::<3>::new(0., 0., 0.01);
+        let v0 = Vert3d::new(1.0, 0., 0.);
+        let v1 = Vert3d::new(0., 0.1, 0.);
+        let v2 = Vert3d::new(0., 0., 0.01);
         let m = AnisoMetric3d::from_sizes(&v0, &v1, &v2);
 
         m.check()?;
         assert!(f64::abs(m.vol() - 0.001) < 1e-12);
 
-        let e = Point::<3>::new(1.0, 0.0, 0.0);
+        let e = Vert3d::new(1.0, 0.0, 0.0);
         assert!(f64::abs(m.length(&e) - 1.0) < 1e-12);
 
-        let e = Point::<3>::new(0.0, 1.0, 0.);
+        let e = Vert3d::new(0.0, 1.0, 0.);
         assert!(f64::abs(m.length(&e) - 10.) < 1e-12);
 
-        let e = Point::<3>::new(0.0, 0.0, 1.0);
+        let e = Vert3d::new(0.0, 0.0, 1.0);
         assert!(f64::abs(m.length(&e) - 100.) < 1e-12);
 
-        let e = Point::<3>::new(1.0, 1.0, 1.0);
+        let e = Vert3d::new(1.0, 1.0, 1.0);
         assert!(f64::abs(m.length(&e) - f64::sqrt(10101.)) < 1e-12);
 
         let s = m.sizes();
@@ -904,7 +907,7 @@ mod tests {
             let met_c = met_a.intersect(&met_b);
 
             for _ in 0..100 {
-                let v = Point::<2>::new_random();
+                let v = Vert2d::new_random();
                 let v = v.normalize();
                 let la = met_a.length(&v);
                 let lb = met_b.length(&v);
@@ -930,7 +933,7 @@ mod tests {
             let met_c = met_a.intersect(&met_b);
 
             for _ in 0..100 {
-                let v = Point::<2>::new_random();
+                let v = Vert2d::new_random();
                 let v = v.normalize();
                 let la = met_a.length(&v);
                 let lb = met_b.length(&v);
@@ -956,7 +959,7 @@ mod tests {
             let met_c = met_a.intersect(&met_b);
 
             for _ in 0..100 {
-                let v = Point::<3>::new_random();
+                let v = Vert3d::new_random();
                 let v = v.normalize();
                 let la = met_a.length(&v);
                 let lb = met_b.length(&v);
@@ -970,7 +973,7 @@ mod tests {
     #[test]
     fn test_span_2d_iso() {
         let m = IsoMetric::<2>::from(0.1);
-        let e = Point::<2>::new(0.0, 0.1);
+        let e = Vert2d::new(0.0, 0.1);
         let m2 = m.span(&e, 1.2, 1.0);
 
         assert!(f64::abs(m2.0 - 0.118) < 0.001);
@@ -982,11 +985,11 @@ mod tests {
 
     #[test]
     fn test_span_2d_aniso() {
-        let v0 = Point::<2>::new(1.0, 0.);
-        let v1 = Point::<2>::new(0., 0.1);
+        let v0 = Vert2d::new(1.0, 0.);
+        let v1 = Vert2d::new(0., 0.1);
         let m = AnisoMetric2d::from_sizes(&v0, &v1);
 
-        let e = Point::<2>::new(1.0, 0.);
+        let e = Vert2d::new(1.0, 0.);
         let m2 = m.span(&e, 1.2, 1.0);
 
         let l = m2.length(&e);
@@ -997,7 +1000,7 @@ mod tests {
         let l = m2.length(&e);
         assert!(f64::abs(1. / l - 1.69) < 0.01);
 
-        let e = Point::<2>::new(0.0, 0.1);
+        let e = Vert2d::new(0.0, 0.1);
         let m2 = m.span(&e, 1.2, 1.0);
 
         let l = m2.length(&e);
@@ -1008,7 +1011,7 @@ mod tests {
         let l = m2.length(&e);
         assert!(f64::abs(1. / l - 1.69) < 0.01);
 
-        let e = Point::<2>::new(0.0, 0.2);
+        let e = Vert2d::new(0.0, 0.2);
         let m2 = m.span(&e, 1.2, 1.0);
 
         let l = m2.length(&e);
@@ -1022,12 +1025,12 @@ mod tests {
 
     #[test]
     fn test_span_3d_aniso() {
-        let v0 = Point::<3>::new(1.0, 0.0, 0.0);
-        let v1 = Point::<3>::new(0.0, 0.1, 0.0);
-        let v2 = Point::<3>::new(0.0, 0.0, 0.01);
+        let v0 = Vert3d::new(1.0, 0.0, 0.0);
+        let v1 = Vert3d::new(0.0, 0.1, 0.0);
+        let v2 = Vert3d::new(0.0, 0.0, 0.01);
         let m = AnisoMetric3d::from_sizes(&v0, &v1, &v2);
 
-        let e = Point::<3>::new(1.0, 0.0, 0.0);
+        let e = Vert3d::new(1.0, 0.0, 0.0);
         let m2 = m.span(&e, 1.2, 1.0);
 
         let l = m2.length(&e);
@@ -1038,7 +1041,7 @@ mod tests {
         let l = m2.length(&e);
         assert!(f64::abs(1. / l - 1.69) < 0.01);
 
-        let e = Point::<3>::new(0.0, 0.1, 0.0);
+        let e = Vert3d::new(0.0, 0.1, 0.0);
         let m2 = m.span(&e, 1.2, 1.0);
 
         let l = m2.length(&e);
@@ -1049,7 +1052,7 @@ mod tests {
         let l = m2.length(&e);
         assert!(f64::abs(1. / l - 1.69) < 0.01);
 
-        let e = Point::<3>::new(0.0, 0.0, 0.01);
+        let e = Vert3d::new(0.0, 0.0, 0.01);
         let m2 = m.span(&e, 1.2, 1.0);
 
         let l = m2.length(&e);
@@ -1060,7 +1063,7 @@ mod tests {
         let l = m2.length(&e);
         assert!(f64::abs(1. / l - 1.69) < 0.01);
 
-        let e = Point::<3>::new(0.0, 0.2, 0.0);
+        let e = Vert3d::new(0.0, 0.2, 0.0);
         let m2 = m.span(&e, 1.2, 1.0);
 
         let l = m2.length(&e);
@@ -1096,8 +1099,8 @@ mod tests {
 
     #[test]
     fn test_limit_aniso_2d() {
-        let ex = Point::<2>::new(1.0, 0.0);
-        let ey = Point::<2>::new(0.0, 1.0);
+        let ex = Vert2d::new(1.0, 0.0);
+        let ey = Vert2d::new(0.0, 1.0);
 
         let mut m0 = AnisoMetric2d::from_sizes(&ex, &ey);
         let m1 = AnisoMetric2d::from_sizes(&(10.0 * ex), &(10.0 * ey));
@@ -1124,9 +1127,9 @@ mod tests {
 
     #[test]
     fn test_limit_aniso_3d() {
-        let ex = Point::<3>::new(1.0, 0.0, 0.0);
-        let ey = Point::<3>::new(0.0, 1.0, 0.0);
-        let ez = Point::<3>::new(0.0, 0.0, 1.0);
+        let ex = Vert3d::new(1.0, 0.0, 0.0);
+        let ey = Vert3d::new(0.0, 1.0, 0.0);
+        let ez = Vert3d::new(0.0, 0.0, 1.0);
 
         let mut m0 = AnisoMetric3d::from_sizes(&ex, &ey, &ez);
         let m1 = AnisoMetric3d::from_sizes(&(10.0 * ex), &(0.1 * ey), &(0.001 * ez));
