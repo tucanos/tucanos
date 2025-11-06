@@ -1,7 +1,7 @@
 //! Simplex elements
-use super::{twovec, Edge, Node, Tetrahedron, Triangle};
-use crate::mesh::{GEdge, GNode, GTetrahedron, GTriangle, Idx};
+use super::{Edge, Node, Tetrahedron, Triangle, twovec};
 use crate::Vertex;
+use crate::mesh::{GEdge, GNode, GTetrahedron, GTriangle, Idx};
 use nalgebra::{SMatrix, SVector};
 use rustc_hash::FxHashMap;
 use std::fmt::Debug;
@@ -90,7 +90,11 @@ where
 
     /// Get the i-th edge for the current simplex
     fn edge(&self, i: T) -> Edge<T> {
-        Edge::<T>::from_iter(Self::EDGES[i.try_into().unwrap()])
+        Edge::<T>::from_iter(
+            Self::EDGES[i.try_into().unwrap()]
+                .into_iter()
+                .map(|j| self[j]),
+        )
     }
 
     /// Get an iterator over the edges of the current simplex
