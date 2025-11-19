@@ -2,7 +2,7 @@ use super::Remesher;
 use crate::{
     Dim, Idx, Result,
     geometry::Geometry,
-    mesh::{AsSliceF64, Elem, GElem, Point},
+    mesh::{AsSliceF64, Elem, GElem, HasTmeshImpl, Point, SimplexMesh},
     metric::Metric,
     min_iter,
     remesher::{
@@ -71,7 +71,10 @@ impl Default for SmoothParams {
     }
 }
 
-impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M> {
+impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M>
+where
+    SimplexMesh<D, E>: HasTmeshImpl<D, E>,
+{
     /// Get the vertices in a vertex cavity usable for smoothing, i.e. with tag that is a children of the cavity vertes
     /// TODO: move to Cavity
     fn get_smoothing_neighbors(&self, cavity: &Cavity<D, E, M>) -> (bool, Vec<Idx>) {

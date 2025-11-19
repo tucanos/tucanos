@@ -917,6 +917,8 @@ pub trait HasTmeshImpl<const D: usize, E: Elem> {
 
     fn vtu_writer(&self) -> VTUFile;
 
+    fn bdy_vtu_writer(&self) -> VTUFile;
+    
     fn partition_simple(&mut self, ptype: PartitionType) -> Result<(f64, f64)>;
 
     fn boundary_flag(&self) -> Vec<bool>;
