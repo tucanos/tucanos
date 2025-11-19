@@ -49,7 +49,7 @@ use least_squares::LeastSquaresGradient;
 pub use mesh_2d::{Mesh2d, nonuniform_rectangle_mesh, rectangle_mesh};
 pub use mesh_3d::{Mesh3d, box_mesh, nonuniform_box_mesh};
 use partition::Partitioner;
-pub(crate) use simplices::{EDGE_FACES, TETRA_FACES, TRIANGLE_FACES};
+pub use simplices::{EDGE_FACES, TETRA_FACES, TRIANGLE_FACES};
 pub use simplices::{Simplex, get_face_to_elem};
 use split::{split_edgs, split_tets, split_tris};
 pub use to_simplices::{hex2tets, pri2tets, pyr2tets, qua2tris};
