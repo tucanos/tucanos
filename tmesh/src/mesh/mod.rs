@@ -397,35 +397,46 @@ where
                 for (i, &j) in face.iter().enumerate() {
                     tmp[i] = e[j];
                 }
-                if Self::faces_are_oriented() {
-                    let n = Face::<F>::normal(&self.gface(&tmp));
+                let f = tmp;
                     tmp.sort_unstable();
-                    let n_ref = Face::<F>::normal(&self.gface(&tmp));
-                    let is_dot_pos = n.dot(&n_ref) > 0.0;
-
-                    if let Some(arr) = res.get_mut(&tmp) {
-                        if is_dot_pos {
+                if F > 1 {
+                    let i = if f.is_same(&tmp) { 1 } else { 2 };
+                    match res.entry(tmp) {
+                        std::collections::hash_map::Entry::Occupied(occupied_entry) => {
+                            let arr = occupied_entry.into_mut();
+                            assert_eq!(
+                                arr[i],
+                                usize::MAX,
+                                "face {} belongs to {} and {} with orientation {i}",
+                                arr[0],
+                                arr[i],
+                                i_elem
+                            );
+                            arr[i] = i_elem;
+                        }
+                        std::collections::hash_map::Entry::Vacant(vacant_entry) => {
+                            let mut arr = [idx, usize::MAX, usize::MAX];
+                            arr[i] = i_elem;
+                            idx += 1;
+                            vacant_entry.insert(arr);
+                        }
+                    }
+                } else {
+                    match res.entry(tmp) {
+                        std::collections::hash_map::Entry::Occupied(occupied_entry) => {
+                            let arr = occupied_entry.into_mut();
+                            if arr[1] == usize::MAX {
                             arr[1] = i_elem;
                         } else {
                             assert_eq!(arr[2], usize::MAX);
                             arr[2] = i_elem;
                         }
-                    } else {
-                        if is_dot_pos {
-                            res.insert(tmp, [idx, i_elem, usize::MAX]);
-                        } else {
-                            res.insert(tmp, [idx, usize::MAX, i_elem]);
                         }
+                        std::collections::hash_map::Entry::Vacant(vacant_entry) => {
+                            let arr = [idx, i_elem, usize::MAX];
                         idx += 1;
-                    }
-                } else {
-                    tmp.sort_unstable();
-                    if let Some(arr) = res.get_mut(&tmp) {
-                        assert_eq!(arr[2], usize::MAX);
-                        arr[2] = i_elem;
-                    } else {
-                        res.insert(tmp, [idx, i_elem, usize::MAX]);
-                        idx += 1;
+                            vacant_entry.insert(arr);
+                        }
                     }
                 }
             }
