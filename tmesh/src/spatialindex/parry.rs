@@ -1,6 +1,6 @@
 use crate::{
-    Vertex,
     mesh::{Cell, Mesh, Simplex},
+    Vertex,
 };
 use parry2d_f64::math::Point as Point2;
 use parry2d_f64::query::{PointQuery as _, PointQueryWithLocation as _};
@@ -20,7 +20,7 @@ mod parry2d {
         bounding_volume::Aabb,
         math::{Isometry, Point, Real},
         partitioning::{Bvh, BvhBuildStrategy},
-        query::{PointProjection, PointQueryWithLocation, details::NormalConstraints},
+        query::{details::NormalConstraints, PointProjection, PointQueryWithLocation},
         shape::{
             CompositeShape, CompositeShapeRef, Segment, SegmentPointLocation, Shape,
             TypedCompositeShape,
@@ -29,8 +29,8 @@ mod parry2d {
     use std::marker::PhantomData;
 
     use crate::{
-        Vertex,
         mesh::{Cell, Mesh, Simplex},
+        Vertex,
     };
 
     pub trait MeshToShape {
@@ -193,8 +193,8 @@ mod parry3d {
         math::{Isometry, Point, Real},
         partitioning::{Bvh, BvhBuildStrategy},
         query::{
-            PointProjection, PointQuery, PointQueryWithLocation, Ray, RayCast, RayIntersection,
-            details::NormalConstraints,
+            details::NormalConstraints, PointProjection, PointQuery, PointQueryWithLocation, Ray,
+            RayCast, RayIntersection,
         },
         shape::{
             CompositeShape, CompositeShapeRef, FeatureId, Segment, SegmentPointLocation, Shape,
@@ -204,8 +204,8 @@ mod parry3d {
     use std::marker::PhantomData;
 
     use crate::{
-        Vertex,
         mesh::{Cell, Mesh, Simplex},
+        Vertex,
     };
     /// Create a parry Shape from a tucanos Elem
     pub trait MeshToShape {
@@ -552,7 +552,11 @@ impl<const D: usize> ObjectIndex<D> {
                     .project_local_point_and_get_location(&Point3::new(pt[0], pt[1], pt[2]), true);
                 id as usize
             }
-            ParryImpl::Edge3D(_) => todo!(),
+            ParryImpl::Edge3D(shape) => {
+                let (_, (id, _)) = shape
+                    .project_local_point_and_get_location(&Point3::new(pt[0], pt[1], pt[2]), true);
+                id as usize
+            }
             ParryImpl::Tria2D(shape) => {
                 let (_, (id, _)) =
                     shape.project_local_point_and_get_location(&Point2::new(pt[0], pt[1]), true);
