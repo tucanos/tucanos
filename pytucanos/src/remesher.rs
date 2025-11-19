@@ -99,6 +99,7 @@ pub struct PySplitParams {
     min_q_rel: f64,
     min_q_rel_bdy: f64,
     min_q_abs: f64,
+    max_extensions: usize,
 }
 
 impl PySplitParams {
@@ -111,6 +112,7 @@ impl PySplitParams {
             min_q_rel: other.min_q_rel,
             min_q_rel_bdy: other.min_q_rel_bdy,
             min_q_abs: other.min_q_abs,
+            max_extensions: other.max_extensions,
         }
     }
     const fn to(&self) -> SplitParams {
@@ -122,6 +124,7 @@ impl PySplitParams {
             min_q_rel: self.min_q_rel,
             min_q_rel_bdy: self.min_q_rel_bdy,
             min_q_abs: self.min_q_abs,
+            max_extensions: self.max_extensions,
         }
     }
 }
@@ -130,6 +133,7 @@ impl PySplitParams {
 impl PySplitParams {
     #[new]
     #[allow(clippy::similar_names)]
+    #[allow(clippy::too_many_arguments)]
     const fn new(
         l: f64,
         max_iter: Idx,
@@ -138,6 +142,7 @@ impl PySplitParams {
         min_q_rel: f64,
         min_q_rel_bdy: f64,
         min_q_abs: f64,
+        max_extensions: usize,
     ) -> Self {
         Self {
             l,
@@ -147,6 +152,7 @@ impl PySplitParams {
             min_q_rel,
             min_q_rel_bdy,
             min_q_abs,
+            max_extensions,
         }
     }
     #[classmethod]
