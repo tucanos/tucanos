@@ -930,35 +930,55 @@ where
         );
 
         match C {
-            4 => res.add_elems_and_tags(reader.read_tetrahedra()?.map(|(e, t)| {
-                let mut tmp = [0; C];
-                tmp.copy_from_slice(&e);
-                (tmp, t as Tag)
-            })),
-            3 => res.add_elems_and_tags(reader.read_triangles()?.map(|(e, t)| {
-                let mut tmp = [0; C];
-                tmp.copy_from_slice(&e);
-                (tmp, t as Tag)
-            })),
-            2 => res.add_elems_and_tags(reader.read_edges()?.map(|(e, t)| {
-                let mut tmp = [0; C];
-                tmp.copy_from_slice(&e);
-                (tmp, t as Tag)
-            })),
+            4 => {
+                if let Ok(iter) = reader.read_tetrahedra() {
+                    res.add_elems_and_tags(iter.map(|(e, t)| {
+                        let mut tmp = [0; C];
+                        tmp.copy_from_slice(&e);
+                        (tmp, t as Tag)
+                    }));
+                }
+            }
+            3 => {
+                if let Ok(iter) = reader.read_triangles() {
+                    res.add_elems_and_tags(iter.map(|(e, t)| {
+                        let mut tmp = [0; C];
+                        tmp.copy_from_slice(&e);
+                        (tmp, t as Tag)
+                    }));
+                }
+            }
+            2 => {
+                if let Ok(iter) = reader.read_edges() {
+                    res.add_elems_and_tags(iter.map(|(e, t)| {
+                        let mut tmp = [0; C];
+                        tmp.copy_from_slice(&e);
+                        (tmp, t as Tag)
+                    }));
+                }
+            }
             _ => unimplemented!(),
         }
 
         match F {
-            3 => res.add_faces_and_tags(reader.read_triangles()?.map(|(e, t)| {
-                let mut tmp = [0; F];
-                tmp.copy_from_slice(&e);
-                (tmp, t as Tag)
-            })),
-            2 => res.add_faces_and_tags(reader.read_edges()?.map(|(e, t)| {
-                let mut tmp = [0; F];
-                tmp.copy_from_slice(&e);
-                (tmp, t as Tag)
-            })),
+            3 => {
+                if let Ok(iter) = reader.read_triangles() {
+                    res.add_faces_and_tags(iter.map(|(e, t)| {
+                        let mut tmp = [0; F];
+                        tmp.copy_from_slice(&e);
+                        (tmp, t as Tag)
+                    }));
+                }
+            }
+            2 => {
+                if let Ok(iter) = reader.read_edges() {
+                    res.add_faces_and_tags(iter.map(|(e, t)| {
+                        let mut tmp = [0; F];
+                        tmp.copy_from_slice(&e);
+                        (tmp, t as Tag)
+                    }));
+                }
+            }
             1 => warn!("not reading faces when elements are edges"),
             _ => unimplemented!(),
         }
