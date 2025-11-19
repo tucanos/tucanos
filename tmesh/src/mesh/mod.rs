@@ -60,7 +60,7 @@ use crate::{
     io::{VTUEncoding, VTUFile},
     spatialindex::PointIndex,
 };
-use log::debug;
+use log::{debug, warn};
 use minimeshb::{reader::MeshbReader, writer::MeshbWriter};
 use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
 use rayon::prelude::{
@@ -959,6 +959,7 @@ where
                 tmp.copy_from_slice(&e);
                 (tmp, t as Tag)
             })),
+            1 => warn!("not reading faces when elements are edges"),
             _ => unimplemented!(),
         }
 
@@ -1024,6 +1025,11 @@ where
                 }),
                 self.ftags().map(|x| x.try_into().unwrap()),
             )?,
+            1 => {
+                if self.n_faces() != 0 {
+                    warn!("skip faces in meshb export");
+                }
+            }
             _ => unimplemented!(),
         }
 

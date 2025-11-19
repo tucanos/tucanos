@@ -270,7 +270,10 @@ macro_rules! impl_mesh {
             /// Add vertices
             pub fn add_verts(&mut self, coords: PyReadonlyArray2<f64>) -> PyResult<()> {
                 if coords.shape()[1] != $dim {
-                    return Err(PyValueError::new_err("Invalid dimension 1 for coords"));
+                    return Err(PyValueError::new_err(format!(
+                        "Invalid dimension 1 for coords (expecting {})",
+                        $dim
+                    )));
                 }
                 let coords = coords.as_slice()?;
                 let coords = coords.chunks($dim).map(|p| {
@@ -295,7 +298,10 @@ macro_rules! impl_mesh {
                 ftags: PyReadonlyArray1<Tag>,
             ) -> PyResult<()> {
                 if faces.shape()[1] != $face_dim {
-                    return Err(PyValueError::new_err("Invalid dimension 1 for coords"));
+                    return Err(PyValueError::new_err(format!(
+                        "Invalid dimension 1 for faces (expecting {})",
+                        $face_dim
+                    )));
                 }
                 let faces = faces.as_slice()?;
                 let faces = faces.chunks($face_dim).map(|x| x.try_into().unwrap());
@@ -312,7 +318,10 @@ macro_rules! impl_mesh {
                 etags: PyReadonlyArray1<Tag>,
             ) -> PyResult<()> {
                 if elems.shape()[1] != $cell_dim {
-                    return Err(PyValueError::new_err("Invalid dimension 1 for coords"));
+                    return Err(PyValueError::new_err(format!(
+                        "Invalid dimension 1 for elems (expecting {})",
+                        $cell_dim
+                    )));
                 }
                 let elems = elems.as_slice()?;
                 let elems = elems.chunks($cell_dim).map(|x| x.try_into().unwrap());
