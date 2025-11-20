@@ -378,7 +378,7 @@ where
     /// Check if faces can be oriented for the current values of D and C
     #[must_use]
     fn faces_are_oriented() -> bool {
-        F == D
+        F - 1 == D - 1
     }
 
     /// Compute all the mesh faces (boundary & internal)
@@ -398,7 +398,7 @@ where
                     tmp[i] = e[j];
                 }
                 let f = tmp;
-                    tmp.sort_unstable();
+                tmp.sort_unstable();
                 if F > 1 {
                     let i = if f.is_same(&tmp) { 1 } else { 2 };
                     match res.entry(tmp) {
@@ -407,10 +407,13 @@ where
                             assert_eq!(
                                 arr[i],
                                 usize::MAX,
-                                "face {} belongs to {} and {} with orientation {i}",
+                                "face {} ({:?}) belongs to {} ({:?}) and {} ({:?}) with orientation {i}",
                                 arr[0],
+                                tmp,
                                 arr[i],
-                                i_elem
+                                self.elem(arr[i]),
+                                i_elem,
+                                e
                             );
                             arr[i] = i_elem;
                         }
@@ -426,15 +429,15 @@ where
                         std::collections::hash_map::Entry::Occupied(occupied_entry) => {
                             let arr = occupied_entry.into_mut();
                             if arr[1] == usize::MAX {
-                            arr[1] = i_elem;
-                        } else {
-                            assert_eq!(arr[2], usize::MAX);
-                            arr[2] = i_elem;
-                        }
+                                arr[1] = i_elem;
+                            } else {
+                                assert_eq!(arr[2], usize::MAX);
+                                arr[2] = i_elem;
+                            }
                         }
                         std::collections::hash_map::Entry::Vacant(vacant_entry) => {
                             let arr = [idx, i_elem, usize::MAX];
-                        idx += 1;
+                            idx += 1;
                             vacant_entry.insert(arr);
                         }
                     }
@@ -494,40 +497,39 @@ where
     /// - of boundary faces to be oriented outwards (if possible)
     /// - of internal faces to be oriented from the lower to the higher element tag
     fn fix_faces_orientation(&mut self, all_faces: &FxHashMap<Face<F>, [usize; 3]>) -> usize {
-        if Self::faces_are_oriented() {
-            let flg = self
-                .faces()
-                .map(|f| {
-                    let gf = self.gface(&f);
-                    let fc = cell_center(&gf);
-                    let normal = Face::<F>::normal(&gf);
+        let flg = self
+            .faces()
+            .map(|f| {
+                let [_, i0, i1] = all_faces.get(&f.sorted()).unwrap();
+                if *i0 == usize::MAX || *i1 == usize::MAX {
+                    let i = if *i1 == usize::MAX { *i0 } else { *i1 };
+                    let e = self.elem(i);
+                    if (0..F).all(|i| !f.is_same(&e.face(i))) {
+                        return true;
+                    }
+                }
+                false
+            })
+            .collect::<Vec<_>>();
 
-                    let [_, i0, i1] = all_faces.get(&f.sorted()).unwrap();
-                    let i = if *i0 == usize::MAX || *i1 == usize::MAX {
-                        if *i1 == usize::MAX { *i0 } else { *i1 }
-                    } else {
-                        let t0 = self.etag(*i0);
-                        let t1 = self.etag(*i1);
-                        assert_ne!(t0, t1);
-                        if t0 < t1 { *i0 } else { *i1 }
-                    };
-                    let ge = self.gelem(&self.elem(i));
-                    let ec = cell_center(&ge);
+        let n = flg
+            .iter()
+            .enumerate()
+            .filter(|(_, f)| **f)
+            .map(|(i, _)| self.invert_face(i))
+            .count();
+        debug!("{n} faces reoriented");
+        n
+    }
 
-                    normal.dot(&(fc - ec)) < 0.0
-                })
-                .collect::<Vec<_>>();
-
-            let n = flg
-                .iter()
-                .enumerate()
-                .filter(|(_, f)| **f)
-                .map(|(i, _)| self.invert_face(i))
-                .count();
-            debug!("{n} faces reoriented");
-            return n;
+    fn find_tag(tags: &mut FxHashSet<Tag>) -> Tag {
+        let mut next = 1;
+        while tags.contains(&next) || tags.contains(&(-next)) {
+            next += 1;
         }
-        0
+        tags.insert(next);
+
+        next
     }
 
     /// Compute the faces that are connected to only one element and that are not already tagged
