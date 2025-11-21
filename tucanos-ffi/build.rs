@@ -1,10 +1,14 @@
 use std::{env, path::PathBuf};
 #[cfg(feature = "64bit-tags")]
-const TUCANOS_TAG: Option<&str> = Some("#define TUCANOS_TAG_64");
+const TUCANOS_TAG: &str = "#define TUCANOS_TAG_64";
 #[cfg(feature = "32bit-tags")]
-const TUCANOS_TAG: Option<&str> = Some("#define TUCANOS_TAG_32");
+const TUCANOS_TAG: &str = "#define TUCANOS_TAG_32";
 #[cfg(not(any(feature = "32bit-tags", feature = "64bit-tags")))]
-const TUCANOS_TAG: Option<&str> = None;
+const TUCANOS_TAG: &str = "";
+#[cfg(feature = "32bit-ints")]
+const TUCANOS_INT: &str = "#define TUCANOS_INT_32";
+#[cfg(not(feature = "32bit-ints"))]
+const TUCANOS_INT: &str = "";
 
 fn main() {
     println!("cargo:rerun-if-env-changed=DEP_TUCANOS_RPATH");
@@ -18,11 +22,14 @@ fn main() {
         out_path.pop();
     }
     let out_file = out_path.join("tucanos.h");
+
+    let tmp = TUCANOS_TAG.to_string() + "\n" + TUCANOS_INT;
+
     let config = cbindgen::Config {
         usize_is_size_t: true,
         language: cbindgen::Language::C,
         style: cbindgen::Style::Both,
-        after_includes: TUCANOS_TAG.map(Into::into),
+        after_includes: Some(tmp),
         ..Default::default()
     };
     cbindgen::Builder::new()
@@ -32,6 +39,7 @@ fn main() {
         .with_crate(".")
         .with_define("feature", "64bit-tags", "TUCANOS_TAG_64")
         .with_define("feature", "32bit-tags", "TUCANOS_TAG_32")
+        .with_define("feature", "32bit-ints", "TUCANOS_INT_32")
         .generate()
         .expect("Unable to generate bindings")
         .write_to_file(out_file);

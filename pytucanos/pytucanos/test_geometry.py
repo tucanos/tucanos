@@ -1,10 +1,10 @@
 import numpy as np
 import unittest
-from .mesh import Mesh22, get_square, Mesh33, get_cube, Mesh21
-from .geometry import LinearGeometry2d, LinearGeometry3d
+from . import Mesh2d, Mesh3d, BoundaryMesh2d, LinearGeometry2d, LinearGeometry3d, Idx
+from .mesh import get_cube, get_square
 
 
-class TestGeometry3d(unittest.TestCase):
+class TestGeometry(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         import logging
@@ -13,34 +13,32 @@ class TestGeometry3d(unittest.TestCase):
 
     def test_init_2d(self):
         coords, elems, etags, faces, ftags = get_square()
-        msh = Mesh22(coords, elems, etags, faces, ftags)
-        msh.compute_topology()
+        msh = Mesh2d(coords, elems, etags, faces, ftags)
+        msh.fix()
         _geom = LinearGeometry2d(msh)
 
     def test_init_3d(self):
         coords, elems, etags, faces, ftags = get_cube()
-        msh = Mesh33(coords, elems, etags, faces, ftags)
-        msh.compute_topology()
+        msh = Mesh3d(coords, elems, etags, faces, ftags)
+        msh.fix()
         _geom = LinearGeometry3d(msh)
 
     def test_curvature_3d(self):
         coords, elems, etags, faces, ftags = get_cube()
-        msh = Mesh33(coords, elems, etags, faces, ftags)
-        msh.compute_topology()
+        msh = Mesh3d(coords, elems, etags, faces, ftags)
+        msh.fix()
         geom = LinearGeometry3d(msh)
         geom.compute_curvature()
 
     def test_project_2d(self):
         coords, elems, etags, faces, ftags = get_square()
-        msh = Mesh22(coords, elems, etags, faces, ftags).split()
-        msh.compute_topology()
+        msh = Mesh2d(coords, elems, etags, faces, ftags).split()
+        msh.fix()
 
         m = 20
         n = 4 * m
         theta = 2.0 * np.pi * np.linspace(0, 1, n + 1) - 3.0 * np.pi / 4.0
-        edgs = np.stack([np.arange(0, n), np.arange(1, n + 1)], axis=-1).astype(
-            np.uint64
-        )
+        edgs = np.stack([np.arange(0, n), np.arange(1, n + 1)], axis=-1).astype(Idx)
         edgs[-1, -1] = 0
         etags = np.ones(n, dtype=np.int16)
         etags[:m] = 1
@@ -55,17 +53,17 @@ class TestGeometry3d(unittest.TestCase):
                     [0, 2 * m],
                 ],
             ],
-        ).astype(np.uint64)
+        ).astype(Idx)
         etags = np.append(etags, 5).astype(np.int16)
 
         x = 0.5 + 0.5**0.5 * np.cos(theta)
         y = 0.5 + 0.5**0.5 * np.sin(theta)
         coords = np.stack([x, y], axis=-1)
-        geom = Mesh21(
+        geom = BoundaryMesh2d(
             coords,
             edgs,
             etags,
-            np.zeros([0, 1], dtype=np.uint64),
+            np.zeros([0, 1], dtype=Idx),
             np.zeros(0, dtype=np.int16),
         )
 

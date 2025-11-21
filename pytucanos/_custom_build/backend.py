@@ -3,7 +3,7 @@
 import sys
 from setuptools.build_meta import build_wheel, build_editable
 
-FEATURES = ["libmeshb", "nlopt", "metis", "scotch"]
+FEATURES = ["metis", "32bit-ints"]
 
 
 def update_argv(config_settings):

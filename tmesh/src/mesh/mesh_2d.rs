@@ -1,13 +1,13 @@
 //! Triangle meshes in 2d
 use crate::{
     Vert2d,
-    mesh::{GenericMesh, Mesh},
+    mesh::{Edge, GenericMesh, Mesh, Quadrangle, Triangle, elements::Idx},
 };
 
 /// Create a `Mesh<2, 3, 2>` of a `lx` by `ly` rectangle by splitting a `nx` by `ny`
 /// uniform structured grid
 #[must_use]
-pub fn rectangle_mesh<M: Mesh<2, 3, 2>>(lx: f64, nx: usize, ly: f64, ny: usize) -> M {
+pub fn rectangle_mesh<M: Mesh<2, Triangle<impl Idx>>>(lx: f64, nx: usize, ly: f64, ny: usize) -> M {
     let dx = lx / (nx as f64 - 1.);
     let x_1d = (0..nx).map(|i| i as f64 * dx).collect::<Vec<_>>();
 
@@ -19,7 +19,7 @@ pub fn rectangle_mesh<M: Mesh<2, 3, 2>>(lx: f64, nx: usize, ly: f64, ny: usize) 
 
 /// Create a `Mesh<2, 3, 2>` of rectangle by splitting a structured grid
 #[must_use]
-pub fn nonuniform_rectangle_mesh<M: Mesh<2, 3, 2>>(x: &[f64], y: &[f64]) -> M {
+pub fn nonuniform_rectangle_mesh<M: Mesh<2, Triangle<impl Idx>>>(x: &[f64], y: &[f64]) -> M {
     let nx = x.len();
     let ny = y.len();
 
@@ -36,7 +36,12 @@ pub fn nonuniform_rectangle_mesh<M: Mesh<2, 3, 2>>(x: &[f64], y: &[f64]) -> M {
     let mut etags = Vec::with_capacity((nx - 1) * (ny - 1));
     for i in 0..nx - 1 {
         for j in 0..ny - 1 {
-            quads.push([idx(i, j), idx(i + 1, j), idx(i + 1, j + 1), idx(i, j + 1)]);
+            quads.push(Quadrangle::new(
+                idx(i, j),
+                idx(i + 1, j),
+                idx(i + 1, j + 1),
+                idx(i, j + 1),
+            ));
             etags.push(1);
         }
     }
@@ -45,16 +50,16 @@ pub fn nonuniform_rectangle_mesh<M: Mesh<2, 3, 2>>(x: &[f64], y: &[f64]) -> M {
     let mut ftags = Vec::with_capacity(2 * (nx - 1 + ny - 1));
 
     for i in 0..nx - 1 {
-        faces.push([idx(i, 0), idx(i + 1, 0)]);
+        faces.push(Edge::new(idx(i, 0), idx(i + 1, 0)));
         ftags.push(1);
-        faces.push([idx(i + 1, ny - 1), idx(i, ny - 1)]);
+        faces.push(Edge::new(idx(i + 1, ny - 1), idx(i, ny - 1)));
         ftags.push(3);
     }
 
     for j in 0..ny - 1 {
-        faces.push([idx(nx - 1, j), idx(nx - 1, j + 1)]);
+        faces.push(Edge::new(idx(nx - 1, j), idx(nx - 1, j + 1)));
         ftags.push(2);
-        faces.push([idx(0, j + 1), idx(0, j)]);
+        faces.push(Edge::new(idx(0, j + 1), idx(0, j)));
         ftags.push(4);
     }
 
@@ -68,15 +73,14 @@ pub fn nonuniform_rectangle_mesh<M: Mesh<2, 3, 2>>(x: &[f64], y: &[f64]) -> M {
 }
 
 /// Triangle mesh in 2d
-pub type Mesh2d = GenericMesh<2, 3, 2>;
+pub type Mesh2d = GenericMesh<2, Triangle<usize>>;
 
 #[cfg(test)]
 mod tests {
     use crate::{
         Vert2d, assert_delta,
         mesh::{
-            BoundaryMesh2d, Edge, Mesh, Mesh2d, Simplex, Triangle, bandwidth, cell_center,
-            rectangle_mesh,
+            BoundaryMesh2d, Edge, GSimplex, GradientMethod, Mesh, Mesh2d, bandwidth, rectangle_mesh,
         },
     };
     use rayon::iter::ParallelIterator;
@@ -90,19 +94,19 @@ mod tests {
 
         let edgs = msh.edges();
         assert_eq!(edgs.len(), 5, "{edgs:?}");
-        assert!(edgs.contains_key(&[0, 1]));
-        assert!(edgs.contains_key(&[2, 3]));
-        assert!(edgs.contains_key(&[0, 2]));
-        assert!(edgs.contains_key(&[1, 3]));
-        assert!(edgs.contains_key(&[0, 3]));
+        assert!(edgs.contains_key(&Edge::new(0, 1)));
+        assert!(edgs.contains_key(&Edge::new(2, 3)));
+        assert!(edgs.contains_key(&Edge::new(0, 2)));
+        assert!(edgs.contains_key(&Edge::new(1, 3)));
+        assert!(edgs.contains_key(&Edge::new(0, 3)));
 
         let faces = msh.all_faces();
         assert_eq!(faces.len(), 5);
-        assert!(faces.contains_key(&[0, 1]));
-        assert!(faces.contains_key(&[2, 3]));
-        assert!(faces.contains_key(&[0, 2]));
-        assert!(faces.contains_key(&[1, 3]));
-        assert!(faces.contains_key(&[0, 3]));
+        assert!(faces.contains_key(&Edge::new(0, 1)));
+        assert!(faces.contains_key(&Edge::new(2, 3)));
+        assert!(faces.contains_key(&Edge::new(0, 2)));
+        assert!(faces.contains_key(&Edge::new(1, 3)));
+        assert!(faces.contains_key(&Edge::new(0, 3)));
     }
 
     #[test]
@@ -114,15 +118,15 @@ mod tests {
 
         let edgs = msh.edges();
         assert_eq!(edgs.len(), 9);
-        assert!(edgs.contains_key(&[0, 1]));
-        assert!(edgs.contains_key(&[1, 2]));
-        assert!(edgs.contains_key(&[3, 4]));
-        assert!(edgs.contains_key(&[4, 5]));
-        assert!(edgs.contains_key(&[0, 3]));
-        assert!(edgs.contains_key(&[1, 4]));
-        assert!(edgs.contains_key(&[2, 5]));
-        assert!(edgs.contains_key(&[0, 4]));
-        assert!(edgs.contains_key(&[1, 5]));
+        assert!(edgs.contains_key(&Edge::new(0, 1)));
+        assert!(edgs.contains_key(&Edge::new(1, 2)));
+        assert!(edgs.contains_key(&Edge::new(3, 4)));
+        assert!(edgs.contains_key(&Edge::new(4, 5)));
+        assert!(edgs.contains_key(&Edge::new(0, 3)));
+        assert!(edgs.contains_key(&Edge::new(1, 4)));
+        assert!(edgs.contains_key(&Edge::new(2, 5)));
+        assert!(edgs.contains_key(&Edge::new(0, 4)));
+        assert!(edgs.contains_key(&Edge::new(1, 5)));
     }
 
     #[test]
@@ -135,40 +139,185 @@ mod tests {
         let edgs = msh.edges();
         assert_eq!(edgs.len(), 9 * 15 + 10 * 14 + 9 * 14);
 
-        let vol = msh.gelems().map(|ge| Triangle::vol(&ge)).sum::<f64>();
+        let vol = msh.gelems().map(|ge| ge.vol()).sum::<f64>();
         assert!((vol - 2.0).abs() < 1e-10);
     }
 
     #[test]
-    fn test_gradient() {
+    fn test_gradient_linear() {
         let grad = Vert2d::new(9.8, 7.6);
         let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 1.0, 10).random_shuffle();
         let f = msh
             .par_verts()
             .map(|v| grad[0] * v[0] + grad[1] * v[1])
             .collect::<Vec<_>>();
-        let v2v = msh.vertex_to_vertices();
-        let gradient = msh.gradient(&v2v, 1, &f).collect::<Vec<_>>();
 
-        for &x in &gradient {
-            let err = (x - grad).norm();
-            assert!(err < 1e-10, "{x:?}");
+        for method in [
+            GradientMethod::LinearLeastSquares(1),
+            GradientMethod::LinearLeastSquares(2),
+            GradientMethod::QuadraticLeastSquares(1),
+            GradientMethod::L2Projection,
+        ] {
+            let gradient = msh.gradient(method, &f);
+
+            for x in gradient.chunks(2) {
+                let x = Vert2d::from_row_slice(x);
+                let err = (x - grad).norm();
+                assert!(err < 1e-10, "{method:?}, {x:?}");
+            }
+        }
+    }
+
+    fn run_gradient(method: GradientMethod, n: u32) -> f64 {
+        let n = 2_usize.pow(n) + 1;
+        let mesh = rectangle_mesh::<Mesh2d>(1.0, n, 1.0, n).random_shuffle();
+
+        let f = mesh.verts().map(|p| p[0] * p[1]).collect::<Vec<_>>();
+        let grad = mesh
+            .verts()
+            .map(|p| Vert2d::new(p[1], p[0]))
+            .collect::<Vec<_>>();
+        let res = mesh
+            .gradient(method, &f)
+            .chunks(2)
+            .map(Vert2d::from_column_slice)
+            .collect::<Vec<_>>();
+        let err = grad
+            .iter()
+            .zip(res.iter())
+            .map(|(x, y)| (x - y).norm())
+            .collect::<Vec<_>>();
+
+        mesh.norm(&err)
+    }
+
+    #[test]
+    fn test_gradient() {
+        for method in [
+            GradientMethod::LinearLeastSquares(1),
+            GradientMethod::LinearLeastSquares(2),
+            GradientMethod::QuadraticLeastSquares(1),
+            GradientMethod::L2Projection,
+        ] {
+            let mut prev = f64::MAX;
+            for n in 3..7 {
+                let nrm = run_gradient(method, n);
+                assert!(nrm < 0.5 * prev, "{method:?}, {nrm:.2e} {prev:.2e}");
+                prev = nrm;
+            }
+        }
+    }
+
+    #[test]
+    fn test_hessian_quadratic() {
+        let mesh = rectangle_mesh::<Mesh2d>(1.0, 10, 1.0, 10).random_shuffle();
+        let flg = mesh.boundary_flag();
+        let v2v = mesh.vertex_to_vertices();
+
+        let f: Vec<_> = mesh
+            .verts()
+            .map(|p| p[0] * p[0] + 2.0 * p[1] * p[1] + 3.0 * p[0] * p[1])
+            .collect();
+
+        for method in [
+            GradientMethod::QuadraticLeastSquares(1),
+            GradientMethod::L2Projection,
+        ] {
+            let res = mesh.hessian(method, &f);
+            for i_vert in 0..mesh.n_verts() {
+                if matches!(method, GradientMethod::L2Projection)
+                    && v2v.row(i_vert).iter().any(|&j| flg[j])
+                {
+                    // l2proj is not correct at the boundaries
+                    continue;
+                }
+                assert!(
+                    f64::abs(res[3 * i_vert] - 2.) < 1e-10,
+                    "{method:?}, {:?}",
+                    &res[3 * i_vert..3 * i_vert + 3]
+                );
+                assert!(
+                    f64::abs(res[3 * i_vert + 1] - 4.) < 1e-10,
+                    "{method:?}, {:?}",
+                    &res[3 * i_vert..3 * i_vert + 3]
+                );
+                assert!(
+                    f64::abs(res[3 * i_vert + 2] - 3.) < 1e-10,
+                    "{method:?}, {:?}",
+                    &res[3 * i_vert..3 * i_vert + 3]
+                );
+            }
+        }
+    }
+
+    fn run_hessian(method: GradientMethod, n: u32) -> f64 {
+        let n = 2_usize.pow(n) + 1;
+        let mesh = rectangle_mesh::<Mesh2d>(1.0, n, 1.0, n).random_shuffle();
+
+        let f: Vec<_> = mesh
+            .verts()
+            .map(|p| p[0] * p[0] * p[1] + 2.0 * p[0] * p[1] * p[1])
+            .collect();
+        let hess = mesh
+            .verts()
+            .map(|p| [2.0 * p[1], 4.0 * p[0], 2.0 * p[0] + 4.0 * p[1]])
+            .collect::<Vec<_>>();
+        let res = mesh.hessian(method, &f);
+
+        let err = hess
+            .iter()
+            .zip(res.chunks(3))
+            .map(|(x, y)| {
+                ((x[0] - y[0]).powi(2) + (x[1] - y[1]).powi(2) + (x[2] - y[2]).powi(2)).sqrt()
+            })
+            .collect::<Vec<_>>();
+
+        mesh.norm(&err)
+    }
+
+    #[test]
+    fn test_hessian() {
+        let mut prev = f64::MAX;
+        for n in 3..7 {
+            let nrm = run_hessian(GradientMethod::QuadraticLeastSquares(1), n);
+            assert!(nrm < 0.5 * prev, "{nrm:.2e} {prev:.2e}");
+            prev = nrm;
+        }
+    }
+
+    #[test]
+    fn test_hessian_l2proj() {
+        // WARNING: l2proj hessian does not converge
+        let mut prev = f64::MAX;
+        for n in 3..7 {
+            let nrm = run_hessian(GradientMethod::L2Projection, n);
+            assert!(nrm < prev, "{nrm:.2e} {prev:.2e}");
+            prev = nrm;
+        }
+    }
+
+    #[test]
+    fn test_smooth() {
+        let mesh = rectangle_mesh::<Mesh2d>(1.0, 9, 1.0, 9).random_shuffle();
+
+        let f: Vec<_> = mesh.verts().map(|p| p[0] + 2.0 * p[1]).collect();
+        let res = mesh.smooth(GradientMethod::LinearLeastSquares(2), &f);
+        for i_vert in 0..mesh.n_verts() {
+            assert!(f64::abs(res[i_vert] - f[i_vert]) < 1e-10);
+        }
+
+        let f: Vec<_> = mesh.verts().map(|p| p[0] * p[1]).collect();
+        let res = mesh.smooth(GradientMethod::LinearLeastSquares(2), &f);
+        for i_vert in 0..mesh.n_verts() {
+            assert!(f64::abs(res[i_vert] - f[i_vert]) < 1e-2);
         }
     }
 
     #[test]
     fn test_integrate() {
-        let v0 = Vert2d::new(0.0, 0.0);
-        let v1 = Vert2d::new(1.0, 0.0);
-        let v2 = Vert2d::new(0.0, 1.0);
-        let ge = [v0, v1, v2];
-        assert_delta!(Triangle::vol(&ge), 0.5, 1e-12);
-        let ge = [v0, v2, v1];
-        assert_delta!(Triangle::vol(&ge), -0.5, 1e-12);
-
         let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 2.0, 15).random_shuffle();
 
-        let vol = msh.par_gelems().map(|ge| Triangle::vol(&ge)).sum::<f64>();
+        let vol = msh.par_gelems().map(|ge| ge.vol()).sum::<f64>();
         assert_delta!(vol, 2.0, 1e-12);
 
         let f = msh.par_verts().map(|v| v[0]).collect::<Vec<_>>();
@@ -213,9 +362,9 @@ mod tests {
         }
 
         for (i, v) in msh_rcm.gelems().enumerate() {
-            let v = cell_center(&v);
+            let v = v.center();
             let other = msh.gelem(&msh.elem(elem_ids[i]));
-            let other = cell_center(&other);
+            let other = other.center();
             assert!((v - other).norm() < 1e-12);
         }
 
@@ -225,9 +374,9 @@ mod tests {
         }
 
         for (i, v) in msh_rcm.gfaces().enumerate() {
-            let v = cell_center(&v);
+            let v = v.center();
             let other = msh.gface(&msh.face(face_ids[i]));
-            let other = cell_center(&other);
+            let other = other.center();
             assert!((v - other).norm() < 1e-12);
         }
 
@@ -249,10 +398,10 @@ mod tests {
         assert_eq!(msh.n_elems(), 8);
 
         let (bdy, _): (BoundaryMesh2d, _) = msh.boundary();
-        let area = bdy.gelems().map(|ge| Edge::vol(&ge)).sum::<f64>();
+        let area = bdy.gelems().map(|ge| ge.vol()).sum::<f64>();
         assert_delta!(area, 4.0, 1e-10);
 
-        let vol = msh.gelems().map(|ge| Triangle::vol(&ge)).sum::<f64>();
+        let vol = msh.gelems().map(|ge| ge.vol()).sum::<f64>();
         assert_delta!(vol, 1.0, 1e-10);
     }
 

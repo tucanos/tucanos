@@ -56,8 +56,7 @@ Python bindings for `tmesh` and `tucanos` are provided. To install them:
 * Run:
 
 ```bash
-pip install 'git+https://github.com/tucanos/tucanos.git#subdirectory=pytmesh' \
-'git+https://github.com/tucanos/tucanos.git#subdirectory=pytucanos'
+pip install 'git+https://github.com/tucanos/tucanos.git#subdirectory=pytucanos'
 ```
 
 ### Enable features or debug build

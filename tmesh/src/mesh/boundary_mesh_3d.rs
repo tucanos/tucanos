@@ -1,15 +1,15 @@
 //! Boundary of `Mesh3d`
 use crate::{
     Result, Vert3d,
-    mesh::{GenericMesh, Mesh},
+    mesh::{GenericMesh, Mesh, Simplex, Triangle, elements::Idx},
 };
 use std::fs::OpenOptions;
 
 /// Triangle mesh in 3d
-pub type BoundaryMesh3d = GenericMesh<3, 3, 2>;
+pub type BoundaryMesh3d = GenericMesh<3, Triangle<usize>>;
 
 /// Read a stl file
-pub fn read_stl<M: Mesh<3, 3, 2>>(file_name: &str) -> Result<M> {
+pub fn read_stl<M: Mesh<3, Triangle<impl Idx>>>(file_name: &str) -> Result<M> {
     let mut file = OpenOptions::new().read(true).open(file_name).unwrap();
     let stl = stl_io::read_stl(&mut file).unwrap();
 
@@ -21,7 +21,7 @@ pub fn read_stl<M: Mesh<3, 3, 2>>(file_name: &str) -> Result<M> {
     );
 
     let mut elems = Vec::with_capacity(3 * stl.faces.len());
-    elems.extend(stl.faces.iter().map(|v| v.vertices));
+    elems.extend(stl.faces.iter().map(|v| Triangle::from_iter(v.vertices)));
     let etags = vec![1; stl.faces.len()];
     let faces = Vec::new();
     let ftags = Vec::new();
@@ -32,8 +32,8 @@ pub fn read_stl<M: Mesh<3, 3, 2>>(file_name: &str) -> Result<M> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        Vert3d, assert_delta,
-        mesh::{BoundaryMesh3d, Mesh, Mesh3d, Simplex, Triangle, box_mesh},
+        assert_delta,
+        mesh::{BoundaryMesh3d, GSimplex, Mesh, Mesh3d, box_mesh},
     };
     use rayon::iter::ParallelIterator;
 
@@ -48,20 +48,12 @@ mod tests {
         assert_eq!(tags.len(), 12);
         bdy.check(&faces).unwrap();
 
-        let vol = bdy.gelems().map(|ge| Triangle::vol(&ge)).sum::<f64>();
+        let vol = bdy.gelems().map(|ge| ge.vol()).sum::<f64>();
         assert_delta!(vol, 10.0, 1e-12);
     }
 
     #[test]
     fn test_integrate() {
-        let v0 = Vert3d::new(0.0, 0.0, 1.0);
-        let v1 = Vert3d::new(0.5, 0.0, 1.0);
-        let v2 = Vert3d::new(0.0, 0.5, 1.0);
-        let ge = [v0, v1, v2];
-        assert_delta!(Triangle::vol(&ge), 0.125, 1e-12);
-        let ge = [v1, v0, v2];
-        assert_delta!(Triangle::vol(&ge), 0.125, 1e-12);
-
         let msh = box_mesh::<Mesh3d>(1.0, 10, 2.0, 15, 1.0, 20);
 
         let f = msh.par_verts().map(|v| v[0]).collect::<Vec<_>>();

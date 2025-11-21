@@ -15,12 +15,12 @@ pyo3 = { version = "0.26.0", features = ["extension-module", "multiple-pymethods
 pyo3-log = "0.13.0"
 rayon = "1.10.0"
 affinity = "0.1.2"
-pytmesh = { path = "../pytmesh" }
 tmesh = { path = "../tmesh" }
 
 [features]
+32bit-ints = []
 nlopt = ["tucanos/nlopt"]
-metis = ["tucanos/metis", "pytmesh/metis"]
+metis = ["tucanos/metis"]
 
 [lints]
 workspace = true

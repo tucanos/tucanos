@@ -1,8 +1,7 @@
 use super::Remesher;
 use crate::{
-    Dim, Idx, Result,
+    Dim, Result,
     geometry::Geometry,
-    mesh::{Elem, HasTmeshImpl, SimplexMesh},
     metric::Metric,
     remesher::{
         cavity::{Cavity, CavityCheckStatus, FilledCavity, FilledCavityType, Seed},
@@ -10,6 +9,7 @@ use crate::{
     },
 };
 use log::{debug, trace};
+use tmesh::mesh::{Edge, Simplex};
 
 enum TrySwapResult {
     QualitySufficient,
@@ -50,10 +50,7 @@ impl Default for SwapParams {
     }
 }
 
-impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M>
-where
-    SimplexMesh<D, E>: HasTmeshImpl<D, E>,
-{
+impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
     /// Try to swap an edge if
     ///   - one of the elements in its cavity has a quality < qmin
     ///   - no edge smaller that `l_min` or longer that `l_max` is created
@@ -61,10 +58,10 @@ where
     #[allow(clippy::too_many_lines)]
     fn try_swap<G: Geometry<D>>(
         &mut self,
-        edg: [Idx; 2],
+        edg: Edge<usize>,
         params: &SwapParams,
         max_angle: f64,
-        cavity: &mut Cavity<D, E, M>,
+        cavity: &mut Cavity<D, C, M>,
         geom: &G,
     ) -> Result<TrySwapResult> {
         trace!("Try to swap edge {edg:?}");
@@ -87,8 +84,8 @@ where
         let Seed::Edge(local_edg) = cavity.seed else {
             unreachable!()
         };
-        let local_i0 = local_edg[0] as usize;
-        let local_i1 = local_edg[1] as usize;
+        let local_i0 = local_edg.get(0);
+        let local_i1 = local_edg.get(1);
         let mut q_ref = cavity.q_min;
 
         let mut vx = 0;
@@ -103,17 +100,17 @@ where
             return Ok(TrySwapResult::FixedEdge);
         }
 
-        if etag.0 < E::Face::DIM as Dim {
+        if etag.0 < C::FACE::DIM as Dim {
             return Ok(TrySwapResult::CouldNotSwap);
         }
 
         for n in 0..cavity.n_verts() {
-            if n == local_i0 as Idx || n == local_i1 as Idx {
+            if n == local_i0 || n == local_i1 {
                 continue;
             }
 
             // check topo
-            let ptag = self.topo.parent(etag, cavity.tags[n as usize]);
+            let ptag = self.topo.parent(etag, cavity.tags[n]);
             if ptag.is_none() {
                 trace!("Cannot swap, incompatible geometry");
                 continue;
@@ -127,7 +124,7 @@ where
             // too difficult otherwise!
             if !cavity.tagged_faces.is_empty() {
                 assert!(cavity.tagged_faces.len() == 2);
-                if !cavity.tagged_faces().any(|(f, _)| f.contains_vertex(n)) {
+                if !cavity.tagged_faces().any(|(f, _)| f.contains(n)) {
                     continue;
                 }
             }
@@ -159,19 +156,19 @@ where
             for e in &cavity.global_elem_ids {
                 self.remove_elem(*e)?;
             }
-            let global_vx = cavity.local2global[vx as usize];
+            let global_vx = cavity.local2global[vx];
             for (f, t) in filled_cavity.faces() {
                 let f = cavity.global_elem(&f);
-                assert!(!f.contains_vertex(global_vx));
-                assert!(!f.contains_edge(edg));
-                let e = E::from_vertex_and_face(global_vx, &f);
+                assert!(!f.contains(global_vx));
+                assert!(!f.contains_edge(&edg));
+                let e = C::from_vertex_and_face(global_vx, &f);
                 self.insert_elem(e, t)?;
             }
             for (f, _) in cavity.global_tagged_faces() {
                 self.remove_tagged_face(f)?;
             }
             for (b, t) in filled_cavity.tagged_faces_boundary_global() {
-                self.add_tagged_face(E::Face::from_vertex_and_face(global_vx, &b), t)?;
+                self.add_tagged_face(C::FACE::from_vertex_and_face(global_vx, &b), t)?;
             }
 
             return Ok(TrySwapResult::CouldSwap);

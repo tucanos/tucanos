@@ -2,8 +2,9 @@
 #![allow(clippy::borrow_as_ptr)]
 #![allow(clippy::ref_as_ptr)]
 use crate::{
+    Idx,
     geometry::{LinearGeometry2d, LinearGeometry3d},
-    mesh::{Mesh22, Mesh33},
+    mesh::{PyMesh2d, PyMesh3d},
     remesher::PyRemesherParams,
     to_numpy_1d, to_numpy_2d,
 };
@@ -14,19 +15,22 @@ use pyo3::{
     pyclass, pymethods,
     types::PyType,
 };
-use pytmesh::PyPartitionerType;
+#[cfg(not(feature = "metis"))]
+use tmesh::mesh::partition::HilbertPartitioner;
+#[cfg(feature = "metis")]
+use tmesh::mesh::partition::{MetisPartitioner, MetisRecursive};
+use tmesh::mesh::{GenericMesh, Tetrahedron, Triangle};
 use tucanos::{
-    Idx,
-    mesh::{Tetrahedron, Triangle},
-    metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
+    mesh::MeshTopology,
+    metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric, MetricField},
     remesher::{ParallelRemesher, ParallelRemesherParams},
 };
 #[pyclass(get_all, set_all)]
 #[derive(Clone)]
 pub struct PyParallelRemesherParams {
-    n_layers: Idx,
-    max_levels: Idx,
-    min_verts: Idx,
+    n_layers: u32,
+    max_levels: u32,
+    min_verts: usize,
 }
 impl PyParallelRemesherParams {
     const fn from(other: &ParallelRemesherParams) -> Self {
@@ -44,7 +48,7 @@ impl PyParallelRemesherParams {
 #[pymethods]
 impl PyParallelRemesherParams {
     #[new]
-    const fn new(n_layers: Idx, max_levels: Idx, min_verts: Idx) -> Self {
+    const fn new(n_layers: u32, max_levels: u32, min_verts: usize) -> Self {
         Self {
             n_layers,
             max_levels,
@@ -59,17 +63,20 @@ impl PyParallelRemesherParams {
 }
 
 macro_rules! create_parallel_remesher {
-    ($name: ident, $dim: expr, $etype: ident, $metric: ident, $mesh: ident, $geom: ident) => {
+    ($name: ident, $dim: expr, $etype: ident, $metric: ident, $pymesh: ident, $geom: ident) => {
         #[doc = concat!("Parallel remesher for a meshes consisting of ", stringify!($etype),
                 " in ", stringify!($dim), "D")]
         #[doc = concat!("using ", stringify!($metric),
                 " as metric and a piecewise linear representation of the geometry")]
         #[pyclass]
         pub struct $name {
-            dd: ParallelRemesher<$dim, $etype>,
+            #[cfg(not(feature = "metis"))]
+            dd: ParallelRemesher<$dim, $etype<Idx>, GenericMesh<$dim, $etype<Idx>>, HilbertPartitioner>,
+            #[cfg(feature = "metis")]
+            dd: ParallelRemesher<$dim, $etype<Idx>, GenericMesh<$dim, $etype<Idx>>, MetisPartitioner<MetisRecursive>>,
         }
 
-        #[doc = concat!("Create a parallel remesher from a ", stringify!($mesh), " and a ",
+        #[doc = concat!("Create a parallel remesher from a ", stringify!($pymesh), " and a ",
                 stringify!($metric) ," metric defined at the mesh vertices")]
         #[doc = concat!(
                     "A piecewise linear representation of the geometry is used, either from the ",
@@ -77,8 +84,9 @@ macro_rules! create_parallel_remesher {
         #[pymethods]
         impl $name {
             #[new]
-            pub fn new(mesh: &$mesh, method: PyPartitionerType, n_partitions: Idx) -> PyResult<Self> {
-                let dd = ParallelRemesher::new(mesh.0.clone(), method.to(n_partitions as usize));
+            pub fn new(mesh: &$pymesh, n_partitions: usize) -> PyResult<Self> {
+                let topo = MeshTopology::new(&mesh.0);
+                let dd = ParallelRemesher::new(mesh.0.clone(), topo, n_partitions);
                 if let Err(res) = dd {
                     return Err(PyRuntimeError::new_err(res.to_string()));
                 }
@@ -89,8 +97,8 @@ macro_rules! create_parallel_remesher {
                 self.dd.set_debug(debug);
             }
 
-            pub fn partitionned_mesh(&mut self) -> $mesh {
-                $mesh(self.dd.partitionned_mesh().clone())
+            pub fn partitionned_mesh(&mut self) -> $pymesh {
+                $pymesh(self.dd.partitionned_mesh().clone())
             }
 
             #[allow(clippy::too_many_arguments)]
@@ -101,7 +109,7 @@ macro_rules! create_parallel_remesher {
                 m: PyReadonlyArray2<f64>,
                 params: &PyRemesherParams,
                 parallel_params: &PyParallelRemesherParams,
-            ) -> PyResult<($mesh, Bound<'py, PyArray2<f64>>, String)> {
+            ) -> PyResult<($pymesh, Bound<'py, PyArray2<f64>>, String)> {
                 if m.shape()[0] != self.dd.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
@@ -121,7 +129,7 @@ macro_rules! create_parallel_remesher {
                         .unwrap()
                 });
 
-                let mesh = $mesh(mesh);
+                let mesh = $pymesh(mesh);
 
                 let m = m.iter().flat_map(|m| m.into_iter()).collect::<Vec<_>>();
 
@@ -137,7 +145,7 @@ macro_rules! create_parallel_remesher {
             pub fn qualities_and_lengths<'py>(
                 _cls: &Bound<'_, PyType>,
                 py: Python<'py>,
-                mesh: &$mesh,
+                mesh: &$pymesh,
                 m: PyReadonlyArray2<f64>,
             ) -> PyResult<(Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>)> {
                 if m.shape()[0] != mesh.n_verts()  {
@@ -152,12 +160,9 @@ macro_rules! create_parallel_remesher {
                     .chunks($metric::N)
                     .map(|x| $metric::from_slice(x))
                     .collect();
-
-                let q = mesh.0.qualities(&m);
-                let l = mesh
-                    .0
-                    .edge_lengths(&m)
-                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+                let m = MetricField::new(&mesh.0, m);
+                let q = m.qualities();
+                let l = m.edge_lengths();
 
                 Ok((to_numpy_1d(py, q), to_numpy_1d(py, l)))
             }
@@ -172,7 +177,7 @@ create_parallel_remesher!(
     2,
     Triangle,
     IsoMetric2d,
-    Mesh22,
+    PyMesh2d,
     LinearGeometry2d
 );
 create_parallel_remesher!(
@@ -180,7 +185,7 @@ create_parallel_remesher!(
     2,
     Triangle,
     AnisoMetric2d,
-    Mesh22,
+    PyMesh2d,
     LinearGeometry2d
 );
 create_parallel_remesher!(
@@ -188,7 +193,7 @@ create_parallel_remesher!(
     3,
     Tetrahedron,
     IsoMetric3d,
-    Mesh33,
+    PyMesh3d,
     LinearGeometry3d
 );
 create_parallel_remesher!(
@@ -196,6 +201,6 @@ create_parallel_remesher!(
     3,
     Tetrahedron,
     AnisoMetric3d,
-    Mesh33,
+    PyMesh3d,
     LinearGeometry3d
 );

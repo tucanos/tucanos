@@ -1,11 +1,7 @@
-use crate::{
-    Idx,
-    mesh::{Elem, HasTmeshImpl, SimplexMesh},
-    metric::Metric,
-    remesher::Remesher,
-};
+use crate::{metric::Metric, remesher::Remesher};
 use core::fmt;
 use serde::Serialize;
+use tmesh::mesh::Simplex;
 
 /// Simple statistics (histogram + mean) to be used on edge lengths and element qualities
 #[derive(Serialize, Clone)]
@@ -101,11 +97,11 @@ impl fmt::Display for Stats {
 #[derive(Serialize, Clone)]
 pub struct RemesherStats {
     /// The # of vertices in the mesh
-    n_verts: Idx,
+    n_verts: usize,
     /// The # of elements in the mesh
-    n_elems: Idx,
+    n_elems: usize,
     /// The # of edges in the mesh
-    n_edges: Idx,
+    n_edges: usize,
     /// Edge length stats
     stats_l: Stats,
     /// Element quality stats
@@ -113,10 +109,7 @@ pub struct RemesherStats {
 }
 
 impl RemesherStats {
-    pub fn new<const D: usize, E: Elem, M: Metric<D>>(r: &Remesher<D, E, M>) -> Self
-    where
-        SimplexMesh<D, E>: HasTmeshImpl<D, E>,
-    {
+    pub fn new<const D: usize, C: Simplex, M: Metric<D>>(r: &Remesher<D, C, M>) -> Self {
         Self {
             n_verts: r.n_verts(),
             n_elems: r.n_elems(),
@@ -143,10 +136,7 @@ pub struct InitStats {
 }
 
 impl InitStats {
-    pub fn new<const D: usize, E: Elem, M: Metric<D>>(r: &Remesher<D, E, M>) -> Self
-    where
-        SimplexMesh<D, E>: HasTmeshImpl<D, E>,
-    {
+    pub fn new<const D: usize, C: Simplex, M: Metric<D>>(r: &Remesher<D, C, M>) -> Self {
         Self {
             r_stats: RemesherStats::new(r),
         }
@@ -155,23 +145,26 @@ impl InitStats {
 
 #[derive(Serialize, Clone)]
 pub struct SplitStats {
-    n_splits: Idx,
-    n_fails: Idx,
+    n_splits: usize,
+    n_fails: usize,
+    n_removed: usize,
+    n_extended: usize,
     r_stats: RemesherStats,
 }
 
 impl SplitStats {
-    pub fn new<const D: usize, E: Elem, M: Metric<D>>(
-        n_splits: Idx,
-        n_fails: Idx,
-        r: &Remesher<D, E, M>,
-    ) -> Self
-    where
-        SimplexMesh<D, E>: HasTmeshImpl<D, E>,
-    {
+    pub fn new<const D: usize, C: Simplex, M: Metric<D>>(
+        n_splits: usize,
+        n_fails: usize,
+        n_removed: usize,
+        n_extended: usize,
+        r: &Remesher<D, C, M>,
+    ) -> Self {
         Self {
             n_splits,
             n_fails,
+            n_removed,
+            n_extended,
             r_stats: RemesherStats::new(r),
         }
     }
@@ -179,20 +172,17 @@ impl SplitStats {
 
 #[derive(Serialize, Clone)]
 pub struct SwapStats {
-    n_swaps: Idx,
-    n_fails: Idx,
+    n_swaps: usize,
+    n_fails: usize,
     r_stats: RemesherStats,
 }
 
 impl SwapStats {
-    pub fn new<const D: usize, E: Elem, M: Metric<D>>(
-        n_swaps: Idx,
-        n_fails: Idx,
-        r: &Remesher<D, E, M>,
-    ) -> Self
-    where
-        SimplexMesh<D, E>: HasTmeshImpl<D, E>,
-    {
+    pub fn new<const D: usize, C: Simplex, M: Metric<D>>(
+        n_swaps: usize,
+        n_fails: usize,
+        r: &Remesher<D, C, M>,
+    ) -> Self {
         Self {
             n_swaps,
             n_fails,
@@ -203,20 +193,17 @@ impl SwapStats {
 
 #[derive(Serialize, Clone)]
 pub struct CollapseStats {
-    n_collapses: Idx,
-    n_fails: Idx,
+    n_collapses: usize,
+    n_fails: usize,
     r_stats: RemesherStats,
 }
 
 impl CollapseStats {
-    pub fn new<const D: usize, E: Elem, M: Metric<D>>(
-        n_collapses: Idx,
-        n_fails: Idx,
-        r: &Remesher<D, E, M>,
-    ) -> Self
-    where
-        SimplexMesh<D, E>: HasTmeshImpl<D, E>,
-    {
+    pub fn new<const D: usize, C: Simplex, M: Metric<D>>(
+        n_collapses: usize,
+        n_fails: usize,
+        r: &Remesher<D, C, M>,
+    ) -> Self {
         Self {
             n_collapses,
             n_fails,
@@ -227,15 +214,15 @@ impl CollapseStats {
 
 #[derive(Serialize, Clone)]
 pub struct SmoothStats {
-    n_fails: Idx,
+    n_fails: usize,
     r_stats: RemesherStats,
 }
 
 impl SmoothStats {
-    pub fn new<const D: usize, E: Elem, M: Metric<D>>(n_fails: Idx, r: &Remesher<D, E, M>) -> Self
-    where
-        SimplexMesh<D, E>: HasTmeshImpl<D, E>,
-    {
+    pub fn new<const D: usize, C: Simplex, M: Metric<D>>(
+        n_fails: usize,
+        r: &Remesher<D, C, M>,
+    ) -> Self {
         Self {
             n_fails,
             r_stats: RemesherStats::new(r),

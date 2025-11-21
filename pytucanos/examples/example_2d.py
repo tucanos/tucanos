@@ -1,8 +1,16 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from pytucanos.mesh import get_square, Mesh22, plot_mesh, plot_field
-from pytucanos.geometry import LinearGeometry2d
-from pytucanos.remesh import Remesher2dIso, PyRemesherParams
+from pytucanos import (
+    Mesh2d,
+    LinearGeometry2d,
+    Remesher2dIso,
+    RemesherParams,
+)
+from pytucanos.mesh import (
+    get_square,
+    plot_mesh,
+    plot_field,
+)
 
 
 def get_h(msh):
@@ -18,7 +26,7 @@ if __name__ == "__main__":
     coords, elems, etags, faces, ftags = get_square()
     # Invert the first face
     faces[0, :] = faces[0, ::-1]
-    msh = Mesh22(coords, elems, etags, faces, ftags)
+    msh = Mesh2d(coords, elems, etags, faces, ftags)
     msh = msh.split().split().split().split()
 
     # add some data
@@ -30,7 +38,7 @@ if __name__ == "__main__":
     ax.set_title("Initial")
 
     # add the missing boundaries, & orient them outwards
-    msh.add_boundary_faces()
+    msh.fix()
     fig, ax = plt.subplots()
     plot_mesh(ax, msh)
     ax.set_title("Fix boundaries")
@@ -54,10 +62,9 @@ if __name__ == "__main__":
 
     for _ in range(3):
         h = get_h(msh)
-        msh.compute_topology()
         geom = LinearGeometry2d(msh)
         remesher = Remesher2dIso(msh, geom, h.reshape((-1, 1)))
-        remesher.remesh(geom, params=PyRemesherParams.default())
+        remesher.remesh(geom, params=RemesherParams.default())
 
         msh = remesher.to_mesh()
 
@@ -66,7 +73,7 @@ if __name__ == "__main__":
     ax.set_title("Adapted")
 
     # interpolation
-    other = Mesh22(coords, elems, etags, faces, ftags).split().split().split().split()
+    other = Mesh2d(coords, elems, etags, faces, ftags).split().split().split().split()
     f_other = get_h(other).reshape((-1, 1))
 
     f = other.interpolate(f_other, msh.get_verts())

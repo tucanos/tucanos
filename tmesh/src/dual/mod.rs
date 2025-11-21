@@ -5,7 +5,7 @@ mod dual_mesh_2d;
 mod dual_mesh_3d;
 mod poly_mesh;
 
-pub(crate) use dual_mesh::{DualCellCenter, circumcenter_bcoords};
+pub(crate) use dual_mesh::DualCellCenter;
 pub use dual_mesh::{DualMesh, DualType};
 pub use dual_mesh_2d::DualMesh2d;
 pub use dual_mesh_3d::DualMesh3d;

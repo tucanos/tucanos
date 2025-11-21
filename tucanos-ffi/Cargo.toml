@@ -9,6 +9,7 @@ name = "tucanos"
 crate-type = ["cdylib"]
 
 [dependencies]
+tmesh = {path = "../tmesh" }
 tucanos = { path = "../tucanos" }
 log = "0.4.22"
 
@@ -16,8 +17,9 @@ log = "0.4.22"
 cbindgen = "0.29"
 
 [features]
-32bit-tags = ["tucanos/32bit-tags"]
-64bit-tags = ["tucanos/64bit-tags"]
+32bit-ints = []
+32bit-tags = ["tmesh/32bit-tags", "tucanos/32bit-tags"]
+64bit-tags = ["tmesh/64bit-tags", "tucanos/64bit-tags"]
 
 [lints]
 workspace = true

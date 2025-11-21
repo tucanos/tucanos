@@ -34,11 +34,9 @@ impl Error {
     }
 }
 
-/// Vertex and element indices
-pub type Idx = u32;
-
 /// Topological tags: dimension
 pub type Dim = i8;
+
 /// Topological tags: tag
 pub type Tag = tmesh::Tag;
 

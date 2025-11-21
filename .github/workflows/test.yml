@@ -104,6 +104,8 @@ jobs:
       run: cargo build -p tucanos-ffi --features 32bit-tags && cargo test -p tucanos-ffi-test
     - name: Test FFI 64bit tags
       run: cargo build -p tucanos-ffi --features 64bit-tags && cargo test -p tucanos-ffi-test
+    - name: Test FFI 32bit ints
+      run: cargo build -p tucanos-ffi --features 32bit-ints && cargo test -p tucanos-ffi-test
   python:
     runs-on: ubuntu-latest
     steps:
@@ -133,20 +135,6 @@ jobs:
         pip install ruff
         ruff check
         ruff format --check
-    - name: Run clippy (pytmesh)
-      uses: clechasseur/rs-clippy-check@v5
-      with:
-        args: -p pytmesh
-    - name: Test pytmesh
-      run: |
-        cd pytmesh
-        pip install -e .[test]
-        python -m unittest discover
-    - name: Test pytmesh (with metis)
-      run: |
-        cd pytmesh
-        pip install -C metis=true -e .
-        python -c "import pytmesh; assert(pytmesh.HAVE_METIS)"
     - name: Run clippy (pytucanos)
       uses: clechasseur/rs-clippy-check@v5
       with:
@@ -170,3 +158,9 @@ jobs:
         cd pytucanos
         pip install -C metis=true -e .
         python -c "import pytucanos; assert(pytucanos.HAVE_METIS)"
+    - name: Test pytucanos (with 32bit ints)
+      run: |
+        cd pytucanos
+        pip install -C 32bit-ints=true -e .
+        python -c "import pytucanos; assert(pytucanos.USE_32BIT_INTS)"
+        python -m unittest discover

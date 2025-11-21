@@ -4,32 +4,28 @@ import subprocess
 import numpy as np
 import matplotlib.pyplot as plt
 import logging
-from .pytucanos import (
-    PySplitParams,
-    PyCollapseParams,
-    PySwapParams,
-    PySmoothParams,
-    PySmoothingMethod,  # noqa: F401
-    PyRemeshingStep,  # noqa: F401
-    PyRemesherParams,
+
+from . import (
+    Mesh2d,
+    Mesh3d,
+    LinearGeometry2d,
+    LinearGeometry3d,
+    CollapseParams,
+    SplitParams,
+    SwapParams,
+    SmoothParams,
+    RemesherParams,
     Remesher2dIso,
     Remesher2dAniso,
     Remesher3dIso,
     Remesher3dAniso,
-    ParallelRemesher2dIso,  # noqa: F401
-    ParallelRemesher2dAniso,  # noqa: F401
-    ParallelRemesher3dIso,  # noqa: F401
-    ParallelRemesher3dAniso,  # noqa: F401
-    PyParallelRemesherParams,  # noqa: F401
 )
-from .mesh import Mesh22, Mesh33
-from .geometry import LinearGeometry2d, LinearGeometry3d
 
 
 def print_params(params, print_fn=print):
     for i, step in enumerate(params.steps):
         step = step._0
-        if isinstance(step, PyCollapseParams):
+        if isinstance(step, CollapseParams):
             print_fn(f"{i} - Collapse")
             attrs = [
                 "l",
@@ -42,7 +38,7 @@ def print_params(params, print_fn=print):
             ]
             for attr in attrs:
                 print_fn(f"  {attr} = {getattr(step, attr)}")
-        elif isinstance(step, PySplitParams):
+        elif isinstance(step, SplitParams):
             print_fn(f"{i} - Split")
             attrs = [
                 "l",
@@ -55,7 +51,7 @@ def print_params(params, print_fn=print):
             ]
             for attr in attrs:
                 print_fn(f"  {attr} = {getattr(step, attr)}")
-        elif isinstance(step, PySwapParams):
+        elif isinstance(step, SwapParams):
             print_fn(f"{i} - Swap")
             attrs = [
                 "q",
@@ -68,7 +64,7 @@ def print_params(params, print_fn=print):
             ]
             for attr in attrs:
                 print_fn(f"  {attr} = {getattr(step, attr)}")
-        elif isinstance(step, PySmoothParams):
+        elif isinstance(step, SmoothParams):
             print_fn(f"{i} - Smooth")
             attrs = [
                 "n_iter",
@@ -93,7 +89,7 @@ def update_params(params, step, key, value):
         else:
             res.append(s)
 
-    return PyRemesherParams(res, params.debug)
+    return RemesherParams(res, params.debug)
 
 
 def plot_stats(remesher):
@@ -151,7 +147,7 @@ def plot_stats(remesher):
 
 
 def __write_tmp_meshb(msh, h):
-    if isinstance(msh, (Mesh22, Mesh33)):
+    if isinstance(msh, (Mesh2d, Mesh3d)):
         msh.write_meshb("tmp.meshb")
         msh.write_solb("tmp.solb", h)
     else:
@@ -160,9 +156,9 @@ def __write_tmp_meshb(msh, h):
 
 def __read_tmp_meshb(dim, fname="tmp.meshb", remove=True):
     if dim == 2:
-        msh = Mesh22.from_meshb(fname)
+        msh = Mesh2d.from_meshb(fname)
     elif dim == 3:
-        msh = Mesh33.from_meshb(fname)
+        msh = Mesh3d.from_meshb(fname)
 
     if remove:
         os.remove(fname)
@@ -184,10 +180,10 @@ def remesh(msh, h, bdy=None, step=None, params=None):
     Remesh using tucanos
     """
 
-    if isinstance(msh, Mesh33):
+    if isinstance(msh, Mesh3d):
         LinearGeometry = LinearGeometry3d
         Remesher = Remesher3dIso if h.shape[1] == 1 else Remesher3dAniso
-    elif isinstance(msh, Mesh22):
+    elif isinstance(msh, Mesh2d):
         LinearGeometry = LinearGeometry2d
         Remesher = Remesher2dIso if h.shape[1] == 1 else Remesher2dAniso
     else:
@@ -206,7 +202,7 @@ def remesh(msh, h, bdy=None, step=None, params=None):
 
     remesher = Remesher(msh, geom, h)
     if params is None:
-        params = PyRemesherParams.default()
+        params = RemesherParams.default()
 
     remesher.remesh(geom, params)
 
@@ -236,7 +232,7 @@ def remesh_mmg(msh, h, hgrad=10.0, hausd=10.0):
     """
     __write_tmp_meshb(msh, h)
 
-    if isinstance(msh, Mesh22):
+    if isinstance(msh, Mesh2d):
         dim = 2
         exe = os.getenv("MMG2D_EXE", "mmg2d_O3")
     else:

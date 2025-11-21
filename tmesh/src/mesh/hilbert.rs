@@ -3,8 +3,8 @@ use lindel::Lineariseable;
 
 /// Get the bounding box
 #[must_use]
-fn bounding_box<const D: usize, I: Iterator<Item = Vertex<D>>>(
-    mut verts: I,
+fn bounding_box<const D: usize>(
+    mut verts: impl Iterator<Item = Vertex<D>>,
 ) -> (Vertex<D>, Vertex<D>) {
     let first = verts.next().unwrap();
     let mut mini = first;
@@ -20,8 +20,8 @@ fn bounding_box<const D: usize, I: Iterator<Item = Vertex<D>>>(
 
 /// Get the Hilbert indices
 #[must_use]
-pub fn hilbert_indices<const D: usize, I: ExactSizeIterator<Item = Vertex<D>> + Clone>(
-    verts: I,
+pub fn hilbert_indices<const D: usize>(
+    verts: impl ExactSizeIterator<Item = Vertex<D>> + Clone,
 ) -> Vec<usize> {
     let n = verts.len();
 

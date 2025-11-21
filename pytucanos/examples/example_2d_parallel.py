@@ -1,13 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from pytucanos import HAVE_METIS
-from pytucanos.mesh import get_square, Mesh22, PartitionerType
-from pytucanos.geometry import LinearGeometry2d
-from pytucanos.remesh import (
+from pytucanos import (
+    Mesh2d,
+    LinearGeometry2d,
     ParallelRemesher2dIso,
-    PyRemesherParams,
-    PyParallelRemesherParams,
+    RemesherParams,
+    ParallelRemesherParams,
 )
+from pytucanos.mesh import get_square
 
 
 def get_h(msh):
@@ -28,34 +28,28 @@ if __name__ == "__main__":
 
     coords, elems, etags, faces, ftags = get_square(two_tags=False)
 
-    msh = Mesh22(coords, elems, etags, faces, ftags).split().split().split().split()
+    msh = Mesh2d(coords, elems, etags, faces, ftags).split().split().split().split()
     msh.fix()
-    msh.compute_topology()
 
     geom = LinearGeometry2d(msh)
 
     m = get_h(msh).reshape((-1, 1))
 
-    if HAVE_METIS:
-        method = PartitionerType.MetisKWay
-    else:
-        method = PartitionerType.Hilbert
-    remesher = ParallelRemesher2dIso(msh, method, 3)
+    remesher = ParallelRemesher2dIso(msh, 3)
     remesher.partitionned_mesh().write_vtk("initial.vtu")
 
     remesher.set_debug(True)
     (msh, m, info) = remesher.remesh(
         geom,
         m,
-        params=PyRemesherParams.default(),
-        parallel_params=PyParallelRemesherParams.default(),
+        params=RemesherParams.default(),
+        parallel_params=ParallelRemesherParams.default(),
     )
 
     print(info)
 
     msh.write_vtk("final.vtu")
 
-    msh.compute_edges()
     qualities, lengths = ParallelRemesher2dIso.qualities_and_lengths(msh, m)
 
     fig, (ax0, ax1) = plt.subplots(2, 1)

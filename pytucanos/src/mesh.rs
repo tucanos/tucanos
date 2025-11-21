@@ -1,7 +1,8 @@
-use crate::{
-    geometry::{LinearGeometry2d, LinearGeometry3d},
-    to_numpy_1d, to_numpy_2d,
-};
+#![allow(clippy::ptr_as_ptr)]
+#![allow(clippy::borrow_as_ptr)]
+#![allow(clippy::ref_as_ptr)]
+//! Python bindings for simplex meshes
+use super::Idx;
 use numpy::{
     PyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2,
     PyUntypedArrayMethods,
@@ -9,128 +10,754 @@ use numpy::{
 use pyo3::{
     Bound, PyResult, Python,
     exceptions::{PyRuntimeError, PyValueError},
-    prelude::PyDictMethods,
     pyclass, pymethods,
-    types::{PyDict, PyType},
+    types::{PyDict, PyDictMethods, PyType},
 };
-use pytmesh::{PyPartitionerType, impl_mesh};
 #[cfg(feature = "metis")]
 use tmesh::mesh::partition::{MetisKWay, MetisPartitioner, MetisRecursive};
 use tmesh::{
-    Vertex,
+    Tag, Vertex,
     interpolate::{InterpolationMethod, Interpolator},
     mesh::{
-        Mesh,
+        Edge, GenericMesh, GradientMethod, Hexahedron, Mesh, Prism, Pyramid, Quadrangle, Simplex,
+        Tetrahedron, Triangle, nonuniform_box_mesh, nonuniform_rectangle_mesh,
         partition::{HilbertPartitioner, KMeansPartitioner2d, KMeansPartitioner3d, RCMPartitioner},
+        read_stl,
     },
-    spatialindex::ObjectIndex,
 };
-use tucanos::{
-    Idx, Tag,
-    mesh::{Edge, GElem, SimplexMesh, Tetrahedron, Triangle},
-};
+/// Partitionner type
+#[pyclass(eq, eq_int)]
+#[derive(Clone, PartialEq, Eq)]
+pub enum PyPartitionerType {
+    /// Hilbert
+    Hilbert,
+    /// RCM
+    #[allow(clippy::upper_case_acronyms)]
+    RCM,
+    /// KMeans
+    KMeans,
+    #[cfg(feature = "metis")]
+    /// Metis - Recursive
+    MetisRecursive,
+    #[cfg(feature = "metis")]
+    /// Metis - KWay
+    MetisKWay,
+}
 
 macro_rules! create_mesh {
-    ($name: ident, $dim: expr, $etype: ident) => {
-        #[doc = concat!("Mesh consisting of ", stringify!($etype), " in ", stringify!($dim), "D")]
+    ($pyname: ident, $dim: expr, $cell: ident) => {
+        #[doc = concat!("Python binding for ", stringify!($pyname))]
         #[pyclass]
-        pub struct $name(pub(crate) SimplexMesh<$dim, $etype>);
+        pub struct $pyname(pub GenericMesh<$dim, $cell<Idx>>);
+    };
+}
 
+#[macro_export]
+macro_rules! impl_mesh {
+    ($pyname: ident, $dim: expr, $cell: ident) => {
         #[pymethods]
-        impl $name {
-            /// Get the volume of the mesh
-            #[must_use]
-            pub fn vol(&self) -> f64 {
-                self.0.gelems().map(|ge| ge.vol()).sum()
+        impl $pyname {
+            /// Create a new mesh from coordinates, connectivities and tags
+            #[new]
+            fn new(
+                coords: PyReadonlyArray2<f64>,
+                elems: PyReadonlyArray2<Idx>,
+                etags: PyReadonlyArray1<Tag>,
+                faces: PyReadonlyArray2<Idx>,
+                ftags: PyReadonlyArray1<Tag>,
+            ) -> PyResult<Self> {
+                if coords.shape()[1] != $dim {
+                    return Err(PyValueError::new_err(format!(
+                        "Invalid dimension 1 for coords (expecting {}, got {})",
+                        $dim,
+                        coords.shape()[1]
+                    )));
+                }
+                let n = elems.shape()[0];
+                if elems.shape()[1] != $cell::<Idx>::N_VERTS {
+                    return Err(PyValueError::new_err(format!(
+                        "Invalid dimension 1 for elems (expecting {}, got {})",
+                        $cell::<Idx>::N_VERTS,
+                        elems.shape()[1]
+                    )));
+                }
+                if etags.shape()[0] != n {
+                    return Err(PyValueError::new_err("Invalid dimension 0 for etags"));
+                }
+                let n = faces.shape()[0];
+
+                if faces.shape()[1] != <$cell<Idx> as Simplex>::FACE::N_VERTS {
+                    return Err(PyValueError::new_err(format!(
+                        "Invalid dimension 1 for faces (expecting {}, got {})",
+                        <$cell::<Idx> as Simplex>::FACE::N_VERTS,
+                        faces.shape()[1]
+                    )));
+                }
+                if ftags.shape()[0] != n {
+                    return Err(PyValueError::new_err("Invalid dimension 0 for ftags"));
+                }
+
+                let coords = coords.as_slice()?;
+                let coords = coords.chunks($dim).map(|p| {
+                    let mut vx = Vertex::<$dim>::zeros();
+                    vx.copy_from_slice(p);
+                    vx
+                });
+
+                let elems = elems.as_slice()?;
+                let elems = elems.chunks($cell::<Idx>::N_VERTS).map(|x| {
+                    $cell::<Idx>::from_iter(x.iter().copied().map(|x| x.try_into().unwrap()))
+                });
+
+                let faces = faces.as_slice()?;
+                let faces = faces
+                    .chunks(<$cell<Idx> as Simplex>::FACE::N_VERTS)
+                    .map(|x| {
+                        <$cell<Idx> as Simplex>::FACE::from_iter(
+                            x.iter().copied().map(|x| x.try_into().unwrap()),
+                        )
+                    });
+
+                let mut res = GenericMesh::empty();
+
+                res.add_verts(coords);
+                res.add_elems(elems, etags.to_vec().unwrap().iter().cloned());
+                res.add_faces(faces, ftags.to_vec().unwrap().iter().cloned());
+
+                Ok(Self(res))
             }
 
-            /// Get the volume of all the elements
-            #[must_use]
-            pub fn vols<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
-                let res: Vec<_> = self.0.gelems().map(|ge| ge.vol()).collect();
-                to_numpy_1d(py, res)
+            /// Number of vertices
+            pub fn n_verts(&self) -> usize {
+                self.0.n_verts()
             }
 
-            /// Add the missing boundary faces and make sure that boundary faces are oriented
-            /// outwards.
-            /// If internal faces are present, these are keps
-            pub fn add_boundary_faces<'py>(
+            /// Get a copy of the vertices
+            fn get_verts<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<f64>>> {
+                let mut res = Vec::with_capacity($dim * self.n_verts());
+                for v in self.0.verts() {
+                    for &x in v.as_slice() {
+                        res.push(x);
+                    }
+                }
+                PyArray::from_vec(py, res).reshape([self.n_verts(), $dim])
+            }
+
+            /// Number of elements
+            fn n_elems(&self) -> usize {
+                self.0.n_elems()
+            }
+
+            /// Get a copy of the elements
+            fn get_elems<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<Idx>>> {
+                #[cfg(not(feature = "32bit-ints"))]
+                let res = PyArray::from_vec(py, self.0.elems().flatten().collect())
+                    .reshape([self.n_elems(), $cell::<Idx>::N_VERTS]);
+
+                #[cfg(feature = "32bit-ints")]
+                let res = PyArray::from_vec(
+                    py,
+                    self.0
+                        .elems()
+                        .flatten()
+                        .map(|x| x.try_into().unwrap())
+                        .collect(),
+                )
+                .reshape([self.n_elems(), $cell::<Idx>::N_VERTS]);
+
+                res
+            }
+
+            /// Get a copy of the element tags
+            fn get_etags<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<Tag>>> {
+                Ok(PyArray::from_vec(py, self.0.etags().collect()))
+            }
+
+            /// Number of faces
+            fn n_faces(&self) -> usize {
+                self.0.n_faces()
+            }
+
+            /// Get a copy of the faces
+            fn get_faces<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<Idx>>> {
+                #[cfg(not(feature = "32bit-ints"))]
+                let res = PyArray::from_vec(py, self.0.faces().flatten().collect())
+                    .reshape([self.n_faces(), <$cell<Idx> as Simplex>::FACE::N_VERTS]);
+
+                #[cfg(feature = "32bit-ints")]
+                let res = PyArray::from_vec(
+                    py,
+                    self.0
+                        .faces()
+                        .flatten()
+                        .map(|x| x.try_into().unwrap())
+                        .collect(),
+                )
+                .reshape([self.n_faces(), <$cell<Idx> as Simplex>::FACE::N_VERTS]);
+                res
+            }
+
+            /// Get a copy of the face tags
+            fn get_ftags<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<Tag>>> {
+                Ok(PyArray::from_vec(py, self.0.ftags().collect()))
+            }
+
+            /// Fix the element & face orientation (if possible) and tag internal faces (if needed)
+            fn fix<'py>(
                 &mut self,
                 py: Python<'py>,
             ) -> PyResult<(Bound<'py, PyDict>, Bound<'py, PyDict>)> {
-                let (bdy, ifc) = self.0.add_boundary_faces();
+                let (bdy, ifc) = self
+                    .0
+                    .fix()
+                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
                 let dict_bdy = PyDict::new(py);
                 for (k, v) in bdy.iter() {
                     dict_bdy.set_item(k, v)?;
                 }
                 let dict_ifc = PyDict::new(py);
                 for (k, v) in ifc.iter() {
-                    dict_ifc.set_item(k, to_numpy_1d(py, v.to_vec()))?;
+                    dict_ifc.set_item((k[0], k[1]), v)?;
                 }
 
                 Ok((dict_bdy, dict_ifc))
             }
 
-            /// Compute the vertex-to-element connectivity
-            pub fn compute_vertex_to_elems(&mut self) {
-                self.0.compute_vertex_to_elems();
+            /// Export the mesh to a `.vtu` file
+            fn write_vtk(&self, file_name: &str) -> PyResult<()> {
+                self.0
+                    .write_vtk(file_name)
+                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
             }
 
-            /// Clear the vertex-to-element connectivity
-            pub fn clear_vertex_to_elems(&mut self) {
-                self.0.clear_vertex_to_elems();
+            /// Export the mesh to a `.meshb` file
+            fn write_meshb(&self, file_name: &str) -> PyResult<()> {
+                self.0
+                    .write_meshb(file_name)
+                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
             }
 
-            /// Compute the face-to-element connectivity
-            pub fn compute_face_to_elems(&mut self) {
-                self.0.compute_face_to_elems();
+            /// Write a solution to a .sol(b) file
+            pub fn write_solb(&self, fname: &str, arr: PyReadonlyArray2<f64>) -> PyResult<()> {
+                self.0
+                    .write_solb(&arr.to_vec().unwrap(), fname)
+                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
             }
 
-            /// Clear the face-to-element connectivity
-            pub fn clear_face_to_elems(&mut self) {
-                self.0.clear_face_to_elems();
+            /// Read a `.meshb` file
+            #[classmethod]
+            fn from_meshb(_cls: &Bound<'_, PyType>, file_name: &str) -> PyResult<Self> {
+                Ok(Self(
+                    GenericMesh::from_meshb(file_name)
+                        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?,
+                ))
             }
 
-            /// Compute the element-to-element connectivity
-            /// face-to-element connectivity is computed if not available
-            pub fn compute_elem_to_elems(&mut self) {
-                self.0.compute_elem_to_elems();
+            /// Read a solution stored in a .sol(b) file
+            #[classmethod]
+            pub fn read_solb<'py>(
+                _cls: &Bound<'_, PyType>,
+                py: Python<'py>,
+                fname: &str,
+            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
+                use pyo3::exceptions::PyRuntimeError;
+
+                let res = GenericMesh::<$dim, $cell<Idx>>::read_solb(fname);
+                match res {
+                    Ok((sol, m)) => {
+                        let n = sol.len() / m;
+                        Ok(PyArray::from_vec(py, sol).reshape([n, m])?)
+                    }
+                    Err(err) => Err(PyRuntimeError::new_err(err.to_string())),
+                }
             }
 
-            /// Clear the element-to-element connectivity
-            pub fn clear_elem_to_elems(&mut self) {
-                self.0.clear_elem_to_elems();
+            #[doc = concat!("Create an empty ", stringify!($pyname))]
+            #[classmethod]
+            pub fn empty(_cls: &Bound<'_, PyType>) -> Self {
+                Self(GenericMesh::empty())
             }
 
-            /// Compute the edges
-            pub fn compute_edges(&mut self) {
-                self.0.compute_edges();
+            /// Add vertices, faces and elements from another mesh
+            /// If `tol` is not None, vertices on the boundaries of `self`
+            /// and `other` are merged if closer than the tolerance.
+            pub fn add(&mut self, other: &Self, tol: Option<f64>) {
+                self.0.add(&other.0, |_| true, |_| true, tol);
             }
 
-            /// Clear the edges
-            pub fn clear_edges(&mut self) {
-                self.0.clear_edges()
+            /// Add vertices
+            pub fn add_verts(&mut self, coords: PyReadonlyArray2<f64>) -> PyResult<()> {
+                if coords.shape()[1] != $dim {
+                    return Err(PyValueError::new_err(format!(
+                        "Invalid dimension 1 for coords (expecting {})",
+                        $dim
+                    )));
+                }
+                let coords = coords.as_slice()?;
+                let coords = coords.chunks($dim).map(|p| {
+                    let mut vx = Vertex::<$dim>::zeros();
+                    vx.copy_from_slice(p);
+                    vx
+                });
+                self.0.add_verts(coords);
+
+                Ok(())
             }
 
-            /// Compute the vertex-to-vertex connectivity
-            /// Edges are computed if not available
-            pub fn compute_vertex_to_vertices(&mut self) {
-                self.0.compute_vertex_to_vertices();
+            /// Clear all faces
+            pub fn clear_faces(&mut self) {
+                self.0.clear_faces()
             }
 
-            /// Clear the vertex-to-vertex connectivity
-            pub fn clear_vertex_to_vertices(&mut self) {
-                self.0.clear_vertex_to_vertices();
+            /// Add faces
+            pub fn add_faces(
+                &mut self,
+                faces: PyReadonlyArray2<Idx>,
+                ftags: PyReadonlyArray1<Tag>,
+            ) -> PyResult<()> {
+                if faces.shape()[1] != <$cell<Idx> as Simplex>::FACE::N_VERTS {
+                    return Err(PyValueError::new_err(format!(
+                        "Invalid dimension 1 for faces (expecting {})",
+                        <$cell::<Idx> as Simplex>::FACE::N_VERTS
+                    )));
+                }
+                let faces = faces.as_slice()?;
+                let faces = faces
+                    .chunks(<$cell<Idx> as Simplex>::FACE::N_VERTS)
+                    .map(|x| {
+                        <$cell<Idx> as Simplex>::FACE::from_iter(
+                            x.iter().copied().map(|x| x.try_into().unwrap()),
+                        )
+                    });
+                let ftags = ftags.as_slice()?;
+                self.0.add_faces(faces, ftags.iter().copied());
+
+                Ok(())
             }
 
-            /// Compute the volume and vertex volumes
-            pub fn compute_volumes(&mut self) {
-                self.0.compute_volumes();
+            /// Add elements
+            pub fn add_elems(
+                &mut self,
+                elems: PyReadonlyArray2<Idx>,
+                etags: PyReadonlyArray1<Tag>,
+            ) -> PyResult<()> {
+                if elems.shape()[1] != $cell::<Idx>::N_VERTS {
+                    return Err(PyValueError::new_err(format!(
+                        "Invalid dimension 1 for elems (expecting {})",
+                        $cell::<Idx>::N_VERTS
+                    )));
+                }
+                let elems = elems.as_slice()?;
+                let elems = elems.chunks($cell::<Idx>::N_VERTS).map(|x| {
+                    $cell::<Idx>::from_iter(x.iter().copied().map(|x| x.try_into().unwrap()))
+                });
+                let etags = etags.as_slice()?;
+                self.0.add_elems(elems, etags.iter().copied());
+
+                Ok(())
             }
 
-            /// Clear the volume and vertex volumes
-            pub fn clear_volumes(&mut self) {
-                self.0.clear_volumes();
+            /// Split and add quandrangles
+            fn add_quadrangles(
+                &mut self,
+                elems: PyReadonlyArray2<Idx>,
+                etags: PyReadonlyArray1<Tag>,
+            ) -> PyResult<()> {
+                let n = elems.shape()[0];
+                if elems.shape()[1] != 4 {
+                    return Err(PyValueError::new_err("Invalid dimension 1 for elems"));
+                }
+                if etags.shape()[0] != n {
+                    return Err(PyValueError::new_err("Invalid dimension 0 for etags"));
+                }
+
+                self.0.add_quadrangles(
+                    elems.as_slice()?.chunks(4).map(|x| {
+                        let quad: [Idx; 4] = x.try_into().unwrap();
+                        #[cfg(not(feature = "32bit-ints"))]
+                        let res = Quadrangle::<Idx>::from_iter(quad);
+                        #[cfg(feature = "32bit-ints")]
+                        let res = Quadrangle::<Idx>::from_iter(
+                            quad.iter().map(|&x| x.try_into().unwrap()),
+                        );
+                        res
+                    }),
+                    etags.as_slice()?.iter().cloned(),
+                );
+
+                Ok(())
+            }
+
+            /// Split and add pyramids
+            fn add_pyramids(
+                &mut self,
+                elems: PyReadonlyArray2<Idx>,
+                etags: PyReadonlyArray1<Tag>,
+            ) -> PyResult<()> {
+                let n = elems.shape()[0];
+                if elems.shape()[1] != 5 {
+                    return Err(PyValueError::new_err("Invalid dimension 1 for elems"));
+                }
+                if etags.shape()[0] != n {
+                    return Err(PyValueError::new_err("Invalid dimension 0 for etags"));
+                }
+
+                self.0.add_pyramids(
+                    elems.as_slice()?.chunks(5).map(|x| {
+                        let pyr: [Idx; 5] = x.try_into().unwrap();
+                        #[cfg(not(feature = "32bit-ints"))]
+                        let res = Pyramid::<Idx>::from_iter(pyr);
+                        #[cfg(feature = "32bit-ints")]
+                        let res =
+                            Pyramid::<Idx>::from_iter(pyr.iter().map(|&x| x.try_into().unwrap()));
+                        res
+                    }),
+                    etags.as_slice()?.iter().cloned(),
+                );
+
+                Ok(())
+            }
+
+            /// Split and add prisms
+            fn add_prisms(
+                &mut self,
+                elems: PyReadonlyArray2<Idx>,
+                etags: PyReadonlyArray1<Tag>,
+            ) -> PyResult<()> {
+                let n = elems.shape()[0];
+                if elems.shape()[1] != 6 {
+                    return Err(PyValueError::new_err("Invalid dimension 1 for elems"));
+                }
+                if etags.shape()[0] != n {
+                    return Err(PyValueError::new_err("Invalid dimension 0 for etags"));
+                }
+
+                self.0.add_prisms(
+                    elems.as_slice()?.chunks(6).map(|x| {
+                        let pri: [Idx; 6] = x.try_into().unwrap();
+                        #[cfg(not(feature = "32bit-ints"))]
+                        let res = Prism::<Idx>::from_iter(pri);
+                        #[cfg(feature = "32bit-ints")]
+                        let res =
+                            Prism::<Idx>::from_iter(pri.iter().map(|&x| x.try_into().unwrap()));
+                        res
+                    }),
+                    etags.as_slice()?.iter().cloned(),
+                );
+
+                Ok(())
+            }
+
+            /// Split and add hexahedra
+            fn add_hexahedra<'py>(
+                &mut self,
+                py: Python<'py>,
+                elems: PyReadonlyArray2<Idx>,
+                etags: PyReadonlyArray1<Tag>,
+            ) -> PyResult<Bound<'py, PyArray1<usize>>> {
+                let n = elems.shape()[0];
+                if elems.shape()[1] != 8 {
+                    return Err(PyValueError::new_err("Invalid dimension 1 for elems"));
+                }
+                if etags.shape()[0] != n {
+                    return Err(PyValueError::new_err("Invalid dimension 0 for etags"));
+                }
+
+                let ids = self.0.add_hexahedra(
+                    elems.as_slice()?.chunks(8).map(|x| {
+                        let hex: [Idx; 8] = x.try_into().unwrap();
+                        #[cfg(not(feature = "32bit-ints"))]
+                        let res = Hexahedron::<Idx>::from_iter(hex);
+                        #[cfg(feature = "32bit-ints")]
+                        let res = Hexahedron::<Idx>::from_iter(
+                            hex.iter().map(|&x| x.try_into().unwrap()),
+                        );
+                        res
+                    }),
+                    etags.as_slice()?.iter().cloned(),
+                );
+
+                Ok(PyArray1::from_vec(py, ids))
+            }
+
+            /// Reorder the mesh using RCM
+            fn reorder_rcm<'py>(
+                &mut self,
+                py: Python<'py>,
+            ) -> (
+                Self,
+                Bound<'py, PyArray1<usize>>,
+                Bound<'py, PyArray1<usize>>,
+                Bound<'py, PyArray1<usize>>,
+            ) {
+                let (new_mesh, vert_ids, face_ids, elem_ids) = self.0.reorder_rcm();
+                (
+                    Self(new_mesh),
+                    PyArray1::from_vec(py, vert_ids),
+                    PyArray1::from_vec(py, face_ids),
+                    PyArray1::from_vec(py, elem_ids),
+                )
+            }
+
+            /// Reorder the mesh using a Hilbert curve
+            fn reorder_hilbert<'py>(
+                &mut self,
+                py: Python<'py>,
+            ) -> (
+                Self,
+                Bound<'py, PyArray1<usize>>,
+                Bound<'py, PyArray1<usize>>,
+                Bound<'py, PyArray1<usize>>,
+            ) {
+                let (new_mesh, vert_ids, face_ids, elem_ids) = self.0.reorder_hilbert();
+                (
+                    Self(new_mesh),
+                    PyArray1::from_vec(py, vert_ids),
+                    PyArray1::from_vec(py, face_ids),
+                    PyArray1::from_vec(py, elem_ids),
+                )
+            }
+
+            /// Check that two meshes are equal
+            fn check_equals(&self, other: &Self, tol: f64) -> PyResult<()> {
+                self.0
+                    .check_equals(&other.0, tol)
+                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+            }
+
+            /// Partition the mesh
+            #[pyo3(signature = (n_parts, method=PyPartitionerType::Hilbert, weights=None))]
+            fn partition(
+                &mut self,
+                n_parts: usize,
+                method: PyPartitionerType,
+                weights: Option<PyReadonlyArray1<f64>>,
+            ) -> PyResult<(f64, f64)> {
+                let weights = weights.map(|x| x.as_slice().unwrap().to_vec());
+                match method {
+                    PyPartitionerType::Hilbert => self
+                        .0
+                        .partition::<HilbertPartitioner>(n_parts, weights)
+                        .map_err(|e| PyRuntimeError::new_err(e.to_string())),
+                    PyPartitionerType::RCM => self
+                        .0
+                        .partition::<RCMPartitioner>(n_parts, weights)
+                        .map_err(|e| PyRuntimeError::new_err(e.to_string())),
+                    PyPartitionerType::KMeans => match $dim {
+                        3 => self
+                            .0
+                            .partition::<KMeansPartitioner3d>(n_parts, weights)
+                            .map_err(|e| PyRuntimeError::new_err(e.to_string())),
+                        2 => self
+                            .0
+                            .partition::<KMeansPartitioner2d>(n_parts, weights)
+                            .map_err(|e| PyRuntimeError::new_err(e.to_string())),
+                        _ => unimplemented!(),
+                    },
+                    #[cfg(feature = "metis")]
+                    PyPartitionerType::MetisRecursive => self
+                        .0
+                        .partition::<MetisPartitioner<MetisRecursive>>(n_parts, weights)
+                        .map_err(|e| PyRuntimeError::new_err(e.to_string())),
+
+                    #[cfg(feature = "metis")]
+                    PyPartitionerType::MetisKWay => self
+                        .0
+                        .partition::<MetisPartitioner<MetisKWay>>(n_parts, weights)
+                        .map_err(|e| PyRuntimeError::new_err(e.to_string())),
+                }
+            }
+
+            /// Uniform mesh split
+            fn split(&self) -> Self {
+                let msh = self.0.split();
+                Self(msh)
+            }
+
+            /// Split and add prisms
+            #[pyo3(signature = (data, verts, tol=1e-3, nearest=false))]
+            fn interpolate<'py>(
+                &mut self,
+                py: Python<'py>,
+                data: PyReadonlyArray2<f64>,
+                verts: PyReadonlyArray2<f64>,
+                tol: f64,
+                nearest: bool,
+            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
+                if data.shape()[0] != self.n_verts() {
+                    return Err(PyValueError::new_err("Invalid dimension 0 for data"));
+                }
+                let m = data.shape()[1];
+
+                if verts.shape()[1] != $dim {
+                    return Err(PyValueError::new_err("Invalid dimension 1 for verts"));
+                }
+
+                let method = if nearest {
+                    InterpolationMethod::Nearest
+                } else {
+                    InterpolationMethod::Linear(tol)
+                };
+
+                let interp = Interpolator::new(&self.0, method);
+
+                let res = interp.interpolate(
+                    data.as_slice()?,
+                    verts
+                        .as_slice()?
+                        .chunks($dim)
+                        .map(|x| Vertex::<$dim>::from_column_slice(x)),
+                );
+
+                PyArray::from_vec(py, res).reshape([verts.shape()[0], m])
+            }
+
+            // Compute the skewness for all internal faces in the mesh
+            /// Skewness is the normalized distance between a line that connects two
+            /// adjacent cell centroids and the distance from that line to the shared
+            /// face’s center.
+            fn face_skewnesses<'py>(
+                &self,
+                py: Python<'py>,
+            ) -> PyResult<(Bound<'py, PyArray2<usize>>, Bound<'py, PyArray1<f64>>)> {
+                let all_faces = self.0.all_faces();
+                let res = self.0.face_skewnesses(&all_faces);
+
+                let mut ids = Vec::new();
+                let mut vals = Vec::new();
+                for (i, j, v) in res {
+                    ids.push(i);
+                    ids.push(j);
+                    vals.push(v);
+                }
+                Ok((
+                    PyArray::from_vec(py, ids).reshape([vals.len(), 2])?,
+                    PyArray::from_vec(py, vals),
+                ))
+            }
+
+            /// Compute the edge ratio for all the elements in the mesh
+            #[must_use]
+            fn edge_length_ratios<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
+                let res = self.0.edge_length_ratios().collect::<Vec<_>>();
+                PyArray::from_vec(py, res)
+            }
+
+            /// Compute the ratio of inscribed radius to circumradius
+            /// (normalized to be between 0 and 1) for all the elements in the mesh
+            #[must_use]
+            fn elem_gammas<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
+                let res = self.0.elem_gammas().collect::<Vec<_>>();
+                PyArray::from_vec(py, res)
+            }
+
+            /// Smooth a field defined at the mesh vertices using a 1st order least-square
+            /// approximation
+            #[pyo3(signature = (arr, weight_exp=2, order=1))]
+            pub fn smooth<'py>(
+                &self,
+                py: Python<'py>,
+                arr: PyReadonlyArray2<f64>,
+                weight_exp: i32,
+                order: i32,
+            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
+                if arr.shape()[0] != self.0.n_verts() as usize {
+                    return Err(PyValueError::new_err("Invalid dimension 0"));
+                }
+                if arr.shape()[1] != 1 {
+                    return Err(PyValueError::new_err("Invalid dimension 1"));
+                }
+
+                let method = match order {
+                    1 => GradientMethod::LinearLeastSquares(weight_exp),
+                    2 => GradientMethod::LinearLeastSquares(weight_exp),
+                    _ => unreachable!("Invalid order {order}"),
+                };
+
+                let res = self.0.smooth(method, arr.as_slice().unwrap());
+
+                Ok(PyArray::from_vec(py, res)
+                    .reshape([self.0.n_verts(), 1])
+                    .unwrap())
+            }
+
+            /// Compute the gradient of a field defined at the mesh vertices using a 1st order
+            /// least-square approximation
+            #[pyo3(signature = (arr, weight_exp=2, order=1))]
+            pub fn gradient<'py>(
+                &self,
+                py: Python<'py>,
+                arr: PyReadonlyArray2<f64>,
+                weight_exp: i32,
+                order: i32,
+            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
+                if arr.shape()[0] != self.0.n_verts() as usize {
+                    return Err(PyValueError::new_err("Invalid dimension 0"));
+                }
+                if arr.shape()[1] != 1 {
+                    return Err(PyValueError::new_err("Invalid dimension 1"));
+                }
+
+                let method = match order {
+                    1 => GradientMethod::LinearLeastSquares(weight_exp),
+                    2 => GradientMethod::LinearLeastSquares(weight_exp),
+                    _ => unreachable!("Invalid order {order}"),
+                };
+                let res = self.0.gradient(method, arr.as_slice().unwrap());
+
+                Ok(PyArray::from_vec(py, res)
+                    .reshape([self.0.n_verts(), $dim])
+                    .unwrap())
+            }
+
+            /// Compute the hessian of a field defined at the mesh vertices using a 2nd order
+            /// least-square approximation
+            #[pyo3(signature = (arr, weight_exp=2))]
+            pub fn hessian<'py>(
+                &self,
+                py: Python<'py>,
+                arr: PyReadonlyArray2<f64>,
+                weight_exp: i32,
+            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
+                if arr.shape()[0] != self.0.n_verts() as usize {
+                    return Err(PyValueError::new_err("Invalid dimension 0"));
+                }
+                if arr.shape()[1] != 1 {
+                    return Err(PyValueError::new_err("Invalid dimension 1"));
+                }
+
+                let res = self.0.hessian(
+                    GradientMethod::QuadraticLeastSquares(weight_exp),
+                    arr.as_slice().unwrap(),
+                );
+
+                Ok(PyArray::from_vec(py, res)
+                    .reshape([self.0.n_verts(), $dim * ($dim + 1) / 2])
+                    .unwrap())
+            }
+
+            /// Compute the hessian of a field defined at the mesh vertices using a 2nd order
+            /// least-square approximation
+            #[pyo3(signature = (arr))]
+            pub fn hessian_l2proj<'py>(
+                &self,
+                py: Python<'py>,
+                arr: PyReadonlyArray2<f64>,
+            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
+                if arr.shape()[0] != self.0.n_verts() as usize {
+                    return Err(PyValueError::new_err("Invalid dimension 0"));
+                }
+                if arr.shape()[1] != 1 {
+                    return Err(PyValueError::new_err("Invalid dimension 1"));
+                }
+
+                let res = self
+                    .0
+                    .hessian(GradientMethod::L2Projection, arr.as_slice().unwrap());
+
+                Ok(PyArray::from_vec(py, res)
+                    .reshape([self.0.n_verts(), $dim * ($dim + 1) / 2])
+                    .unwrap())
             }
 
             /// Convert a (scalar or vector) field defined at the element centers (P0) to a field
@@ -143,13 +770,14 @@ macro_rules! create_mesh {
                 if arr.shape()[0] != self.0.n_elems() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
+                let v2e = self.0.vertex_to_elems();
+                let res = self
+                    .0
+                    .elem_data_to_vertex_data(&v2e, arr.as_slice().unwrap());
 
-                let res = self.0.elem_data_to_vertex_data(arr.as_slice().unwrap());
-
-                if let Err(res) = res {
-                    return Err(PyRuntimeError::new_err(res.to_string()));
-                }
-                Ok(to_numpy_2d(py, res.unwrap(), arr.shape()[1]))
+                Ok(PyArray::from_vec(py, res)
+                    .reshape([self.0.n_verts(), arr.shape()[1]])
+                    .unwrap())
             }
 
             /// Convert a field (scalar or vector) defined at the vertices (P1) to a field defined
@@ -163,360 +791,90 @@ macro_rules! create_mesh {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
                 let res = self.0.vertex_data_to_elem_data(arr.as_slice().unwrap());
-                Ok(to_numpy_2d(py, res.unwrap(), arr.shape()[1]))
+
+                Ok(PyArray::from_vec(py, res)
+                    .reshape([self.0.n_elems(), arr.shape()[1]])
+                    .unwrap())
             }
 
-            /// Smooth a field defined at the mesh vertices using a 1st order least-square
-            /// approximation
-            #[pyo3(signature = (arr, weight_exp=None))]
-            pub fn smooth<'py>(
-                &self,
-                py: Python<'py>,
-                arr: PyReadonlyArray2<f64>,
-                weight_exp: Option<i32>,
-            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                if arr.shape()[0] != self.0.n_verts() as usize {
-                    return Err(PyValueError::new_err("Invalid dimension 0"));
-                }
-                if arr.shape()[1] != 1 {
-                    return Err(PyValueError::new_err("Invalid dimension 1"));
-                }
-
-                let res = self
-                    .0
-                    .smooth(arr.as_slice().unwrap(), weight_exp.unwrap_or(2));
-                if let Err(res) = res {
-                    return Err(PyRuntimeError::new_err(res.to_string()));
-                }
-                Ok(to_numpy_2d(py, res.unwrap(), arr.shape()[1]))
+            /// Get the mesh volume
+            pub fn vol(&self) -> f64 {
+                self.0.vol()
             }
 
-            /// Compute the gradient of a field defined at the mesh vertices using a 1st order
-            /// least-square approximation
-            #[pyo3(signature = (arr, weight_exp=None))]
-            pub fn compute_gradient<'py>(
-                &self,
-                py: Python<'py>,
-                arr: PyReadonlyArray2<f64>,
-                weight_exp: Option<i32>,
-            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                if arr.shape()[0] != self.0.n_verts() as usize {
-                    return Err(PyValueError::new_err("Invalid dimension 0"));
-                }
-                if arr.shape()[1] != 1 {
-                    return Err(PyValueError::new_err("Invalid dimension 1"));
-                }
-
-                let res = self
-                    .0
-                    .gradient(arr.as_slice().unwrap(), weight_exp.unwrap_or(2));
-                if let Err(res) = res {
-                    return Err(PyRuntimeError::new_err(res.to_string()));
-                }
-                Ok(to_numpy_2d(py, res.unwrap(), $dim))
-            }
-
-            /// Compute the hessian of a field defined at the mesh vertices using a 2nd order
-            /// least-square approximation
-            /// if `weight_exp` is `None`, the vertex has a weight 10, its first order neighbors
-            /// have a weight 1 and the 2nd order neighbors (if used) have a weight of 0.1
-            #[pyo3(signature = (arr, weight_exp=None, use_second_order_neighbors=None))]
-            pub fn compute_hessian<'py>(
-                &self,
-                py: Python<'py>,
-                arr: PyReadonlyArray2<f64>,
-                weight_exp: Option<i32>,
-                use_second_order_neighbors: Option<bool>,
-            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                if arr.shape()[0] != self.0.n_verts() as usize {
-                    return Err(PyValueError::new_err("Invalid dimension 0"));
-                }
-                if arr.shape()[1] != 1 {
-                    return Err(PyValueError::new_err("Invalid dimension 1"));
-                }
-
-                let res = self.0.hessian(
-                    arr.as_slice().unwrap(),
-                    weight_exp,
-                    use_second_order_neighbors.unwrap_or(true),
-                );
-                if let Err(res) = res {
-                    return Err(PyRuntimeError::new_err(res.to_string()));
-                }
-                Ok(to_numpy_2d(py, res.unwrap(), $dim * ($dim + 1) / 2))
-            }
-
-            /// Compute the hessian of a field defined at the mesh vertices using L2 projection
-            pub fn compute_hessian_l2proj<'py>(
-                &self,
-                py: Python<'py>,
-                arr: PyReadonlyArray2<f64>,
-            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                if arr.shape()[0] != self.0.n_verts() as usize {
-                    return Err(PyValueError::new_err("Invalid dimension 0"));
-                }
-                if arr.shape()[1] != 1 {
-                    return Err(PyValueError::new_err("Invalid dimension 1"));
-                }
-
-                let grad = self.0.gradient_l2proj(arr.as_slice().unwrap());
-                if let Err(res) = grad {
-                    return Err(PyRuntimeError::new_err(res.to_string()));
-                }
-
-                let res = self.0.hessian_l2proj(&grad.unwrap());
-                if let Err(res) = res {
-                    return Err(PyRuntimeError::new_err(res.to_string()));
-                }
-
-                Ok(to_numpy_2d(py, res.unwrap(), $dim * ($dim + 1) / 2))
-            }
-
-            /// Compute the topology
-            pub fn compute_topology(&mut self) {
-                self.0.compute_topology();
-            }
-
-            /// Clear the topology
-            pub fn clear_topology(&mut self) {
-                self.0.clear_topology();
-            }
-
-            /// Automatically tag the elements based on a feature angle
-            pub fn autotag<'py>(
-                &mut self,
-                py: Python<'py>,
-                angle_deg: f64,
-            ) -> PyResult<Bound<'py, PyDict>> {
-                let res = self.0.autotag(angle_deg);
-                if let Err(res) = res {
-                    Err(PyRuntimeError::new_err(res.to_string()))
-                } else {
-                    let dict = PyDict::new(py);
-                    for (k, v) in res.unwrap().iter() {
-                        dict.set_item(k, to_numpy_1d(py, v.to_vec()))?;
-                    }
-                    Ok(dict)
-                }
-            }
-
-            /// Automatically tag the faces based on a feature angle
-            pub fn autotag_bdy<'py>(
-                &mut self,
-                py: Python<'py>,
-                angle_deg: f64,
-            ) -> PyResult<Bound<'py, PyDict>> {
-                let res = self.0.autotag_bdy(angle_deg);
-                if let Err(res) = res {
-                    Err(PyRuntimeError::new_err(res.to_string()))
-                } else {
-                    let dict = PyDict::new(py);
-                    for (k, v) in res.unwrap().iter() {
-                        dict.set_item(k, to_numpy_1d(py, v.to_vec()))?;
-                    }
-                    Ok(dict)
-                }
+            /// Check that the mesh is valid
+            pub fn check(&self) -> PyResult<()> {
+                self.0
+                    .check(&self.0.all_faces())
+                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
             }
         }
     };
 }
 
-create_mesh!(Mesh33, 3, Tetrahedron);
-create_mesh!(Mesh32, 3, Triangle);
-create_mesh!(Mesh31, 3, Edge);
-create_mesh!(Mesh22, 2, Triangle);
-create_mesh!(Mesh21, 2, Edge);
-type Mesh1 = SimplexMesh<3, Tetrahedron>;
-impl_mesh!(Mesh33, Mesh1, 3, 4, 3);
-type Mesh2 = SimplexMesh<3, Triangle>;
-impl_mesh!(Mesh32, Mesh2, 3, 3, 2);
-type Mesh3 = SimplexMesh<3, Edge>;
-impl_mesh!(Mesh31, Mesh3, 3, 2, 1);
-type Mesh4 = SimplexMesh<2, Triangle>;
-impl_mesh!(Mesh22, Mesh4, 2, 3, 2);
-type Mesh5 = SimplexMesh<2, Edge>;
-impl_mesh!(Mesh21, Mesh5, 2, 2, 1);
+create_mesh!(PyMesh2d, 2, Triangle);
+impl_mesh!(PyMesh2d, 2, Triangle);
+create_mesh!(PyBoundaryMesh2d, 2, Edge);
+impl_mesh!(PyBoundaryMesh2d, 2, Edge);
+create_mesh!(PyMesh3d, 3, Tetrahedron);
+impl_mesh!(PyMesh3d, 3, Tetrahedron);
+create_mesh!(PyBoundaryMesh3d, 3, Triangle);
+impl_mesh!(PyBoundaryMesh3d, 3, Triangle);
 
 #[pymethods]
-impl Mesh33 {
-    /// Extract the boundary faces into a Mesh, and return the indices of the vertices in the
-    /// parent mesh
-    #[must_use]
-    pub fn boundary<'py>(&self, py: Python<'py>) -> (Mesh32, Bound<'py, PyArray1<Idx>>) {
+impl PyMesh2d {
+    /// Build a nonuniform rectangle mesh by splitting a structured
+    /// mesh
+    #[classmethod]
+    #[allow(clippy::needless_pass_by_value)]
+    fn rectangle_mesh(
+        _cls: &Bound<'_, PyType>,
+        x: PyReadonlyArray1<f64>,
+        y: PyReadonlyArray1<f64>,
+    ) -> PyResult<Self> {
+        let x = x.as_slice()?;
+        let y = y.as_slice()?;
+        Ok(Self(nonuniform_rectangle_mesh(x, y)))
+    }
+
+    /// Get the mesh boundary
+    fn boundary<'py>(&self, py: Python<'py>) -> (PyBoundaryMesh2d, Bound<'py, PyArray1<usize>>) {
         let (bdy, ids) = self.0.boundary();
-        (Mesh32(bdy), to_numpy_1d(py, ids))
-    }
-
-    pub fn implied_metric<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<f64>>> {
-        let res = self.0.implied_metric();
-
-        if let Err(res) = res {
-            return Err(PyRuntimeError::new_err(res.to_string()));
-        }
-
-        let m: Vec<f64> = res.unwrap().iter().flat_map(|m| m.into_iter()).collect();
-        Ok(to_numpy_2d(py, m, 6))
-    }
-
-    /// Get a metric defined on all the mesh vertices such that
-    ///  - for boundary vertices, the principal directions are aligned with the principal curvature
-    ///    directions and the sizes to curvature radius ratio is r_h
-    ///  - the metric is entended into the volume with gradation beta
-    ///  - if an implied metric is provided, the result is limited to (1/step,step) times the
-    ///    implied metric
-    ///  - if a normal size array is not provided, the minimum of the tangential sizes is used.
-    #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature = (geom, r_h, beta, t=1.0, h_min=None, h_max=None, h_n=None, h_n_tags=None))]
-    pub fn curvature_metric<'py>(
-        &self,
-        py: Python<'py>,
-        geom: &LinearGeometry3d,
-        r_h: f64,
-        beta: f64,
-        t: f64,
-        h_min: Option<f64>,
-        h_max: Option<f64>,
-        h_n: Option<PyReadonlyArray1<f64>>,
-        h_n_tags: Option<PyReadonlyArray1<Tag>>,
-    ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-        let res = if let Some(h_n) = h_n {
-            let h_n = h_n.as_slice()?;
-            if h_n_tags.is_none() {
-                return Err(PyRuntimeError::new_err("h_n_tags not given"));
-            }
-            let h_n_tags = h_n_tags.unwrap();
-            let h_n_tags = h_n_tags.as_slice()?;
-            self.0.curvature_metric(
-                &geom.geom,
-                r_h,
-                beta,
-                t,
-                h_min,
-                h_max,
-                Some(h_n),
-                Some(h_n_tags),
-            )
-        } else {
-            self.0
-                .curvature_metric(&geom.geom, r_h, beta, t, h_min, h_max, None, None)
-        };
-
-        if let Err(res) = res {
-            return Err(PyRuntimeError::new_err(res.to_string()));
-        }
-        let m = res.unwrap();
-        let m = m.iter().flat_map(|m| m.into_iter()).collect();
-
-        Ok(to_numpy_2d(py, m, 6))
+        (PyBoundaryMesh2d(bdy), PyArray1::from_vec(py, ids))
     }
 }
 
 #[pymethods]
-impl Mesh32 {
-    /// Reset the face tags of other to match those in self
-    pub fn transfer_tags_face(&self, other: &mut Mesh33) -> PyResult<()> {
-        let tree = ObjectIndex::new(&self.0);
-        self.0
-            .transfer_tags(&tree, &mut other.0)
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
-    }
-
-    /// Reset the element tags of other to match those in self
-    pub fn transfer_tags_elem(&self, other: &mut Self) -> PyResult<()> {
-        let tree = ObjectIndex::new(&self.0);
-        self.0
-            .transfer_tags(&tree, &mut other.0)
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+impl PyBoundaryMesh3d {
+    /// Read a stl file
+    #[classmethod]
+    fn read_stl(_cls: &Bound<'_, PyType>, file_name: &str) -> PyResult<Self> {
+        let msh = read_stl(file_name).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        Ok(Self(msh))
     }
 }
 
 #[pymethods]
-impl Mesh22 {
-    /// Extract the boundary faces into a Mesh, and return the indices of the vertices in the
-    /// parent mesh
-    #[must_use]
-    pub fn boundary<'py>(&self, py: Python<'py>) -> (Mesh21, Bound<'py, PyArray1<Idx>>) {
+impl PyMesh3d {
+    /// Build a nonuniform box mesh by splitting a structured
+    /// mesh
+    #[classmethod]
+    #[allow(clippy::needless_pass_by_value)]
+    fn box_mesh(
+        _cls: &Bound<'_, PyType>,
+        x: PyReadonlyArray1<f64>,
+        y: PyReadonlyArray1<f64>,
+        z: PyReadonlyArray1<f64>,
+    ) -> PyResult<Self> {
+        let x = x.as_slice()?;
+        let y = y.as_slice()?;
+        let z = z.as_slice()?;
+        Ok(Self(nonuniform_box_mesh(x, y, z)))
+    }
+
+    /// Get the mesh boundary
+    fn boundary<'py>(&self, py: Python<'py>) -> (PyBoundaryMesh3d, Bound<'py, PyArray1<usize>>) {
         let (bdy, ids) = self.0.boundary();
-        (Mesh21(bdy), to_numpy_1d(py, ids))
-    }
-
-    pub fn implied_metric<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<f64>>> {
-        let res = self.0.implied_metric();
-
-        if let Err(res) = res {
-            return Err(PyRuntimeError::new_err(res.to_string()));
-        }
-
-        let m: Vec<f64> = res.unwrap().iter().flat_map(|m| m.into_iter()).collect();
-        Ok(to_numpy_2d(py, m, 3))
-    }
-
-    /// Get a metric defined on all the mesh vertices such that
-    ///  - for boundary vertices, the principal directions are aligned with the principal curvature
-    ///    directions and the sizes to curvature radius ratio is r_h
-    ///  - the metric is entended into the volume with gradation beta
-    ///  - if a normal size array is not provided, the minimum of the tangential sizes is used.
-    #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature = (geom, r_h, beta, t=1.0, h_min=None, h_max=None, h_n=None, h_n_tags=None))]
-    pub fn curvature_metric<'py>(
-        &self,
-        py: Python<'py>,
-        geom: &LinearGeometry2d,
-        r_h: f64,
-        beta: f64,
-        t: f64,
-        h_min: Option<f64>,
-        h_max: Option<f64>,
-        h_n: Option<PyReadonlyArray1<f64>>,
-        h_n_tags: Option<PyReadonlyArray1<Tag>>,
-    ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-        let res = if let Some(h_n) = h_n {
-            let h_n = h_n.as_slice()?;
-            if h_n_tags.is_none() {
-                return Err(PyRuntimeError::new_err("h_n_tags not given"));
-            }
-            let h_n_tags = h_n_tags.unwrap();
-            let h_n_tags = h_n_tags.as_slice()?;
-            self.0.curvature_metric(
-                &geom.geom,
-                r_h,
-                beta,
-                t,
-                h_min,
-                h_max,
-                Some(h_n),
-                Some(h_n_tags),
-            )
-        } else {
-            self.0
-                .curvature_metric(&geom.geom, r_h, beta, t, h_min, h_max, None, None)
-        };
-
-        if let Err(res) = res {
-            return Err(PyRuntimeError::new_err(res.to_string()));
-        }
-        let m = res.unwrap();
-        let m = m.iter().flat_map(|m| m.into_iter()).collect();
-
-        Ok(to_numpy_2d(py, m, 3))
-    }
-}
-
-#[pymethods]
-impl Mesh21 {
-    /// Reset the face tags of other to match those in self
-    pub fn transfer_tags_face(&self, other: &mut Mesh22) -> PyResult<()> {
-        let tree = ObjectIndex::new(&self.0);
-        self.0
-            .transfer_tags(&tree, &mut other.0)
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
-    }
-
-    /// Reset the element tags of other to match those in self
-    pub fn transfer_tags_elem(&self, other: &mut Self) -> PyResult<()> {
-        let tree = ObjectIndex::new(&self.0);
-        self.0
-            .transfer_tags(&tree, &mut other.0)
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+        (PyBoundaryMesh3d(bdy), PyArray1::from_vec(py, ids))
     }
 }
