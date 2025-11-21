@@ -1244,56 +1244,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "nlopt")]
-    fn test_smooth_nlopt_2d() -> Result<()> {
-        let coords = vec![
-            Vert2d::new(0., 0.),
-            Vert2d::new(1., 0.),
-            Vert2d::new(1., 1.),
-            Vert2d::new(0., 1.),
-            Vert2d::new(0.1, 0.1),
-        ];
-        let elems = vec![
-            Triangle::new(0, 1, 4),
-            Triangle::new(1, 2, 4),
-            Triangle::new(2, 3, 4),
-            Triangle::new(3, 0, 4),
-        ];
-        let etags = vec![1, 1, 1, 1];
-        let faces = vec![
-            Edge::new(0, 1),
-            Edge::new(1, 2),
-            Edge::new(2, 3),
-            Edge::new(3, 0),
-        ];
-        let ftags = vec![1, 2, 3, 4];
-
-        let mut mesh = GenericMesh::from_vecs(coords, elems, etags, faces, ftags);
-        let topo = MeshTopology::new(&mesh);
-
-        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts()];
-        let geom = NoGeometry();
-        let mut remesher = Remesher::new(&mesh, &topo, &h, &geom)?;
-
-        let params = SmoothParams {
-            n_iter: 1,
-            method: SmoothingMethod::NLOpt,
-            relax: vec![1.0],
-            ..Default::default()
-        };
-        remesher.smooth(&params, &geom, true)?;
-        let pt = remesher.verts.get(&4).unwrap().vx;
-        let center = Vert2d::new(0.5, 0.5);
-        assert!((pt - center).norm() < 0.05);
-
-        remesher.check()?;
-
-        let _mesh = remesher.to_mesh(true);
-
-        Ok(())
-    }
-
-    #[test]
     fn test_smooth_laplacian_2d_aniso() -> Result<()> {
         let coords = vec![
             Vert2d::new(0., 0.),

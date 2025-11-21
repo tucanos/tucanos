@@ -14,7 +14,6 @@ RUN apt-get install -y libscotchparmetis-dev
 RUN apt-get install -y libopenmpi-dev
 RUN apt-get install -y xorg-dev
 RUN apt-get install -y libglfw3-dev
-RUN apt-get install -y libnlopt-dev libnlopt-cxx-dev
 RUN apt-get install -y libpython3-dev
 
 RUN cd && echo "\"\e[A\": history-search-backward" >> .inputrc

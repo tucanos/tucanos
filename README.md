@@ -22,8 +22,6 @@ Building the libraries requires a recent version of rust, that should be install
 
 Optional [cargo features](https://doc.rust-lang.org/cargo/reference/features.html) are:
 
-- [`nlopt`](https://github.com/stevengj/nlopt) can be used for smoothing, but
-  the current implementation is quite inefficient
 - [`metis`](https://github.com/KarypisLab/METIS) can be used to produce better
   quality mesh partitioning. 
 - [`coupe`](https://github.com/LIHPC-Computational-Geometry/coupe) can also be used for
@@ -31,9 +29,7 @@ Optional [cargo features](https://doc.rust-lang.org/cargo/reference/features.htm
 
 #### Dependencies not managed by Cargo
 
-They are all optional.
-* `nlopt`.
-* `metis`. The location of  `metis` may need to be declared
+`metis` is an optional dependency. The location of  `metis` may need to be declared
   using environment variables. This can be done in `.cargo/config.toml`, for
   example:
 ```toml
