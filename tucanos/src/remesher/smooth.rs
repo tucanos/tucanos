@@ -10,15 +10,13 @@ use crate::{
     },
 };
 use log::{debug, trace};
-#[cfg(feature = "nlopt")]
-use nlopt::{Algorithm, Nlopt, Target};
 use tmesh::{
     Vertex,
     mesh::{GSimplex, Simplex},
 };
 
 /// Smoothing methods
-/// For all methods except NLOpt, a set of valid neighbors $`N(i)`$ is built as a subset
+/// A set of valid neighbors $`N(i)`$ is built as a subset
 /// if the neighbors of vertex $`i`$ that are tagged on the same entity of one of its children
 /// The new vertex location $`\tilde v_i`$ is then computed as (where $`||v_j - v_i||_M`$ is the
 /// edge length in metric space):
@@ -43,8 +41,6 @@ use tmesh::{
 pub enum SmoothingMethod {
     Laplacian,
     Avro,
-    #[cfg(feature = "nlopt")]
-    NLOpt,
     Laplacian2,
 }
 
@@ -169,68 +165,6 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         p0_new
     }
 
-    #[cfg(feature = "nlopt")]
-    fn smooth_nlopt(cavity: &Cavity<D, C, M>, neighbors: &[usize]) -> Vertex<D> {
-        let Seed::Vertex(i0) = cavity.seed else {
-            unreachable!()
-        };
-        let (_, t0, m0) = cavity.vert(i0);
-        if t0.0 == C::DIM as Dim {
-            let mut p0_new = Vertex::<D>::zeros();
-            let mut qmax = cavity.q_min;
-            let gfaces: Vec<_> = cavity.faces().map(|(f, _)| cavity.gface(&f)).collect();
-
-            for i_elem in 0..cavity.n_elems() {
-                let ge = cavity.gelem(i_elem);
-
-                let n = C::N_VERTS;
-                let mut x = vec![0.0; n];
-
-                let func = |x: &[f64], _grad: Option<&mut [f64]>, _params: &mut ()| -> f64 {
-                    let p = ge.point(x);
-                    let mut q_avg = 0.0;
-                    for gf in &gfaces {
-                        let ge1 = C::Geom::from_vert_and_face(&p, m0, gf);
-                        q_avg += ge1.quality();
-                    }
-                    q_avg / (gfaces.len() as f64)
-                };
-
-                let mut opt = Nlopt::new(Algorithm::Cobyla, n - 1, func, Target::Maximize, ());
-                assert!(opt.set_xtol_rel(1.0e-2).is_ok());
-                assert!(opt.set_maxeval(10).is_ok());
-
-                let lb = vec![0.0; n]; // lower bounds
-                assert!(opt.set_lower_bounds(&lb).is_ok());
-                let ub = vec![1.0; n]; // upper bounds
-                assert!(opt.set_upper_bounds(&ub).is_ok());
-
-                let constraint = |x: &[f64], _grad: Option<&mut [f64]>, _param: &mut ()| -> f64 {
-                    x.iter().sum::<f64>() - 1.0
-                };
-                assert!(opt.add_inequality_constraint(constraint, (), 1e-8).is_ok());
-
-                let res = opt.optimize(&mut x);
-                trace!("NLOpt: {res:?}");
-                if res.unwrap().1 > qmax {
-                    qmax = res.unwrap().1;
-                    let mut sum = 0.0;
-                    for i in (1..C::N_VERTS).rev() {
-                        x[i] = x[i - 1];
-                        sum += x[i];
-                    }
-                    x[0] = 1.0 - sum;
-                    p0_new = ge.point(&x);
-                    trace!("bcoords = {x:?}");
-                    trace!("p0_new = {p0_new:?}");
-                }
-            }
-            p0_new
-        } else {
-            Self::smooth_laplacian(cavity, neighbors)
-        }
-    }
-
     fn smooth_iter<G: Geometry<D>>(
         &mut self,
         params: &SmoothParams,
@@ -275,8 +209,6 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                 SmoothingMethod::Laplacian => Self::smooth_laplacian(cavity, &neighbors),
                 SmoothingMethod::Laplacian2 => Self::smooth_laplacian_2(cavity, &neighbors),
                 SmoothingMethod::Avro => Self::smooth_avro(cavity, &neighbors),
-                #[cfg(feature = "nlopt")]
-                SmoothingMethod::NLOpt => Self::smooth_nlopt(cavity, &neighbors),
             };
 
             let mut p0_new = Vertex::<D>::zeros();

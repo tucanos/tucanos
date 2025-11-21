@@ -232,8 +232,6 @@ impl PySwapParams {
 pub enum PySmoothingMethod {
     Laplacian,
     Avro,
-    #[cfg(feature = "nlopt")]
-    NLOpt,
     Laplacian2,
 }
 
@@ -252,8 +250,6 @@ impl PySmoothParams {
         let method = match other.method {
             SmoothingMethod::Laplacian => PySmoothingMethod::Laplacian,
             SmoothingMethod::Avro => PySmoothingMethod::Avro,
-            #[cfg(feature = "nlopt")]
-            SmoothingMethod::NLOpt => PySmoothingMethod::NLOpt,
             SmoothingMethod::Laplacian2 => PySmoothingMethod::Laplacian2,
         };
         Self {
@@ -268,8 +264,6 @@ impl PySmoothParams {
         let method = match self.method {
             PySmoothingMethod::Laplacian => SmoothingMethod::Laplacian,
             PySmoothingMethod::Avro => SmoothingMethod::Avro,
-            #[cfg(feature = "nlopt")]
-            PySmoothingMethod::NLOpt => SmoothingMethod::NLOpt,
             PySmoothingMethod::Laplacian2 => SmoothingMethod::Laplacian2,
         };
         SmoothParams {

@@ -19,7 +19,6 @@ tmesh = { path = "../tmesh" }
 
 [features]
 32bit-ints = []
-nlopt = ["tucanos/nlopt"]
 metis = ["tucanos/metis"]
 
 [lints]
