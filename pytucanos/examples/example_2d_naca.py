@@ -3,9 +3,17 @@ import logging
 import numpy as np
 import matplotlib.pyplot as plt
 import gmsh
-from pytucanos.mesh import Mesh22, Mesh21, plot_mesh
-from pytucanos.geometry import LinearGeometry2d
-from pytucanos.remesh import Remesher2dAniso, PyRemesherParams
+from pytucanos import (
+    Mesh2d,
+    BoundaryMesh2d,
+    LinearGeometry2d,
+    Remesher2dAniso,
+    RemesherParams,
+    curvature_metric,
+    implied_metric,
+    INT,
+)
+from pytucanos.mesh import plot_mesh
 
 
 def naca_profile(
@@ -102,11 +110,11 @@ def get_meshes():
     )
     etags = np.concatenate([1 + np.zeros(n - 1), 2 + np.zeros(n - 1), [3, 4, 5, 6]])
 
-    bmsh = Mesh21(
+    bmsh = BoundaryMesh2d(
         coords,
-        elems.astype(np.uint32),
+        elems.astype(INT),
         etags.astype(np.int16),
-        np.empty((0, 1), dtype=np.uint32),
+        np.empty((0, 1), dtype=INT),
         np.empty(0, dtype=np.int16),
     )
 
@@ -167,10 +175,10 @@ def get_meshes():
             types, tags, conn = gmsh.model.mesh.getElements(dim, tag=ent)
             assert len(types) == 1
             if types[0] == 1:
-                faces.append(conn[0].reshape((-1, 2)).astype(np.uint32))
+                faces.append(conn[0].reshape((-1, 2)).astype(INT))
                 ftags.append(tag + np.zeros(tags[0].size, dtype=np.int16))
             elif types[0] == 2:
-                elems.append(conn[0].reshape((-1, 3)).astype(np.uint32))
+                elems.append(conn[0].reshape((-1, 3)).astype(INT))
                 etags.append(tag + np.zeros(tags[0].size, dtype=np.int16))
             else:
                 raise NotImplementedError()
@@ -196,11 +204,11 @@ def get_meshes():
     assert elems.min() == 0
     assert faces.min() >= 0
 
-    mesh = Mesh22(
+    mesh = Mesh2d(
         coords[old_ids, :],
-        elems.astype(np.uint32),
+        elems.astype(INT),
         etags,
-        faces.astype(np.uint32),
+        faces.astype(INT),
         ftags,
     )
     # gmsh.fltk.run()
@@ -227,7 +235,6 @@ if __name__ == "__main__":
 
     msh.write_vtk("naca_0.vtu")
 
-    msh.compute_topology()
     geom = LinearGeometry2d(msh, bmsh)
     geom.compute_curvature()
 
@@ -235,8 +242,8 @@ if __name__ == "__main__":
         bdy, bdy_ids = msh.boundary()
         h_n = 1e-3 + np.zeros(bdy_ids.size)
 
-        msh.compute_vertex_to_vertices()
-        m_curv = msh.curvature_metric(
+        m_curv = curvature_metric(
+            msh,
             geom,
             r_h=4.0,
             beta=1.5,
@@ -246,9 +253,7 @@ if __name__ == "__main__":
             h_n_tags=np.array([1, 2], dtype=np.int16),
         )
 
-        msh.compute_vertex_to_elems()
-        msh.compute_volumes()
-        m_implied = msh.implied_metric()
+        m_implied = implied_metric(msh)
 
         # fig, (ax0, ax1) = plt.subplots(
         #     1, 2, sharex=True, sharey=True, tight_layout=True
@@ -291,13 +296,12 @@ if __name__ == "__main__":
         remesher = Remesher2dAniso(msh, geom, m)
         remesher.remesh(
             geom,
-            params=PyRemesherParams.default(),
+            params=RemesherParams.default(),
         )
         qualities = remesher.qualities()
         lengths = remesher.lengths()
 
         msh = remesher.to_mesh()
-        msh.compute_topology()
         # cax = plot_field(ax1, msh, q, "element")
         # fig.colorbar(cax, ax=ax1)
         # ax1.set_title("Adapted mesh")
@@ -328,6 +332,6 @@ if __name__ == "__main__":
         ax[1].set_xlabel("edge lengths")
         ax[1].legend()
 
-        msh.write_vtk(f"naca_{it + 1}.vtu", {}, {"q": qualities.reshape((-1, 1))})
+        msh.write_vtk(f"naca_{it + 1}.vtu")
 
     plt.show()

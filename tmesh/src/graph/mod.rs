@@ -48,12 +48,8 @@ pub struct CSRGraph {
 }
 
 impl CSRGraph {
-    fn set_ptr<
-        T: TryInto<usize> + Ord + Debug,
-        E: IntoIterator<Item = T> + Copy,
-        I: ExactSizeIterator<Item = E> + Clone,
-    >(
-        elems: I,
+    fn set_ptr<T: TryInto<usize> + Ord + Debug>(
+        elems: impl ExactSizeIterator<Item = impl IntoIterator<Item = T> + Copy> + Clone,
         n_verts: Option<usize>,
     ) -> Self
     where
@@ -126,11 +122,8 @@ impl CSRGraph {
     }
 
     /// Create a graph from edges
-    pub fn from_edges<
-        T: TryInto<usize> + Ord + Debug + Copy,
-        I: ExactSizeIterator<Item = [T; 2]> + Clone,
-    >(
-        edgs: I,
+    pub fn from_edges<T: TryInto<usize> + Ord + Debug + Copy>(
+        edgs: impl ExactSizeIterator<Item = [T; 2]> + Clone,
         n_verts: Option<usize>,
     ) -> Self
     where
@@ -168,12 +161,8 @@ impl CSRGraph {
     }
 
     /// Compute the vertex to element connectivity from an element to vertex connectivity
-    pub fn transpose<
-        T: TryInto<usize> + Ord + Debug,
-        E: IntoIterator<Item = T> + Copy,
-        I: ExactSizeIterator<Item = E> + Clone,
-    >(
-        elems: I,
+    pub fn transpose<T: TryInto<usize> + Ord + Debug>(
+        elems: impl ExactSizeIterator<Item = impl IntoIterator<Item = T> + Copy> + Clone,
         n_verts: Option<usize>,
     ) -> Self
     where
@@ -349,10 +338,10 @@ impl CSRGraph {
 
     /// Extract a sub-graph
     #[must_use]
-    pub fn subgraph<I: Iterator<Item = usize>>(&self, ids: I) -> Self {
+    pub fn subgraph(&self, ids: impl IntoIterator<Item = usize>) -> Self {
         let mut new_ids = vec![usize::MAX; self.n()];
         let mut m = 0;
-        for (i, j) in ids.enumerate() {
+        for (i, j) in ids.into_iter().enumerate() {
             new_ids[j] = i;
             m += 1;
         }

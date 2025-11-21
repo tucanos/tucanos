@@ -1,6 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from pytucanos.mesh import get_square, Mesh22, plot_mesh, plot_metric
+from pytucanos import Mesh2d, implied_metric
+from pytucanos.mesh import get_square, plot_mesh
+from pytucanos.metric import plot_metric
 
 
 def get_m(msh):
@@ -19,18 +21,16 @@ def get_m(msh):
 
 if __name__ == "__main__":
     coords, elems, etags, faces, ftags = get_square()
-    msh = Mesh22(coords, elems, etags, faces, ftags)
+    msh = Mesh2d(coords, elems, etags, faces, ftags)
     msh = msh.split().split()
 
     # add the missing boundaries, & orient them outwards
-    msh.add_boundary_faces()
+    msh.fix()
+
     # Hilbert renumbering
     msh.reorder_hilbert()
 
-    msh.compute_vertex_to_elems()
-    msh.compute_volumes()
-
-    m_i = msh.implied_metric()
+    m_i = implied_metric(msh)
     fig, ax = plt.subplots()
     plot_mesh(ax, msh)
     plot_metric(ax, msh, m_i, loc="vertex")

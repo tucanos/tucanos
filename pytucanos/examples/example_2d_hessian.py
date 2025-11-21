@@ -1,9 +1,16 @@
 import logging
 import numpy as np
 import matplotlib.pyplot as plt
-from pytucanos.mesh import get_square, Mesh22, plot_mesh
-from pytucanos.geometry import LinearGeometry2d
-from pytucanos.remesh import Remesher2dAniso, PyRemesherParams
+from pytucanos import (
+    Mesh2d,
+    LinearGeometry2d,
+    Remesher2dAniso,
+    RemesherParams,
+)
+from pytucanos.mesh import (
+    get_square,
+    plot_mesh,
+)
 
 
 def get_f(msh):
@@ -18,21 +25,18 @@ if __name__ == "__main__":
     logging.getLogger().setLevel(logging.INFO)
 
     coords, elems, etags, faces, ftags = get_square()
-    msh = Mesh22(coords, elems, etags, faces, ftags)
+    msh = Mesh2d(coords, elems, etags, faces, ftags)
     msh = msh.split().split().split().split()
 
-    msh.add_boundary_faces()
+    msh.fix()
 
-    msh.compute_topology()
     geom = LinearGeometry2d(msh)
     for _ in range(6):
-        msh.compute_volumes()
-        msh.compute_vertex_to_vertices()
         f = get_f(msh)
-        hessian = msh.compute_hessian(f)
+        hessian = msh.hessian(f)
 
         m = Remesher2dAniso.hessian_to_metric(msh, hessian)
-        m = Remesher2dAniso.smooth_metric(msh, m)
+        m = Remesher2dAniso.smooth_metric(msh, m, n_iter=1)
         for _ in range(2):
             m = Remesher2dAniso.scale_metric(
                 msh, m, h_min=0.0001, h_max=0.3, n_elems=1000
@@ -44,10 +48,9 @@ if __name__ == "__main__":
         assert np.isfinite(m).all()
 
         remesher = Remesher2dAniso(msh, geom, m)
-        remesher.remesh(geom, params=PyRemesherParams.default())
+        remesher.remesh(geom, params=RemesherParams.default())
 
         msh = remesher.to_mesh()
-        msh.compute_topology()
 
     qualities = remesher.qualities()
     lengths = remesher.lengths()

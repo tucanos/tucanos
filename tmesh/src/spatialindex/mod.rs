@@ -10,7 +10,7 @@ pub struct PointIndex<const D: usize> {
 
 impl<const D: usize> PointIndex<D> {
     /// Create a PointIndex from vertices
-    pub fn new<I: ExactSizeIterator<Item = Vertex<D>>>(verts: I) -> Self {
+    pub fn new(verts: impl ExactSizeIterator<Item = Vertex<D>>) -> Self {
         assert!(verts.len() > 0);
         let mut tree = kdtree::KdTree::new(D);
         for (i, pt) in verts.enumerate() {
@@ -40,7 +40,7 @@ mod tests {
 
     use crate::{
         Vert2d, Vert3d,
-        mesh::{BoundaryMesh2d, BoundaryMesh3d, Mesh},
+        mesh::{BoundaryMesh2d, BoundaryMesh3d, Edge, Triangle},
         spatialindex::ObjectIndex,
     };
 
@@ -52,12 +52,17 @@ mod tests {
             Vert2d::new(1., 1.),
             Vert2d::new(0., 1.),
         ];
-        let elems = vec![[0, 1], [1, 2], [2, 3], [3, 0]];
+        let elems = vec![
+            Edge::new(0, 1),
+            Edge::new(1, 2),
+            Edge::new(2, 3),
+            Edge::new(3, 0),
+        ];
         let etags = vec![1, 2, 3, 4];
         let faces = Vec::new();
         let ftags = Vec::new();
 
-        let mesh = BoundaryMesh2d::new(&coords, &elems, &etags, &faces, &ftags);
+        let mesh = BoundaryMesh2d::from_vecs(coords, elems, etags, faces, ftags);
 
         let tree = ObjectIndex::new(&mesh);
 
@@ -91,15 +96,15 @@ mod tests {
 
         let mut tris = Vec::with_capacity(2 * n);
         for i in 0..n - 1 {
-            tris.push([2 * i, 2 * i + 1, 2 * i + 2]);
-            tris.push([2 * i + 2, 2 * i + 1, 2 * i + 3]);
+            tris.push(Triangle::new(2 * i, 2 * i + 1, 2 * i + 2));
+            tris.push(Triangle::new(2 * i + 2, 2 * i + 1, 2 * i + 3));
         }
-        tris.push([2 * n - 2, 2 * n - 1, 0]);
-        tris.push([0, 2 * n - 1, 1]);
+        tris.push(Triangle::new(2 * n - 2, 2 * n - 1, 0));
+        tris.push(Triangle::new(0, 2 * n - 1, 1));
 
         let tri_tags = vec![1; 2 * n];
 
-        let msh = BoundaryMesh3d::new(&coords, &tris, &tri_tags, &Vec::new(), &Vec::new());
+        let msh = BoundaryMesh3d::from_vecs(coords, tris, tri_tags, Vec::new(), Vec::new());
         // msh.write_vtk("dbg.vtu", None, None);
 
         let tree = ObjectIndex::new(&msh);

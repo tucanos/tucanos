@@ -2,8 +2,9 @@
 #![allow(clippy::borrow_as_ptr)]
 #![allow(clippy::ref_as_ptr)]
 use crate::{
+    Idx,
     geometry::{LinearGeometry2d, LinearGeometry3d},
-    mesh::{Mesh22, Mesh33},
+    mesh::{PyMesh2d, PyMesh3d},
     to_numpy_1d, to_numpy_2d,
 };
 use numpy::{PyArray1, PyArray2, PyReadonlyArray2, PyUntypedArrayMethods};
@@ -13,10 +14,10 @@ use pyo3::{
     pyclass, pymethods,
     types::PyType,
 };
+use tmesh::mesh::{Mesh, Tetrahedron, Triangle};
 use tucanos::{
-    Idx,
-    mesh::{Tetrahedron, Triangle},
-    metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric},
+    mesh::MeshTopology,
+    metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric, MetricField},
     remesher::{
         CollapseParams, Remesher, RemesherParams, RemeshingStep, SmoothParams, SmoothingMethod,
         SplitParams, SwapParams,
@@ -27,7 +28,7 @@ use tucanos::{
 #[derive(Clone)]
 pub struct PyCollapseParams {
     l: f64,
-    max_iter: Idx,
+    max_iter: u32,
     max_l_rel: f64,
     max_l_abs: f64,
     min_q_rel: f64,
@@ -65,7 +66,7 @@ impl PyCollapseParams {
     #[new]
     const fn new(
         l: f64,
-        max_iter: Idx,
+        max_iter: u32,
         max_l_rel: f64,
         max_l_abs: f64,
         min_q_rel: f64,
@@ -93,7 +94,7 @@ impl PyCollapseParams {
 #[derive(Clone)]
 pub struct PySplitParams {
     l: f64,
-    max_iter: Idx,
+    max_iter: u32,
     min_l_rel: f64,
     min_l_abs: f64,
     min_q_rel: f64,
@@ -136,7 +137,7 @@ impl PySplitParams {
     #[allow(clippy::too_many_arguments)]
     const fn new(
         l: f64,
-        max_iter: Idx,
+        max_iter: u32,
         min_l_rel: f64,
         min_l_abs: f64,
         min_q_rel: f64,
@@ -165,7 +166,7 @@ impl PySplitParams {
 #[derive(Clone)]
 pub struct PySwapParams {
     q: f64,
-    max_iter: Idx,
+    max_iter: u32,
     max_l_rel: f64,
     max_l_abs: f64,
     min_l_rel: f64,
@@ -203,7 +204,7 @@ impl PySwapParams {
     #[new]
     const fn new(
         q: f64,
-        max_iter: Idx,
+        max_iter: u32,
         max_l_rel: f64,
         max_l_abs: f64,
         min_l_rel: f64,
@@ -239,7 +240,7 @@ pub enum PySmoothingMethod {
 #[pyclass(get_all, set_all)]
 #[derive(Clone)]
 pub struct PySmoothParams {
-    n_iter: Idx,
+    n_iter: u32,
     method: PySmoothingMethod,
     relax: Vec<f64>,
     keep_local_minima: bool,
@@ -285,7 +286,7 @@ impl PySmoothParams {
 impl PySmoothParams {
     #[new]
     const fn new(
-        n_iter: Idx,
+        n_iter: u32,
         method: PySmoothingMethod,
         relax: Vec<f64>,
         keep_local_minima: bool,
@@ -364,7 +365,7 @@ impl PyRemesherParams {
 
     #[classmethod]
     #[pyo3(signature = (max_angle=25.0, n_steps=4))]
-    fn default(_cls: &Bound<'_, PyType>, max_angle: f64, n_steps: Idx) -> Self {
+    fn default(_cls: &Bound<'_, PyType>, max_angle: f64, n_steps: usize) -> Self {
         Self::from(&RemesherParams::new(max_angle, n_steps))
     }
 }
@@ -377,7 +378,7 @@ macro_rules! create_remesher {
                 " as metric and a piecewise linear representation of the geometry")]
         #[pyclass]
         pub struct $name {
-            remesher: Remesher<$dim, $etype, $metric>,
+            remesher: Remesher<$dim, $etype::<Idx>, $metric>,
         }
 
         #[doc = concat!("Create a remesher from a ", stringify!($mesh), " and a ",
@@ -389,10 +390,10 @@ macro_rules! create_remesher {
         impl $name {
             #[new]
             pub fn new(mesh: &$mesh, geometry: &$geom, m: PyReadonlyArray2<f64>) -> PyResult<Self> {
-                if m.shape()[0] != mesh.0.n_verts() as usize {
+                if m.shape()[0] != mesh.0.n_verts() {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
-                if m.shape()[1] != $metric::N as usize {
+                if m.shape()[1] != $metric::N {
                     return Err(PyValueError::new_err("Invalid dimension 1"));
                 }
 
@@ -402,7 +403,8 @@ macro_rules! create_remesher {
                     .map(|x| $metric::from_slice(x))
                     .collect();
 
-                let remesher = Remesher::new(&mesh.0, &m, &geometry.geom);
+                let topo = MeshTopology::new(&mesh.0);
+                let remesher = Remesher::new(&mesh.0, &topo, &m, &geometry.geom);
                 if let Err(res) = remesher {
                     return Err(PyRuntimeError::new_err(res.to_string()));
                 }
@@ -420,9 +422,9 @@ macro_rules! create_remesher {
                 py: Python<'py>,
                 mesh: &$mesh,
                 m: PyReadonlyArray2<f64>,
-                p: Option<Idx>,
+                p: Option<usize>,
             ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                if m.shape()[0] != mesh.0.n_verts() as usize {
+                if m.shape()[0] != mesh.0.n_verts() {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
                 if m.shape()[1] != <$metric as Metric<$dim>>::N {
@@ -437,7 +439,7 @@ macro_rules! create_remesher {
                     .collect();
 
                 let exponent = if let Some(p) = p {
-                    2.0 / (2.0 * f64::from(p) + f64::from($dim))
+                    2.0 / (2.0 * p as f64 + f64::from($dim))
                 } else {
                     0.0
                 };
@@ -466,13 +468,13 @@ macro_rules! create_remesher {
                 m: PyReadonlyArray2<f64>,
                 h_min: f64,
                 h_max: f64,
-                n_elems: Idx,
+                n_elems: usize,
                 fixed_m: Option<PyReadonlyArray2<f64>>,
                 implied_m: Option<PyReadonlyArray2<f64>>,
                 step: Option<f64>,
-                max_iter: Option<Idx>,
+                max_iter: Option<u32>,
             ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                if m.shape()[0] != mesh.0.n_verts() as usize {
+                if m.shape()[0] != mesh.0.n_verts() {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
                 if m.shape()[1] != <$metric as Metric<$dim>>::N {
@@ -480,10 +482,11 @@ macro_rules! create_remesher {
                 }
 
                 let m = m.as_slice().unwrap();
-                let mut m: Vec<_> = m
+                let m: Vec<_> = m
                     .chunks($metric::N)
                     .map(|x| $metric::from_slice(x))
                     .collect();
+                let mut m = MetricField::new(&mesh.0, m);
 
                 let res = if let Some(fixed_m) = fixed_m {
                     let fixed_m = fixed_m.as_slice().unwrap();
@@ -491,14 +494,16 @@ macro_rules! create_remesher {
                         .chunks($metric::N)
                         .map(|x| $metric::from_slice(x))
                         .collect();
+                    let fixed_m = MetricField::new(&mesh.0, fixed_m);
                     if let Some(implied_m) = implied_m {
                         let implied_m = implied_m.as_slice().unwrap();
                         let implied_m: Vec<_> = implied_m
                             .chunks($metric::N)
                             .map(|x| $metric::from_slice(x))
                             .collect();
-                        mesh.0.scale_metric(
-                            &mut m,
+                        let implied_m = MetricField::new(&mesh.0, implied_m);
+
+                        m.scale(
                             h_min,
                             h_max,
                             n_elems,
@@ -508,8 +513,7 @@ macro_rules! create_remesher {
                             max_iter.unwrap_or(10),
                         )
                     } else {
-                        mesh.0.scale_metric(
-                            &mut m,
+                        m.scale(
                             h_min,
                             h_max,
                             n_elems,
@@ -525,8 +529,8 @@ macro_rules! create_remesher {
                         .chunks($metric::N)
                         .map(|x| $metric::from_slice(x))
                         .collect();
-                    mesh.0.scale_metric(
-                        &mut m,
+                    let implied_m = MetricField::new(&mesh.0, implied_m);
+                    m.scale(
                         h_min,
                         h_max,
                         n_elems,
@@ -536,8 +540,7 @@ macro_rules! create_remesher {
                         max_iter.unwrap_or(10),
                     )
                 } else {
-                    mesh.0.scale_metric(
-                        &mut m,
+                    m.scale(
                         h_min,
                         h_max,
                         n_elems,
@@ -552,7 +555,7 @@ macro_rules! create_remesher {
                     return Err(PyRuntimeError::new_err(res.to_string()));
                 }
 
-                let m: Vec<_> = m.iter().cloned().flatten().collect();
+                let m: Vec<_> = m.metric().iter().cloned().flatten().collect();
                 return Ok(to_numpy_2d(py, m, <$metric as Metric<$dim>>::N));
             }
 
@@ -563,8 +566,9 @@ macro_rules! create_remesher {
                 py: Python<'py>,
                 mesh: &$mesh,
                 m: PyReadonlyArray2<f64>,
+                n_iter: u32
             ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                if m.shape()[0] != mesh.0.n_verts() as usize {
+                if m.shape()[0] != mesh.0.n_verts() {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
                 if m.shape()[1] != <$metric as Metric<$dim>>::N {
@@ -576,12 +580,15 @@ macro_rules! create_remesher {
                     .chunks($metric::N)
                     .map(|x| $metric::from_slice(x))
                     .collect();
-                let m = mesh.0.smooth_metric(&m);
-                if let Err(m) = m {
-                    return Err(PyRuntimeError::new_err(m.to_string()));
+
+                let v2v = mesh.0.vertex_to_vertices();
+
+                let mut m = MetricField::new(&mesh.0, m);
+                for _ in 0..n_iter{
+                    m.smooth(&v2v);
                 }
 
-                let m: Vec<_> = m.unwrap().iter().cloned().flatten().collect();
+                let m: Vec<_> = m.metric().iter().cloned().flatten().collect();
 
                 return Ok(to_numpy_2d(py, m, <$metric as Metric<$dim>>::N));
             }
@@ -596,9 +603,9 @@ macro_rules! create_remesher {
                 m: PyReadonlyArray2<f64>,
                 beta: f64,
                 t: f64,
-                n_iter: Idx,
+                n_iter: u32,
             ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                if m.shape()[0] != mesh.0.n_verts() as usize {
+                if m.shape()[0] != mesh.0.n_verts() {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
                 if m.shape()[1] != <$metric as Metric<$dim>>::N {
@@ -606,21 +613,20 @@ macro_rules! create_remesher {
                 }
 
                 let m = m.as_slice().unwrap();
-                let mut m: Vec<_> = m
+                let  m: Vec<_> = m
                     .chunks($metric::N)
                     .map(|x| $metric::from_slice(x))
                     .collect();
-                let res = mesh.0.apply_metric_gradation(&mut m, beta, t, n_iter);
-                match res {
-                    Ok(_) => {
-                        let m: Vec<_> = m.iter().cloned().flatten().collect();
+                let mut m = MetricField::new(&mesh.0, m);
 
-                        return Ok(to_numpy_2d(py, m, <$metric as Metric<$dim>>::N));
-                    }
-                    Err(res) => {
-                        return Err(PyRuntimeError::new_err(res.to_string()));
-                    }
-                }
+                let v2v = mesh.0.vertex_to_vertices();
+
+                m.apply_metric_gradation(&v2v, beta, t, n_iter).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+
+                let m: Vec<_> = m.metric().iter().cloned().flatten().collect();
+
+                return Ok(to_numpy_2d(py, m, <$metric as Metric<$dim>>::N));
+
             }
 
             /// Convert a metic field defined at the element centers (P0) to a field defined at the
@@ -632,7 +638,7 @@ macro_rules! create_remesher {
                 mesh: &$mesh,
                 m: PyReadonlyArray2<f64>,
             ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                if m.shape()[0] != mesh.0.n_elems() as usize {
+                if m.shape()[0] != mesh.0.n_elems() {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
                 if m.shape()[1] != <$metric as Metric<$dim>>::N {
@@ -644,16 +650,10 @@ macro_rules! create_remesher {
                     .chunks($metric::N)
                     .map(|x| $metric::from_slice(x))
                     .collect();
-                let res = mesh.0.elem_data_to_vertex_data_metric::<$metric>(&m);
-                match res {
-                    Ok(res) => {
-                        let res: Vec<_> = res.iter().cloned().flatten().collect();
-                        return Ok(to_numpy_2d(py, res, <$metric as Metric<$dim>>::N));
-                    }
-                    Err(res) => {
-                        return Err(PyRuntimeError::new_err(res.to_string()));
-                    }
-                }
+                let m = MetricField::from_elem_metric(&mesh.0, &m);
+
+                let res: Vec<_> = m.metric().iter().cloned().flatten().collect();
+                return Ok(to_numpy_2d(py, res, <$metric as Metric<$dim>>::N));
             }
 
             /// Convert a metric field defined at the vertices (P1) to a field defined at the
@@ -665,7 +665,7 @@ macro_rules! create_remesher {
                 mesh: &$mesh,
                 m: PyReadonlyArray2<f64>,
             ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                if m.shape()[0] != mesh.0.n_verts() as usize {
+                if m.shape()[0] != mesh.0.n_verts() {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
                 if m.shape()[1] != <$metric as Metric<$dim>>::N {
@@ -677,16 +677,10 @@ macro_rules! create_remesher {
                     .chunks($metric::N)
                     .map(|x| $metric::from_slice(x))
                     .collect();
-                let res = mesh.0.vertex_data_to_elem_data_metric::<$metric>(&m);
-                match res {
-                    Ok(res) => {
-                        let res: Vec<_> = res.iter().cloned().flatten().collect();
-                        return Ok(to_numpy_2d(py, res, <$metric as Metric<$dim>>::N));
-                    }
-                    Err(res) => {
-                        return Err(PyRuntimeError::new_err(res.to_string()));
-                    }
-                }
+                let m = MetricField::new(&mesh.0, m);
+                let m = m.to_elem_data();
+                let res: Vec<_> = m.iter().cloned().flatten().collect();
+                return Ok(to_numpy_2d(py, res, <$metric as Metric<$dim>>::N));
             }
 
             /// Limit a metric to be between 1/step and step times another metric
@@ -700,14 +694,14 @@ macro_rules! create_remesher {
                 m_other: PyReadonlyArray2<f64>,
                 step: f64,
             ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                if m.shape()[0] != mesh.0.n_verts() as usize {
+                if m.shape()[0] != mesh.0.n_verts() {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
                 if m.shape()[1] != <$metric as Metric<$dim>>::N {
                     return Err(PyValueError::new_err("Invalid dimension 1"));
                 }
 
-                if m_other.shape()[0] != mesh.0.n_verts() as usize {
+                if m_other.shape()[0] != mesh.0.n_verts() {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
                 if m_other.shape()[1] != <$metric as Metric<$dim>>::N {
@@ -721,7 +715,7 @@ macro_rules! create_remesher {
                 let m_other = m_other.chunks($metric::N).map(|x| $metric::from_slice(x));
 
                 let mut res =
-                    Vec::with_capacity(mesh.0.n_verts() as usize * <$metric as Metric<$dim>>::N);
+                    Vec::with_capacity(mesh.0.n_verts() * <$metric as Metric<$dim>>::N);
 
                 for (mut m_i, m_other_i) in m.zip(m_other) {
                     m_i.control_step(&m_other_i, step);
@@ -743,7 +737,8 @@ macro_rules! create_remesher {
                     .chunks($metric::N)
                     .map(|x| $metric::from_slice(x))
                     .collect::<Vec<_>>();
-                mesh.0.metric_info(&m)
+                let m = MetricField::new(&mesh.0, m);
+                m.info()
             }
 
             /// Check that the mesh is valid
@@ -771,19 +766,19 @@ macro_rules! create_remesher {
 
             /// Get the number of vertices
             #[must_use]
-            pub fn n_verts(&self) -> Idx {
+            pub fn n_verts(&self) -> usize {
                 self.remesher.n_verts()
             }
 
             /// Get the number of elements
             #[must_use]
-            pub fn n_elems(&self) -> Idx {
+            pub fn n_elems(&self) -> usize {
                 self.remesher.n_elems()
             }
 
             /// Get the number of edges
             #[must_use]
-            pub fn n_edges(&self) -> Idx {
+            pub fn n_edges(&self) -> usize {
                 self.remesher.n_edges()
             }
 
@@ -829,7 +824,7 @@ create_remesher!(
     2,
     Triangle,
     IsoMetric2d,
-    Mesh22,
+    PyMesh2d,
     LinearGeometry2d
 );
 create_remesher!(
@@ -837,7 +832,7 @@ create_remesher!(
     2,
     Triangle,
     AnisoMetric2d,
-    Mesh22,
+    PyMesh2d,
     LinearGeometry2d
 );
 create_remesher!(
@@ -845,7 +840,7 @@ create_remesher!(
     3,
     Tetrahedron,
     IsoMetric3d,
-    Mesh33,
+    PyMesh3d,
     LinearGeometry3d
 );
 create_remesher!(
@@ -853,6 +848,6 @@ create_remesher!(
     3,
     Tetrahedron,
     AnisoMetric3d,
-    Mesh33,
+    PyMesh3d,
     LinearGeometry3d
 );

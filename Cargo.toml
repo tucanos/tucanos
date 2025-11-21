@@ -1,5 +1,5 @@
 [workspace]
-members = ["tucanos", "pytucanos", "tmesh", "pytmesh", "tucanos-ffi", "tucanos-ffi-test"]
+members = ["tucanos", "pytucanos", "tmesh", "tucanos-ffi", "tucanos-ffi-test"]
 default-members = ["tucanos", "tmesh"]
 resolver = "3"
 

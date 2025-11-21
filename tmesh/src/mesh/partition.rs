@@ -1,22 +1,20 @@
 //! Mesh partitioners
-use super::{Cell, Face, Mesh, Simplex, cell_center, hilbert::hilbert_indices};
+use super::{GSimplex, Mesh, Simplex, hilbert::hilbert_indices};
 use crate::{Error, Result, graph::CSRGraph};
 use coupe::{Partition, nalgebra::SVector};
 #[cfg(feature = "metis")]
 use std::marker::PhantomData;
 
 /// Mesh partitioners
-pub trait Partitioner: Sized {
+pub trait Partitioner: Sized + Send + Sync {
     /// Create a new mesh partitionner to partition `msh` into `n_parts`
     /// Element weights can optionally be provided
-    fn new<const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>(
+    fn new<const D: usize, C: Simplex, M: Mesh<D, C>>(
         msh: &M,
         n_parts: usize,
         weights: Option<Vec<f64>>,
-    ) -> Result<Self>
-    where
-        Cell<C>: Simplex<C>,
-        Face<F>: Simplex<F>;
+    ) -> Result<Self>;
+
     /// Compute the element partition
     fn compute(&self) -> Result<Vec<usize>>;
     /// Get the number of partitions
@@ -65,19 +63,6 @@ pub trait Partitioner: Sized {
     }
 }
 
-#[allow(dead_code)]
-#[derive(Clone, Copy, Debug)]
-pub enum PartitionType {
-    Hilbert(usize),
-    RCM(usize),
-    KMeans(usize),
-    #[cfg(feature = "metis")]
-    MetisRecursive(usize),
-    #[cfg(feature = "metis")]
-    MetisKWay(usize),
-    None,
-}
-
 /// Simple geometric partitionner based on the Hilbert indices of the element centers
 pub struct HilbertPartitioner {
     n_parts: usize,
@@ -87,19 +72,15 @@ pub struct HilbertPartitioner {
 }
 
 impl Partitioner for HilbertPartitioner {
-    fn new<const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>(
+    fn new<const D: usize, C: Simplex, M: Mesh<D, C>>(
         msh: &M,
         n_parts: usize,
         weights: Option<Vec<f64>>,
-    ) -> Result<Self>
-    where
-        Cell<C>: Simplex<C>,
-        Face<F>: Simplex<F>,
-    {
+    ) -> Result<Self> {
         let faces = msh.all_faces();
         let graph = msh.element_pairs(&faces);
 
-        let centers = msh.gelems().map(|ge| cell_center(&ge));
+        let centers = msh.gelems().map(|ge| ge.center());
         let ids = hilbert_indices(centers);
         let weights = weights.unwrap_or_else(|| vec![1.0; msh.n_elems()]);
         Ok(Self {
@@ -145,15 +126,11 @@ pub struct RCMPartitioner {
 }
 
 impl Partitioner for RCMPartitioner {
-    fn new<const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>(
+    fn new<const D: usize, C: Simplex, M: Mesh<D, C>>(
         msh: &M,
         n_parts: usize,
         weights: Option<Vec<f64>>,
-    ) -> Result<Self>
-    where
-        Cell<C>: Simplex<C>,
-        Face<F>: Simplex<F>,
-    {
+    ) -> Result<Self> {
         let faces = msh.all_faces();
         let graph = msh.element_pairs(&faces);
 
@@ -199,15 +176,11 @@ pub struct KMeansPartitioner2d {
     weights: Vec<f64>,
 }
 impl Partitioner for KMeansPartitioner2d {
-    fn new<const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>(
+    fn new<const D: usize, C: Simplex, M: Mesh<D, C>>(
         msh: &M,
         n_parts: usize,
         weights: Option<Vec<f64>>,
-    ) -> Result<Self>
-    where
-        Cell<C>: Simplex<C>,
-        Face<F>: Simplex<F>,
-    {
+    ) -> Result<Self> {
         match D {
             2 => {
                 let faces = msh.all_faces();
@@ -215,7 +188,7 @@ impl Partitioner for KMeansPartitioner2d {
 
                 let centers = msh
                     .gelems()
-                    .map(|ge| SVector::from_row_slice(cell_center(&ge).as_slice()))
+                    .map(|ge| SVector::from_row_slice(ge.center().as_slice()))
                     .collect();
                 let weights = weights.unwrap_or_else(|| vec![1.0; msh.n_elems()]);
                 Ok(Self {
@@ -264,15 +237,11 @@ pub struct KMeansPartitioner3d {
 }
 
 impl Partitioner for KMeansPartitioner3d {
-    fn new<const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>(
+    fn new<const D: usize, C: Simplex, M: Mesh<D, C>>(
         msh: &M,
         n_parts: usize,
         weights: Option<Vec<f64>>,
-    ) -> Result<Self>
-    where
-        Cell<C>: Simplex<C>,
-        Face<F>: Simplex<F>,
-    {
+    ) -> Result<Self> {
         match D {
             3 => {
                 let faces = msh.all_faces();
@@ -280,7 +249,7 @@ impl Partitioner for KMeansPartitioner3d {
 
                 let centers = msh
                     .gelems()
-                    .map(|ge| SVector::from_row_slice(cell_center(&ge).as_slice()))
+                    .map(|ge| SVector::from_row_slice(ge.center().as_slice()))
                     .collect();
                 let weights = weights.unwrap_or_else(|| vec![1.0; msh.n_elems()]);
                 Ok(Self {
@@ -330,7 +299,7 @@ pub enum MetisMethod {
 
 #[cfg(feature = "metis")]
 /// Metis partitioning method
-pub trait MetisPartMethod {
+pub trait MetisPartMethod: Send + Sync {
     /// Metis partitioning method
     fn method() -> MetisMethod;
 }
@@ -369,15 +338,11 @@ pub struct MetisPartitioner<T: MetisPartMethod> {
 
 #[cfg(feature = "metis")]
 impl<T: MetisPartMethod> Partitioner for MetisPartitioner<T> {
-    fn new<const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>(
+    fn new<const D: usize, C: Simplex, M: Mesh<D, C>>(
         msh: &M,
         n_parts: usize,
         weights: Option<Vec<f64>>,
-    ) -> Result<Self>
-    where
-        Cell<C>: Simplex<C>,
-        Face<F>: Simplex<F>,
-    {
+    ) -> Result<Self> {
         let faces = msh.all_faces();
         let graph = msh.element_pairs(&faces);
 

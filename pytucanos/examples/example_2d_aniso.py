@@ -1,8 +1,15 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from pytucanos.mesh import get_square, Mesh22, plot_mesh
-from pytucanos.geometry import LinearGeometry2d
-from pytucanos.remesh import Remesher2dAniso, PyRemesherParams
+from pytucanos import (
+    Mesh2d,
+    LinearGeometry2d,
+    Remesher2dAniso,
+    RemesherParams,
+)
+from pytucanos.mesh import (
+    get_square,
+    plot_mesh,
+)
 
 
 def get_m(msh):
@@ -21,23 +28,21 @@ def get_m(msh):
 
 if __name__ == "__main__":
     coords, elems, etags, faces, ftags = get_square()
-    msh = Mesh22(coords, elems, etags, faces, ftags)
+    msh = Mesh2d(coords, elems, etags, faces, ftags)
 
     # add the missing boundaries, & orient them outwards
-    msh.add_boundary_faces()
+    msh.fix()
 
     # Hilbert renumbering
     msh.reorder_hilbert()
 
-    msh.compute_topology()
     geom = LinearGeometry2d(msh)
     for _ in range(5):
         m = get_m(msh)
         remesher = Remesher2dAniso(msh, geom, m)
-        remesher.remesh(geom, params=PyRemesherParams.default())
+        remesher.remesh(geom, params=RemesherParams.default())
 
         msh = remesher.to_mesh()
-        msh.compute_topology()
     fig, ax = plt.subplots()
     plot_mesh(ax, msh)
     ax.set_title("Adapted")

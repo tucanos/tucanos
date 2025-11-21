@@ -1,21 +1,23 @@
 import numpy as np
 import unittest
-from .mesh import (
-    Mesh21,
-    Mesh22,
-    PartitionerType,
-    get_square,
-)
-from .geometry import LinearGeometry2d
-from .remesh import (
-    update_params,
+from . import (
+    BoundaryMesh2d,
+    Mesh2d,
+    LinearGeometry2d,
     Remesher2dIso,
     Remesher2dAniso,
-    PyRemesherParams,
-    PyRemeshingStep,
+    RemesherParams,
+    RemeshingStep,
     ParallelRemesher2dIso,
     ParallelRemesher2dAniso,
-    PyParallelRemesherParams,
+    ParallelRemesherParams,
+    Idx,
+)
+from .mesh import (
+    get_square,
+)
+from .remesh import (
+    update_params,
 )
 
 
@@ -28,14 +30,13 @@ class TestRemesh(unittest.TestCase):
 
     def test_2d_iso(self):
         coords, elems, etags, faces, ftags = get_square()
-        msh = Mesh22(coords, elems, etags, faces, ftags).split().split()
-        msh.compute_topology()
+        msh = Mesh2d(coords, elems, etags, faces, ftags).split().split()
         geom = LinearGeometry2d(msh)
 
         h = 0.1 * np.ones(msh.n_verts()).reshape((-1, 1))
 
         remesher = Remesher2dIso(msh, geom, h)
-        remesher.remesh(geom, PyRemesherParams.default())
+        remesher.remesh(geom, RemesherParams.default())
 
         msh = remesher.to_mesh()
 
@@ -52,15 +53,14 @@ class TestRemesh(unittest.TestCase):
 
     def test_2d_iso_parallel(self):
         coords, elems, etags, faces, ftags = get_square(two_tags=False)
-        msh = Mesh22(coords, elems, etags, faces, ftags).split().split()
-        msh.compute_topology()
+        msh = Mesh2d(coords, elems, etags, faces, ftags).split().split()
         geom = LinearGeometry2d(msh)
 
         h = 0.1 * np.ones(msh.n_verts()).reshape((-1, 1))
 
-        remesher = ParallelRemesher2dIso(msh, PartitionerType.Hilbert, 2)
-        params = PyRemesherParams.default()
-        parallel_params = PyParallelRemesherParams.default()
+        remesher = ParallelRemesher2dIso(msh, 2)
+        params = RemesherParams.default()
+        parallel_params = ParallelRemesherParams.default()
         parallel_params.max_levels = 2
         parallel_params.min_verts = 0
         (msh, _, _) = remesher.remesh(geom, h, params, parallel_params)
@@ -78,7 +78,7 @@ class TestRemesh(unittest.TestCase):
 
     def test_2d_iso_circle(self):
         coords, elems, etags, faces, ftags = get_square()
-        msh = Mesh22(coords, elems, etags, faces, ftags)
+        msh = Mesh2d(coords, elems, etags, faces, ftags)
 
         n = 3
         theta = 0.25 * np.pi + np.linspace(0, 2 * np.pi, 4 * n + 1)
@@ -87,7 +87,7 @@ class TestRemesh(unittest.TestCase):
         y = 0.5 + r * np.sin(theta)
         coords = np.stack([x, y], axis=-1)
 
-        idx = np.arange(4 * n, dtype=np.uint64)
+        idx = np.arange(4 * n, dtype=Idx)
         elems = np.stack(
             [idx, idx + 1],
             axis=-1,
@@ -106,7 +106,7 @@ class TestRemesh(unittest.TestCase):
                     [
                         [2 * n, 0],
                     ],
-                    dtype=np.uint64,
+                    dtype=Idx,
                 ),
             ]
         )
@@ -118,17 +118,16 @@ class TestRemesh(unittest.TestCase):
             ),
         )
 
-        faces = np.zeros((0, 1), dtype=np.uint64)
+        faces = np.zeros((0, 1), dtype=Idx)
         ftags = np.zeros(0, dtype=np.int16)
-        msh.compute_topology()
-        geom = LinearGeometry2d(msh, Mesh21(coords, elems, etags, faces, ftags))
+        geom = LinearGeometry2d(msh, BoundaryMesh2d(coords, elems, etags, faces, ftags))
 
         h = 0.1 * np.ones(msh.n_verts()).reshape((-1, 1))
 
-        steps = PyRemesherParams.default().steps
+        steps = RemesherParams.default().steps
         steps = 10 * steps[:5] + steps[-2:]
-        params = PyRemesherParams(steps, False)
-        params = update_params(params, PyRemeshingStep.Split, "min_q_rel", 0.5)
+        params = RemesherParams(steps, False)
+        params = update_params(params, RemeshingStep.Split, "min_q_rel", 0.5)
 
         remesher = Remesher2dIso(msh, geom, h)
         remesher.remesh(geom, params)
@@ -149,8 +148,7 @@ class TestRemesh(unittest.TestCase):
 
     def test_2d_aniso(self):
         coords, elems, etags, faces, ftags = get_square()
-        msh = Mesh22(coords, elems, etags, faces, ftags).split().split()
-        msh.compute_topology()
+        msh = Mesh2d(coords, elems, etags, faces, ftags).split().split()
 
         for _ in range(4):
             geom = LinearGeometry2d(msh)
@@ -161,14 +159,13 @@ class TestRemesh(unittest.TestCase):
             m[:, 1] = 1.0 / hy**2
 
             remesher = Remesher2dAniso(msh, geom, m)
-            # steps = PyRemesherParams.default().steps
+            # steps = RemesherParams.default().steps
             # steps = 4 * steps[:5] + steps[-2:]
-            # params = PyRemesherParams(steps, False)
-            # # params = update_params(params, PyRemeshingStep.Split, "min_l_abs", 0.1)
-            # params = update_params(params, PyRemeshingStep.Split, "min_q_rel_bdy", 0.5)
-            remesher.remesh(geom, PyRemesherParams.default())
+            # params = RemesherParams(steps, False)
+            # # params = update_params(params, RemeshingStep.Split, "min_l_abs", 0.1)
+            # params = update_params(params, RemeshingStep.Split, "min_q_rel_bdy", 0.5)
+            remesher.remesh(geom, RemesherParams.default())
             msh = remesher.to_mesh()
-            msh.compute_topology()
 
         q = remesher.qualities()
         self.assertGreater(q.min(), 0.15)
@@ -192,8 +189,7 @@ class TestRemesh(unittest.TestCase):
 
     def test_2d_aniso_parallel(self):
         coords, elems, etags, faces, ftags = get_square(two_tags=False)
-        msh = Mesh22(coords, elems, etags, faces, ftags).split().split()
-        msh.compute_topology()
+        msh = Mesh2d(coords, elems, etags, faces, ftags).split().split()
 
         geom = LinearGeometry2d(msh)
         hx = 0.3
@@ -203,13 +199,12 @@ class TestRemesh(unittest.TestCase):
             m[:, 0] = 1.0 / hx**2
             m[:, 1] = 1.0 / hy**2
 
-            remesher = ParallelRemesher2dAniso(msh, PartitionerType.Hilbert, 2)
+            remesher = ParallelRemesher2dAniso(msh, 2)
             params = update_params(
-                PyRemesherParams.default(), PyRemeshingStep.Split, "min_q_abs", 0.1
+                RemesherParams.default(), RemeshingStep.Split, "min_q_abs", 0.1
             )
-            parallel_params = PyParallelRemesherParams.default()
+            parallel_params = ParallelRemesherParams.default()
             (msh, _, _) = remesher.remesh(geom, m, params, parallel_params)
-            msh.compute_topology()
 
         self.assertTrue(np.allclose(msh.vol(), 1.0))
         etags = np.unique(msh.get_etags())

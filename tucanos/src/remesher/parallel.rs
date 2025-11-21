@@ -1,7 +1,7 @@
 use crate::{
-    Idx, Result, Tag,
+    Result, Tag,
     geometry::Geometry,
-    mesh::{Elem, HasTmeshImpl, SimplexMesh, SubSimplexMesh},
+    mesh::MeshTopology,
     metric::Metric,
     remesher::{Remesher, RemesherParams},
 };
@@ -9,20 +9,20 @@ use log::{debug, warn};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rustc_hash::FxHashSet;
 use serde::Serialize;
-use std::{sync::Mutex, time::Instant};
-use tmesh::mesh::partition::PartitionType;
+use std::{marker::PhantomData, sync::Mutex, time::Instant};
+use tmesh::mesh::{GenericMesh, Mesh, Simplex, SubMesh, partition::Partitioner};
 
 #[derive(Clone, Debug)]
 pub struct ParallelRemesherParams {
-    pub n_layers: Idx,
-    pub level: Idx,
-    pub max_levels: Idx,
-    pub min_verts: Idx,
+    pub n_layers: u32,
+    pub level: u32,
+    pub max_levels: u32,
+    pub min_verts: usize,
 }
 
 impl ParallelRemesherParams {
     #[must_use]
-    pub const fn new(n_layers: Idx, max_levels: Idx, min_verts: Idx) -> Self {
+    pub const fn new(n_layers: u32, max_levels: u32, min_verts: usize) -> Self {
         Self {
             n_layers,
             level: 0,
@@ -32,31 +32,26 @@ impl ParallelRemesherParams {
     }
 
     #[must_use]
-    pub const fn n_layers(&self) -> Idx {
+    pub const fn n_layers(&self) -> u32 {
         self.n_layers
     }
 
     #[must_use]
-    pub const fn level(&self) -> Idx {
+    pub const fn level(&self) -> u32 {
         self.level
     }
 
     #[must_use]
-    const fn next(&self, n_verts: Idx, partition_type: PartitionType) -> Option<Self> {
-        match partition_type {
-            PartitionType::None => None,
-            _ => {
-                if self.level + 1 < self.max_levels && n_verts > self.min_verts {
-                    Some(Self {
-                        n_layers: self.n_layers,
-                        level: self.level + 1,
-                        max_levels: self.max_levels,
-                        min_verts: self.min_verts,
-                    })
-                } else {
-                    None
-                }
-            }
+    const fn next(&self, n_verts: usize) -> Option<Self> {
+        if self.level + 1 < self.max_levels && n_verts > self.min_verts {
+            Some(Self {
+                n_layers: self.n_layers,
+                level: self.level + 1,
+                max_levels: self.max_levels,
+                min_verts: self.min_verts,
+            })
+        } else {
+            None
         }
     }
 }
@@ -69,8 +64,8 @@ impl Default for ParallelRemesherParams {
 
 #[derive(Default, Clone, Serialize)]
 pub struct RemeshingInfo {
-    pub n_verts_init: Idx,
-    pub n_verts_final: Idx,
+    pub n_verts_init: usize,
+    pub n_verts_final: usize,
     pub time: f64,
 }
 
@@ -125,46 +120,45 @@ impl ParallelRemeshingInfo {
 }
 
 /// Domain decomposition
-pub struct ParallelRemesher<const D: usize, E: Elem> {
-    mesh: SimplexMesh<D, E>,
+pub struct ParallelRemesher<const D: usize, C: Simplex, M: Mesh<D, C>, P: Partitioner> {
+    mesh: M,
+    topo: MeshTopology,
+    n_parts: usize,
     partition_tags: Vec<Tag>,
     partition_bdy_tags: Vec<Tag>,
-    partition_type: PartitionType,
     interface_bdy_tag: Tag,
     partition_time: f64,
     partition_quality: f64,
     partition_imbalance: f64,
     debug: bool,
+    _c: PhantomData<C>,
+    _p: PhantomData<P>,
 }
 
-impl<const D: usize, E: Elem> ParallelRemesher<D, E>
-where
-    SimplexMesh<D, E>: HasTmeshImpl<D, E>,
-    SimplexMesh<D, E::Face>: HasTmeshImpl<D, E::Face>,
-{
+impl<const D: usize, C: Simplex, M: Mesh<D, C>, P: Partitioner> ParallelRemesher<D, C, M, P> {
     /// Create a new parallel remesher based on domain decomposition.
     /// If part is `PartitionType::Scotch(n)` or `PartitionType::Metis(n)` the mesh is partitionned into n subdomains using
     /// scotch / metis. If None, the element tag in `mesh` is used as the partition Id
     ///
     /// NB: the mesh element tags will be modified
-    pub fn new(mut mesh: SimplexMesh<D, E>, partition_type: PartitionType) -> Result<Self> {
+    pub fn new(mut mesh: M, topo: MeshTopology, n_parts: usize) -> Result<Self> {
         // Partition if needed
         let now = Instant::now();
-        let (partition_quality, partition_imbalance) = mesh.partition_simple(partition_type)?;
+        let (partition_quality, partition_imbalance) = mesh.partition::<P>(n_parts, None)?;
 
         let partition_time = now.elapsed().as_secs_f64();
 
         // Get the partition interfaces
-        let (bdy_tags, ifc_tags) = mesh.add_boundary_faces();
+        let (bdy_tags, ifc_tags) = mesh.fix().unwrap();
         assert!(bdy_tags.is_empty());
 
         let partition_tags = mesh.etags().collect::<FxHashSet<_>>();
         let partition_tags = partition_tags.iter().copied().collect::<Vec<_>>();
-        let partition_bdy_tags = ifc_tags.keys().copied().collect::<Vec<_>>();
+        let partition_bdy_tags = ifc_tags.values().copied().collect::<Vec<_>>();
         debug!("Partition tags: {partition_tags:?}");
 
         // Use negative tags for interfaces
-        mesh.mut_ftags().for_each(|t| {
+        mesh.ftags_mut().for_each(|t| {
             if partition_bdy_tags.contains(t) {
                 *t = -*t;
             }
@@ -172,14 +166,17 @@ where
 
         Ok(Self {
             mesh,
+            topo,
             partition_tags,
-            partition_type,
-            partition_bdy_tags: ifc_tags.keys().copied().collect::<Vec<_>>(),
+            n_parts,
+            partition_bdy_tags: ifc_tags.values().copied().collect::<Vec<_>>(),
             interface_bdy_tag: Tag::MIN,
             partition_time,
             partition_quality,
             partition_imbalance,
             debug: false,
+            _c: PhantomData,
+            _p: PhantomData,
         })
     }
 
@@ -188,46 +185,46 @@ where
     }
 
     #[must_use]
-    pub const fn partitionned_mesh(&self) -> &SimplexMesh<D, E> {
+    pub const fn partitionned_mesh(&self) -> &M {
         &self.mesh
     }
 
     #[must_use]
-    pub const fn n_verts(&self) -> Idx {
+    pub fn n_verts(&self) -> usize {
         self.mesh.n_verts()
     }
 
     /// Get a parallel iterator over the partitiona as SubSimplexMeshes
     #[must_use]
-    pub fn par_partitions(&self) -> impl IndexedParallelIterator<Item = SubSimplexMesh<D, E>> + '_ {
+    pub fn par_partitions(&self) -> impl IndexedParallelIterator<Item = SubMesh<D, C, M>> + '_ {
         self.partition_tags
             .par_iter()
-            .map(|&t| self.mesh.extract_tag(t))
+            .map(|&tag| SubMesh::new(&self.mesh, |t| t == tag))
     }
 
     /// Get an iterator over the partitiona as SubSimplexMeshes
-    pub fn seq_partitions(&self) -> impl Iterator<Item = SubSimplexMesh<D, E>> + '_ {
+    pub fn seq_partitions(&self) -> impl Iterator<Item = SubMesh<D, C, M>> + '_ {
         self.partition_tags
             .iter()
-            .map(|&t| self.mesh.extract_tag(t))
+            .map(|&tag| SubMesh::new(&self.mesh, |t| t == tag))
     }
 
     /// Get an element tag that is 2 for the cells that are neighbors of level `n_layers` of the partition interface
     /// (i.e. the faces with a <0 tag)
     #[must_use]
-    pub fn flag_interface(&self, mesh: &SimplexMesh<D, E>, n_layers: Idx) -> Vec<Tag> {
-        let mut new_etag = vec![1; mesh.n_elems() as usize];
+    pub fn flag_interface(&self, mesh: &impl Mesh<D, C>, n_layers: u32) -> Vec<Tag> {
+        let mut new_etag = vec![1; mesh.n_elems()];
 
-        let mut flag = vec![false; mesh.n_verts() as usize];
+        let mut flag = vec![false; mesh.n_verts()];
         mesh.faces()
             .zip(mesh.ftags())
             .filter(|(_, t)| self.is_partition_bdy(*t))
             .flat_map(|(f, _)| f)
-            .for_each(|i| flag[i as usize] = true);
+            .for_each(|i| flag[i] = true);
 
         for _ in 0..n_layers {
             mesh.elems().zip(new_etag.iter_mut()).for_each(|(e, t)| {
-                if e.iter().any(|&i_vert| flag[i_vert as usize]) {
+                if e.into_iter().any(|i_vert| flag[i_vert]) {
                     *t = 2;
                 }
             });
@@ -235,7 +232,7 @@ where
                 .zip(new_etag.iter())
                 .filter(|(_, t)| **t == 2)
                 .flat_map(|(e, _)| e)
-                .for_each(|i_vert| flag[i_vert as usize] = true);
+                .for_each(|i_vert| flag[i_vert] = true);
         }
 
         new_etag
@@ -249,27 +246,24 @@ where
         tag == self.interface_bdy_tag
     }
 
-    fn remesh_submesh<M: Metric<D>, G: Geometry<D>>(
+    fn remesh_submesh<T: Metric<D>, G: Geometry<D>>(
         &self,
-        m: &[M],
+        m: &[T],
         geom: &G,
         params: &RemesherParams,
-        submesh: SubSimplexMesh<D, E>,
-    ) -> (SimplexMesh<D, E>, Vec<M>) {
+        submesh: SubMesh<D, C, M>,
+    ) -> (GenericMesh<D, C>, Vec<T>) {
         let mut local_mesh = submesh.mesh;
 
         // to be consistent with the base topology
-        local_mesh.mut_etags().for_each(|t| *t = 1);
-        let mut topo = self.mesh.get_topology().unwrap().clone();
+        local_mesh.etags_mut().for_each(|t| *t = 1);
+        let mut topo = self.topo.topo().clone();
         topo.clear(|(_, t)| self.is_partition_bdy(t));
-        local_mesh.compute_topology_from(topo);
 
-        let local_m: Vec<_> = submesh
-            .parent_vert_ids
-            .iter()
-            .map(|&i| m[i as usize])
-            .collect();
-        let mut local_remesher = Remesher::new(&local_mesh, &local_m, geom).unwrap();
+        let local_topo = MeshTopology::new_from(&local_mesh, topo);
+
+        let local_m: Vec<_> = submesh.parent_vert_ids.iter().map(|&i| m[i]).collect();
+        let mut local_remesher = Remesher::new(&local_mesh, &local_topo, &local_m, geom).unwrap();
 
         local_remesher.remesh(params, geom).unwrap();
 
@@ -278,16 +272,16 @@ where
 
     /// Remesh using domain decomposition
     #[allow(clippy::too_many_lines)]
-    pub fn remesh<M: Metric<D>, G: Geometry<D>>(
+    pub fn remesh<T: Metric<D>, G: Geometry<D>>(
         &self,
-        m: &[M],
+        m: &[T],
         geom: &G,
         params: RemesherParams,
         dd_params: &ParallelRemesherParams,
-    ) -> Result<(SimplexMesh<D, E>, ParallelRemeshingInfo, Vec<M>)> {
-        let res = Mutex::new(SimplexMesh::empty());
+    ) -> Result<(GenericMesh<D, C>, ParallelRemeshingInfo, Vec<T>)> {
+        let res = Mutex::new(GenericMesh::empty());
         let res_m = Mutex::new(Vec::new());
-        let ifc = Mutex::new(SimplexMesh::empty());
+        let ifc = Mutex::new(GenericMesh::empty());
         let ifc_m = Mutex::new(Vec::new());
 
         let level = dd_params.level();
@@ -307,7 +301,7 @@ where
 
         if self.debug {
             let fname = format!("level_{level}_init.vtu");
-            self.mesh.vtu_writer().export(&fname)?;
+            self.mesh.write_vtk(&fname)?;
         }
 
         let now = Instant::now();
@@ -317,7 +311,7 @@ where
             .for_each(|(i_part, submesh)| {
                 if self.debug {
                     let fname = format!("level_{level}_part_{i_part}.vtu");
-                    submesh.mesh.vtu_writer().export(&fname).unwrap();
+                    submesh.mesh.write_vtk(&fname).unwrap();
                 }
 
                 // Remesh the partition
@@ -339,10 +333,10 @@ where
                 // Flag elements with n_layers of the interfaces with tag 2, other with tag 1
                 let new_etags = self.flag_interface(&local_mesh, dd_params.n_layers);
                 local_mesh
-                    .mut_etags()
+                    .etags_mut()
                     .zip(new_etags.iter())
                     .for_each(|(t0, t1)| *t0 = *t1);
-                let (bdy_tags, interface_tags) = local_mesh.add_boundary_faces();
+                let (bdy_tags, interface_tags) = local_mesh.fix().unwrap();
                 assert!(bdy_tags.is_empty());
 
                 // Flag the faces between elements tagged 1 and 2 as self.interface_bdy_tag
@@ -350,8 +344,8 @@ where
                     warn!("All the elements are in the interface");
                 } else {
                     assert_eq!(interface_tags.len(), 1);
-                    let tag = interface_tags.keys().next().unwrap();
-                    local_mesh.mut_ftags().for_each(|t| {
+                    let tag = interface_tags.values().next().unwrap();
+                    local_mesh.ftags_mut().for_each(|t| {
                         if *t == *tag {
                             *t = self.interface_bdy_tag;
                         }
@@ -360,7 +354,7 @@ where
 
                 if self.debug {
                     let fname = format!("level_{level}_part_{i_part}_remeshed.vtu");
-                    local_mesh.vtu_writer().export(&fname).unwrap();
+                    local_mesh.write_vtk(&fname).unwrap();
                 }
 
                 // Update res
@@ -368,7 +362,7 @@ where
                 let (ids, _, _) = res.add(&local_mesh, |t| t == 1, |_| true, Some(1e-12));
                 if self.debug {
                     let fname = format!("level_{level}_part_{i_part}_res.vtu");
-                    res.vtu_writer().export(&fname).unwrap();
+                    res.write_vtk(&fname).unwrap();
                 }
                 drop(res);
                 let mut res_m = res_m.lock().unwrap();
@@ -377,7 +371,7 @@ where
 
                 // Update ifc
                 let part_tag = 2 + i_part as Tag;
-                local_mesh.mut_etags().for_each(|t| {
+                local_mesh.etags_mut().for_each(|t| {
                     if *t == 2 {
                         *t = part_tag;
                     }
@@ -386,7 +380,7 @@ where
                 let (ids, _, _) = ifc.add(&local_mesh, |t| t == part_tag, |_t| true, Some(1e-12));
                 if self.debug {
                     let fname = format!("level_{level}_part_{i_part}_ifc.vtu");
-                    ifc.vtu_writer().export(&fname).unwrap();
+                    ifc.write_vtk(&fname).unwrap();
                 }
                 drop(ifc);
                 let mut ifc_m = ifc_m.lock().unwrap();
@@ -396,88 +390,92 @@ where
         let mut ifc = ifc.into_inner().unwrap();
         if self.debug {
             let fname = format!("level_{level}_ifc.vtu");
-            ifc.vtu_writer().export(&fname).unwrap();
+            ifc.write_vtk(&fname).unwrap();
             let fname = format!("level_{level}_ifc_bdy.vtu");
-            ifc.boundary().0.vtu_writer().export(&fname).unwrap();
+            ifc.boundary::<GenericMesh<D, C::FACE>>()
+                .0
+                .write_vtk(&fname)
+                .unwrap();
         }
 
         // to be consistent with the base topology
-        ifc.mut_etags().for_each(|t| *t = 1);
+        ifc.etags_mut().for_each(|t| *t = 1);
         ifc.remove_faces(|t| self.is_partition_bdy(t));
+        for i in 0..ifc.n_faces() {
+            if ifc.ftag(i) == Tag::MIN {
+                ifc.invert_face(i);
+            }
+        }
+
         if self.debug {
-            ifc.fix_face_orientation();
-            ifc.check_simple().unwrap();
+            ifc.check(&ifc.all_faces()).unwrap();
         }
 
         let mut info = info.into_inner().unwrap();
 
-        let topo = self.mesh.get_topology().unwrap().clone();
-        ifc.compute_topology_from(topo);
+        let ifc_topo = MeshTopology::new_from(&ifc, self.topo.topo().clone());
         let ifc_m = ifc_m.into_inner().unwrap();
 
-        let (mut ifc, ifc_m) =
-            if let Some(dd_params) = dd_params.next(ifc.n_verts(), self.partition_type) {
-                let mesh = ifc;
-                let mut dd = Self::new(mesh, self.partition_type)?;
-                dd.set_debug(self.debug);
-                dd.interface_bdy_tag = self.interface_bdy_tag + 1;
-                let (ifc, interface_info, ifc_m) = dd.remesh(&ifc_m, geom, params, &dd_params)?;
-                info.interface = Some(Box::new(interface_info));
-                (ifc, ifc_m)
-            } else {
-                debug!("Remeshing level {level} / interface");
-                let mut ifc_remesher = Remesher::new(&ifc, &ifc_m, geom)?;
-                if self.debug {
-                    ifc_remesher.check().unwrap();
-                }
-                let n_verts_init = ifc.n_verts();
-                let now = Instant::now();
-                ifc_remesher.remesh(&params, geom)?;
-                info.interface = Some(Box::new(ParallelRemeshingInfo {
-                    info: RemeshingInfo {
-                        n_verts_init,
-                        n_verts_final: ifc_remesher.n_verts(),
-                        time: now.elapsed().as_secs_f64(),
-                    },
-                    partition_time: 0.0,
-                    partition_quality: 0.0,
-                    partition_imbalance: 0.0,
-                    partitions: Vec::new(),
-                    interface: None,
-                }));
-                (ifc_remesher.to_mesh(true), ifc_remesher.metrics())
-            };
+        let (mut ifc, ifc_m) = if let Some(dd_params) = dd_params.next(ifc.n_verts()) {
+            debug!("Remeshing level {level} / interface (parallel)");
+            let mesh = ifc;
+            let mut dd = ParallelRemesher::<_, _, _, P>::new(mesh, ifc_topo, self.n_parts)?;
+            dd.set_debug(self.debug);
+            dd.interface_bdy_tag = self.interface_bdy_tag + 1;
+            let (ifc, interface_info, ifc_m) = dd.remesh(&ifc_m, geom, params, &dd_params)?;
+            info.interface = Some(Box::new(interface_info));
+            (ifc, ifc_m)
+        } else {
+            debug!("Remeshing level {level} / interface (seq)");
+            let mut ifc_remesher = Remesher::new(&ifc, &ifc_topo, &ifc_m, geom)?;
+            if self.debug {
+                ifc_remesher.check().unwrap();
+            }
+            let n_verts_init = ifc.n_verts();
+            let now = Instant::now();
+            ifc_remesher.remesh(&params, geom)?;
+            info.interface = Some(Box::new(ParallelRemeshingInfo {
+                info: RemeshingInfo {
+                    n_verts_init,
+                    n_verts_final: ifc_remesher.n_verts(),
+                    time: now.elapsed().as_secs_f64(),
+                },
+                partition_time: 0.0,
+                partition_quality: 0.0,
+                partition_imbalance: 0.0,
+                partitions: Vec::new(),
+                interface: None,
+            }));
+            (ifc_remesher.to_mesh(true), ifc_remesher.metrics())
+        };
 
         if self.debug {
             let fname = format!("level_{level}_ifc_remeshed.vtu");
-            ifc.vtu_writer().export(&fname).unwrap();
+            ifc.write_vtk(&fname).unwrap();
         }
 
         // Merge res and ifc
         let mut res = res.into_inner().unwrap();
         if self.debug {
-            res.fix_face_orientation();
-            res.check_simple().unwrap();
+            res.check(&res.all_faces()).unwrap();
         }
-        ifc.mut_etags().for_each(|t| *t = 2);
+        ifc.etags_mut().for_each(|t| *t = 2);
         let (ids, _, _) = res.add(&ifc, |_| true, |_| true, Some(1e-12));
         if self.debug {
-            res.fix_face_orientation();
-            res.check_simple().unwrap();
+            res.check(&res.all_faces()).unwrap();
         }
         let mut res_m = res_m.into_inner().unwrap();
         res_m.extend(ids.iter().map(|&i| ifc_m[i]));
 
         res.remove_faces(|t| self.is_interface_bdy(t));
-        res.mut_etags().for_each(|t| *t = 1);
+        res.etags_mut().for_each(|t| *t = 1);
         if self.debug {
-            res.fix_face_orientation();
-            res.check_simple().unwrap();
+            res.check(&res.all_faces()).unwrap();
         }
 
         if self.debug {
             let fname = format!("level_{level}_final.vtu");
-            res.vtu_writer().export(&fname).unwrap();
+            res.write_vtk(&fname).unwrap();
         }
 
         info.info.n_verts_final = res.n_verts();
@@ -493,24 +491,33 @@ mod tests {
         Result,
         geometry::NoGeometry,
         mesh::{
-            HasTmeshImpl, Point,
+            MeshTopology,
             test_meshes::{test_mesh_2d, test_mesh_3d},
         },
         metric::IsoMetric,
         remesher::{ParallelRemesher, ParallelRemesherParams, RemesherParams},
     };
-    use tmesh::mesh::{Mesh, partition::PartitionType};
+    #[cfg(feature = "metis")]
+    use tmesh::mesh::partition::{MetisPartitioner, MetisRecursive};
+    use tmesh::{
+        Vert2d, Vert3d,
+        mesh::{
+            Mesh,
+            partition::{HilbertPartitioner, Partitioner},
+        },
+    };
 
-    fn test_domain_decomposition_2d(debug: bool, ptype: PartitionType) -> Result<()> {
+    fn test_domain_decomposition_2d<P: Partitioner>(debug: bool, n_parts: usize) -> Result<()> {
         // use crate::init_log;
         // init_log("debug");
         let mut mesh = test_mesh_2d().split().split().split().split().split();
-        mesh.mut_etags().for_each(|t| *t = 1);
-        mesh.compute_topology();
+        mesh.etags_mut().for_each(|t| *t = 1);
+        let topo = MeshTopology::new(&mesh);
 
-        let dd = ParallelRemesher::new(mesh, ptype)?;
+        let mut dd = ParallelRemesher::<_, _, _, P>::new(mesh, topo, n_parts)?;
+        dd.set_debug(debug);
 
-        let h = |p: Point<2>| {
+        let h = |p: Vert2d| {
             let x = p[0];
             let y = p[1];
             let hmin = 0.001;
@@ -525,12 +532,11 @@ mod tests {
             .collect();
 
         let dd_params = ParallelRemesherParams::new(2, 1, 0);
-        let (mut mesh, _, _) =
-            dd.remesh(&m, &NoGeometry(), RemesherParams::default(), &dd_params)?;
+        let (mesh, _, _) = dd.remesh(&m, &NoGeometry(), RemesherParams::default(), &dd_params)?;
 
         if debug {
-            mesh.vtu_writer().export("res.vtu")?;
-            mesh.vtu_writer().export("res_bdy.vtu")?;
+            mesh.write_vtk("res.vtu")?;
+            mesh.write_vtk("res_bdy.vtu")?;
         }
 
         let n = mesh.n_verts();
@@ -543,8 +549,7 @@ mod tests {
             }
         }
 
-        mesh.compute_face_to_elems();
-        mesh.check_simple()?;
+        mesh.check(&mesh.all_faces())?;
 
         Ok(())
     }
@@ -552,100 +557,71 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_dd_2d_hilbert_1() {
-        test_domain_decomposition_2d(false, PartitionType::Hilbert(1)).unwrap();
+        test_domain_decomposition_2d::<HilbertPartitioner>(false, 1).unwrap();
     }
 
     #[test]
     fn test_dd_2d_hilbert_2() -> Result<()> {
-        test_domain_decomposition_2d(false, PartitionType::Hilbert(2))
+        test_domain_decomposition_2d::<HilbertPartitioner>(false, 2)
     }
 
     #[test]
     fn test_dd_2d_hilbert_3() -> Result<()> {
-        test_domain_decomposition_2d(false, PartitionType::Hilbert(3))
+        test_domain_decomposition_2d::<HilbertPartitioner>(false, 3)
     }
 
     #[test]
     fn test_dd_2d_hilbert_4() -> Result<()> {
-        test_domain_decomposition_2d(false, PartitionType::Hilbert(4))
+        test_domain_decomposition_2d::<HilbertPartitioner>(false, 4)
     }
 
     #[test]
     fn test_dd_2d_hilbert_5() -> Result<()> {
-        test_domain_decomposition_2d(false, PartitionType::Hilbert(5))
+        test_domain_decomposition_2d::<HilbertPartitioner>(false, 5)
     }
 
     #[cfg(feature = "metis")]
     #[test]
     #[should_panic]
     fn test_dd_2d_metis_1() {
-        test_domain_decomposition_2d(false, PartitionType::MetisRecursive(1)).unwrap();
+        use tmesh::mesh::partition::{MetisPartitioner, MetisRecursive};
+
+        test_domain_decomposition_2d::<MetisPartitioner<MetisRecursive>>(false, 1).unwrap();
     }
 
     #[cfg(feature = "metis")]
     #[test]
     fn test_dd_2d_metis_2() -> Result<()> {
-        test_domain_decomposition_2d(false, PartitionType::MetisRecursive(2))
+        test_domain_decomposition_2d::<MetisPartitioner<MetisRecursive>>(false, 2)
     }
 
     #[cfg(feature = "metis")]
     #[test]
     fn test_dd_2d_metis_3() -> Result<()> {
-        test_domain_decomposition_2d(false, PartitionType::MetisRecursive(3))
+        test_domain_decomposition_2d::<MetisPartitioner<MetisRecursive>>(false, 3)
     }
 
     #[cfg(feature = "metis")]
     #[test]
     fn test_dd_2d_metis_4() -> Result<()> {
-        test_domain_decomposition_2d(false, PartitionType::MetisRecursive(4))
+        test_domain_decomposition_2d::<MetisPartitioner<MetisRecursive>>(false, 4)
     }
 
     #[cfg(feature = "metis")]
     #[test]
     fn test_dd_2d_metis_5() -> Result<()> {
-        test_domain_decomposition_2d(false, PartitionType::MetisRecursive(5))
+        test_domain_decomposition_2d::<MetisPartitioner<MetisRecursive>>(false, 5)
     }
 
-    // #[cfg(feature = "scotch")]
-    // #[test]
-    // #[should_panic]
-    // fn test_dd_2d_scotch_1() {
-    //     test_domain_decomposition_2d(false, PartitionType::Scotch(1)).unwrap();
-    // }
-
-    // #[cfg(feature = "scotch")]
-    // #[test]
-    // fn test_dd_2d_scotch_2() -> Result<()> {
-    //     test_domain_decomposition_2d(false, PartitionType::Scotch(2))
-    // }
-
-    // #[cfg(feature = "scotch")]
-    // #[test]
-    // fn test_dd_2d_scotch_3() -> Result<()> {
-    //     test_domain_decomposition_2d(false, PartitionType::Scotch(3))
-    // }
-
-    // #[cfg(feature = "scotch")]
-    // #[test]
-    // fn test_dd_2d_scotch_4() -> Result<()> {
-    //     test_domain_decomposition_2d(false, PartitionType::Scotch(4))
-    // }
-
-    // #[cfg(feature = "scotch")]
-    // #[test]
-    // fn test_dd_2d_scotch_5() -> Result<()> {
-    //     test_domain_decomposition_2d(false, PartitionType::Scotch(5))
-    // }
-
-    fn test_domain_decomposition_3d(debug: bool, ptype: PartitionType) -> Result<()> {
+    fn test_domain_decomposition_3d<P: Partitioner>(debug: bool, n_parts: usize) -> Result<()> {
         // use crate::init_log;
         // init_log("warning");
-        let mut mesh = test_mesh_3d().split().split().split();
-        mesh.compute_topology();
-        let dd = ParallelRemesher::new(mesh, ptype)?;
+        let mesh = test_mesh_3d().split().split().split();
+        let topo = MeshTopology::new(&mesh);
+        let dd = ParallelRemesher::<_, _, _, P>::new(mesh, topo, n_parts)?;
         // dd.set_debug(true);
 
-        let h = |p: Point<3>| {
+        let h = |p: Vert3d| {
             let x = p[0];
             let y = p[1];
             let z = p[2];
@@ -665,12 +641,11 @@ mod tests {
             .collect();
 
         let dd_params = ParallelRemesherParams::new(2, 2, 0);
-        let (mut mesh, _, _) =
-            dd.remesh(&m, &NoGeometry(), RemesherParams::default(), &dd_params)?;
+        let (mesh, _, _) = dd.remesh(&m, &NoGeometry(), RemesherParams::default(), &dd_params)?;
 
         if debug {
-            mesh.vtu_writer().export("res.vtu")?;
-            mesh.vtu_writer().export("res_bdy.vtu")?;
+            mesh.write_vtk("res.vtu")?;
+            mesh.write_vtk("res_bdy.vtu")?;
         }
 
         let n = mesh.n_verts();
@@ -682,8 +657,7 @@ mod tests {
                 assert!(d > 1e-8, "{i}, {j}, {vi:?}, {vj:?}");
             }
         }
-        mesh.compute_face_to_elems();
-        mesh.check_simple()?;
+        mesh.check(&mesh.all_faces())?;
 
         Ok(())
     }
@@ -691,88 +665,57 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_dd_3d_hilbert_1() {
-        test_domain_decomposition_3d(false, PartitionType::Hilbert(1)).unwrap();
+        test_domain_decomposition_3d::<HilbertPartitioner>(false, 1).unwrap();
     }
 
     #[test]
     fn test_dd_3d_hilbert_2() -> Result<()> {
-        test_domain_decomposition_3d(false, PartitionType::Hilbert(2))
+        test_domain_decomposition_3d::<HilbertPartitioner>(false, 2)
     }
 
     #[test]
     fn test_dd_3d_hilbert_3() -> Result<()> {
-        test_domain_decomposition_3d(false, PartitionType::Hilbert(3))
+        test_domain_decomposition_3d::<HilbertPartitioner>(false, 3)
     }
 
     #[test]
     fn test_dd_3d_hilbert_4() -> Result<()> {
-        test_domain_decomposition_3d(false, PartitionType::Hilbert(4))
+        test_domain_decomposition_3d::<HilbertPartitioner>(false, 4)
     }
 
     #[test]
     fn test_dd_3d_hilbert_5() -> Result<()> {
-        test_domain_decomposition_3d(false, PartitionType::Hilbert(5))
+        test_domain_decomposition_3d::<HilbertPartitioner>(false, 5)
     }
 
     #[cfg(feature = "metis")]
     #[test]
     #[should_panic]
     fn test_dd_3d_metis_1() {
-        test_domain_decomposition_3d(false, PartitionType::MetisRecursive(1)).unwrap();
+        test_domain_decomposition_3d::<MetisPartitioner<MetisRecursive>>(false, 1).unwrap();
     }
 
     #[cfg(feature = "metis")]
     #[test]
     fn test_dd_3d_metis_2() -> Result<()> {
-        test_domain_decomposition_3d(false, PartitionType::MetisRecursive(2))
+        test_domain_decomposition_3d::<MetisPartitioner<MetisRecursive>>(false, 2)
     }
 
     #[cfg(feature = "metis")]
     #[test]
     fn test_dd_3d_metis_3() -> Result<()> {
-        test_domain_decomposition_3d(false, PartitionType::MetisRecursive(3))
+        test_domain_decomposition_3d::<MetisPartitioner<MetisRecursive>>(false, 3)
     }
 
     #[cfg(feature = "metis")]
     #[test]
     fn test_dd_3d_metis_4() -> Result<()> {
-        test_domain_decomposition_3d(false, PartitionType::MetisRecursive(4))
+        test_domain_decomposition_3d::<MetisPartitioner<MetisRecursive>>(false, 4)
     }
 
     #[cfg(feature = "metis")]
     #[test]
     fn test_dd_3d_metis_5() -> Result<()> {
-        test_domain_decomposition_3d(false, PartitionType::MetisRecursive(5))
+        test_domain_decomposition_3d::<MetisPartitioner<MetisRecursive>>(false, 5)
     }
-
-    // #[cfg(feature = "scotch")]
-    // #[test]
-    // #[should_panic]
-    // fn test_dd_3d_scotch_1() {
-    //     test_domain_decomposition_3d(false, PartitionType::Scotch(1)).unwrap();
-    // }
-
-    // #[cfg(feature = "scotch")]
-    // #[test]
-    // fn test_dd_3d_scotch_2() -> Result<()> {
-    //     test_domain_decomposition_3d(false, PartitionType::Scotch(2))
-    // }
-
-    // #[cfg(feature = "scotch")]
-    // #[test]
-    // fn test_dd_3d_scotch_3() -> Result<()> {
-    //     test_domain_decomposition_3d(false, PartitionType::Scotch(3))
-    // }
-
-    // #[cfg(feature = "scotch")]
-    // #[test]
-    // fn test_dd_3d_scotch_4() -> Result<()> {
-    //     test_domain_decomposition_3d(false, PartitionType::Scotch(4))
-    // }
-
-    // #[cfg(feature = "scotch")]
-    // #[test]
-    // fn test_dd_3d_scotch_5() -> Result<()> {
-    //     test_domain_decomposition_3d(false, PartitionType::Scotch(5))
-    // }
 }

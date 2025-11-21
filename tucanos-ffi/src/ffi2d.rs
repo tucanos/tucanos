@@ -1,31 +1,31 @@
+use crate::{Idx, new_metric, tucanos_int_t, tucanos_tag_t};
 use log::warn;
+use tmesh::mesh::{Edge, GenericMesh, Mesh, Simplex, Triangle};
 use tucanos::{
     geometry::LinearGeometry,
-    mesh::{Edge, Elem, SimplexMesh, Triangle},
+    mesh::MeshTopology,
     metric::{AnisoMetric2d, IsoMetric},
     remesher::{Remesher, RemesherParams},
 };
 
-use crate::{new_metric, tucanos_tag_t};
-
 pub struct tucanos_remesher2diso_t {
-    implem: Remesher<2, Triangle, IsoMetric<2>>,
+    implem: Remesher<2, Triangle<Idx>, IsoMetric<2>>,
 }
 
 pub struct tucanos_remesher2daniso_t {
-    implem: Remesher<2, Triangle, AnisoMetric2d>,
+    implem: Remesher<2, Triangle<Idx>, AnisoMetric2d>,
 }
 
 pub struct tucanos_mesh22_t {
-    implem: SimplexMesh<2, Triangle>,
+    implem: GenericMesh<2, Triangle<Idx>>,
 }
 
 pub struct tucanos_mesh21_t {
-    implem: SimplexMesh<2, Edge>,
+    implem: GenericMesh<2, Edge<Idx>>,
 }
 
 pub struct tucanos_geom2d_t {
-    implem: LinearGeometry<2, Edge>,
+    implem: LinearGeometry<2, Edge<Idx>>,
 }
 
 /// @brief Create a geometry for a tucanos_mesh22_t
@@ -39,11 +39,9 @@ pub unsafe extern "C" fn tucanos_geom2d_new(
 ) -> *mut tucanos_geom2d_t {
     unsafe {
         let mesh = &mut (*mesh).implem;
-        if mesh.get_topology().is_err() {
-            mesh.compute_topology();
-        }
         let boundary = Box::from_raw(boundary).implem;
-        LinearGeometry::new(mesh, boundary).map_or(std::ptr::null_mut(), |implem| {
+        let topo = MeshTopology::new(mesh);
+        LinearGeometry::new(mesh, &topo, boundary).map_or(std::ptr::null_mut(), |implem| {
             Box::into_raw(Box::new(tucanos_geom2d_t { implem }))
         })
     }
@@ -67,7 +65,8 @@ pub unsafe extern "C" fn tucanos_remesher2diso_new(
         let mesh = &(*mesh).implem;
         let metric = new_metric(metric, mesh.n_verts());
         let geom = &(*geom).implem;
-        match Remesher::new_with_iter(mesh, metric, geom) {
+        let topo = MeshTopology::new(mesh);
+        match Remesher::new_with_iter(mesh, &topo, metric, geom) {
             Ok(implem) => Box::into_raw(Box::new(tucanos_remesher2diso_t { implem })),
             Err(e) => {
                 warn!("{e:?}");
@@ -107,7 +106,8 @@ pub unsafe extern "C" fn tucanos_remesher2daniso_new(
         let mesh = &(*mesh).implem;
         let metric = new_metric(metric, mesh.n_verts());
         let geom = &(*geom).implem;
-        match Remesher::new_with_iter(mesh, metric, geom) {
+        let topo = MeshTopology::new(mesh);
+        match Remesher::new_with_iter(mesh, &topo, metric, geom) {
             Ok(implem) => Box::into_raw(Box::new(tucanos_remesher2daniso_t { implem })),
             Err(e) => {
                 warn!("{e:?}");
@@ -174,13 +174,13 @@ pub extern "C" fn tucanos_mesh22_new(
     num_verts: usize,
     verts: *const f64,
     num_elements: usize,
-    elems: *const u32,
+    elems: *const tucanos_int_t,
     tags: *const tucanos_tag_t,
     num_faces: usize,
-    faces: *const u32,
+    faces: *const tucanos_int_t,
     ftags: *const tucanos_tag_t,
 ) -> *mut tucanos_mesh22_t {
-    let implem = SimplexMesh::new_with_vector(
+    let implem = GenericMesh::new(
         (verts, num_verts).into(),
         (elems, num_elements).into(),
         (tags, num_elements).into(),
@@ -191,12 +191,12 @@ pub extern "C" fn tucanos_mesh22_new(
 }
 
 #[unsafe(no_mangle)]
-pub const unsafe extern "C" fn tucanos_mesh22_num_verts(m: *const tucanos_mesh22_t) -> u32 {
+pub unsafe extern "C" fn tucanos_mesh22_num_verts(m: *const tucanos_mesh22_t) -> usize {
     unsafe { (*m).implem.n_verts() }
 }
 
 #[unsafe(no_mangle)]
-pub const unsafe extern "C" fn tucanos_mesh22_num_elems(m: *const tucanos_mesh22_t) -> u32 {
+pub unsafe extern "C" fn tucanos_mesh22_num_elems(m: *const tucanos_mesh22_t) -> usize {
     unsafe { (*m).implem.n_elems() }
 }
 
@@ -204,11 +204,11 @@ pub const unsafe extern "C" fn tucanos_mesh22_num_elems(m: *const tucanos_mesh22
 pub unsafe extern "C" fn tucanos_mesh22_verts(
     m: *const tucanos_mesh22_t,
     out: *mut f64,
-    first: u32,
-    last: u32,
+    first: usize,
+    last: usize,
 ) {
     unsafe {
-        let out = std::slice::from_raw_parts_mut(out, 3 * (last - first) as usize);
+        let out = std::slice::from_raw_parts_mut(out, 3 * (last - first));
         let m = &((*m).implem);
         let mut k = 0;
         for i in first..last {
@@ -219,20 +219,21 @@ pub unsafe extern "C" fn tucanos_mesh22_verts(
 }
 
 #[unsafe(no_mangle)]
+#[allow(clippy::useless_conversion)]
 pub unsafe extern "C" fn tucanos_mesh22_elems(
     m: *const tucanos_mesh22_t,
-    out: *mut u32,
-    first: u32,
-    last: u32,
+    out: *mut tucanos_int_t,
+    first: usize,
+    last: usize,
 ) {
     unsafe {
         let m = &((*m).implem);
-        let slice_size = (last - first) as usize * Triangle::N_VERTS as usize;
+        let slice_size = (last - first) * Triangle::<Idx>::N_VERTS;
         let out = std::slice::from_raw_parts_mut(out, slice_size);
         let mut k = 0;
         for i in first..last {
             for v in m.elem(i) {
-                out[k] = v;
+                out[k] = v.try_into().unwrap();
                 k += 1;
             }
         }

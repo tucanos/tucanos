@@ -1,14 +1,14 @@
 //! Boundary of `Mesh2d`
-use crate::mesh::GenericMesh;
+use crate::mesh::{Edge, GenericMesh};
 
 /// Edge mesh in 2d
-pub type BoundaryMesh2d = GenericMesh<2, 2, 1>;
+pub type BoundaryMesh2d = GenericMesh<2, Edge<usize>>;
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        Vert2d, assert_delta,
-        mesh::{Edge, Mesh, Mesh2d, Simplex, rectangle_mesh},
+        assert_delta,
+        mesh::{Mesh, Mesh2d, rectangle_mesh},
     };
     use rayon::iter::ParallelIterator;
 
@@ -38,13 +38,6 @@ mod tests {
 
     #[test]
     fn test_integrate() {
-        let v0 = Vert2d::new(0.0, 0.0);
-        let v1 = Vert2d::new(0.5, 0.0);
-        let ge = [v0, v1];
-        assert_delta!(Edge::vol(&ge), 0.5, 1e-12);
-        let ge = [v1, v0];
-        assert_delta!(Edge::vol(&ge), 0.5, 1e-12);
-
         let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 2.0, 15);
 
         let f = msh.par_verts().map(|v| v[0]).collect::<Vec<_>>();

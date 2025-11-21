@@ -1,5 +1,5 @@
 import numpy as np
-from .edges import edges, TRI2EDG, TET2EDG
+from .mesh import edges, TRI2EDG, TET2EDG
 from .metric import sym2mat
 
 

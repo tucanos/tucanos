@@ -1,6 +1,11 @@
+mod autotag;
+mod dual;
+mod extruded;
 mod geometry;
 mod mesh;
+mod metric;
 mod parallel;
+mod poly;
 mod remesher;
 use numpy::{PyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1};
 use pyo3::{
@@ -10,6 +15,11 @@ use pyo3::{
     types::{PyModule, PyModuleMethods},
     wrap_pyfunction,
 };
+
+#[cfg(feature = "32bit-ints")]
+pub type Idx = u32;
+#[cfg(not(feature = "32bit-ints"))]
+pub type Idx = usize;
 
 fn to_numpy_1d<T: numpy::Element>(py: Python<'_>, vec: Vec<T>) -> Bound<'_, PyArray1<T>> {
     PyArray::from_vec(py, vec)
@@ -53,14 +63,38 @@ pub fn set_thread_affinity(cores: PyReadonlyArray1<usize>) -> PyResult<usize> {
 #[pyo3(name = "pytucanos")]
 pub fn pytucanos(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     pyo3_log::init();
+    m.add_class::<mesh::PyMesh2d>()?;
+    m.add_class::<mesh::PyBoundaryMesh2d>()?;
+    m.add_class::<mesh::PyMesh3d>()?;
+    m.add_class::<mesh::PyBoundaryMesh3d>()?;
+    m.add_class::<mesh::PyPartitionerType>()?;
+    m.add_class::<dual::PyDualType>()?;
+    m.add_class::<dual::PyDualMesh2d>()?;
+    m.add_class::<dual::PyDualMesh3d>()?;
+    m.add_class::<poly::PyPolyMeshType>()?;
+    m.add_class::<poly::PyPolyMesh2d>()?;
+    m.add_class::<poly::PyPolyMesh3d>()?;
+    m.add_class::<extruded::PyExtrudedMesh2d>()?;
+    #[cfg(not(feature = "metis"))]
+    m.add("HAVE_METIS", false)?;
+    #[cfg(feature = "metis")]
+    m.add("HAVE_METIS", true)?;
+    #[cfg(feature = "32bit-ints")]
+    m.add("USE_32BIT_INTS", true)?;
+    #[cfg(not(feature = "32bit-ints"))]
+    m.add("USE_32BIT_INTS", false)?;
     m.add_function(wrap_pyfunction!(get_thread_affinity, m)?)?;
     m.add_function(wrap_pyfunction!(set_thread_affinity, m)?)?;
-    m.add_class::<pytmesh::PyPartitionerType>()?;
-    m.add_class::<mesh::Mesh33>()?;
-    m.add_class::<mesh::Mesh32>()?;
-    m.add_class::<mesh::Mesh31>()?;
-    m.add_class::<mesh::Mesh22>()?;
-    m.add_class::<mesh::Mesh21>()?;
+    m.add_function(wrap_pyfunction!(autotag::autotag_3d, m)?)?;
+    m.add_function(wrap_pyfunction!(autotag::transfer_tags_face_3d, m)?)?;
+    m.add_function(wrap_pyfunction!(autotag::transfer_tags_elem_3d, m)?)?;
+    m.add_function(wrap_pyfunction!(autotag::autotag_2d, m)?)?;
+    m.add_function(wrap_pyfunction!(autotag::transfer_tags_face_2d, m)?)?;
+    m.add_function(wrap_pyfunction!(autotag::transfer_tags_elem_2d, m)?)?;
+    m.add_function(wrap_pyfunction!(metric::implied_metric_3d, m)?)?;
+    m.add_function(wrap_pyfunction!(metric::curvature_metric_3d, m)?)?;
+    m.add_function(wrap_pyfunction!(metric::implied_metric_2d, m)?)?;
+    m.add_function(wrap_pyfunction!(metric::curvature_metric_2d, m)?)?;
     m.add_class::<geometry::LinearGeometry2d>()?;
     m.add_class::<geometry::LinearGeometry3d>()?;
     m.add_class::<remesher::PyCollapseParams>()?;
@@ -79,9 +113,5 @@ pub fn pytucanos(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<parallel::ParallelRemesher2dAniso>()?;
     m.add_class::<parallel::ParallelRemesher3dIso>()?;
     m.add_class::<parallel::ParallelRemesher3dAniso>()?;
-    #[cfg(not(feature = "metis"))]
-    m.add("HAVE_METIS", false)?;
-    #[cfg(feature = "metis")]
-    m.add("HAVE_METIS", true)?;
     Ok(())
 }

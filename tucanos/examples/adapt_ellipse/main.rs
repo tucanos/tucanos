@@ -5,12 +5,20 @@ use env_logger::Env;
 use nalgebra::SMatrix;
 use rustc_hash::FxHashMap;
 use std::{path::Path, process::Command, time::Instant};
-use tmesh::mesh::{Mesh, partition::PartitionType};
+#[cfg(not(feature = "metis"))]
+use tmesh::mesh::partition::HilbertPartitioner;
+#[cfg(feature = "metis")]
+use tmesh::mesh::partition::{MetisPartitioner, MetisRecursive};
+use tmesh::{
+    Vert3d,
+    io::{VTUEncoding, VTUFile},
+    mesh::{BoundaryMesh3d, GSimplex, Mesh, Mesh3d, Simplex},
+};
 use tucanos::{
     Result, Tag, TopoTag,
     geometry::Geometry,
-    mesh::{GElem, HasTmeshImpl, Point, SimplexMesh, Tetrahedron, Topology},
-    metric::{AnisoMetric3d, Metric},
+    mesh::{MeshTopology, Topology},
+    metric::{AnisoMetric3d, Metric, MetricField},
     remesher::{ParallelRemesher, ParallelRemesherParams, Remesher, RemesherParams},
 };
 
@@ -61,19 +69,19 @@ impl Simple3dGeometry {
         }
     }
 
-    fn normal(&self, pt: &Point<3>, tag: TopoTag) -> Point<3> {
+    fn normal(&self, pt: &Vert3d, tag: TopoTag) -> Vert3d {
         let n = match tag.0 {
             2 => match tag.1 {
-                SYMMETRY_TAG => Point::<3>::new(0.0, 0.0, -1.0),
+                SYMMETRY_TAG => Vert3d::new(0.0, 0.0, -1.0),
                 FARFIELD_TAG => {
                     let r = pt.norm();
                     1. / r * *pt
                 }
                 WING_TAG => {
                     let (nx, ny) = self.ellipse.normal(pt[0], pt[1]);
-                    -Point::<3>::new(nx, ny, 0.0)
+                    -Vert3d::new(nx, ny, 0.0)
                 }
-                WINGTIP_TAG => Point::<3>::new(0.0, 0.0, -1.0),
+                WINGTIP_TAG => Vert3d::new(0.0, 0.0, -1.0),
                 _ => panic!("Invalid tag {tag:?}"),
             },
             _ => panic!("Invalid tag {tag:?}"),
@@ -87,7 +95,7 @@ impl Geometry<3> for Simple3dGeometry {
         Ok(())
     }
 
-    fn project(&self, pt: &mut Point<3>, tag: &TopoTag) -> f64 {
+    fn project(&self, pt: &mut Vert3d, tag: &TopoTag) -> f64 {
         let old = *pt;
 
         if tag.1 < 0 {
@@ -96,23 +104,23 @@ impl Geometry<3> for Simple3dGeometry {
 
         *pt = match tag.0 {
             2 => match tag.1 {
-                SYMMETRY_TAG => Point::<3>::new(old[0], old[1], 0.0),
+                SYMMETRY_TAG => Vert3d::new(old[0], old[1], 0.0),
                 FARFIELD_TAG => {
                     let r = old.norm();
                     (self.r / r) * old
                 }
                 WING_TAG => {
                     let (x, y) = self.ellipse.project(old[0], old[1]);
-                    Point::<3>::new(x, y, old[2].clamp(0.0, 1.0))
+                    Vert3d::new(x, y, old[2].clamp(0.0, 1.0))
                 }
                 WINGTIP_TAG => {
                     let x = old[0];
                     let y = old[1];
                     if self.ellipse.is_in(x, y) {
-                        Point::<3>::new(x, y, 1.0)
+                        Vert3d::new(x, y, 1.0)
                     } else {
                         let (x, y) = self.ellipse.project(x, y);
-                        Point::<3>::new(x, y, 1.0)
+                        Vert3d::new(x, y, 1.0)
                     }
                 }
 
@@ -131,15 +139,15 @@ impl Geometry<3> for Simple3dGeometry {
                 if parents[0] == WING_TAG {
                     if parents[1] == WINGTIP_TAG {
                         let (x, y) = self.ellipse.project(x, y);
-                        Point::<3>::new(x, y, 1.0)
+                        Vert3d::new(x, y, 1.0)
                     } else {
                         assert_eq!(parents[1], SYMMETRY_TAG);
                         let (x, y) = self.ellipse.project(x, y);
-                        Point::<3>::new(x, y, 0.0)
+                        Vert3d::new(x, y, 0.0)
                     }
                 } else if parents[0] == FARFIELD_TAG {
                     let r = x.hypot(y);
-                    self.r / r * Point::<3>::new(x, y, 0.0)
+                    self.r / r * Vert3d::new(x, y, 0.0)
                 } else {
                     unreachable!("{parents:?}");
                 }
@@ -150,20 +158,20 @@ impl Geometry<3> for Simple3dGeometry {
         (*pt - old).norm()
     }
 
-    fn angle(&self, pt: &Point<3>, n: &Point<3>, tag: &TopoTag) -> f64 {
+    fn angle(&self, pt: &Vert3d, n: &Vert3d, tag: &TopoTag) -> f64 {
         let n_ref = self.normal(pt, *tag);
         let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
         f64::acos(cos_a).to_degrees()
     }
 }
 
-fn check_geom(mesh: &SimplexMesh<3, Tetrahedron>, geom: &Simple3dGeometry) {
+fn check_geom(mesh: &Mesh3d, geom: &Simple3dGeometry) {
     let mut max_dist = FxHashMap::<Tag, f64>::default();
     let mut max_angle = FxHashMap::<Tag, f64>::default();
 
     for ((face, tag), gface) in mesh.faces().zip(mesh.ftags()).zip(mesh.gfaces()) {
         for i in 0..3 {
-            let mut pt = mesh.vert(face[i]);
+            let mut pt = mesh.vert(face.get(i));
             let dist = geom.project(&mut pt, &(2, tag));
             if let Some(v) = max_dist.get_mut(&tag) {
                 *v = v.max(dist);
@@ -171,7 +179,7 @@ fn check_geom(mesh: &SimplexMesh<3, Tetrahedron>, geom: &Simple3dGeometry) {
                 max_dist.insert(tag, dist);
             }
         }
-        let angle = geom.angle(&gface.center(), &gface.normal(), &(2, tag));
+        let angle = geom.angle(&gface.center(), &gface.normal().normalize(), &(2, tag));
         if let Some(v) = max_angle.get_mut(&tag) {
             *v = v.max(angle);
         } else {
@@ -188,7 +196,7 @@ fn check_geom(mesh: &SimplexMesh<3, Tetrahedron>, geom: &Simple3dGeometry) {
 }
 
 fn get_bl_metric(
-    mesh: &SimplexMesh<3, Tetrahedron>,
+    mesh: &Mesh3d,
     geom: &Simple3dGeometry,
     h_min: f64,
     h_max: f64,
@@ -246,19 +254,19 @@ fn main() -> Result<()> {
     }
 
     // Load the mesh
-    let mut mesh = SimplexMesh::<3, Tetrahedron>::from_meshb(fname.to_str().unwrap())?;
+    let mut mesh = Mesh3d::from_meshb(fname.to_str().unwrap())?;
 
     // Fix face orientation
     mesh.fix()?;
 
-    // // Check the mesh
-    // mesh.check()?;
+    // Check the mesh
+    mesh.check(&mesh.all_faces())?;
 
     // Save the input mesh in .vtu format
-    let mut writer = mesh.vtu_writer();
+    let mut writer = VTUFile::from_mesh(&mesh, VTUEncoding::Binary);
     writer.add_cell_data("edge_ratio", 1, mesh.edge_length_ratios());
     writer.add_cell_data("gamma", 1, mesh.elem_gammas());
-    let mut skewness = vec![0.0_f64; mesh.n_elems() as usize];
+    let mut skewness = vec![0.0_f64; mesh.n_elems()];
     for (i0, i1, s) in mesh.face_skewnesses(&mesh.all_faces()) {
         skewness[i0] = skewness[i0].max(s);
         skewness[i1] = skewness[i1].max(s);
@@ -266,24 +274,21 @@ fn main() -> Result<()> {
     writer.add_cell_data("skewness", 1, skewness.iter().copied());
 
     writer.export("ellipse.vtu")?;
-    mesh.boundary().0.vtu_writer().export("ellipse_bdy.vtu")?;
+    let bdy = mesh.boundary::<BoundaryMesh3d>().0;
+    VTUFile::from_mesh(&bdy, VTUEncoding::Binary).export("ellipse_bdy.vtu")?;
 
     // Analytical geometry
-    mesh.compute_topology();
-    let topo = mesh.get_topology()?;
-    let geom = Simple3dGeometry::new(topo.clone());
-    geom.check(topo)?;
+    let topo = MeshTopology::new(&mesh);
+    let geom = Simple3dGeometry::new(topo.topo().clone());
+    geom.check(topo.topo())?;
 
     // Check the geometry
     check_geom(&mesh, &geom);
 
-    geom.project_vertices(&mut mesh);
+    geom.project_vertices(&mut mesh, &topo);
 
     // Compute the implied metric
-    mesh.compute_vertex_to_elems();
-    mesh.compute_face_to_elems();
-    mesh.compute_volumes();
-    let implied_metric = mesh.implied_metric()?;
+    let implied_metric = MetricField::implied_metric_3d(&mesh);
 
     // Compute the boundary layer metric
     let h_min = 5e-3;
@@ -294,6 +299,7 @@ fn main() -> Result<()> {
 
     // Intersect the two metrics
     let metric = implied_metric
+        .metric()
         .iter()
         .zip(bl_metric.iter())
         .map(|(m0, m1)| m0.intersect(m1))
@@ -306,19 +312,21 @@ fn main() -> Result<()> {
     };
     params.set_max_angle(30.0);
 
+    let topo = MeshTopology::new(&mesh);
+
     let n_part = 1;
     let now = Instant::now();
-    let mut mesh = if n_part == 1 {
-        let mut remesher = Remesher::new(&mesh, &metric, &geom)?;
+    let mesh = if n_part == 1 {
+        let mut remesher = Remesher::new(&mesh, &topo, &metric, &geom)?;
         remesher.remesh(&params, &geom)?;
         remesher.check()?;
         remesher.to_mesh(true)
     } else {
         #[cfg(feature = "metis")]
-        let part = PartitionType::MetisRecursive(n_part);
+        let mut dd =
+            ParallelRemesher::<_, _, _, MetisPartitioner<MetisRecursive>>::new(mesh, topo, n_part)?;
         #[cfg(not(feature = "metis"))]
-        let part = PartitionType::Hilbert(n_part);
-        let mut dd = ParallelRemesher::new(mesh, part)?;
+        let mut dd = ParallelRemesher::<_, _, _, HilbertPartitioner>::new(mesh, topo, n_part)?;
         dd.set_debug(debug);
         let dd_params = ParallelRemesherParams::new(2, 2, 10000);
         let (mesh, stats, _) = dd.remesh(&metric, &geom, params, &dd_params)?;
@@ -326,16 +334,15 @@ fn main() -> Result<()> {
         mesh
     };
 
-    mesh.compute_face_to_elems();
-    mesh.check_simple()?;
+    mesh.check(&mesh.all_faces())?;
 
     println!(
         "Remeshing done in {}s with {n_part} partitions",
         now.elapsed().as_secs_f32()
     );
-    mesh.vtu_writer().export("ellipse_remeshed.vtu")?;
-    let bdy = mesh.boundary().0;
-    bdy.vtu_writer().export("ellipse_remeshed_bdy.vtu")?;
+    mesh.write_vtk("ellipse_remeshed.vtu")?;
+    let bdy: BoundaryMesh3d = mesh.boundary().0;
+    bdy.write_vtk("ellipse_remeshed_bdy.vtu")?;
 
     let max_angle = geom.max_normal_angle(&mesh);
     println!("max angle : {max_angle:.1}");

@@ -1,13 +1,20 @@
 //! Tetrahedron meshes in 3d
 use crate::{
     Vert3d,
-    mesh::{GenericMesh, Mesh},
+    mesh::{GenericMesh, Hexahedron, Mesh, Quadrangle, Tetrahedron, elements::Idx},
 };
 
 /// Create a `Mesh<3, 4, 3>` of a `lx` by `ly` by `lz` box by splitting a `nx` by `ny` by `nz`
 /// uniform structured grid
 #[must_use]
-pub fn box_mesh<M: Mesh<3, 4, 3>>(lx: f64, nx: usize, ly: f64, ny: usize, lz: f64, nz: usize) -> M {
+pub fn box_mesh<M: Mesh<3, Tetrahedron<impl Idx>>>(
+    lx: f64,
+    nx: usize,
+    ly: f64,
+    ny: usize,
+    lz: f64,
+    nz: usize,
+) -> M {
     let dx = lx / (nx as f64 - 1.);
     let x_1d = (0..nx).map(|i| i as f64 * dx).collect::<Vec<_>>();
 
@@ -22,7 +29,11 @@ pub fn box_mesh<M: Mesh<3, 4, 3>>(lx: f64, nx: usize, ly: f64, ny: usize, lz: f6
 
 /// Create a `Mesh<2, 3, 2>` of box by splitting a structured grid`
 #[must_use]
-pub fn nonuniform_box_mesh<M: Mesh<3, 4, 3>>(x: &[f64], y: &[f64], z: &[f64]) -> M {
+pub fn nonuniform_box_mesh<M: Mesh<3, Tetrahedron<impl Idx>>>(
+    x: &[f64],
+    y: &[f64],
+    z: &[f64],
+) -> M {
     let nx = x.len();
     let ny = y.len();
     let nz = z.len();
@@ -43,7 +54,7 @@ pub fn nonuniform_box_mesh<M: Mesh<3, 4, 3>>(x: &[f64], y: &[f64], z: &[f64]) ->
     for i in 0..nx - 1 {
         for j in 0..ny - 1 {
             for k in 0..nz - 1 {
-                hexas.push([
+                hexas.push(Hexahedron::new(
                     idx(i, j, k),
                     idx(i + 1, j, k),
                     idx(i + 1, j + 1, k),
@@ -52,7 +63,7 @@ pub fn nonuniform_box_mesh<M: Mesh<3, 4, 3>>(x: &[f64], y: &[f64], z: &[f64]) ->
                     idx(i + 1, j, k + 1),
                     idx(i + 1, j + 1, k + 1),
                     idx(i, j + 1, k + 1),
-                ]);
+                ));
                 etags.push(1);
             }
         }
@@ -66,20 +77,20 @@ pub fn nonuniform_box_mesh<M: Mesh<3, 4, 3>>(x: &[f64], y: &[f64], z: &[f64]) ->
     for i in 0..nx - 1 {
         for j in 0..ny - 1 {
             let k = 0;
-            quads.push([
+            quads.push(Quadrangle::new(
                 idx(i, j, k),
                 idx(i, j + 1, k),
                 idx(i + 1, j + 1, k),
                 idx(i + 1, j, k),
-            ]);
+            ));
             ftags.push(1);
             let k = nz - 1;
-            quads.push([
+            quads.push(Quadrangle::new(
                 idx(i, j, k),
                 idx(i + 1, j, k),
                 idx(i + 1, j + 1, k),
                 idx(i, j + 1, k),
-            ]);
+            ));
             ftags.push(2);
         }
     }
@@ -87,20 +98,20 @@ pub fn nonuniform_box_mesh<M: Mesh<3, 4, 3>>(x: &[f64], y: &[f64], z: &[f64]) ->
     for i in 0..nx - 1 {
         for k in 0..nz - 1 {
             let j = 0;
-            quads.push([
+            quads.push(Quadrangle::new(
                 idx(i, j, k),
                 idx(i + 1, j, k),
                 idx(i + 1, j, k + 1),
                 idx(i, j, k + 1),
-            ]);
+            ));
             ftags.push(3);
             let j = ny - 1;
-            quads.push([
+            quads.push(Quadrangle::new(
                 idx(i, j, k),
                 idx(i, j, k + 1),
                 idx(i + 1, j, k + 1),
                 idx(i + 1, j, k),
-            ]);
+            ));
             ftags.push(4);
         }
     }
@@ -108,20 +119,20 @@ pub fn nonuniform_box_mesh<M: Mesh<3, 4, 3>>(x: &[f64], y: &[f64], z: &[f64]) ->
     for j in 0..ny - 1 {
         for k in 0..nz - 1 {
             let i = 0;
-            quads.push([
+            quads.push(Quadrangle::new(
                 idx(i, j, k),
                 idx(i, j, k + 1),
                 idx(i, j + 1, k + 1),
                 idx(i, j + 1, k),
-            ]);
+            ));
             ftags.push(5);
             let i = nx - 1;
-            quads.push([
+            quads.push(Quadrangle::new(
                 idx(i, j, k),
                 idx(i, j + 1, k),
                 idx(i, j + 1, k + 1),
                 idx(i, j, k + 1),
-            ]);
+            ));
             ftags.push(6);
         }
     }
@@ -136,15 +147,14 @@ pub fn nonuniform_box_mesh<M: Mesh<3, 4, 3>>(x: &[f64], y: &[f64], z: &[f64]) ->
 }
 
 /// Tetrahedron mesh in 3d
-pub type Mesh3d = GenericMesh<3, 4, 3>;
+pub type Mesh3d = GenericMesh<3, Tetrahedron<usize>>;
 
 #[cfg(test)]
 mod tests {
     use crate::{
         Vert3d, assert_delta,
         mesh::{
-            BoundaryMesh3d, Mesh, Mesh3d, MutMesh, Simplex, Tetrahedron, Triangle, bandwidth,
-            box_mesh, cell_center,
+            BoundaryMesh3d, GSimplex, GradientMethod, Mesh, Mesh3d, bandwidth, box_mesh,
             partition::{HilbertPartitioner, KMeansPartitioner3d, RCMPartitioner},
         },
     };
@@ -157,44 +167,209 @@ mod tests {
         let faces = msh.all_faces();
         msh.check(&faces).unwrap();
 
-        let vol = msh.gelems().map(|ge| Tetrahedron::vol(&ge)).sum::<f64>();
+        let vol = msh.gelems().map(|ge| ge.vol()).sum::<f64>();
         assert_delta!(vol, 1.0, 1e-12);
     }
 
     #[test]
-    fn test_gradient() {
+    fn test_gradient_linear() {
         let grad = Vert3d::new(9.8, 7.6, 5.4);
         let msh = box_mesh::<Mesh3d>(1.0, 10, 1.0, 15, 1.0, 20).random_shuffle();
         let f = msh
             .par_verts()
             .map(|v| grad[0] * v[0] + grad[1] * v[1] + grad[2] * v[2])
             .collect::<Vec<_>>();
-        let v2v = msh.vertex_to_vertices();
-        let gradient = msh.gradient(&v2v, 1, &f).collect::<Vec<_>>();
 
-        for &x in &gradient {
-            let err = (x - grad).norm();
-            assert!(err < 1e-10, "{x:?}");
+        for method in [
+            GradientMethod::LinearLeastSquares(1),
+            GradientMethod::LinearLeastSquares(2),
+            GradientMethod::QuadraticLeastSquares(1),
+            GradientMethod::L2Projection,
+        ] {
+            let gradient = msh.gradient(method, &f);
+
+            for x in gradient.chunks(3) {
+                let x = Vert3d::from_row_slice(x);
+                let err = (x - grad).norm();
+                assert!(err < 1e-10, "{method:?}, {x:?}");
+            }
+        }
+    }
+
+    fn run_gradient(method: GradientMethod, n: u32) -> f64 {
+        let n = 2_usize.pow(n) + 1;
+        let mesh = box_mesh::<Mesh3d>(1.0, n, 1.0, n, 1.0, n).random_shuffle();
+
+        let f = mesh.verts().map(|p| p[0] * p[1] * p[2]).collect::<Vec<_>>();
+        let grad = mesh
+            .verts()
+            .map(|p| Vert3d::new(p[1] * p[2], p[0] * p[2], p[0] * p[1]))
+            .collect::<Vec<_>>();
+        let res = mesh
+            .gradient(method, &f)
+            .chunks(3)
+            .map(Vert3d::from_column_slice)
+            .collect::<Vec<_>>();
+        let err = grad
+            .iter()
+            .zip(res.iter())
+            .map(|(x, y)| (x - y).norm())
+            .collect::<Vec<_>>();
+
+        mesh.norm(&err)
+    }
+
+    #[test]
+    fn test_gradient() {
+        for method in [
+            GradientMethod::LinearLeastSquares(1),
+            GradientMethod::LinearLeastSquares(2),
+            GradientMethod::QuadraticLeastSquares(1),
+            GradientMethod::L2Projection,
+        ] {
+            let mut prev = f64::MAX;
+            for n in 2..5 {
+                let nrm = run_gradient(method, n);
+                assert!(nrm < 0.5 * prev, "{method:?}, {nrm:.2e} {prev:.2e}");
+                prev = nrm;
+            }
+        }
+    }
+
+    #[test]
+    fn test_hessian_quadratic() {
+        let mesh = box_mesh::<Mesh3d>(1.0, 10, 1.0, 15, 1.0, 20).random_shuffle();
+        let flg = mesh.boundary_flag();
+        let v2v = mesh.vertex_to_vertices();
+
+        let f: Vec<_> = mesh
+            .verts()
+            .map(|p| {
+                p[0] * p[0]
+                    + 2.0 * p[1] * p[1]
+                    + 3.0 * p[2] * p[2]
+                    + 4.0 * p[0] * p[1]
+                    + 5.0 * p[1] * p[2]
+                    + 6.0 * p[0] * p[2]
+            })
+            .collect();
+
+        for method in [
+            GradientMethod::QuadraticLeastSquares(1),
+            GradientMethod::L2Projection,
+        ] {
+            let res = mesh.hessian(method, &f);
+            for i_vert in 0..mesh.n_verts() {
+                if matches!(method, GradientMethod::L2Projection)
+                    && v2v.row(i_vert).iter().any(|&j| flg[j])
+                {
+                    // l2proj is not correct at the boundaries
+                    continue;
+                }
+                assert!(f64::abs(res[6 * i_vert] - 2.) < 1e-10);
+                assert!(f64::abs(res[6 * i_vert + 1] - 4.) < 1e-10);
+                assert!(f64::abs(res[6 * i_vert + 2] - 6.) < 1e-10);
+                assert!(f64::abs(res[6 * i_vert + 3] - 4.) < 1e-10);
+                assert!(f64::abs(res[6 * i_vert + 4] - 5.) < 1e-10);
+                assert!(f64::abs(res[6 * i_vert + 5] - 6.) < 1e-10);
+            }
+        }
+    }
+
+    fn run_hessian(method: GradientMethod, n: u32) -> f64 {
+        let n = 2_usize.pow(n) + 1;
+        let mesh = box_mesh::<Mesh3d>(1.0, n, 1.0, n, 1.0, n).random_shuffle();
+
+        let f: Vec<_> = mesh
+            .verts()
+            .map(|p| {
+                let x = p[0];
+                let y = p[1];
+                let z = p[2];
+                x * x * y * z + 2.0 * x * y * y * z + 3.0 * x * y * z * z
+            })
+            .collect();
+        let hess = mesh
+            .verts()
+            .map(|p| {
+                let x = p[0];
+                let y = p[1];
+                let z = p[2];
+                [
+                    2.0 * y * z,
+                    4.0 * x * z,
+                    6.0 * x * y,
+                    z * (2.0 * x + 4.0 * y + 3.0 * z),
+                    x * (x + 4.0 * y + 6.0 * z),
+                    2.0 * y * (x + y + 3.0 * z),
+                ]
+            })
+            .collect::<Vec<_>>();
+        let res = mesh.hessian(method, &f);
+
+        let err = hess
+            .iter()
+            .zip(res.chunks(6))
+            .map(|(x, y)| {
+                ((x[0] - y[0]).powi(2)
+                    + (x[1] - y[1]).powi(2)
+                    + (x[2] - y[2]).powi(2)
+                    + (x[3] - y[3]).powi(2)
+                    + (x[4] - y[4]).powi(2)
+                    + (x[5] - y[5]).powi(2))
+                .sqrt()
+            })
+            .collect::<Vec<_>>();
+
+        mesh.norm(&err)
+    }
+
+    #[test]
+    fn test_hessian() {
+        let mut prev = f64::MAX;
+        for n in 2..5 {
+            let nrm = run_hessian(GradientMethod::QuadraticLeastSquares(1), n);
+            assert!(nrm < 0.5 * prev);
+            prev = nrm;
+        }
+    }
+
+    #[test]
+    fn test_hessian_l2proj() {
+        // WARNING: l2proj hessian does not converge
+        let mut prev = f64::MAX;
+        for n in 2..5 {
+            let nrm = run_hessian(GradientMethod::L2Projection, n);
+            assert!(nrm < prev, "{nrm:.2e} {prev:.2e}");
+            prev = nrm;
+        }
+    }
+
+    #[test]
+    fn test_smooth() {
+        let mesh = box_mesh::<Mesh3d>(1.0, 9, 1.0, 9, 1.0, 9).random_shuffle();
+
+        let f: Vec<_> = mesh
+            .verts()
+            .map(|p| p[0] + 2.0 * p[1] + 3.0 * p[2])
+            .collect();
+        let res = mesh.smooth(GradientMethod::LinearLeastSquares(2), &f);
+        for i_vert in 0..mesh.n_verts() {
+            assert!(f64::abs(res[i_vert] - f[i_vert]) < 1e-10);
+        }
+
+        let f: Vec<_> = mesh.verts().map(|p| p[0] * p[1] * p[2]).collect();
+        let res = mesh.smooth(GradientMethod::LinearLeastSquares(2), &f);
+        for i_vert in 0..mesh.n_verts() {
+            assert!(f64::abs(res[i_vert] - f[i_vert]) < 2e-2);
         }
     }
 
     #[test]
     fn test_integrate() {
-        let v0 = Vert3d::new(0.0, 0.0, 0.0);
-        let v1 = Vert3d::new(1.0, 0.0, 0.0);
-        let v2 = Vert3d::new(0.0, 1.0, 0.0);
-        let v3 = Vert3d::new(0.0, 0.0, 1.0);
-        let ge = [v0, v1, v2, v3];
-        assert_delta!(Tetrahedron::vol(&ge), 1.0 / 6.0, 1e-12);
-        let ge = [v0, v2, v1, v3];
-        assert_delta!(Tetrahedron::vol(&ge), -1.0 / 6.0, 1e-12);
-
         let msh = box_mesh::<Mesh3d>(1.0, 10, 2.0, 15, 1.0, 20).random_shuffle();
 
-        let vol = msh
-            .par_gelems()
-            .map(|ge| Tetrahedron::vol(&ge))
-            .sum::<f64>();
+        let vol = msh.par_gelems().map(|ge| ge.vol()).sum::<f64>();
         assert_delta!(vol, 2.0, 1e-12);
 
         let f = msh.par_verts().map(|v| v[0]).collect::<Vec<_>>();
@@ -239,9 +414,9 @@ mod tests {
         }
 
         for (i, v) in msh_rcm.gelems().enumerate() {
-            let v = cell_center(&v);
+            let v = v.center();
             let other = msh.gelem(&msh.elem(elem_ids[i]));
-            let other = cell_center(&other);
+            let other = other.center();
             assert!((v - other).norm() < 1e-12);
         }
 
@@ -251,9 +426,9 @@ mod tests {
         }
 
         for (i, v) in msh_rcm.gfaces().enumerate() {
-            let v = cell_center(&v);
+            let v = v.center();
             let other = msh.gface(&msh.face(face_ids[i]));
-            let other = cell_center(&other);
+            let other = other.center();
             assert!((v - other).norm() < 1e-12);
         }
 
@@ -297,9 +472,9 @@ mod tests {
         }
 
         for (i, v) in msh_hilbert.gelems().enumerate() {
-            let v = cell_center(&v);
+            let v = v.center();
             let other = msh.gelem(&msh.elem(elem_ids[i]));
-            let other = cell_center(&other);
+            let other = other.center();
             assert!((v - other).norm() < 1e-12);
         }
 
@@ -309,9 +484,9 @@ mod tests {
         }
 
         for (i, v) in msh_hilbert.gfaces().enumerate() {
-            let v = cell_center(&v);
+            let v = v.center();
             let other = msh.gface(&msh.face(face_ids[i]));
-            let other = cell_center(&other);
+            let other = other.center();
             assert!((v - other).norm() < 1e-12);
         }
 
@@ -365,10 +540,10 @@ mod tests {
         assert_eq!(msh.n_elems(), 6 * 8);
 
         let (bdy, _): (BoundaryMesh3d, _) = msh.boundary();
-        let area = bdy.gelems().map(|ge| Triangle::vol(&ge)).sum::<f64>();
+        let area = bdy.gelems().map(|ge| ge.vol()).sum::<f64>();
         assert_delta!(area, 6.0, 1e-10);
 
-        let vol = msh.gelems().map(|ge| Tetrahedron::vol(&ge)).sum::<f64>();
+        let vol = msh.gelems().map(|ge| ge.vol()).sum::<f64>();
         assert_delta!(vol, 1.0, 1e-10);
     }
 

@@ -2,7 +2,6 @@ use super::Remesher;
 use crate::{
     Result,
     geometry::Geometry,
-    mesh::{Elem, HasTmeshImpl, SimplexMesh},
     metric::Metric,
     remesher::{
         cavity::{Cavity, CavityCheckStatus, FilledCavity, FilledCavityType},
@@ -11,6 +10,7 @@ use crate::{
     },
 };
 use log::{debug, trace};
+use tmesh::mesh::Simplex;
 
 #[derive(Clone, Debug)]
 pub struct CollapseParams {
@@ -44,10 +44,7 @@ impl Default for CollapseParams {
     }
 }
 
-impl<const D: usize, E: Elem, M: Metric<D>> Remesher<D, E, M>
-where
-    SimplexMesh<D, E>: HasTmeshImpl<D, E>,
-{
+impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
     /// Loop over the edges and collapse them if
     /// - their length is smaller that 1/sqrt(2)
     /// - no edge larger than
@@ -87,7 +84,8 @@ where
                 let edg = edges[i_edge];
                 if dims_and_lengths[i_edge].1 < params.l {
                     trace!("Try to collapse edgs {edg:?}");
-                    let (mut i0, mut i1) = edg.into();
+                    let mut i0 = edg.get(0);
+                    let mut i1 = edg.get(1);
                     if !self.verts.contains_key(&i0) {
                         trace!("Cannot collapse: vertex deleted");
                         continue;
@@ -125,9 +123,7 @@ where
 
                     // too difficult otherwise!
                     if !cavity.tagged_faces.is_empty()
-                        && !cavity
-                            .tagged_faces()
-                            .any(|(f, _)| f.contains_vertex(local_i1))
+                        && !cavity.tagged_faces().any(|(f, _)| f.contains(local_i1))
                     {
                         continue;
                     }
@@ -159,22 +155,22 @@ where
 
                         for (f, t) in filled_cavity.faces() {
                             let f = cavity.global_elem(&f);
-                            assert!(!f.contains_vertex(i1));
-                            self.insert_elem(E::from_vertex_and_face(i1, &f), t)?;
+                            assert!(!f.contains(i1));
+                            self.insert_elem(C::from_vertex_and_face(i1, &f), t)?;
                         }
                         for (f, _) in cavity.global_tagged_faces() {
                             self.remove_tagged_face(f)?;
                         }
                         for (b, t) in filled_cavity.tagged_faces_boundary_global() {
-                            assert!(!b.contains_vertex(i1));
-                            // self.add_tagged_face(E::Face::from_vertex_and_face(i1, &b), t)?;
+                            assert!(!b.contains(i1));
+                            // self.add_tagged_face(C::FACE::from_vertex_and_face(i1, &b), t)?;
                             if self
-                                .add_tagged_face(E::Face::from_vertex_and_face(i1, &b), t)
+                                .add_tagged_face(C::FACE::from_vertex_and_face(i1, &b), t)
                                 .is_err()
                             {
                                 panic!(
                                     "error with face {:?}",
-                                    E::Face::from_vertex_and_face(i1, &b)
+                                    C::FACE::from_vertex_and_face(i1, &b)
                                 );
                             }
                         }

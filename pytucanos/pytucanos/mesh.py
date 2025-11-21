@@ -1,17 +1,43 @@
 import numpy as np
-from .pytucanos import Mesh21, Mesh22, Mesh32, Mesh33
-from .pytucanos import PyPartitionerType as PartitionerType  # noqa: F401
-from .metric import sym2mat
+from . import Mesh2d, Mesh3d, BoundaryMesh2d, BoundaryMesh3d, Idx
+
+TRI2EDG = [
+    [0, 1],
+    [1, 2],
+    [2, 0],
+]
+
+TET2EDG = [
+    [0, 1],
+    [1, 2],
+    [2, 0],
+    [0, 3],
+    [1, 3],
+    [2, 3],
+]
+
+
+def edges(els):
+    assert els.ndim == 2
+    if els.shape[1] == 2:
+        edgs = els.copy()
+    elif els.shape[1] == 3:
+        edgs = np.vstack([els[:, e] for e in TRI2EDG])
+    elif els.shape[1] == 4:
+        edgs = np.vstack([els[:, e] for e in TET2EDG])
+
+    edgs.sort(axis=1)
+    return np.unique(edgs, axis=0)
 
 
 def create_mesh(coords, elems, etags, faces, ftags):
     if coords.shape[1] == 2:
-        return Mesh22(coords, elems, etags, faces, ftags)
+        return Mesh2d(coords, elems, etags, faces, ftags)
     else:
         if elems.shape[1] == 3:
-            return Mesh32(coords, elems, etags, faces, ftags)
+            return BoundaryMesh3d(coords, elems, etags, faces, ftags)
         else:
-            return Mesh33(coords, elems, etags, faces, ftags)
+            return Mesh3d(coords, elems, etags, faces, ftags)
 
 
 def __plot_boundary(ax, bdy, normals):
@@ -46,7 +72,7 @@ def __plot_boundary(ax, bdy, normals):
 
 
 def plot_mesh(ax, msh, etag=True, boundary=True, normals=False):
-    if isinstance(msh, Mesh22):
+    if isinstance(msh, Mesh2d):
         xy = msh.get_verts()
 
         tris = msh.get_elems()
@@ -59,14 +85,14 @@ def plot_mesh(ax, msh, etag=True, boundary=True, normals=False):
         if boundary:
             bdy, _ = msh.boundary()
             __plot_boundary(ax, bdy, normals)
-    elif isinstance(msh, Mesh21):
+    elif isinstance(msh, BoundaryMesh2d):
         __plot_boundary(ax, msh, normals)
 
     ax.axis("scaled")
 
 
 def plot_field(ax, msh, arr, loc="vertex"):
-    assert isinstance(msh, Mesh22)
+    assert isinstance(msh, Mesh2d)
 
     xy = msh.get_verts()
     tris = msh.get_elems()
@@ -81,30 +107,6 @@ def plot_field(ax, msh, arr, loc="vertex"):
     ax.axis("scaled")
 
     return cax
-
-
-def plot_metric(ax, msh, m, loc="vertex"):
-    assert isinstance(msh, Mesh22)
-
-    xy = msh.get_verts()
-    tris = msh.get_elems()
-
-    m = sym2mat(m)
-    t = np.linspace(0, 2 * np.pi, 30)
-
-    res = np.zeros((30, 2))
-    if loc != "vertex":
-        xy = xy[tris, :].mean(axis=1)
-
-    for i, (x, y) in enumerate(xy):
-        eigvals, eigvecs = np.linalg.eigh(m[i, :, :])
-        sizes = 0.25 * 1.0 / eigvals**0.5
-        for i in range(2):
-            res[:, i] = (
-                sizes[0] * np.cos(t) * eigvecs[i, 0]
-                + sizes[1] * np.sin(t) * eigvecs[i, 1]
-            )
-        ax.plot(x + res[:, 0], y + res[:, 1], "k")
 
 
 def get_cube():
@@ -128,7 +130,7 @@ def get_cube():
             [0, 5, 7, 4],
             [2, 7, 5, 6],
         ],
-        dtype=np.uint64,
+        dtype=Idx,
     )
     etags = np.array([1, 1, 1, 1, 1], dtype=np.int16)
     faces = np.array(
@@ -146,7 +148,7 @@ def get_cube():
             [0, 3, 7],
             [0, 7, 4],
         ],
-        dtype=np.uint64,
+        dtype=Idx,
     )
     ftags = np.array([1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6], dtype=np.int16)
 
@@ -167,7 +169,7 @@ def get_square(two_tags=True):
             [0, 1, 2],
             [0, 2, 3],
         ],
-        dtype=np.uint64,
+        dtype=Idx,
     )
     if two_tags:
         etags = np.array([1, 2], dtype=np.int16)
@@ -179,7 +181,7 @@ def get_square(two_tags=True):
                 [3, 0],
                 [0, 2],
             ],
-            dtype=np.uint64,
+            dtype=Idx,
         )
         ftags = np.array([1, 2, 3, 4, 5], dtype=np.int16)
     else:
@@ -191,7 +193,7 @@ def get_square(two_tags=True):
                 [2, 3],
                 [3, 0],
             ],
-            dtype=np.uint64,
+            dtype=Idx,
         )
         ftags = np.array([1, 2, 3, 4], dtype=np.int16)
 

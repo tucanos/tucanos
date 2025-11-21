@@ -2,7 +2,7 @@
 use crate::{
     Error, Result, Tag, Vertex,
     io::{VTUEncoding, VTUFile},
-    mesh::{Cell, Face, Mesh, Simplex},
+    mesh::{Mesh, Simplex},
 };
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
@@ -46,12 +46,12 @@ pub trait PolyMesh<const D: usize>: Sync + Sized {
     fn n_elems(&self) -> usize;
 
     /// Get the `i`th face
-    fn elem(&self, i: usize) -> &[(usize, bool)];
+    fn elem(&self, i: usize) -> impl ExactSizeIterator<Item = (usize, bool)> + Clone + Send;
 
     /// Number of vertices in the `i`the element
     fn elem_n_verts(&self, i: usize) -> usize {
         let mut verts = FxHashSet::with_hasher(FxBuildHasher);
-        for &(j, _) in self.elem(i) {
+        for (j, _) in self.elem(i) {
             for k in self.face(j) {
                 verts.insert(k);
             }
@@ -60,12 +60,21 @@ pub trait PolyMesh<const D: usize>: Sync + Sized {
     }
 
     /// Parallel iterator over the mesh elements
-    fn par_elems(&self) -> impl IndexedParallelIterator<Item = &[(usize, bool)]> + Clone + '_ {
+    fn par_elems(
+        &self,
+    ) -> impl IndexedParallelIterator<
+        Item = impl ExactSizeIterator<Item = (usize, bool)> + Clone + Send,
+    > + Clone
+    + '_ {
         (0..self.n_elems()).into_par_iter().map(|i| self.elem(i))
     }
 
     /// Sequantial iterator over the mesh elements
-    fn elems(&self) -> impl ExactSizeIterator<Item = &[(usize, bool)]> + Clone + '_ {
+    fn elems(
+        &self,
+    ) -> impl ExactSizeIterator<Item = impl ExactSizeIterator<Item = (usize, bool)> + Clone + Send>
+    + Clone
+    + '_ {
         (0..self.n_elems()).map(|i| self.elem(i))
     }
 
@@ -86,15 +95,22 @@ pub trait PolyMesh<const D: usize>: Sync + Sized {
     fn n_faces(&self) -> usize;
 
     /// Get the `i`the face
-    fn face(&self, i: usize) -> &[usize];
+    fn face(&self, i: usize) -> impl ExactSizeIterator<Item = usize> + Clone + Send;
 
     /// Parallel iterator over the faces
-    fn par_faces(&self) -> impl IndexedParallelIterator<Item = &[usize]> + Clone + '_ {
+    fn par_faces(
+        &self,
+    ) -> impl IndexedParallelIterator<Item = impl ExactSizeIterator<Item = usize> + Clone + Send>
+    + Clone
+    + '_ {
         (0..self.n_faces()).into_par_iter().map(|i| self.face(i))
     }
 
     /// Sequential iterator over the faces
-    fn faces(&self) -> impl ExactSizeIterator<Item = &[usize]> + Clone + '_ {
+    fn faces(
+        &self,
+    ) -> impl ExactSizeIterator<Item = impl ExactSizeIterator<Item = usize> + Clone + Send> + Clone + '_
+    {
         (0..self.n_faces()).map(|i| self.face(i))
     }
 
@@ -189,7 +205,7 @@ impl<const D: usize> SimplePolyMesh<D> {
     }
 
     /// Insert an element and return its index
-    pub fn insert_elem(&mut self, e: &[(usize, bool)], t: Tag) -> usize {
+    pub fn insert_elem<I: IntoIterator<Item = (usize, bool)>>(&mut self, e: I, t: Tag) -> usize {
         self.elem_to_face.extend(e);
         self.elem_to_face_ptr.push(self.elem_to_face.len());
         self.etags.push(t);
@@ -204,7 +220,7 @@ impl<const D: usize> SimplePolyMesh<D> {
         // simplify faces
         let mut face2elems = vec![[usize::MAX, usize::MAX]; mesh.n_faces()];
         for (i_elem, elem) in mesh.elems().enumerate() {
-            for &(i_face, orient) in elem {
+            for (i_face, orient) in elem {
                 if orient {
                     assert_eq!(face2elems[i_face][0], usize::MAX);
                     face2elems[i_face][0] = i_elem;
@@ -241,9 +257,9 @@ impl<const D: usize> SimplePolyMesh<D> {
                 let mut tmp = Vec::new();
                 for &(i_face, orient) in &faces {
                     if orient {
-                        tmp.extend_from_slice(mesh.face(i_face));
+                        tmp.extend(mesh.face(i_face));
                     } else {
-                        let mut f = mesh.face(i_face).to_vec();
+                        let mut f = mesh.face(i_face).collect::<Vec<_>>();
                         f.reverse();
                         tmp.extend_from_slice(&f);
                     }
@@ -278,7 +294,7 @@ impl<const D: usize> SimplePolyMesh<D> {
                 new_ftags.push(0);
             } else {
                 for (i_face, _) in faces {
-                    new_faces.extend_from_slice(mesh.face(i_face));
+                    new_faces.extend(mesh.face(i_face));
                     new_faces_ptr.push(new_faces.len());
                     new_faces_elems.push(elems);
                     new_ftags.push(mesh.ftag(i_face));
@@ -344,7 +360,7 @@ impl<const D: usize> SimplePolyMesh<D> {
         let mut new_verts = Vec::new();
         let mut next = 0;
         for face in res.faces() {
-            for &i in face {
+            for i in face {
                 if new_ids[i] == usize::MAX {
                     new_ids[i] = next;
                     new_verts.push(mesh.vert(i));
@@ -359,12 +375,8 @@ impl<const D: usize> SimplePolyMesh<D> {
     }
 
     /// PolyMesh representation of a `Mesh<D, C, F>`
-    pub fn from_mesh<const C: usize, const F: usize, M: Mesh<D, C, F>>(mesh: &M) -> Self
-    where
-        Cell<C>: Simplex<C>,
-        Face<F>: Simplex<F>,
-    {
-        let poly_type = match C {
+    pub fn from_mesh<C: Simplex, M: Mesh<D, C>>(mesh: &M) -> Self {
+        let poly_type = match C::N_VERTS {
             4 => PolyMeshType::Polyhedra,
             3 => PolyMeshType::Polygons,
             2 => PolyMeshType::Polylines,
@@ -378,18 +390,18 @@ impl<const D: usize> SimplePolyMesh<D> {
             .collect::<FxHashMap<_, _>>();
 
         let mut elem_to_face_ptr = vec![0; mesh.n_elems() + 1];
-        let mut elem_to_face = vec![(usize::MAX, true); mesh.n_elems() * C];
+        let mut elem_to_face = vec![(usize::MAX, true); mesh.n_elems() * C::N_VERTS];
         let mut face_to_node_ptr = vec![0; all_faces.len() + 1];
-        let mut face_to_node = vec![0; all_faces.len() * F];
+        let mut face_to_node = vec![0; all_faces.len() * C::FACE::N_VERTS];
         let mut ftags = vec![0; all_faces.len()];
 
         for i_elem in 0..mesh.n_elems() {
-            elem_to_face_ptr[i_elem + 1] = C * (i_elem + 1);
+            elem_to_face_ptr[i_elem + 1] = C::N_VERTS * (i_elem + 1);
         }
         for (f, &[i_face, i0, i1]) in &all_faces {
-            face_to_node_ptr[i_face + 1] = F * (i_face + 1);
-            for k in 0..F {
-                face_to_node[F * i_face + k] = f[k];
+            face_to_node_ptr[i_face + 1] = C::FACE::N_VERTS * (i_face + 1);
+            for k in 0..C::FACE::N_VERTS {
+                face_to_node[C::FACE::N_VERTS * i_face + k] = f.get(k);
             }
             if i0 != usize::MAX {
                 let mut ok = false;
@@ -459,10 +471,10 @@ impl<const D: usize> PolyMesh<D> for SimplePolyMesh<D> {
         self.elem_to_face_ptr.len() - 1
     }
 
-    fn elem(&self, i: usize) -> &[(usize, bool)] {
+    fn elem(&self, i: usize) -> impl ExactSizeIterator<Item = (usize, bool)> + Clone + Send {
         let start = self.elem_to_face_ptr[i];
         let end = self.elem_to_face_ptr[i + 1];
-        &self.elem_to_face[start..end]
+        self.elem_to_face[start..end].iter().copied()
     }
 
     fn etag(&self, i: usize) -> Tag {
@@ -473,10 +485,10 @@ impl<const D: usize> PolyMesh<D> for SimplePolyMesh<D> {
         self.face_to_node_ptr.len() - 1
     }
 
-    fn face(&self, i: usize) -> &[usize] {
+    fn face(&self, i: usize) -> impl ExactSizeIterator<Item = usize> + Clone + Send {
         let start = self.face_to_node_ptr[i];
         let end = self.face_to_node_ptr[i + 1];
-        &self.face_to_node[start..end]
+        self.face_to_node[start..end].iter().copied()
     }
 
     fn ftag(&self, i: usize) -> Tag {

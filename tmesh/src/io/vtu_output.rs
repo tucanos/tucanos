@@ -2,7 +2,7 @@ use crate::{
     Result, Tag, Vertex,
     dual::{PolyMesh, PolyMeshType, merge_polylines},
     extruded::ExtrudedMesh2d,
-    mesh::{Cell, Face, Mesh, Prism, Simplex},
+    mesh::{Idx, Mesh, Prism, Simplex},
 };
 use base64::Engine as _;
 use quick_xml::se::to_utf8_io_writer;
@@ -39,14 +39,10 @@ pub struct VTUFile {
 
 impl VTUFile {
     /// Create a vtu Mesh writer
-    pub fn from_mesh<const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>(
+    pub fn from_mesh<const D: usize, C: Simplex, M: Mesh<D, C>>(
         mesh: &M,
         encoding: VTUEncoding,
-    ) -> Self
-    where
-        Cell<C>: Simplex<C>,
-        Face<F>: Simplex<F>,
-    {
+    ) -> Self {
         Self {
             grid_type: "UnstructuredGrid".to_string(),
             version: 0.1,
@@ -68,7 +64,7 @@ impl VTUFile {
 
     /// Create a vtu ExtrudedMesh2d writer
     #[must_use]
-    pub fn from_extruded_mesh(mesh: &ExtrudedMesh2d, encoding: VTUEncoding) -> Self {
+    pub fn from_extruded_mesh(mesh: &ExtrudedMesh2d<impl Idx>, encoding: VTUEncoding) -> Self {
         Self {
             grid_type: "UnstructuredGrid".to_string(),
             version: 0.1,
@@ -110,11 +106,11 @@ impl VTUFile {
     }
 
     /// Add cell data
-    pub fn add_cell_data<I: Iterator<Item = f64>>(
+    pub fn add_cell_data(
         &mut self,
         name: &str,
         number_of_components: usize,
-        data: I,
+        data: impl Iterator<Item = f64>,
     ) {
         self.unstructured_grid
             .piece
@@ -130,11 +126,11 @@ impl VTUFile {
     }
 
     /// Add point data
-    pub fn add_point_data<I: Iterator<Item = f64>>(
+    pub fn add_point_data(
         &mut self,
         name: &str,
         number_of_components: usize,
-        data: I,
+        data: impl Iterator<Item = f64>,
     ) {
         self.unstructured_grid
             .piece
@@ -185,8 +181,8 @@ struct Points {
 }
 
 impl Points {
-    fn from_verts<const D: usize, I: ExactSizeIterator<Item = Vertex<D>>>(
-        data: I,
+    fn from_verts<const D: usize>(
+        data: impl ExactSizeIterator<Item = Vertex<D>>,
         encoding: VTUEncoding,
     ) -> Self {
         let name = "Points";
@@ -226,7 +222,7 @@ struct DataArray {
     data: String,
 }
 
-fn encode<T, I: Iterator<Item = u8>>(len: usize, data: I) -> String {
+fn encode<T>(len: usize, data: impl Iterator<Item = u8>) -> String {
     let capacity = size_of::<u32>() + len * size_of::<T>();
 
     let mut out = Vec::with_capacity(capacity);
@@ -238,11 +234,11 @@ fn encode<T, I: Iterator<Item = u8>>(len: usize, data: I) -> String {
 }
 
 impl DataArray {
-    fn new_f64<I: Iterator<Item = f64>>(
+    fn new_f64(
         name: &str,
         number_of_components: usize,
         len: usize,
-        data: I,
+        data: impl Iterator<Item = f64>,
         encoding: VTUEncoding,
     ) -> Self {
         use std::fmt::Write;
@@ -256,7 +252,7 @@ impl DataArray {
             ),
             VTUEncoding::Binary => (
                 "binary".to_string(),
-                encode::<f64, _>(len, data.flat_map(f64::to_le_bytes)),
+                encode::<f64>(len, data.flat_map(f64::to_le_bytes)),
             ),
         };
 
@@ -269,11 +265,11 @@ impl DataArray {
         }
     }
 
-    fn new_i64<I: Iterator<Item = i64>>(
+    fn new_i64(
         name: &str,
         number_of_components: usize,
         len: usize,
-        data: I,
+        data: impl Iterator<Item = i64>,
         encoding: VTUEncoding,
     ) -> Self {
         use std::fmt::Write;
@@ -287,7 +283,7 @@ impl DataArray {
             ),
             VTUEncoding::Binary => (
                 "binary".to_string(),
-                encode::<i64, _>(len, data.flat_map(i64::to_le_bytes)),
+                encode::<i64>(len, data.flat_map(i64::to_le_bytes)),
             ),
         };
 
@@ -301,11 +297,11 @@ impl DataArray {
     }
 
     #[allow(dead_code)]
-    fn new_i32<I: Iterator<Item = i32>>(
+    fn new_i32(
         name: &str,
         number_of_components: usize,
         len: usize,
-        data: I,
+        data: impl Iterator<Item = i32>,
         encoding: VTUEncoding,
     ) -> Self {
         use std::fmt::Write;
@@ -319,7 +315,7 @@ impl DataArray {
             ),
             VTUEncoding::Binary => (
                 "binary".to_string(),
-                encode::<i32, _>(len, data.flat_map(i32::to_le_bytes)),
+                encode::<i32>(len, data.flat_map(i32::to_le_bytes)),
             ),
         };
 
@@ -333,11 +329,11 @@ impl DataArray {
     }
 
     #[allow(dead_code)]
-    fn new_i16<I: Iterator<Item = i16>>(
+    fn new_i16(
         name: &str,
         number_of_components: usize,
         len: usize,
-        data: I,
+        data: impl Iterator<Item = i16>,
         encoding: VTUEncoding,
     ) -> Self {
         use std::fmt::Write;
@@ -351,7 +347,7 @@ impl DataArray {
             ),
             VTUEncoding::Binary => (
                 "binary".to_string(),
-                encode::<i16, _>(len, data.flat_map(i16::to_le_bytes)),
+                encode::<i16>(len, data.flat_map(i16::to_le_bytes)),
             ),
         };
 
@@ -364,11 +360,11 @@ impl DataArray {
         }
     }
 
-    fn new_u8<I: Iterator<Item = u8>>(
+    fn new_u8(
         name: &str,
         number_of_components: usize,
         len: usize,
-        data: I,
+        data: impl Iterator<Item = u8>,
         encoding: VTUEncoding,
     ) -> Self {
         use std::fmt::Write;
@@ -382,7 +378,7 @@ impl DataArray {
             ),
             VTUEncoding::Binary => (
                 "binary".to_string(),
-                encode::<u8, _>(len, data.flat_map(u8::to_le_bytes)),
+                encode::<u8>(len, data.flat_map(u8::to_le_bytes)),
             ),
         };
 
@@ -403,28 +399,24 @@ struct Cells {
 }
 
 impl Cells {
-    fn from_elems<const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>(
+    fn from_elems<const D: usize, C: Simplex, M: Mesh<D, C>>(
         mesh: &M,
         encoding: VTUEncoding,
-    ) -> Self
-    where
-        Cell<C>: Simplex<C>,
-        Face<F>: Simplex<F>,
-    {
+    ) -> Self {
         let n = mesh.n_elems();
 
         let connectivity = DataArray::new_i64(
             "connectivity",
             1,
-            C * n,
+            C::N_VERTS * n,
             mesh.elems().flatten().map(|x| x as i64),
             encoding,
         );
 
-        let data = (0..n).map(|i| (C * (i + 1)) as i64);
+        let data = (0..n).map(|i| (C::N_VERTS * (i + 1)) as i64);
         let offsets = DataArray::new_i64("offsets", 1, data.len(), data, encoding);
 
-        let cell_type: u8 = match C {
+        let cell_type: u8 = match C::N_VERTS {
             4 => 10,
             3 => 5,
             2 => 4,
@@ -439,8 +431,8 @@ impl Cells {
         }
     }
 
-    fn from_prisms<'a, I: ExactSizeIterator<Item = &'a Prism>>(
-        prisms: I,
+    fn from_prisms<'a>(
+        prisms: impl ExactSizeIterator<Item = &'a Prism<impl Idx>>,
         encoding: VTUEncoding,
     ) -> Self {
         let n = prisms.len();
@@ -449,7 +441,7 @@ impl Cells {
             "connectivity",
             1,
             6 * n,
-            prisms.flatten().map(|&x| x as i64),
+            prisms.copied().flatten().map(|x| x as i64),
             encoding,
         );
 
@@ -484,15 +476,16 @@ impl Cells {
                     let mut tmp_ptr = Vec::new();
                     tmp_ptr.push(0);
                     let mut tmp = Vec::new();
-                    for &(i_face, orient) in e {
-                        let mut face = mesh.face(i_face).to_vec();
+                    let n_faces = e.len();
+                    for (i_face, orient) in e {
+                        let mut face = mesh.face(i_face).collect::<Vec<_>>();
                         if !orient {
                             face.reverse();
                         }
                         tmp.extend_from_slice(&face);
                         tmp_ptr.push(tmp.len());
                     }
-                    let faces = (0..e.len())
+                    let faces = (0..n_faces)
                         .map(|i| {
                             let start = tmp_ptr[i];
                             let end = tmp_ptr[i + 1];
@@ -506,9 +499,9 @@ impl Cells {
                 }
                 PolyMeshType::Polyhedra => {
                     let mut tmp = FxHashSet::with_hasher(FxBuildHasher);
-                    for &(i_face, _) in e {
+                    for (i_face, _) in e {
                         let face = mesh.face(i_face);
-                        for &i_vert in face {
+                        for i_vert in face {
                             tmp.insert(i_vert);
                         }
                     }
@@ -545,8 +538,8 @@ impl Cells {
 
                 for e in mesh.elems() {
                     faces.push(e.len());
-                    for &(i_face, orient) in e {
-                        let mut f = mesh.face(i_face).to_vec();
+                    for (i_face, orient) in e {
+                        let mut f = mesh.face(i_face).collect::<Vec<_>>();
                         if !orient {
                             f.reverse();
                         }
@@ -584,7 +577,7 @@ impl Cells {
                     "polyhedron_to_faces",
                     1,
                     *polyhedron_offsets.last().unwrap(),
-                    mesh.elems().flat_map(|x| x.iter().map(|&(x, _)| x as i64)),
+                    mesh.elems().flat_map(|x| x.map(|(x, _)| x as i64)),
                     encoding,
                 );
 
@@ -607,7 +600,7 @@ impl Cells {
                     "face_connectivity",
                     1,
                     *face_offsets.last().unwrap(),
-                    mesh.faces().flat_map(|x| x.iter().map(|&x| x as i64)),
+                    mesh.faces().flat_map(|x| x.map(|x| x as i64)),
                     encoding,
                 );
 
@@ -638,7 +631,7 @@ struct CellData {
 }
 
 impl CellData {
-    fn from_etags<I: ExactSizeIterator<Item = Tag>>(data: I, encoding: VTUEncoding) -> Self {
+    fn from_etags(data: impl ExactSizeIterator<Item = Tag>, encoding: VTUEncoding) -> Self {
         #[cfg(feature = "64bit-tags")]
         let tags = DataArray::new_i64("tags", 1, data.len(), data, encoding);
         #[cfg(feature = "32bit-tags")]

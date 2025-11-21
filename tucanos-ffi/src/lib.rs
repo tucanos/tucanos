@@ -4,33 +4,39 @@
 #![allow(clippy::missing_safety_doc)]
 #![allow(clippy::doc_markdown)]
 use log::warn;
+use tmesh::mesh::{GenericMesh, Mesh, Simplex, Tetrahedron, Triangle};
 use tucanos::{
     geometry::LinearGeometry,
-    mesh::{Elem, SimplexMesh, Tetrahedron, Triangle},
+    mesh::MeshTopology,
     metric::{AnisoMetric3d, IsoMetric, Metric},
     remesher::{Remesher, RemesherParams},
 };
 
 mod ffi2d;
 
+#[cfg(feature = "32bit-ints")]
+pub type Idx = u32;
+#[cfg(not(feature = "32bit-ints"))]
+pub type Idx = usize;
+
 pub struct tucanos_remesher3diso_t {
-    implem: Remesher<3, Tetrahedron, IsoMetric<3>>,
+    implem: Remesher<3, Tetrahedron<Idx>, IsoMetric<3>>,
 }
 
 pub struct tucanos_remesher3daniso_t {
-    implem: Remesher<3, Tetrahedron, AnisoMetric3d>,
+    implem: Remesher<3, Tetrahedron<Idx>, AnisoMetric3d>,
 }
 
 pub struct tucanos_mesh33_t {
-    implem: SimplexMesh<3, Tetrahedron>,
+    implem: GenericMesh<3, Tetrahedron<Idx>>,
 }
 
 pub struct tucanos_mesh32_t {
-    implem: SimplexMesh<3, Triangle>,
+    implem: GenericMesh<3, Triangle<Idx>>,
 }
 
 pub struct tucanos_geom3d_t {
-    implem: LinearGeometry<3, Triangle>,
+    implem: LinearGeometry<3, Triangle<Idx>>,
 }
 
 #[cfg(feature = "64bit-tags")]
@@ -39,6 +45,10 @@ pub type tucanos_tag_t = i64;
 pub type tucanos_tag_t = i32;
 #[cfg(not(any(feature = "32bit-tags", feature = "64bit-tags")))]
 pub type tucanos_tag_t = i16;
+#[cfg(feature = "32bit-ints")]
+pub type tucanos_int_t = u32;
+#[cfg(not(feature = "32bit-ints"))]
+pub type tucanos_int_t = usize;
 
 /// @brief Create a geometry for a tucanos_mesh33_t
 ///
@@ -51,11 +61,9 @@ pub unsafe extern "C" fn tucanos_geom3d_new(
 ) -> *mut tucanos_geom3d_t {
     unsafe {
         let mesh = &mut (*mesh).implem;
-        if mesh.get_topology().is_err() {
-            mesh.compute_topology();
-        }
         let boundary = Box::from_raw(boundary).implem;
-        LinearGeometry::new(mesh, boundary).map_or(std::ptr::null_mut(), |implem| {
+        let topo = MeshTopology::new(mesh);
+        LinearGeometry::new(mesh, &topo, boundary).map_or(std::ptr::null_mut(), |implem| {
             Box::into_raw(Box::new(tucanos_geom3d_t { implem }))
         })
     }
@@ -70,10 +78,10 @@ pub unsafe extern "C" fn tucanos_geom3d_delete(geom: *mut tucanos_geom3d_t) {
 
 unsafe fn new_metric<const D: usize, MT: Metric<D>>(
     metric: *const f64,
-    num_points: u32,
+    num_points: usize,
 ) -> impl ExactSizeIterator<Item = MT> {
     unsafe {
-        let metric = std::slice::from_raw_parts(metric, num_points as usize * MT::N);
+        let metric = std::slice::from_raw_parts(metric, num_points * MT::N);
         metric.chunks(MT::N).map(MT::from_slice)
     }
 }
@@ -89,7 +97,8 @@ pub unsafe extern "C" fn tucanos_remesher3diso_new(
         let mesh = &(*mesh).implem;
         let metric = new_metric(metric, mesh.n_verts());
         let geom = &(*geom).implem;
-        match Remesher::new_with_iter(mesh, metric, geom) {
+        let topo = MeshTopology::new(mesh);
+        match Remesher::new_with_iter(mesh, &topo, metric, geom) {
             Ok(implem) => Box::into_raw(Box::new(tucanos_remesher3diso_t { implem })),
             Err(e) => {
                 warn!("{e:?}");
@@ -129,7 +138,8 @@ pub unsafe extern "C" fn tucanos_remesher3daniso_new(
         let mesh = &(*mesh).implem;
         let metric = new_metric(metric, mesh.n_verts());
         let geom = &(*geom).implem;
-        match Remesher::new_with_iter(mesh, metric, geom) {
+        let topo = MeshTopology::new(mesh);
+        match Remesher::new_with_iter(mesh, &topo, metric, geom) {
             Ok(implem) => Box::into_raw(Box::new(tucanos_remesher3daniso_t { implem })),
             Err(e) => {
                 warn!("{e:?}");
@@ -196,13 +206,13 @@ pub extern "C" fn tucanos_mesh33_new(
     num_verts: usize,
     verts: *const f64,
     num_elements: usize,
-    elems: *const u32,
+    elems: *const tucanos_int_t,
     tags: *const tucanos_tag_t,
     num_faces: usize,
-    faces: *const u32,
+    faces: *const tucanos_int_t,
     ftags: *const tucanos_tag_t,
 ) -> *mut tucanos_mesh33_t {
-    let implem = SimplexMesh::new_with_vector(
+    let implem = GenericMesh::new(
         (verts, num_verts).into(),
         (elems, num_elements).into(),
         (tags, num_elements).into(),
@@ -213,12 +223,12 @@ pub extern "C" fn tucanos_mesh33_new(
 }
 
 #[unsafe(no_mangle)]
-pub const unsafe extern "C" fn tucanos_mesh33_num_verts(m: *const tucanos_mesh33_t) -> u32 {
+pub unsafe extern "C" fn tucanos_mesh33_num_verts(m: *const tucanos_mesh33_t) -> usize {
     unsafe { (*m).implem.n_verts() }
 }
 
 #[unsafe(no_mangle)]
-pub const unsafe extern "C" fn tucanos_mesh33_num_elems(m: *const tucanos_mesh33_t) -> u32 {
+pub unsafe extern "C" fn tucanos_mesh33_num_elems(m: *const tucanos_mesh33_t) -> usize {
     unsafe { (*m).implem.n_elems() }
 }
 
@@ -226,11 +236,11 @@ pub const unsafe extern "C" fn tucanos_mesh33_num_elems(m: *const tucanos_mesh33
 pub unsafe extern "C" fn tucanos_mesh33_verts(
     m: *const tucanos_mesh33_t,
     out: *mut f64,
-    first: u32,
-    last: u32,
+    first: usize,
+    last: usize,
 ) {
     unsafe {
-        let out = std::slice::from_raw_parts_mut(out, 3 * (last - first) as usize);
+        let out = std::slice::from_raw_parts_mut(out, 3 * (last - first));
         let m = &((*m).implem);
         let mut k = 0;
         for i in first..last {
@@ -241,20 +251,21 @@ pub unsafe extern "C" fn tucanos_mesh33_verts(
 }
 
 #[unsafe(no_mangle)]
+#[allow(clippy::useless_conversion)]
 pub unsafe extern "C" fn tucanos_mesh33_elems(
     m: *const tucanos_mesh33_t,
-    out: *mut u32,
-    first: u32,
-    last: u32,
+    out: *mut tucanos_int_t,
+    first: usize,
+    last: usize,
 ) {
     unsafe {
         let m = &((*m).implem);
-        let slice_size = (last - first) as usize * Tetrahedron::N_VERTS as usize;
+        let slice_size = (last - first) * Tetrahedron::<Idx>::N_VERTS;
         let out = std::slice::from_raw_parts_mut(out, slice_size);
         let mut k = 0;
         for i in first..last {
             for v in m.elem(i) {
-                out[k] = v;
+                out[k] = v.try_into().unwrap();
                 k += 1;
             }
         }

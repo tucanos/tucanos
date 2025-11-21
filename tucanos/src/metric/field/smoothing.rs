@@ -1,0 +1,190 @@
+use crate::metric::{Metric, MetricField};
+use log::debug;
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
+use tmesh::{
+    graph::CSRGraph,
+    mesh::{Mesh, Simplex},
+};
+
+impl<const D: usize, C: Simplex, M: Mesh<D, C>, T: Metric<D>> MetricField<'_, D, C, M, T> {
+    /// Smooth a metric field to avoid numerical artifacts
+    /// For each mesh vertex $`i`$, a set a suitable neighbors $`N(i)`$ is built as
+    /// a subset of the neighbors of $`i`$ ($`i`$ is included) ignoring the vertices with the metrics with
+    /// the smallest and largest metric volume.
+    /// The smoothed metric field is then computed as the average (i.e. interpolation
+    /// with equal weights) of the metrics in $`N(i)`$
+    /// , the metric is replaced by the average
+    /// on its neighbors ignoring the metrics with the minimum and maximum volumes
+    /// TODO: doc
+    pub fn smooth(&mut self, v2v: &CSRGraph) {
+        debug!("Apply metric smoothing");
+
+        let mut res = vec![T::default(); self.msh.n_verts()];
+
+        res.par_iter_mut()
+            .enumerate()
+            .for_each(|(i_vert, m_smooth)| {
+                let m_v = &self.metric[i_vert];
+                let vol = m_v.vol();
+                let mut min_vol = vol;
+                let mut max_vol = vol;
+                let mut min_idx = 0;
+                let mut max_idx = 0;
+                let neighbors = v2v.row(i_vert);
+                for i_neigh in neighbors {
+                    let m_n = &self.metric[*i_neigh];
+                    let vol = m_n.vol();
+                    if vol < min_vol {
+                        min_vol = vol;
+                        min_idx = i_neigh + 1;
+                    } else if vol > max_vol {
+                        max_vol = vol;
+                        max_idx = i_neigh + 1;
+                    }
+                }
+
+                let mut weights = Vec::new();
+                let mut metrics = Vec::new();
+
+                let n = if min_idx == max_idx {
+                    neighbors.len()
+                } else {
+                    neighbors.len() - 1
+                };
+                let w = 1. / n as f64;
+
+                if min_idx != 0 && max_idx != 0 {
+                    weights.push(w);
+                    metrics.push(&self.metric[i_vert]);
+                }
+                for i_neigh in neighbors {
+                    if min_idx != i_neigh + 1 && max_idx != i_neigh + 1 {
+                        weights.push(w);
+                        metrics.push(&self.metric[*i_neigh]);
+                    }
+                }
+
+                *m_smooth = T::interpolate(weights.iter().copied().zip(metrics.iter().copied()));
+            });
+
+        self.metric = res;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tmesh::{Vert2d, Vert3d, mesh::Mesh};
+
+    use crate::{
+        mesh::test_meshes::{test_mesh_2d, test_mesh_3d},
+        metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric, MetricField},
+        min_iter,
+    };
+
+    #[test]
+    fn test_smooth_2d() {
+        let mesh = test_mesh_2d().split().split();
+        let v2v = mesh.vertex_to_vertices();
+
+        let mut m: Vec<_> = (0..mesh.n_verts())
+            .map(|_| IsoMetric::<2>::from(0.1))
+            .collect();
+
+        m[2] = IsoMetric::<2>::from(0.01);
+        m[5] = IsoMetric::<2>::from(1.);
+
+        let mut m = MetricField::new(&mesh, m);
+        m.smooth(&v2v);
+
+        let vmin = min_iter(m.metric().iter().map(Metric::vol));
+        let vmax = min_iter(m.metric().iter().map(Metric::vol));
+
+        assert!(f64::abs(vmin - 0.01) < 1e-6);
+        assert!(f64::abs(vmax - 0.01) < 1e-6);
+    }
+
+    #[test]
+    fn test_smooth_2d_aniso() {
+        let mesh = test_mesh_2d().split().split();
+        let v2v = mesh.vertex_to_vertices();
+
+        let v0 = Vert2d::new(0.5, 0.);
+        let v1 = Vert2d::new(0.0, 4.0);
+
+        let mut m: Vec<_> = (0..mesh.n_verts())
+            .map(|_| AnisoMetric2d::from_sizes(&v0, &v1))
+            .collect();
+
+        let v0 = Vert2d::new(0.05, 0.);
+        let v1 = Vert2d::new(0.0, 4.0);
+        m[2] = AnisoMetric2d::from_sizes(&v0, &v1);
+
+        let v0 = Vert2d::new(0.5, 0.);
+        let v1 = Vert2d::new(0.0, 40.0);
+        m[5] = AnisoMetric2d::from_sizes(&v0, &v1);
+
+        let mut m = MetricField::new(&mesh, m);
+        m.smooth(&v2v);
+
+        let vmin = min_iter(m.metric().iter().map(Metric::vol));
+        let vmax = min_iter(m.metric().iter().map(Metric::vol));
+
+        assert!(f64::abs(vmin - 2.0) < 1e-6);
+        assert!(f64::abs(vmax - 2.0) < 1e-6);
+    }
+
+    #[test]
+    fn test_smooth_3d() {
+        let mesh = test_mesh_3d().split().split();
+        let v2v = mesh.vertex_to_vertices();
+
+        let mut m: Vec<_> = (0..mesh.n_verts())
+            .map(|_| IsoMetric::<3>::from(0.1))
+            .collect();
+
+        m[2] = IsoMetric::<3>::from(0.01);
+        m[5] = IsoMetric::<3>::from(1.);
+
+        let mut m = MetricField::new(&mesh, m);
+        m.smooth(&v2v);
+
+        let vmin = min_iter(m.metric().iter().map(Metric::vol));
+        let vmax = min_iter(m.metric().iter().map(Metric::vol));
+
+        assert!(f64::abs(vmin - 0.001) < 1e-6);
+        assert!(f64::abs(vmax - 0.001) < 1e-6);
+    }
+
+    #[test]
+    fn test_smooth_3d_aniso() {
+        let mesh = test_mesh_3d().split().split();
+        let v2v = mesh.vertex_to_vertices();
+
+        let v0 = Vert3d::new(0.5, 0.0, 0.0);
+        let v1 = Vert3d::new(0.0, 4.0, 0.0);
+        let v2 = Vert3d::new(0.0, 0.0, 0.1);
+
+        let mut m: Vec<_> = (0..mesh.n_verts())
+            .map(|_| AnisoMetric3d::from_sizes(&v0, &v1, &v2))
+            .collect();
+
+        let v0 = Vert3d::new(0.05, 0.0, 0.0);
+        let v1 = Vert3d::new(0.0, 4.0, 0.0);
+        let v2 = Vert3d::new(0.0, 0.0, 0.1);
+        m[2] = AnisoMetric3d::from_sizes(&v0, &v1, &v2);
+
+        let v0 = Vert3d::new(0.5, 0.0, 0.0);
+        let v1 = Vert3d::new(0.0, 4.0, 0.0);
+        let v2 = Vert3d::new(0.0, 0.0, 1.0);
+        m[5] = AnisoMetric3d::from_sizes(&v0, &v1, &v2);
+
+        let mut m = MetricField::new(&mesh, m);
+        m.smooth(&v2v);
+
+        let vmin = min_iter(m.metric().iter().map(Metric::vol));
+        let vmax = min_iter(m.metric().iter().map(Metric::vol));
+
+        assert!(f64::abs(vmin - 0.2) < 1e-6);
+        assert!(f64::abs(vmax - 0.2) < 1e-6);
+    }
+}

@@ -1,4 +1,29 @@
 import numpy as np
+from . import Mesh2d
+
+
+def plot_metric(ax, msh, m, loc="vertex"):
+    assert isinstance(msh, Mesh2d)
+
+    xy = msh.get_verts()
+    tris = msh.get_elems()
+
+    m = sym2mat(m)
+    t = np.linspace(0, 2 * np.pi, 30)
+
+    res = np.zeros((30, 2))
+    if loc != "vertex":
+        xy = xy[tris, :].mean(axis=1)
+
+    for i, (x, y) in enumerate(xy):
+        eigvals, eigvecs = np.linalg.eigh(m[i, :, :])
+        sizes = 0.25 * 1.0 / eigvals**0.5
+        for i in range(2):
+            res[:, i] = (
+                sizes[0] * np.cos(t) * eigvecs[i, 0]
+                + sizes[1] * np.sin(t) * eigvecs[i, 1]
+            )
+        ax.plot(x + res[:, 0], y + res[:, 1], "k")
 
 
 def sym2mat(m):

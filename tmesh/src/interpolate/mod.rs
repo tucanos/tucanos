@@ -1,7 +1,9 @@
 //! Interpolation
+use std::marker::PhantomData;
+
 use crate::{
     Vertex,
-    mesh::{Cell, Mesh, Simplex},
+    mesh::{GSimplex, Mesh, Simplex},
     spatialindex::{ObjectIndex, PointIndex},
 };
 
@@ -14,11 +16,7 @@ pub enum InterpolationMethod {
 }
 
 /// Interpolator
-pub struct Interpolator<'a, const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>
-where
-    Cell<C>: Simplex<C>,
-    Cell<F>: Simplex<F>,
-{
+pub struct Interpolator<'a, const D: usize, C: Simplex, M: Mesh<D, C>> {
     /// Mesh from which the data in interpolated
     mesh: &'a M,
     /// Interpolation method
@@ -27,14 +25,10 @@ where
     point_index: Option<PointIndex<D>>,
     /// Index for linear interpolation
     elem_index: Option<ObjectIndex<D>>,
+    _c: PhantomData<C>,
 }
 
-impl<'a, const D: usize, const C: usize, const F: usize, M: Mesh<D, C, F>>
-    Interpolator<'a, D, C, F, M>
-where
-    Cell<C>: Simplex<C>,
-    Cell<F>: Simplex<F>,
-{
+impl<'a, const D: usize, C: Simplex, M: Mesh<D, C>> Interpolator<'a, D, C, M> {
     /// Create the interpolator (initialize the indices)
     pub fn new(mesh: &'a M, method: InterpolationMethod) -> Self {
         let (point_index, elem_index) = match method {
@@ -46,6 +40,7 @@ where
             method,
             point_index,
             elem_index,
+            _c: PhantomData::<C>,
         }
     }
 
@@ -53,11 +48,10 @@ where
     ///   `f` can be a vector of `m*n_verts` f64 or nalgebra vectors
     pub fn interpolate<
         T: Default + std::ops::Mul<f64, Output = T> + std::ops::Add<T, Output = T> + Copy,
-        I: ExactSizeIterator<Item = Vertex<D>>,
     >(
         &self,
         f: &[T],
-        verts: I,
+        verts: impl ExactSizeIterator<Item = Vertex<D>>,
     ) -> Vec<T> {
         let n = self.mesh.n_verts();
         assert_eq!(f.len() % n, 0);
@@ -81,13 +75,13 @@ where
                         let i_elem = index.nearest_elem(&v);
                         let e = self.mesh.elem(i_elem);
                         let ge = self.mesh.gelem(&e);
-                        let x = Cell::<C>::bcoords(&ge, &v);
+                        let x = ge.bcoords(&v);
                         assert!(
-                            x.iter().all(|c| (-tol..1.0 + tol).contains(c)),
+                            x.into_iter().all(|c| (-tol..1.0 + tol).contains(&c)),
                             "{x:?}, bcoords = {x:?}"
                         );
                         (0..m).map(move |j| {
-                            let iter = e.iter().copied().zip(x.iter().copied());
+                            let iter = e.into_iter().zip(x);
                             iter.fold(T::default(), |a, (i, w)| a + f[m * i + j] * w)
                         })
                     })
@@ -101,7 +95,7 @@ where
 mod tests {
     use crate::{
         Vert2d, Vert3d,
-        mesh::{Mesh, Mesh2d, Mesh3d, MutMesh, box_mesh, rectangle_mesh},
+        mesh::{Mesh, Mesh2d, Mesh3d, box_mesh, rectangle_mesh},
     };
     use nalgebra::{Rotation2, Rotation3};
     use std::f64::consts::FRAC_PI_4;

@@ -1,20 +1,23 @@
 use crate::{
-    mesh::{Mesh21, Mesh22, Mesh32, Mesh33},
+    Idx,
+    mesh::{PyBoundaryMesh2d, PyBoundaryMesh3d, PyMesh2d, PyMesh3d},
     to_numpy_2d,
 };
 use numpy::PyArray2;
 use pyo3::{Bound, PyResult, Python, exceptions::PyRuntimeError, pyclass, pymethods};
+use tmesh::mesh::{Edge, GenericMesh, Mesh, Triangle};
 use tucanos::{
     geometry::{Geometry, LinearGeometry, orient_geometry},
-    mesh::{Edge, Triangle},
+    mesh::MeshTopology,
 };
+
 macro_rules! create_geometry {
     ($name: ident, $dim: expr, $etype: ident, $mesh: ident, $geom: ident) => {
         #[doc = concat!("Piecewise linear geometry consisting of ", stringify!($etype), " in ", stringify!($dim), "D")]
         #[pyclass]
         // #[derive(Clone)]
         pub struct $name {
-            pub geom: LinearGeometry<$dim, $etype>,
+            pub geom: LinearGeometry<$dim, $etype<Idx>>,
         }
         #[pymethods]
         impl $name {
@@ -26,10 +29,11 @@ macro_rules! create_geometry {
                 let mut gmesh = if let Some(geom) = geom {
                     geom.0.clone()
                 } else {
-                    mesh.0.boundary().0
+                    mesh.0.boundary::<GenericMesh<$dim, $etype::<Idx>>>().0
                 };
                 orient_geometry(&mesh.0, &mut gmesh);
-                let geom = LinearGeometry::new(&mesh.0, gmesh).unwrap();
+                let topo= MeshTopology::new(&mesh.0);
+                let geom = LinearGeometry::new(&mesh.0, &topo, gmesh).unwrap();
 
                 Self { geom }
             }
@@ -64,10 +68,10 @@ macro_rules! create_geometry {
                 py: Python<'py>,
                 mesh: &$mesh,
             ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                let vtags = mesh.0.get_vertex_tags().unwrap();
-                let mut coords = Vec::with_capacity(mesh.0.n_verts() as usize * $dim);
+                let topo = MeshTopology::new(&mesh.0);
+                let mut coords = Vec::with_capacity(mesh.0.n_verts() * $dim);
 
-                for (mut pt, tag) in mesh.0.verts().zip(vtags.iter()) {
+                for (mut pt, tag) in mesh.0.verts().zip(topo.vtags().iter()) {
                     if tag.0 < $dim {
                         self.geom.project(&mut pt, tag);
                     }
@@ -80,5 +84,5 @@ macro_rules! create_geometry {
     };
 }
 
-create_geometry!(LinearGeometry3d, 3, Triangle, Mesh33, Mesh32);
-create_geometry!(LinearGeometry2d, 2, Edge, Mesh22, Mesh21);
+create_geometry!(LinearGeometry3d, 3, Triangle, PyMesh3d, PyBoundaryMesh3d);
+create_geometry!(LinearGeometry2d, 2, Edge, PyMesh2d, PyBoundaryMesh2d);
