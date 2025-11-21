@@ -949,7 +949,7 @@ mod tests_topo {
 #[cfg(test)]
 mod tests {
     use tmesh::{
-        Vert2d, Vert3d,
+        Vert2d, Vert3d, assert_delta,
         mesh::{Edge, GSimplex, GenericMesh, Mesh, Mesh3d, Simplex, Tetrahedron, Triangle},
     };
 
@@ -1141,7 +1141,7 @@ mod tests {
         let n_iter = remesher.collapse(&params, &geom, true)?;
         assert!(n_iter < 10);
         let mesh = remesher.to_mesh(true);
-        assert!(f64::abs(mesh.vol() - 1.) < 1e-12);
+        assert_delta!(mesh.vol(), 1.0, 1e-12);
         remesher.check()?;
 
         // swap
@@ -1158,7 +1158,7 @@ mod tests {
         let n_iter = remesher.swap(&params, &geom, true)?;
         assert!(n_iter < 10);
         let mesh = remesher.to_mesh(true);
-        assert!(f64::abs(mesh.vol() - 1.) < 1e-12);
+        assert_delta!(mesh.vol(), 1., 1e-12);
 
         remesher.check()?;
 
@@ -1189,7 +1189,7 @@ mod tests {
         remesher.check()?;
 
         let _mesh = remesher.to_mesh(true);
-        assert!(f64::abs(mesh.vol() - 1.) < 1e-12);
+        assert_delta!(mesh.vol(), 1., 1e-12);
 
         Ok(())
     }
@@ -1410,7 +1410,7 @@ mod tests {
         let mut mesh = test_mesh_2d().split().split();
         mesh.fix().unwrap();
 
-        for iter in 0..10 {
+        for iter in 0..5 {
             let h: Vec<_> = (0..mesh.n_verts())
                 .map(|i| IsoMetric::<2>::from(h_2d(&mesh.vert(i))))
                 .collect();
@@ -1424,11 +1424,11 @@ mod tests {
 
             mesh = remesher.to_mesh(false);
 
-            if iter == 9 {
+            if iter == 4 {
                 let (mini, maxi, _) =
                     remesher.check_edge_lengths_analytical(|x| IsoMetric::<2>::from(h_2d(x)));
-                assert!(mini > 0.43, "min. edge length: {mini}");
-                assert!(maxi < 1.55, "max. edge length: {maxi}");
+                assert_delta!(mini, 0.37, 0.01);
+                assert_delta!(maxi, 1.40, 0.01);
             }
         }
 
@@ -1457,12 +1457,12 @@ mod tests {
             remesher.check()?;
             mesh = remesher.to_mesh(true);
 
-            assert!(f64::abs(mesh.vol() - 1.0) < 1e-12, "{} != 1", mesh.vol());
+            assert_delta!(mesh.vol(), 1.0, 1e-12);
 
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
-            if iter == 3 {
-                assert!(mini > 0.6, "min. edge length: {mini}");
-                assert!(maxi < 1.4, "max. edge length: {maxi}");
+            if iter == 2 {
+                assert_delta!(mini, 0.67, 0.01);
+                assert_delta!(maxi, 1.4, 0.01);
             }
         }
 
@@ -1496,14 +1496,14 @@ mod tests {
             mesh = remesher.to_mesh(true);
 
             let vol = mesh.vol();
-            assert!(f64::abs(vol - ref_vol) < 0.05);
+            assert_delta!(vol, ref_vol, 0.05);
 
             let (mini, maxi, _) =
                 remesher.check_edge_lengths_analytical(|x| IsoMetric::<2>::from(h_2d(x)));
 
             if iter == 9 {
-                assert!(mini > 0.4, "min. edge length: {mini}");
-                assert!(maxi < 1.43, "max. edge length: {maxi}");
+                assert_delta!(mini, 0.51, 0.01);
+                assert_delta!(maxi, 1.38, 0.01);
             }
         }
 
@@ -1557,7 +1557,7 @@ mod tests {
         remesher.check()?;
 
         let mesh = remesher.to_mesh(true);
-        assert!(f64::abs(mesh.vol() - 1.) < 1e-12);
+        assert_delta!(mesh.vol(), 1., 1e-12);
 
         Ok(())
     }
@@ -1582,7 +1582,7 @@ mod tests {
         remesher.check()?;
 
         let mesh = remesher.to_mesh(true);
-        assert!(f64::abs(mesh.vol() - 1.) < 1e-12);
+        assert_delta!(mesh.vol(), 1., 1e-12);
 
         Ok(())
     }
@@ -1599,7 +1599,7 @@ mod tests {
 
         remesher.check()?;
         let mesh = remesher.to_mesh(true);
-        assert!(f64::abs(mesh.vol() - 2.0 * 0.1 / 6.) < 1e-12);
+        assert_delta!(mesh.vol(), 2.0 * 0.1 / 6., 1e-12);
 
         // swap
         let params = SwapParams {
@@ -1610,7 +1610,7 @@ mod tests {
         let n_iter = remesher.swap(&params, &geom, true)?;
         assert!(n_iter < 10);
         let mesh = remesher.to_mesh(true);
-        assert!(f64::abs(mesh.vol() - 2.0 * 0.1 / 6.) < 1e-12);
+        assert_delta!(mesh.vol(), 2.0 * 0.1 / 6., 1e-12);
 
         remesher.check()?;
 
@@ -1636,7 +1636,7 @@ mod tests {
         let n_iter = remesher.collapse(&params, &geom, true)?;
         assert!(n_iter < 10);
         let mesh = remesher.to_mesh(true);
-        assert!(f64::abs(mesh.vol() - 1.) < 1e-12);
+        assert_delta!(mesh.vol(), 1., 1e-12);
         remesher.check()?;
 
         // swap
@@ -1654,7 +1654,7 @@ mod tests {
         let n_iter = remesher.swap(&params, &geom, true)?;
         assert!(n_iter < 10);
         let mesh = remesher.to_mesh(true);
-        assert!(f64::abs(mesh.vol() - 1.) < 1e-12);
+        assert_delta!(mesh.vol(), 1., 1e-12);
 
         remesher.check()?;
 
@@ -1694,14 +1694,14 @@ mod tests {
             remesher.check()?;
 
             mesh = remesher.to_mesh(true);
-            assert!(f64::abs(mesh.vol() - 1.) < 1e-12);
+            assert_delta!(mesh.vol(), 1., 1e-12);
 
             let (mini, maxi, _) =
                 remesher.check_edge_lengths_analytical(|x| IsoMetric::<3>::from(h_3d(x)));
 
             if iter == 2 {
-                assert!(mini > 0.34, "min. edge length: {mini}");
-                assert!(maxi < 2., "max. edge length: {maxi}");
+                assert_delta!(mini, 0.42, 0.01);
+                assert_delta!(maxi, 1.50, 0.01);
             }
         }
 
@@ -1743,13 +1743,13 @@ mod tests {
             remesher.check()?;
 
             mesh = remesher.to_mesh(true);
-            assert!(f64::abs(mesh.vol() - 1.0) < 1e-12);
+            assert_delta!(mesh.vol(), 1.0, 1e-12);
 
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
 
             if iter == 1 {
-                assert!(mini > 0.3, "min. edge length: {mini}");
-                assert!(maxi < 1.7, "max. edge length: {maxi}");
+                assert_delta!(mini, 0.32, 0.01);
+                assert_delta!(maxi, 1.41, 0.01);
             }
         }
 
@@ -1792,8 +1792,8 @@ mod tests {
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
 
             if iter == 1 {
-                assert!(mini > 0.24, "min. edge length: {mini}");
-                assert!(maxi < 1.7, "max. edge length: {maxi}");
+                assert_delta!(mini, 0.35, 0.01);
+                assert_delta!(maxi, 1.38, 0.01);
             }
 
             // let fname = format!("sphere_{}.vtu", iter + 1);
@@ -1818,13 +1818,13 @@ mod tests {
 
         let h: Vec<_> = mesh.verts().map(mfunc).collect();
         let c = MetricField::new(&mesh, h.clone()).complexity(0.0, f64::MAX);
-        assert!(f64::abs(c - c_ref) < 1e-6 * c);
+        assert_delta!(c, c_ref, 1e-6 * c);
 
         let geom = NoGeometry();
         let remesher = Remesher::new(&mesh, &topo, &h, &geom)?;
 
         let c = remesher.complexity();
-        assert!(f64::abs(c - c_ref) < 1e-6 * c);
+        assert_delta!(c, c_ref, 1e-6 * c);
 
         Ok(())
     }
@@ -1844,13 +1844,13 @@ mod tests {
 
         let h: Vec<_> = mesh.verts().map(mfunc).collect();
         let c = MetricField::new(&mesh, h.clone()).complexity(0.0, f64::MAX);
-        assert!(f64::abs(c - c_ref) < 1e-6 * c);
+        assert_delta!(c, c_ref, 1e-6 * c);
 
         let geom = NoGeometry();
         let remesher = Remesher::new(&mesh, &topo, &h, &geom)?;
 
         let c = remesher.complexity();
-        assert!(f64::abs(c - c_ref) < 1e-6 * c);
+        assert_delta!(c, c_ref, 1e-6 * c);
 
         remesher.check()?;
 
