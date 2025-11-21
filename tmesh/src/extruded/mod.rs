@@ -236,7 +236,7 @@ impl DualMesh2d {
             let polygons = merge_polylines(&polylines);
             assert_eq!(polygons.len(), 1);
 
-            let polygon = &polygons[0];
+            let polygon = &polygons[0][1..];
             let i0 = res.insert_face(polygon, Tag::MAX);
             let new_polygon = polygon.iter().rev().map(|&i| i + n).collect::<Vec<_>>();
             let i1 = res.insert_face(&new_polygon, Tag::MAX - 1);
