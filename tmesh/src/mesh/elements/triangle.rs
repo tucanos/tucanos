@@ -95,16 +95,6 @@ impl<T: Idx> Simplex for Triangle<T> {
         self.0.contains(&i.try_into().unwrap())
     }
 
-    fn quadrature() -> (Vec<f64>, Vec<Vec<f64>>) {
-        let weights = vec![1. / 3., 1. / 3., 1. / 3.];
-        let pts = vec![
-            vec![2. / 3., 1. / 6.],
-            vec![1. / 6., 2. / 3.],
-            vec![1. / 6., 1. / 6.],
-        ];
-        (weights, pts)
-    }
-
     fn sorted(&self) -> Self {
         let mut tmp = *self;
         tmp.0.sort_unstable();
@@ -150,7 +140,7 @@ impl<const D: usize> GSimplex<D> for GTriangle<D> {
 
     fn vol(&self) -> f64 {
         if Self::has_normal() {
-            self.normal().norm()
+            self.normal(None).norm()
         } else {
             assert_eq!(D, 2);
             let e1 = self[1] - self[0];
@@ -160,7 +150,17 @@ impl<const D: usize> GSimplex<D> for GTriangle<D> {
         }
     }
 
-    fn normal(&self) -> Vertex<D> {
+    fn integrate<G: Fn(&Self::BCOORDS) -> f64>(&self, f: G) -> f64 {
+        let (weight, v, w) = (1.0 / 3.0, 2.0 / 3.0, 1.0 / 6.0);
+        let mut res = weight * f(&[1.0 - v - w, v, w]);
+        let (weight, v, w) = (1.0 / 3.0, 1.0 / 6.0, 1.0 / 6.0);
+        res += weight * f(&[1.0 - v - w, v, w]);
+        let (weight, v, w) = (1.0 / 3.0, 1.0 / 6.0, 2.0 / 3.0);
+        res += weight * f(&[1.0 - v - w, v, w]);
+        res * self.vol()
+    }
+
+    fn normal(&self, _bcoords: Option<&Self::BCOORDS>) -> Vertex<D> {
         if Self::has_normal() {
             let e1 = self[1] - self[0];
             let e2 = self[2] - self[0];
@@ -228,6 +228,18 @@ impl<const D: usize> GSimplex<D> for GTriangle<D> {
             4.0 * sina * sinb * sinc / tmp
         }
     }
+
+    fn bounding_box(&self) -> (Vertex<D>, Vertex<D>) {
+        self.into_iter()
+            .skip(1)
+            .fold((self[0], self[0]), |mut a, b| {
+                for i in 0..D {
+                    a.0[i] = a.0[i].min(b[i]);
+                    a.1[i] = a.1[i].max(b[i]);
+                }
+                a
+            })
+    }
 }
 
 #[cfg(test)]
@@ -267,7 +279,7 @@ mod tests {
         for _ in 0..10 {
             o.0.shuffle(&mut rng);
             let is_same = e.is_same(&o);
-            let n = gt(&o).normal();
+            let n = gt(&o).normal(None);
             if is_same {
                 assert!(n[2] > 0.0);
             } else {

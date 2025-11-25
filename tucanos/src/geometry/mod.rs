@@ -62,7 +62,7 @@ pub trait Geometry<const D: usize>: Send + Sync {
         for (gf, tag) in mesh.gfaces().zip(mesh.ftags()) {
             if tag > 0 {
                 let c = gf.center();
-                let n = gf.normal().normalize();
+                let n = gf.normal(None).normalize();
                 let a = self.angle(&c, &n, &(C::FACE::DIM as Dim, tag));
                 a_max = f64::max(a_max, a);
             }
@@ -201,6 +201,8 @@ where
         topo: &MeshTopology,
         mut bdy: GenericMesh<D, C>,
     ) -> Result<Self> {
+        assert!(C2::is_linear());
+        assert!(C::is_linear());
         assert!(C2::DIM >= C::DIM);
 
         let mesh_topo = topo.topo();
@@ -332,7 +334,11 @@ where
 
         let patch = self.patches.get(&tag.1).unwrap();
         let idx = patch.tree.nearest_elem(pt);
-        let n_ref = patch.mesh.gelem(&patch.mesh.elem(idx)).normal().normalize();
+        let n_ref = patch
+            .mesh
+            .gelem(&patch.mesh.elem(idx))
+            .normal(None)
+            .normalize();
         let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
         f64::acos(cos_a).to_degrees()
     }

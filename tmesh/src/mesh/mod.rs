@@ -42,6 +42,7 @@ pub use elements::{
     Hexahedron, Idx, Prism, Pyramid, Quadrangle,
     edge::{Edge, GEdge},
     node::{GNode, Node},
+    quadratic_edge::{QuadraticEdge, QuadraticGEdge},
     simplex::{GSimplex, Simplex, get_face_to_elem},
     tetrahedron::{GTetrahedron, Tetrahedron},
     to_simplices::{hex2tets, pri2tets, pyr2tets, qua2tris},
@@ -617,7 +618,7 @@ pub trait Mesh<const D: usize, C: Simplex>: Send + Sync + Sized {
                 let ge = self.gelem(&self.elem(i));
                 let ec = ge.center();
                 if Self::faces_are_oriented() {
-                    let n = gf.normal();
+                    let n = gf.normal(None);
                     if n.dot(&(fc - ec)) < 0.0 {
                         return Err(Error::from(&format!(
                             "Invalid face orientation: center = {fc:?}, normal = {n:?}, face = {f:?}, tag = {t}"
@@ -639,7 +640,7 @@ pub trait Mesh<const D: usize, C: Simplex>: Send + Sync + Sized {
                 })
                 .map(|f| {
                     let gf = self.gface(&f);
-                    gf.center().dot(&gf.normal())
+                    gf.center().dot(&gf.normal(None))
                 })
                 .sum::<f64>()
                 / D as f64;
@@ -698,26 +699,12 @@ pub trait Mesh<const D: usize, C: Simplex>: Send + Sync + Sized {
 
     /// Integrate `g(f)` over the mesh, where `f` is a field defined on the mesh vertices
     fn integrate<G: Fn(f64) -> f64 + Send + Sync>(&self, f: &[f64], op: G) -> f64 {
-        let (qw, qp) = C::quadrature();
-        debug_assert!(qp.iter().all(|x| x.len() == C::N_VERTS - 1));
-
         self.par_elems()
             .map(|e| {
-                let res = qw
-                    .iter()
-                    .zip(qp.iter())
-                    .map(|(w, pt)| {
-                        let x0 = f[e.get(0)];
-                        let mut x_pt = x0;
-                        for (&b, j) in pt.iter().zip(e.into_iter().skip(1)) {
-                            let mut dx = f[j] - x0;
-                            dx *= b;
-                            x_pt += dx;
-                        }
-                        *w * op(x_pt)
-                    })
-                    .sum::<f64>();
-                self.gelem(&e).vol() * res
+                let func = |x: &<C::GEOM<D> as GSimplex<D>>::BCOORDS| {
+                    op(x.into_iter().zip(e).map(|(b, i)| b * f[i]).sum::<f64>())
+                };
+                self.gelem(&e).integrate(func)
             })
             .sum::<f64>()
     }

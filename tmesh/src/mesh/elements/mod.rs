@@ -4,7 +4,9 @@ use std::hash::Hash;
 use std::num::TryFromIntError;
 
 pub(super) mod edge;
+pub(super) mod ho_simplex;
 pub(super) mod node;
+pub(super) mod quadratic_edge;
 pub(super) mod simplex;
 pub(super) mod tetrahedron;
 pub(super) mod to_simplices;

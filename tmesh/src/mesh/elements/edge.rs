@@ -95,16 +95,6 @@ impl<T: Idx> Simplex for Edge<T> {
         self.0.contains(&i.try_into().unwrap())
     }
 
-    fn quadrature() -> (Vec<f64>, Vec<Vec<f64>>) {
-        let weights = vec![5.0 / 18.0, 8.0 / 18.0, 5.0 / 18.0];
-        let pts = vec![
-            vec![0.5 - 0.5 * (3.0_f64 / 5.0).sqrt()],
-            vec![0.5],
-            vec![0.5 + 0.5 * (3.0_f64 / 5.0).sqrt()],
-        ];
-        (weights, pts)
-    }
-
     fn sorted(&self) -> Self {
         let mut tmp = *self;
         tmp.0.sort_unstable();
@@ -151,7 +141,17 @@ impl<const D: usize> GSimplex<D> for GEdge<D> {
         (self[1] - self[0]).norm()
     }
 
-    fn normal(&self) -> Vertex<D> {
+    fn integrate<G: Fn(&Self::BCOORDS) -> f64>(&self, f: G) -> f64 {
+        let (w, v) = (5.0 / 18.0, 0.5 - 0.5 * (3.0_f64 / 5.0).sqrt());
+        let mut res = w * f(&[1.0 - v, v]);
+        let (w, v) = (8.0 / 18.0, 0.5);
+        res += w * f(&[1.0 - v, v]);
+        let (w, v) = (5.0 / 18.0, 0.5 + 0.5 * (3.0_f64 / 5.0).sqrt());
+        res += w * f(&[1.0 - v, v]);
+        res * self.vol()
+    }
+
+    fn normal(&self, _bcoords: Option<&Self::BCOORDS>) -> Vertex<D> {
         if Self::has_normal() {
             Vertex::<D>::from_column_slice(&[self[1][1] - self[0][1], self[0][0] - self[1][0]])
         } else {
@@ -174,6 +174,18 @@ impl<const D: usize> GSimplex<D> for GEdge<D> {
 
     fn gamma(&self) -> f64 {
         1.0
+    }
+
+    fn bounding_box(&self) -> (Vertex<D>, Vertex<D>) {
+        self.into_iter()
+            .skip(1)
+            .fold((self[0], self[0]), |mut a, b| {
+                for i in 0..D {
+                    a.0[i] = a.0[i].min(b[i]);
+                    a.1[i] = a.1[i].max(b[i]);
+                }
+                a
+            })
     }
 }
 
@@ -224,5 +236,16 @@ mod tests {
             assert_delta!(bcoords[0], 0.5, 1e-12);
             assert_delta!(bcoords[1], 0.5, 1e-12);
         }
+    }
+
+    #[test]
+    fn test_bb() {
+        let v0 = Vert2d::new(-1.0, 0.0);
+        let v1 = Vert2d::new(1.0, -1.0);
+        let ge = GEdge([v0, v1]);
+        let (bb0, bb1) = ge.bounding_box();
+
+        assert_delta!((bb0 - Vert2d::new(-1.0, -1.0)).norm(), 0., 1e-12);
+        assert_delta!((bb1 - Vert2d::new(1.0, 0.0)).norm(), 0., 1e-12);
     }
 }

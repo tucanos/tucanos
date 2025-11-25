@@ -178,6 +178,8 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         metric: impl ExactSizeIterator<Item = M>,
         geom: &impl Geometry<D>,
     ) -> Result<Self> {
+        assert!(C::is_linear());
+
         debug!(
             "Initialize the remesher with {} {D}D vertices / {} cells",
             mesh.n_verts(),

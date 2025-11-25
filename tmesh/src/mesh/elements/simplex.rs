@@ -100,9 +100,6 @@ where
         (0..Self::N_FACES).map(|i| self.face(i))
     }
 
-    /// Get a quadrature (weights and points)
-    fn quadrature() -> (Vec<f64>, Vec<Vec<f64>>);
-
     /// Sort the vertex indices
     #[must_use]
     fn sorted(&self) -> Self;
@@ -112,6 +109,12 @@ where
 
     /// Invert the element
     fn invert(&mut self);
+
+    /// Is the simplex linear?
+    #[must_use]
+    fn is_linear() -> bool {
+        true
+    }
 }
 
 pub trait GSimplex<const D: usize>:
@@ -188,11 +191,14 @@ pub trait GSimplex<const D: usize>:
     #[must_use]
     fn has_normal() -> bool;
 
+    /// Integration
+    fn integrate<G: Fn(&Self::BCOORDS) -> f64>(&self, f: G) -> f64;
+
     /// Get the volume of a simplex
     fn vol(&self) -> f64;
 
-    /// Normal to the vertex
-    fn normal(&self) -> Vertex<D>;
+    /// Normal to the simplex, at the center
+    fn normal(&self, bcoords: Option<&Self::BCOORDS>) -> Vertex<D>;
 
     /// Radius (=diameter of the inner circle / sphere)
     fn radius(&self) -> f64;
@@ -284,6 +290,9 @@ pub trait GSimplex<const D: usize>:
         }
         res
     }
+
+    /// Get the bounding box
+    fn bounding_box(&self) -> (Vertex<D>, Vertex<D>);
 }
 
 /// Compute a `FxHashMap` that maps face-to-vertex connectivity (sorted) to a vector of element indices
