@@ -201,8 +201,8 @@ where
         topo: &MeshTopology,
         mut bdy: GenericMesh<D, C>,
     ) -> Result<Self> {
-        assert!(C2::is_linear());
-        assert!(C::is_linear());
+        assert_eq!(C::order(), 1);
+        assert_eq!(C2::order(), 1);
         assert!(C2::DIM >= C::DIM);
 
         let mesh_topo = topo.topo();

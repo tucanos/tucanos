@@ -112,8 +112,8 @@ where
 
     /// Is the simplex linear?
     #[must_use]
-    fn is_linear() -> bool {
-        true
+    fn order() -> u8 {
+        1
     }
 }
 
@@ -197,7 +197,9 @@ pub trait GSimplex<const D: usize>:
     /// Get the volume of a simplex
     fn vol(&self) -> f64;
 
-    /// Normal to the simplex, at the center
+    /// Normal to the simplex
+    ///   - if `bcoords.is_some()` at a given location (norm = 1)
+    ///   - if `bcoords.is_none()` integrated over the element
     fn normal(&self, bcoords: Option<&Self::BCOORDS>) -> Vertex<D>;
 
     /// Radius (=diameter of the inner circle / sphere)
@@ -212,10 +214,7 @@ pub trait GSimplex<const D: usize>:
     }
 
     /// Center
-    fn center(&self) -> Vertex<D> {
-        let res = self.into_iter().sum::<Vertex<D>>();
-        (1.0 / Self::N_VERTS as f64) * res
-    }
+    fn center(&self) -> Vertex<D>;
 
     /// Gamma quality measure, ratio of inscribed radius to circumradius
     /// normalized to be between 0 and 1

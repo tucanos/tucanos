@@ -22,6 +22,7 @@ metis = { git = "https://github.com/tucanos/metis-rs.git", rev = "d31aa3e", opti
 lindel = "0.1.1"
 stl_io = "0.8.5"
 argmin = "0.11.0"
+argmin-math = { version = "0.5.1", features = ["vec"] }
 
 [features]
 32bit-tags = []

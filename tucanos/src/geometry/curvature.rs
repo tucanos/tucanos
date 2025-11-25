@@ -19,7 +19,7 @@ use tmesh::{
 pub fn compute_vertex_normals<const D: usize, C: Simplex>(
     mesh: &impl Mesh<D, C>,
 ) -> Vec<Vertex<D>> {
-    assert!(C::is_linear());
+    assert_eq!(C::order(), 1);
     debug!("Compute the surface normals at the vertices");
 
     let mut normals = vec![Vertex::<D>::zeros(); mesh.n_verts()];

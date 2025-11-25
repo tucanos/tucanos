@@ -36,13 +36,20 @@ use crate::{
     mesh::gradient::{l2proj, least_squares},
     spatialindex::PointIndex,
 };
-pub use boundary_mesh_2d::BoundaryMesh2d;
-pub use boundary_mesh_3d::{BoundaryMesh3d, read_stl};
+pub use boundary_mesh_2d::{
+    BoundaryMesh2d, QuadraticBoundaryMesh2d, circle_mesh, quadratic_circle_mesh,
+    to_quadratic_edge_mesh,
+};
+pub use boundary_mesh_3d::{
+    BoundaryMesh3d, QuadraticBoundaryMesh3d, quadratic_sphere_mesh, read_stl, sphere_mesh,
+    to_quadratic_triangle_mesh,
+};
 pub use elements::{
     Hexahedron, Idx, Prism, Pyramid, Quadrangle,
     edge::{Edge, GEdge},
     node::{GNode, Node},
     quadratic_edge::{QuadraticEdge, QuadraticGEdge},
+    quadratic_triangle::{QuadraticGTriangle, QuadraticTriangle},
     simplex::{GSimplex, Simplex, get_face_to_elem},
     tetrahedron::{GTetrahedron, Tetrahedron},
     to_simplices::{hex2tets, pri2tets, pyr2tets, qua2tris},
@@ -867,37 +874,46 @@ pub trait Mesh<const D: usize, C: Simplex>: Send + Sync + Sized {
                 .map(|(x, _)| Vertex::<D>::from_column_slice(&x)),
         );
 
-        match C::N_VERTS {
-            4 => {
-                if let Ok(iter) = reader.read_tetrahedra() {
-                    res.add_elems_and_tags(iter.map(|(e, t)| (C::from_iter(e), t as Tag)));
+        match C::order() {
+            1 => {
+                match C::N_VERTS {
+                    4 => {
+                        if let Ok(iter) = reader.read_tetrahedra() {
+                            res.add_elems_and_tags(iter.map(|(e, t)| (C::from_iter(e), t as Tag)));
+                        }
+                    }
+                    3 => {
+                        if let Ok(iter) = reader.read_triangles() {
+                            res.add_elems_and_tags(iter.map(|(e, t)| (C::from_iter(e), t as Tag)));
+                        }
+                    }
+                    2 => {
+                        if let Ok(iter) = reader.read_edges() {
+                            res.add_elems_and_tags(iter.map(|(e, t)| (C::from_iter(e), t as Tag)));
+                        }
+                    }
+                    _ => unimplemented!(),
                 }
-            }
-            3 => {
-                if let Ok(iter) = reader.read_triangles() {
-                    res.add_elems_and_tags(iter.map(|(e, t)| (C::from_iter(e), t as Tag)));
-                }
-            }
-            2 => {
-                if let Ok(iter) = reader.read_edges() {
-                    res.add_elems_and_tags(iter.map(|(e, t)| (C::from_iter(e), t as Tag)));
-                }
-            }
-            _ => unimplemented!(),
-        }
 
-        match C::FACE::N_VERTS {
-            3 => {
-                if let Ok(iter) = reader.read_triangles() {
-                    res.add_faces_and_tags(iter.map(|(e, t)| (C::FACE::from_iter(e), t as Tag)));
+                match C::FACE::N_VERTS {
+                    3 => {
+                        if let Ok(iter) = reader.read_triangles() {
+                            res.add_faces_and_tags(
+                                iter.map(|(e, t)| (C::FACE::from_iter(e), t as Tag)),
+                            );
+                        }
+                    }
+                    2 => {
+                        if let Ok(iter) = reader.read_edges() {
+                            res.add_faces_and_tags(
+                                iter.map(|(e, t)| (C::FACE::from_iter(e), t as Tag)),
+                            );
+                        }
+                    }
+                    1 => warn!("not reading faces when elements are edges"),
+                    _ => unimplemented!(),
                 }
             }
-            2 => {
-                if let Ok(iter) = reader.read_edges() {
-                    res.add_faces_and_tags(iter.map(|(e, t)| (C::FACE::from_iter(e), t as Tag)));
-                }
-            }
-            1 => warn!("not reading faces when elements are edges"),
             _ => unimplemented!(),
         }
 
@@ -914,34 +930,39 @@ pub trait Mesh<const D: usize, C: Simplex>: Send + Sync + Sized {
             (0..self.n_verts()).map(|_| 1),
         )?;
 
-        match C::N_VERTS {
-            4 => writer.write_tetrahedra(
-                self.elems().map(|x| std::array::from_fn(|i| x.get(i))),
-                self.etags().map(|x| x.try_into().unwrap()),
-            )?,
-            3 => writer.write_triangles(
-                self.elems().map(|x| std::array::from_fn(|i| x.get(i))),
-                self.etags().map(|x| x.try_into().unwrap()),
-            )?,
-            2 => writer.write_edges(
-                self.elems().map(|x| std::array::from_fn(|i| x.get(i))),
-                self.etags().map(|x| x.try_into().unwrap()),
-            )?,
-            _ => unimplemented!(),
-        }
-
-        match C::FACE::N_VERTS {
-            3 => writer.write_triangles(
-                self.faces().map(|x| std::array::from_fn(|i| x.get(i))),
-                self.ftags().map(|x| x.try_into().unwrap()),
-            )?,
-            2 => writer.write_edges(
-                self.faces().map(|x| std::array::from_fn(|i| x.get(i))),
-                self.ftags().map(|x| x.try_into().unwrap()),
-            )?,
+        match C::order() {
             1 => {
-                if self.n_faces() != 0 {
-                    warn!("skip faces in meshb export");
+                match C::N_VERTS {
+                    4 => writer.write_tetrahedra(
+                        self.elems().map(|x| std::array::from_fn(|i| x.get(i))),
+                        self.etags().map(|x| x.try_into().unwrap()),
+                    )?,
+                    3 => writer.write_triangles(
+                        self.elems().map(|x| std::array::from_fn(|i| x.get(i))),
+                        self.etags().map(|x| x.try_into().unwrap()),
+                    )?,
+                    2 => writer.write_edges(
+                        self.elems().map(|x| std::array::from_fn(|i| x.get(i))),
+                        self.etags().map(|x| x.try_into().unwrap()),
+                    )?,
+                    _ => unimplemented!(),
+                }
+
+                match C::FACE::N_VERTS {
+                    3 => writer.write_triangles(
+                        self.faces().map(|x| std::array::from_fn(|i| x.get(i))),
+                        self.ftags().map(|x| x.try_into().unwrap()),
+                    )?,
+                    2 => writer.write_edges(
+                        self.faces().map(|x| std::array::from_fn(|i| x.get(i))),
+                        self.ftags().map(|x| x.try_into().unwrap()),
+                    )?,
+                    1 => {
+                        if self.n_faces() != 0 {
+                            warn!("skip faces in meshb export");
+                        }
+                    }
+                    _ => unimplemented!(),
                 }
             }
             _ => unimplemented!(),

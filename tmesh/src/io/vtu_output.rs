@@ -416,11 +416,19 @@ impl Cells {
         let data = (0..n).map(|i| (C::N_VERTS * (i + 1)) as i64);
         let offsets = DataArray::new_i64("offsets", 1, data.len(), data, encoding);
 
-        let cell_type: u8 = match C::N_VERTS {
-            4 => 10,
-            3 => 5,
-            2 => 4,
-            _ => unreachable!(),
+        let cell_type: u8 = match C::order() {
+            1 => match C::N_VERTS {
+                4 => 10,
+                3 => 5,
+                2 => 3,
+                _ => unimplemented!(),
+            },
+            2 => match C::N_VERTS {
+                6 => 22,
+                3 => 21,
+                _ => unimplemented!(),
+            },
+            _ => unimplemented!(),
         };
 
         let data = (0..n).map(|_i| cell_type);

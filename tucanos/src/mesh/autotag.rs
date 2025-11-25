@@ -18,7 +18,7 @@ pub fn autotag<const D: usize, C: Simplex, M: Mesh<D, C>>(
     msh: &mut M,
     angle_deg: f64,
 ) -> Result<HashMap<Tag, Vec<Tag>>> {
-    assert!(C::is_linear());
+    assert_eq!(C::order(), 1);
     assert_eq!(D - 1, C::DIM);
 
     let faces = msh.all_faces();

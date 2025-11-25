@@ -12,7 +12,7 @@ pub fn orient_geometry<const D: usize, C: Simplex, M: Mesh<D, C>, M2: Mesh<D, C:
     mesh: &M,
     stl_mesh: &mut M2,
 ) -> (usize, f64) {
-    assert!(C::is_linear());
+    assert_eq!(C::order(), 1);
 
     debug!("Orient the boundary mesh");
 

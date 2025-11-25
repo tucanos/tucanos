@@ -142,12 +142,10 @@ impl<const D: usize> GSimplex<D> for GEdge<D> {
     }
 
     fn integrate<G: Fn(&Self::BCOORDS) -> f64>(&self, f: G) -> f64 {
-        let (w, v) = (5.0 / 18.0, 0.5 - 0.5 * (3.0_f64 / 5.0).sqrt());
-        let mut res = w * f(&[1.0 - v, v]);
-        let (w, v) = (8.0 / 18.0, 0.5);
-        res += w * f(&[1.0 - v, v]);
-        let (w, v) = (5.0 / 18.0, 0.5 + 0.5 * (3.0_f64 / 5.0).sqrt());
-        res += w * f(&[1.0 - v, v]);
+        let mut res = 0.0;
+        for &(weight, v) in &super::quadratures::QUADRATURE_EDGE_3 {
+            res += weight * f(&[1.0 - v, v]);
+        }
         res * self.vol()
     }
 
@@ -161,6 +159,10 @@ impl<const D: usize> GSimplex<D> for GEdge<D> {
 
     fn radius(&self) -> f64 {
         0.5 * (self[1] - self[0]).norm()
+    }
+
+    fn center(&self) -> Vertex<D> {
+        self.vert(&[0.5, 0.5])
     }
 
     fn bcoords(&self, v: &Vertex<D>) -> Self::BCOORDS {

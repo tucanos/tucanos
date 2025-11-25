@@ -164,34 +164,10 @@ impl<const D: usize> GSimplex<D> for GTetrahedron<D> {
     }
 
     fn integrate<G: Fn(&Self::BCOORDS) -> f64>(&self, f: G) -> f64 {
-        let (weight, v, w, t) = (
-            0.25,
-            0.1381966011250105,
-            0.1381966011250105,
-            0.1381966011250105,
-        );
-        let mut res = weight * f(&[1.0 - v - w - t, v, w, t]);
-        let (weight, v, w, t) = (
-            0.25,
-            0.5854101966249685,
-            0.1381966011250105,
-            0.1381966011250105,
-        );
-        res += weight * f(&[1.0 - v - w - t, v, w, t]);
-        let (weight, v, w, t) = (
-            0.25,
-            0.1381966011250105,
-            0.5854101966249685,
-            0.1381966011250105,
-        );
-        res += weight * f(&[1.0 - v - w - t, v, w, t]);
-        let (weight, v, w, t) = (
-            0.25,
-            0.1381966011250105,
-            0.1381966011250105,
-            0.5854101966249685,
-        );
-        res += weight * f(&[1.0 - v - w - t, v, w, t]);
+        let mut res = 0.0;
+        for &(weight, v, w, t) in &super::quadratures::QUADRATURE_TETRAHEDRON_4 {
+            res += weight * f(&[1.0 - v - w - t, v, w, t]);
+        }
         res * self.vol()
     }
 
@@ -206,6 +182,10 @@ impl<const D: usize> GSimplex<D> for GTetrahedron<D> {
         let a3 = self.face(3).vol();
         let v = self.vol();
         3.0 * v / (a0 + a1 + a2 + a3)
+    }
+
+    fn center(&self) -> Vertex<D> {
+        self.vert(&[0.25, 0.25, 0.25, 0.25])
     }
 
     fn bcoords(&self, v: &Vertex<D>) -> Self::BCOORDS {

@@ -151,12 +151,10 @@ impl<const D: usize> GSimplex<D> for GTriangle<D> {
     }
 
     fn integrate<G: Fn(&Self::BCOORDS) -> f64>(&self, f: G) -> f64 {
-        let (weight, v, w) = (1.0 / 3.0, 2.0 / 3.0, 1.0 / 6.0);
-        let mut res = weight * f(&[1.0 - v - w, v, w]);
-        let (weight, v, w) = (1.0 / 3.0, 1.0 / 6.0, 1.0 / 6.0);
-        res += weight * f(&[1.0 - v - w, v, w]);
-        let (weight, v, w) = (1.0 / 3.0, 1.0 / 6.0, 2.0 / 3.0);
-        res += weight * f(&[1.0 - v - w, v, w]);
+        let mut res = 0.0;
+        for &(weight, v, w) in &super::quadratures::QUADRATURE_TRIANGLE_3 {
+            res += weight * f(&[1.0 - v - w, v, w]);
+        }
         res * self.vol()
     }
 
@@ -176,6 +174,10 @@ impl<const D: usize> GSimplex<D> for GTriangle<D> {
         let c = (self[1] - self[0]).norm();
         let s = 0.5 * (a + b + c);
         ((s - a) * (s - b) * (s - c) / s).sqrt()
+    }
+
+    fn center(&self) -> Vertex<D> {
+        self.vert(&[1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0])
     }
 
     fn bcoords(&self, v: &Vertex<D>) -> [f64; 3] {
