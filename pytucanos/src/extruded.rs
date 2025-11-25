@@ -1,5 +1,5 @@
 //! Python bindings for extruded 2d meshes
-use crate::{dual::PyDualMesh2d, mesh::PyMesh2d, poly::PyPolyMesh3d};
+use crate::{Idx, dual::PyDualMesh2d, mesh::PyMesh2d, poly::PyPolyMesh3d};
 use numpy::{
     PyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2,
     PyUntypedArrayMethods,
@@ -18,20 +18,22 @@ use tmesh::{
 
 /// Extruded 2d mesh
 #[pyclass]
-pub struct PyExtrudedMesh2d(pub(crate) ExtrudedMesh2d<usize>);
+pub struct PyExtrudedMesh2d(pub(crate) ExtrudedMesh2d<Idx>);
 
 #[pymethods]
 impl PyExtrudedMesh2d {
     /// Create a new mesh from coordinates, connectivities and tags
     #[new]
     #[allow(clippy::needless_pass_by_value)]
+    #[allow(clippy::from_iter_instead_of_collect)]
+    #[allow(clippy::useless_conversion)]
     fn new(
         coords: PyReadonlyArray2<f64>,
-        prisms: PyReadonlyArray2<usize>,
+        prisms: PyReadonlyArray2<Idx>,
         prism_tags: PyReadonlyArray1<Tag>,
-        tris: PyReadonlyArray2<usize>,
+        tris: PyReadonlyArray2<Idx>,
         tri_tags: PyReadonlyArray1<Tag>,
-        quads: PyReadonlyArray2<usize>,
+        quads: PyReadonlyArray2<Idx>,
         quad_tags: PyReadonlyArray1<Tag>,
     ) -> PyResult<Self> {
         if coords.shape()[1] != 3 {
@@ -74,28 +76,19 @@ impl PyExtrudedMesh2d {
         let prisms = prisms.as_slice()?;
         let prisms = prisms
             .chunks(6)
-            .map(|x| {
-                let pri: [usize; 6] = x.try_into().unwrap();
-                Prism::<usize>::from_iter(pri)
-            })
+            .map(|x| Prism::<Idx>::from_iter(x.iter().copied().map(|x| x.try_into().unwrap())))
             .collect();
 
         let tris = tris.as_slice()?;
         let tris = tris
             .chunks(3)
-            .map(|x| {
-                let tri: [usize; 3] = x.try_into().unwrap();
-                Triangle::<usize>::from_iter(tri)
-            })
+            .map(|x| Triangle::<Idx>::from_iter(x.iter().copied().map(|x| x.try_into().unwrap())))
             .collect();
 
         let quads = quads.as_slice()?;
         let quads = quads
             .chunks(4)
-            .map(|x| {
-                let quad: [usize; 4] = x.try_into().unwrap();
-                Quadrangle::<usize>::from_iter(quad)
-            })
+            .map(|x| Quadrangle::<Idx>::from_iter(x.iter().copied().map(|x| x.try_into().unwrap())))
             .collect();
 
         Ok(Self(ExtrudedMesh2d::new(
@@ -116,12 +109,9 @@ impl PyExtrudedMesh2d {
     }
 
     /// Get the z=0 face as a 2d mesh
-    fn to_mesh2d(&self) -> PyResult<PyMesh2d> {
-        let msh = self
-            .0
-            .to_mesh2d()
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-        Ok(PyMesh2d(msh))
+    fn to_mesh2d(&self) -> PyMesh2d {
+        let msh = self.0.to_mesh2d();
+        PyMesh2d(msh)
     }
 
     /// Number of vertices
