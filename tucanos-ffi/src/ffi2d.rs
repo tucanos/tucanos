@@ -2,7 +2,7 @@ use crate::{Idx, new_metric, tucanos_int_t, tucanos_tag_t};
 use log::warn;
 use tmesh::mesh::{Edge, GenericMesh, Mesh, Simplex, Triangle};
 use tucanos::{
-    geometry::LinearGeometry,
+    geometry::MeshedGeometry,
     mesh::MeshTopology,
     metric::{AnisoMetric2d, IsoMetric},
     remesher::{Remesher, RemesherParams},
@@ -25,7 +25,7 @@ pub struct tucanos_mesh21_t {
 }
 
 pub struct tucanos_geom2d_t {
-    implem: LinearGeometry<2, Edge<Idx>>,
+    implem: MeshedGeometry<2, Edge<Idx>, GenericMesh<2, Edge<Idx>>>,
 }
 
 /// @brief Create a geometry for a tucanos_mesh22_t
@@ -41,7 +41,7 @@ pub unsafe extern "C" fn tucanos_geom2d_new(
         let mesh = &mut (*mesh).implem;
         let boundary = Box::from_raw(boundary).implem;
         let topo = MeshTopology::new(mesh);
-        LinearGeometry::new(mesh, &topo, boundary).map_or(std::ptr::null_mut(), |implem| {
+        MeshedGeometry::new(mesh, &topo, boundary).map_or(std::ptr::null_mut(), |implem| {
             Box::into_raw(Box::new(tucanos_geom2d_t { implem }))
         })
     }

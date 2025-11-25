@@ -7,7 +7,7 @@ use numpy::PyArray2;
 use pyo3::{Bound, PyResult, Python, exceptions::PyRuntimeError, pyclass, pymethods};
 use tmesh::mesh::{Edge, GenericMesh, Mesh, Triangle};
 use tucanos::{
-    geometry::{Geometry, LinearGeometry, orient_geometry},
+    geometry::{Geometry, MeshedGeometry, orient_geometry},
     mesh::MeshTopology,
 };
 
@@ -17,7 +17,7 @@ macro_rules! create_geometry {
         #[pyclass]
         // #[derive(Clone)]
         pub struct $name {
-            pub geom: LinearGeometry<$dim, $etype<Idx>>,
+            pub geom: MeshedGeometry<$dim, $etype<Idx>, GenericMesh<$dim, $etype<Idx>>>,
         }
         #[pymethods]
         impl $name {
@@ -33,7 +33,7 @@ macro_rules! create_geometry {
                 };
                 orient_geometry(&mesh.0, &mut gmesh);
                 let topo= MeshTopology::new(&mesh.0);
-                let geom = LinearGeometry::new(&mesh.0, &topo, gmesh).unwrap();
+                let geom = MeshedGeometry::new(&mesh.0, &topo, gmesh).unwrap();
 
                 Self { geom }
             }
@@ -48,11 +48,6 @@ macro_rules! create_geometry {
             #[must_use]
             pub fn max_normal_angle(&self, mesh: &$mesh) -> f64 {
                 self.geom.max_normal_angle(&mesh.0)
-            }
-
-            /// Compute the curvature
-            pub fn compute_curvature(&mut self) {
-                self.geom.compute_curvature()
             }
 
             /// Export the curvature to a vtk file

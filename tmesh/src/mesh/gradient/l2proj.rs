@@ -41,7 +41,7 @@ pub fn gradient_l2proj<const D: usize, C: Simplex, M: Mesh<D, C>>(
             for i_face in 0..C::N_FACES {
                 let i_vert = e.get(i_face);
                 let gf = ge.face(i_face);
-                grad += f[i_vert] * gf.normal();
+                grad += f[i_vert] * gf.normal(None);
             }
             g.iter_mut().zip(grad.iter()).for_each(|(x, y)| *x = *y);
             *v = ge.vol();
@@ -107,7 +107,7 @@ pub fn hessian_l2proj<const D: usize, C: Simplex, M: Mesh<D, C>>(
                 let end = start + D;
                 let grad = &gradf[start..end];
                 let gf = ge.face(i_face);
-                let n = gf.normal();
+                let n = gf.normal(None);
                 for i in 0..D {
                     for j in 0..D {
                         hess[D * i + j] += grad[i] * n[j];

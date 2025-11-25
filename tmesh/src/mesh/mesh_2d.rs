@@ -4,7 +4,7 @@ use crate::{
     mesh::{Edge, GenericMesh, Mesh, Quadrangle, Triangle, elements::Idx},
 };
 
-/// Create a `Mesh<2, 3, 2>` of a `lx` by `ly` rectangle by splitting a `nx` by `ny`
+/// Create a `Mesh<2, Triangle<_>>` of a `lx` by `ly` rectangle by splitting a `nx` by `ny`
 /// uniform structured grid
 #[must_use]
 pub fn rectangle_mesh<M: Mesh<2, Triangle<impl Idx>>>(lx: f64, nx: usize, ly: f64, ny: usize) -> M {
@@ -17,7 +17,7 @@ pub fn rectangle_mesh<M: Mesh<2, Triangle<impl Idx>>>(lx: f64, nx: usize, ly: f6
     nonuniform_rectangle_mesh(&x_1d, &y_1d)
 }
 
-/// Create a `Mesh<2, 3, 2>` of rectangle by splitting a structured grid
+/// Create a `Mesh<2, Triangle<_>>` of rectangle by splitting a structured grid
 #[must_use]
 pub fn nonuniform_rectangle_mesh<M: Mesh<2, Triangle<impl Idx>>>(x: &[f64], y: &[f64]) -> M {
     let nx = x.len();
