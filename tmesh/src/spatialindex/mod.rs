@@ -2,6 +2,7 @@
 use crate::Vertex;
 
 mod parry;
+mod parry2;
 
 /// Point index based on `kdtree`
 pub struct PointIndex<const D: usize> {
@@ -31,7 +32,7 @@ impl<const D: usize> PointIndex<D> {
 }
 
 pub use parry::ObjectIndex;
-
+pub use parry2::ObjectIndex2;
 #[cfg(test)]
 mod tests {
     use nalgebra::SVector;
