@@ -205,6 +205,14 @@ pub trait GSimplex<const D: usize>:
     /// Radius (=diameter of the inner circle / sphere)
     fn radius(&self) -> f64;
 
+    /// Barycentric coordinates of the center
+    fn center_bcoords() -> Self::BCOORDS;
+
+    /// Center
+    fn center(&self) -> Vertex<D> {
+        self.vert(&Self::center_bcoords())
+    }
+
     /// Barycentric coordinates
     fn bcoords(&self, v: &Vertex<D>) -> Self::BCOORDS;
 
@@ -212,9 +220,6 @@ pub trait GSimplex<const D: usize>:
     fn vert(&self, bcoords: &Self::BCOORDS) -> Vertex<D> {
         bcoords.into_iter().zip(*self).map(|(w, v)| w * v).sum()
     }
-
-    /// Center
-    fn center(&self) -> Vertex<D>;
 
     /// Gamma quality measure, ratio of inscribed radius to circumradius
     /// normalized to be between 0 and 1

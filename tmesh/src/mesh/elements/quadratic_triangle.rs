@@ -268,8 +268,8 @@ impl<const D: usize> GSimplex<D> for QuadraticGTriangle<D> {
         unreachable!()
     }
 
-    fn center(&self) -> Vertex<D> {
-        self.vert(&[1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0])
+    fn center_bcoords() -> Self::BCOORDS {
+        [1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0]
     }
 
     fn bcoords(&self, v: &Vertex<D>) -> Self::BCOORDS {

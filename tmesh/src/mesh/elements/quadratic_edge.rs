@@ -211,8 +211,8 @@ impl<const D: usize> GSimplex<D> for QuadraticGEdge<D> {
         unreachable!()
     }
 
-    fn center(&self) -> Vertex<D> {
-        self.vert(&[0.5, 0.5])
+    fn center_bcoords() -> Self::BCOORDS {
+        [0.5, 0.5]
     }
 
     fn bcoords(&self, v: &Vertex<D>) -> Self::BCOORDS {

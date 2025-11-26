@@ -149,9 +149,11 @@ impl<const D: usize> GSimplex<D> for GEdge<D> {
         res * self.vol()
     }
 
-    fn normal(&self, _bcoords: Option<&Self::BCOORDS>) -> Vertex<D> {
+    fn normal(&self, bcoords: Option<&Self::BCOORDS>) -> Vertex<D> {
         if Self::has_normal() {
-            Vertex::<D>::from_column_slice(&[self[1][1] - self[0][1], self[0][0] - self[1][0]])
+            let n =
+                Vertex::<D>::from_column_slice(&[self[1][1] - self[0][1], self[0][0] - self[1][0]]);
+            if bcoords.is_some() { n.normalize() } else { n }
         } else {
             unreachable!()
         }
@@ -161,8 +163,8 @@ impl<const D: usize> GSimplex<D> for GEdge<D> {
         0.5 * (self[1] - self[0]).norm()
     }
 
-    fn center(&self) -> Vertex<D> {
-        self.vert(&[0.5, 0.5])
+    fn center_bcoords() -> Self::BCOORDS {
+        [0.5, 0.5]
     }
 
     fn bcoords(&self, v: &Vertex<D>) -> Self::BCOORDS {

@@ -184,8 +184,8 @@ impl<const D: usize> GSimplex<D> for GTetrahedron<D> {
         3.0 * v / (a0 + a1 + a2 + a3)
     }
 
-    fn center(&self) -> Vertex<D> {
-        self.vert(&[0.25, 0.25, 0.25, 0.25])
+    fn center_bcoords() -> Self::BCOORDS {
+        [0.25, 0.25, 0.25, 0.25]
     }
 
     fn bcoords(&self, v: &Vertex<D>) -> Self::BCOORDS {

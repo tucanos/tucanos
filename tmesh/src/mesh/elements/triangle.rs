@@ -158,11 +158,12 @@ impl<const D: usize> GSimplex<D> for GTriangle<D> {
         res * self.vol()
     }
 
-    fn normal(&self, _bcoords: Option<&Self::BCOORDS>) -> Vertex<D> {
+    fn normal(&self, bcoords: Option<&Self::BCOORDS>) -> Vertex<D> {
         if Self::has_normal() {
             let e1 = self[1] - self[0];
             let e2 = self[2] - self[0];
-            0.5 * e1.cross(&e2)
+            let n = 0.5 * e1.cross(&e2);
+            if bcoords.is_some() { n.normalize() } else { n }
         } else {
             unreachable!()
         }
@@ -176,8 +177,8 @@ impl<const D: usize> GSimplex<D> for GTriangle<D> {
         ((s - a) * (s - b) * (s - c) / s).sqrt()
     }
 
-    fn center(&self) -> Vertex<D> {
-        self.vert(&[1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0])
+    fn center_bcoords() -> Self::BCOORDS {
+        [1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0]
     }
 
     fn bcoords(&self, v: &Vertex<D>) -> [f64; 3] {

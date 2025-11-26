@@ -140,6 +140,10 @@ impl<const D: usize> GSimplex<D> for GNode<D> {
         unreachable!()
     }
 
+    fn center_bcoords() -> Self::BCOORDS {
+        [1.0]
+    }
+
     fn center(&self) -> Vertex<D> {
         self.0[0]
     }
