@@ -280,7 +280,7 @@ impl<const D: usize> GSimplex<D> for QuadraticGTriangle<D> {
         let solver = NewtonCG::new(linesearch);
 
         if let Ok(res) = Executor::new(proj, solver)
-            .configure(|state| state.param(vec![uvw[1], uvw[2]]).max_iters(100))
+            .configure(|state| state.param([uvw[1], uvw[2]].into()).max_iters(100))
             .run()
         {
             let res = res.state.best_param.unwrap();
@@ -322,7 +322,7 @@ struct QuadraticTriangleProjection<'a, const D: usize> {
 }
 
 impl<const D: usize> CostFunction for QuadraticTriangleProjection<'_, D> {
-    type Param = Vec<f64>;
+    type Param = nalgebra::Vector2<f64>;
     type Output = f64;
 
     fn cost(&self, param: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
@@ -333,20 +333,20 @@ impl<const D: usize> CostFunction for QuadraticTriangleProjection<'_, D> {
 }
 
 impl<const D: usize> Gradient for QuadraticTriangleProjection<'_, D> {
-    type Param = Vec<f64>;
-    type Gradient = Vec<f64>;
+    type Param = nalgebra::Vector2<f64>;
+    type Gradient = nalgebra::Vector2<f64>;
 
     fn gradient(&self, param: &Self::Param) -> Result<Self::Gradient, argmin::core::Error> {
         let uvw = [1.0 - param[0] - param[1], param[0], param[1]];
         let dx = self.v - self.ge.mapping(&uvw);
         let [du, dv, dw] = self.ge.jac_mapping(&uvw);
-        Ok(vec![-2.0 * dx.dot(&(dv - du)), -2.0 * dx.dot(&(dw - du))])
+        Ok([-2.0 * dx.dot(&(dv - du)), -2.0 * dx.dot(&(dw - du))].into())
     }
 }
 
 impl<const D: usize> Hessian for QuadraticTriangleProjection<'_, D> {
-    type Param = Vec<f64>;
-    type Hessian = Vec<Vec<f64>>;
+    type Param = nalgebra::Vector2<f64>;
+    type Hessian = nalgebra::Matrix2<f64>;
 
     fn hessian(&self, param: &Self::Param) -> Result<Self::Hessian, argmin::core::Error> {
         let uvw = [1.0 - param[0] - param[1], param[0], param[1]];
@@ -354,16 +354,17 @@ impl<const D: usize> Hessian for QuadraticTriangleProjection<'_, D> {
         let [du, dv, dw] = self.ge.jac_mapping(&uvw);
         let [duu, dvv, dww, duv, duw, dvw] = self.ge.hess_mapping(&uvw);
 
-        Ok(vec![
-            vec![
+        Ok([
+            [
                 -2.0 * (dx.dot(&(duu + dvv - 2.0 * duv)) - (dv - du).norm_squared()),
                 -2.0 * (dx.dot(&(duu + dvw - duv - duw)) - (dv - du).dot(&(dw - du))),
             ],
-            vec![
+            [
                 -2.0 * (dx.dot(&(duu + dvw - duv - duw)) - (dv - du).dot(&(dw - du))),
                 -2.0 * (dx.dot(&(duu + dww - 2.0 * duw)) - (dw - du).norm_squared()),
             ],
-        ])
+        ]
+        .into())
     }
 }
 
