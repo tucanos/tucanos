@@ -647,35 +647,45 @@ impl<'a, const D: usize, C: Simplex, M: Metric<D>> FilledCavity<'a, D, C, M> {
         geom: &G,
         threshold_degrees: f64,
     ) -> bool {
-        if !C::has_face_normal::<D>() {
-            return true;
-        }
         let (p0, _) = self.point();
-
-        for (b, tag, s) in self.tagged_faces_boundary() {
-            assert!(
-                tag > 0,
-                "Invalid tag {}\n{:?}\n{}\n{}",
-                tag,
-                self.ftype,
-                self.cavity,
-                topo
-            );
-            let gb = <<C::FACE as Simplex>::GEOM<D> as GSimplex<D>>::FACE::from_iter(
-                b.into_iter().map(|i| {
-                    let (vx, _, _) = self.cavity.vert(i);
-                    *vx
-                }),
-            );
-            let gf = <C::FACE as Simplex>::GEOM::from_vert_and_face(&p0, &gb);
-            let center = gf.center();
-            let mut normal = gf.normal().normalize();
-            if s {
-                normal *= -1.0;
+        if C::DIM == D {
+            for (b, tag, s) in self.tagged_faces_boundary() {
+                assert!(
+                    tag > 0,
+                    "Invalid tag {}\n{:?}\n{}\n{}",
+                    tag,
+                    self.ftype,
+                    self.cavity,
+                    topo
+                );
+                let gb = <<C::FACE as Simplex>::GEOM<D> as GSimplex<D>>::FACE::from_iter(
+                    b.into_iter().map(|i| {
+                        let (vx, _, _) = self.cavity.vert(i);
+                        *vx
+                    }),
+                );
+                let gf = <C::FACE as Simplex>::GEOM::from_vert_and_face(&p0, &gb);
+                let center = gf.center();
+                let mut normal = gf.normal().normalize();
+                if s {
+                    normal *= -1.0;
+                }
+                let a = geom.angle(&center, &normal, &(C::DIM as Dim - 1, tag));
+                if a > threshold_degrees {
+                    return false;
+                }
             }
-            let a = geom.angle(&center, &normal, &(C::DIM as Dim - 1, tag));
-            if a > threshold_degrees {
-                return false;
+        } else {
+            let etag_min = self.cavity.etags.iter().copied().min().unwrap();
+            for (f, _) in self.faces() {
+                let gf = self.cavity.gface(&f);
+                let ge = <C as Simplex>::GEOM::from_vert_and_face(&p0, &gf);
+                let center = ge.center();
+                let normal = ge.normal();
+                let a = geom.angle(&center, &normal, &(C::DIM as Dim, etag_min));
+                if a > threshold_degrees {
+                    return false;
+                }
             }
         }
         true
