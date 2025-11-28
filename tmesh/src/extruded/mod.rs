@@ -43,7 +43,7 @@ impl<T: Idx> ExtrudedMesh2d<T> {
 
     /// Extrude a `Mesh2d` by a distance `h` along direction `z`
     #[must_use]
-    pub fn from_mesh2d<T2: Idx>(msh: &impl Mesh<2, Triangle<T2>>, h: f64) -> Self {
+    pub fn from_mesh2d<T2: Idx>(msh: &impl Mesh<2, C = Triangle<T2>>, h: f64) -> Self {
         let n = msh.n_verts();
         let verts = msh
             .verts()
@@ -95,7 +95,7 @@ impl<T: Idx> ExtrudedMesh2d<T> {
 
     /// Get a `Mesh2d` from the z=0 face
     #[must_use]
-    pub fn to_mesh2d<M: Mesh<2, Triangle<impl Idx>>>(&self) -> M {
+    pub fn to_mesh2d<M: Mesh<2, C = Triangle<impl Idx>>>(&self) -> M {
         let n = self.verts.len() / 2;
 
         let verts = self

@@ -1,9 +1,7 @@
 //! Interpolation
-use std::marker::PhantomData;
-
 use crate::{
     Vertex,
-    mesh::{GSimplex, Mesh, Simplex},
+    mesh::{GSimplex, Mesh},
     spatialindex::{ObjectIndex, PointIndex},
 };
 
@@ -16,7 +14,7 @@ pub enum InterpolationMethod {
 }
 
 /// Interpolator
-pub struct Interpolator<'a, const D: usize, C: Simplex, M: Mesh<D, C>> {
+pub struct Interpolator<'a, const D: usize, M: Mesh<D>> {
     /// Mesh from which the data in interpolated
     mesh: &'a M,
     /// Interpolation method
@@ -24,11 +22,10 @@ pub struct Interpolator<'a, const D: usize, C: Simplex, M: Mesh<D, C>> {
     /// Index for nearest neighbor interpolation
     point_index: Option<PointIndex<D>>,
     /// Index for linear interpolation
-    elem_index: Option<ObjectIndex<D, C, M>>,
-    _c: PhantomData<C>,
+    elem_index: Option<ObjectIndex<D, M>>,
 }
 
-impl<'a, const D: usize, C: Simplex, M: Mesh<D, C> + Clone> Interpolator<'a, D, C, M> {
+impl<'a, const D: usize, M: Mesh<D> + Clone> Interpolator<'a, D, M> {
     /// Create the interpolator (initialize the indices)
     pub fn new(mesh: &'a M, method: InterpolationMethod) -> Self {
         let (point_index, elem_index) = match method {
@@ -40,7 +37,6 @@ impl<'a, const D: usize, C: Simplex, M: Mesh<D, C> + Clone> Interpolator<'a, D, 
             method,
             point_index,
             elem_index,
-            _c: PhantomData::<C>,
         }
     }
 

@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use crate::{
     Vertex,
     mesh::{GSimplex, Mesh, Simplex},
@@ -108,13 +106,12 @@ impl<const D: usize, C: GSimplex<D>> Shape for SimplexShape<D, C> {
     }
 }
 
-pub struct ObjectIndex2d<const D: usize, C: Simplex, M: Mesh<D, C>> {
+pub struct ObjectIndex2d<const D: usize, M: Mesh<D>> {
     mesh: M,
     tree: Bvh,
-    _c: PhantomData<C>,
 }
 
-impl<const D: usize, C: Simplex, M: Mesh<D, C>> ObjectIndex2d<D, C, M> {
+impl<const D: usize, M: Mesh<D>> ObjectIndex2d<D, M> {
     pub fn new(mesh: M) -> Self {
         assert_eq!(D, 2);
 
@@ -130,11 +127,7 @@ impl<const D: usize, C: Simplex, M: Mesh<D, C>> ObjectIndex2d<D, C, M> {
         });
         let tree = Bvh::from_iter(BvhBuildStrategy::Binned, data);
 
-        Self {
-            mesh,
-            tree,
-            _c: PhantomData,
-        }
+        Self { mesh, tree }
     }
 
     /// Get a reference to the mesh
@@ -160,7 +153,7 @@ impl<const D: usize, C: Simplex, M: Mesh<D, C>> ObjectIndex2d<D, C, M> {
     }
 }
 
-impl<const D: usize, C: Simplex, M: Mesh<D, C>> PointQueryWithLocation for ObjectIndex2d<D, C, M> {
+impl<const D: usize, M: Mesh<D>> PointQueryWithLocation for ObjectIndex2d<D, M> {
     type Location = (u32, ());
 
     fn project_local_point_and_get_location(
@@ -175,7 +168,7 @@ impl<const D: usize, C: Simplex, M: Mesh<D, C>> PointQueryWithLocation for Objec
     }
 }
 
-impl<const D: usize, C: Simplex, M: Mesh<D, C>> CompositeShape for ObjectIndex2d<D, C, M> {
+impl<const D: usize, M: Mesh<D>> CompositeShape for ObjectIndex2d<D, M> {
     fn map_part_at(
         &self,
         shape_id: u32,
@@ -193,8 +186,8 @@ impl<const D: usize, C: Simplex, M: Mesh<D, C>> CompositeShape for ObjectIndex2d
     }
 }
 
-impl<const D: usize, C: Simplex, M: Mesh<D, C>> TypedCompositeShape for ObjectIndex2d<D, C, M> {
-    type PartShape = SimplexShape<D, C::GEOM<D>>;
+impl<const D: usize, M: Mesh<D>> TypedCompositeShape for ObjectIndex2d<D, M> {
+    type PartShape = SimplexShape<D, <M::C as Simplex>::GEOM<D>>;
 
     type PartNormalConstraints = dyn NormalConstraints;
 
@@ -232,17 +225,14 @@ mod tests {
     use crate::{
         Vert2d, Vertex, assert_delta,
         mesh::{
-            BoundaryMesh2d, Edge, GSimplex, Mesh, Mesh2d, QuadraticBoundaryMesh2d, Simplex,
-            circle_mesh, quadratic_circle_mesh, rectangle_mesh,
+            BoundaryMesh2d, Edge, GSimplex, Mesh, Mesh2d, QuadraticBoundaryMesh2d, circle_mesh,
+            quadratic_circle_mesh, rectangle_mesh,
         },
         spatialindex::{ObjectIndex, parry_2d::ObjectIndex2d},
     };
     use rand::{Rng, SeedableRng, rngs::StdRng};
 
-    fn nearest_elem_naive<const D: usize, C: Simplex>(
-        msh: &impl Mesh<D, C>,
-        pt: &Vertex<D>,
-    ) -> usize {
+    fn nearest_elem_naive<const D: usize>(msh: &impl Mesh<D>, pt: &Vertex<D>) -> usize {
         let mut dst = f64::MAX;
         let mut res = 0;
         for (i, ge) in msh.gelems().enumerate() {

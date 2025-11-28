@@ -525,15 +525,12 @@ pub struct MeshTopology {
 }
 
 impl MeshTopology {
-    pub fn new<const D: usize, C: Simplex, M: Mesh<D, C>>(msh: &M) -> Self {
-        let topo = Topology::new(C::DIM as Dim);
+    pub fn new<const D: usize, M: Mesh<D>>(msh: &M) -> Self {
+        let topo = Topology::new(M::C::DIM as Dim);
         Self::new_from(msh, topo)
     }
 
-    pub fn new_from<const D: usize, C: Simplex, M: Mesh<D, C>>(
-        msh: &M,
-        mut topo: Topology,
-    ) -> Self {
+    pub fn new_from<const D: usize, M: Mesh<D>>(msh: &M, mut topo: Topology) -> Self {
         let vtags =
             topo.update_from_elems_and_faces(msh.elems(), msh.etags(), msh.faces(), msh.ftags());
         Self { topo, vtags }

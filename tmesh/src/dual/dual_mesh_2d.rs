@@ -86,9 +86,10 @@ impl<T: Idx> PolyMesh<2> for DualMesh2d<T> {
     }
 }
 
-impl<T: Idx> DualMesh<2, Triangle<T>> for DualMesh2d<T> {
+impl<T: Idx> DualMesh<2> for DualMesh2d<T> {
+    type C = Triangle<T>;
     #[allow(clippy::too_many_lines)]
-    fn new(msh: &impl Mesh<2, Triangle<T>>, t: DualType) -> Self {
+    fn new(msh: &impl Mesh<2, C = Self::C>, t: DualType) -> Self {
         // edges
         let all_edges = msh.edges();
         let n_edges = all_edges.len();

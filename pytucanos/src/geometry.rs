@@ -17,7 +17,7 @@ macro_rules! create_geometry {
         #[pyclass]
         // #[derive(Clone)]
         pub struct $name {
-            pub geom: MeshedGeometry<$dim, $etype<Idx>, GenericMesh<$dim, $etype<Idx>>>,
+            pub geom: MeshedGeometry<$dim, GenericMesh<$dim, $etype<Idx>>>,
         }
         #[pymethods]
         impl $name {

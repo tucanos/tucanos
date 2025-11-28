@@ -120,7 +120,7 @@ impl ParallelRemeshingInfo {
 }
 
 /// Domain decomposition
-pub struct ParallelRemesher<const D: usize, C: Simplex, M: Mesh<D, C>, P: Partitioner> {
+pub struct ParallelRemesher<const D: usize, M: Mesh<D>, P: Partitioner> {
     mesh: M,
     topo: MeshTopology,
     n_parts: usize,
@@ -131,11 +131,10 @@ pub struct ParallelRemesher<const D: usize, C: Simplex, M: Mesh<D, C>, P: Partit
     partition_quality: f64,
     partition_imbalance: f64,
     debug: bool,
-    _c: PhantomData<C>,
     _p: PhantomData<P>,
 }
 
-impl<const D: usize, C: Simplex, M: Mesh<D, C>, P: Partitioner> ParallelRemesher<D, C, M, P> {
+impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
     /// Create a new parallel remesher based on domain decomposition.
     /// If part is `PartitionType::Scotch(n)` or `PartitionType::Metis(n)` the mesh is partitionned into n subdomains using
     /// scotch / metis. If None, the element tag in `mesh` is used as the partition Id
@@ -175,7 +174,6 @@ impl<const D: usize, C: Simplex, M: Mesh<D, C>, P: Partitioner> ParallelRemesher
             partition_quality,
             partition_imbalance,
             debug: false,
-            _c: PhantomData,
             _p: PhantomData,
         })
     }
@@ -196,14 +194,14 @@ impl<const D: usize, C: Simplex, M: Mesh<D, C>, P: Partitioner> ParallelRemesher
 
     /// Get a parallel iterator over the partitiona as SubSimplexMeshes
     #[must_use]
-    pub fn par_partitions(&self) -> impl IndexedParallelIterator<Item = SubMesh<D, C, M>> + '_ {
+    pub fn par_partitions(&self) -> impl IndexedParallelIterator<Item = SubMesh<D, M>> + '_ {
         self.partition_tags
             .par_iter()
             .map(|&tag| SubMesh::new(&self.mesh, |t| t == tag))
     }
 
     /// Get an iterator over the partitiona as SubSimplexMeshes
-    pub fn seq_partitions(&self) -> impl Iterator<Item = SubMesh<D, C, M>> + '_ {
+    pub fn seq_partitions(&self) -> impl Iterator<Item = SubMesh<D, M>> + '_ {
         self.partition_tags
             .iter()
             .map(|&tag| SubMesh::new(&self.mesh, |t| t == tag))
@@ -212,7 +210,7 @@ impl<const D: usize, C: Simplex, M: Mesh<D, C>, P: Partitioner> ParallelRemesher
     /// Get an element tag that is 2 for the cells that are neighbors of level `n_layers` of the partition interface
     /// (i.e. the faces with a <0 tag)
     #[must_use]
-    pub fn flag_interface(&self, mesh: &impl Mesh<D, C>, n_layers: u32) -> Vec<Tag> {
+    pub fn flag_interface(&self, mesh: &impl Mesh<D>, n_layers: u32) -> Vec<Tag> {
         let mut new_etag = vec![1; mesh.n_elems()];
 
         let mut flag = vec![false; mesh.n_verts()];
@@ -251,8 +249,8 @@ impl<const D: usize, C: Simplex, M: Mesh<D, C>, P: Partitioner> ParallelRemesher
         m: &[T],
         geom: &G,
         params: &RemesherParams,
-        submesh: SubMesh<D, C, M>,
-    ) -> (GenericMesh<D, C>, Vec<T>) {
+        submesh: SubMesh<D, M>,
+    ) -> (GenericMesh<D, M::C>, Vec<T>) {
         let mut local_mesh = submesh.mesh;
 
         // to be consistent with the base topology
@@ -278,7 +276,7 @@ impl<const D: usize, C: Simplex, M: Mesh<D, C>, P: Partitioner> ParallelRemesher
         geom: &G,
         params: RemesherParams,
         dd_params: &ParallelRemesherParams,
-    ) -> Result<(GenericMesh<D, C>, ParallelRemeshingInfo, Vec<T>)> {
+    ) -> Result<(GenericMesh<D, M::C>, ParallelRemeshingInfo, Vec<T>)> {
         let res = Mutex::new(GenericMesh::empty());
         let res_m = Mutex::new(Vec::new());
         let ifc = Mutex::new(GenericMesh::empty());
@@ -392,7 +390,7 @@ impl<const D: usize, C: Simplex, M: Mesh<D, C>, P: Partitioner> ParallelRemesher
             let fname = format!("level_{level}_ifc.vtu");
             ifc.write_vtk(&fname).unwrap();
             let fname = format!("level_{level}_ifc_bdy.vtu");
-            ifc.boundary::<GenericMesh<D, C::FACE>>()
+            ifc.boundary::<GenericMesh<D, <M::C as Simplex>::FACE>>()
                 .0
                 .write_vtk(&fname)
                 .unwrap();
@@ -419,7 +417,7 @@ impl<const D: usize, C: Simplex, M: Mesh<D, C>, P: Partitioner> ParallelRemesher
         let (mut ifc, ifc_m) = if let Some(dd_params) = dd_params.next(ifc.n_verts()) {
             debug!("Remeshing level {level} / interface (parallel)");
             let mesh = ifc;
-            let mut dd = ParallelRemesher::<_, _, _, P>::new(mesh, ifc_topo, self.n_parts)?;
+            let mut dd = ParallelRemesher::<_, _, P>::new(mesh, ifc_topo, self.n_parts)?;
             dd.set_debug(self.debug);
             dd.interface_bdy_tag = self.interface_bdy_tag + 1;
             let (ifc, interface_info, ifc_m) = dd.remesh(&ifc_m, geom, params, &dd_params)?;
@@ -514,7 +512,7 @@ mod tests {
         mesh.etags_mut().for_each(|t| *t = 1);
         let topo = MeshTopology::new(&mesh);
 
-        let mut dd = ParallelRemesher::<_, _, _, P>::new(mesh, topo, n_parts)?;
+        let mut dd = ParallelRemesher::<_, _, P>::new(mesh, topo, n_parts)?;
         dd.set_debug(debug);
 
         let h = |p: Vert2d| {
@@ -618,7 +616,7 @@ mod tests {
         // init_log("warning");
         let mesh = test_mesh_3d().split().split().split();
         let topo = MeshTopology::new(&mesh);
-        let dd = ParallelRemesher::<_, _, _, P>::new(mesh, topo, n_parts)?;
+        let dd = ParallelRemesher::<_, _, P>::new(mesh, topo, n_parts)?;
         // dd.set_debug(true);
 
         let h = |p: Vert3d| {

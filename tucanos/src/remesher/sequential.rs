@@ -164,7 +164,7 @@ impl RemesherParams {
 impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
     /// Initialize the remesher
     pub fn new(
-        mesh: &impl Mesh<D, C>,
+        mesh: &impl Mesh<D, C = C>,
         topo: &MeshTopology,
         m: &[M],
         geom: &impl Geometry<D>,
@@ -173,7 +173,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
     }
 
     pub fn new_with_iter(
-        mesh: &impl Mesh<D, C>,
+        mesh: &impl Mesh<D, C = C>,
         topo: &MeshTopology,
         metric: impl ExactSizeIterator<Item = M>,
         geom: &impl Geometry<D>,

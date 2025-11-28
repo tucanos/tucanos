@@ -1,12 +1,9 @@
 use crate::metric::{Metric, MetricField};
 use log::debug;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
-use tmesh::{
-    graph::CSRGraph,
-    mesh::{Mesh, Simplex},
-};
+use tmesh::{graph::CSRGraph, mesh::Mesh};
 
-impl<const D: usize, C: Simplex, M: Mesh<D, C>, T: Metric<D>> MetricField<'_, D, C, M, T> {
+impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
     /// Smooth a metric field to avoid numerical artifacts
     /// For each mesh vertex $`i`$, a set a suitable neighbors $`N(i)`$ is built as
     /// a subset of the neighbors of $`i`$ ($`i`$ is included) ignoring the vertices with the metrics with

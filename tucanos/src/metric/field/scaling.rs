@@ -9,7 +9,7 @@ use rayon::prelude::{
 };
 use tmesh::mesh::{Mesh, Simplex};
 
-impl<const D: usize, C: Simplex, M: Mesh<D, C>, T: Metric<D>> MetricField<'_, D, C, M, T> {
+impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
     /// Compute the scaling factor $`\alpha`$ such that complexity of the bounded metric field
     /// equals a target number of elements
     /// ```math
@@ -57,7 +57,7 @@ impl<const D: usize, C: Simplex, M: Mesh<D, C>, T: Metric<D>> MetricField<'_, D,
                 warn!("Target complexity {n_elems} not reached: complexity {c:.2e}");
                 return -1.0;
             }
-            fac = f64::powf(n_elems / c, -1. / C::DIM as f64);
+            fac = f64::powf(n_elems / c, -1. / M::C::DIM as f64);
             scale *= fac;
         }
         -1.0

@@ -7,7 +7,7 @@ use crate::{
 /// Create a `Mesh<3, Tetrahedron<_>>` of a `lx` by `ly` by `lz` box by splitting a `nx` by `ny` by `nz`
 /// uniform structured grid
 #[must_use]
-pub fn box_mesh<M: Mesh<3, Tetrahedron<impl Idx>>>(
+pub fn box_mesh<M: Mesh<3, C = Tetrahedron<impl Idx>>>(
     lx: f64,
     nx: usize,
     ly: f64,
@@ -29,7 +29,7 @@ pub fn box_mesh<M: Mesh<3, Tetrahedron<impl Idx>>>(
 
 /// Create a `Mesh<2, Tetrahedron<_>>` of box by splitting a structured grid`
 #[must_use]
-pub fn nonuniform_box_mesh<M: Mesh<3, Tetrahedron<impl Idx>>>(
+pub fn nonuniform_box_mesh<M: Mesh<3, C = Tetrahedron<impl Idx>>>(
     x: &[f64],
     y: &[f64],
     z: &[f64],

@@ -1,7 +1,7 @@
 //! Indices to efficiently locate the nearest vertices or elements
 use crate::{
     Vertex,
-    mesh::{Mesh, Simplex},
+    mesh::Mesh,
     spatialindex::{parry_2d::ObjectIndex2d, parry_3d::ObjectIndex3d},
 };
 
@@ -35,14 +35,14 @@ impl<const D: usize> PointIndex<D> {
     }
 }
 
-enum ObjectIndexNd<const D: usize, C: Simplex, M: Mesh<D, C>> {
-    ObjectIndex2d(ObjectIndex2d<D, C, M>),
-    ObjectIndex3d(ObjectIndex3d<D, C, M>),
+enum ObjectIndexNd<const D: usize, M: Mesh<D>> {
+    ObjectIndex2d(ObjectIndex2d<D, M>),
+    ObjectIndex3d(ObjectIndex3d<D, M>),
 }
 
-pub struct ObjectIndex<const D: usize, C: Simplex, M: Mesh<D, C>>(ObjectIndexNd<D, C, M>);
+pub struct ObjectIndex<const D: usize, M: Mesh<D>>(ObjectIndexNd<D, M>);
 
-impl<const D: usize, C: Simplex, M: Mesh<D, C>> ObjectIndex<D, C, M> {
+impl<const D: usize, M: Mesh<D>> ObjectIndex<D, M> {
     pub fn new(mesh: M) -> Self {
         Self(match D {
             2 => ObjectIndexNd::ObjectIndex2d(ObjectIndex2d::new(mesh)),
