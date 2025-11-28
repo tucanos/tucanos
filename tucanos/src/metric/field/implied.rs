@@ -53,7 +53,7 @@ pub fn tetrahedron_implied_metric(ge: &GTetrahedron<3>) -> AnisoMetric3d {
     AnisoMetric3d::from_mat(m)
 }
 
-impl<'a, T: Idx, M: Mesh<3, Tetrahedron<T>>> MetricField<'a, 3, Tetrahedron<T>, M, AnisoMetric3d> {
+impl<'a, T: Idx, M: Mesh<3, C = Tetrahedron<T>>> MetricField<'a, 3, M, AnisoMetric3d> {
     /// Compute the element-implied metric
     pub fn implied_metric_3d(msh: &'a M) -> Self {
         let mut implied_metric = vec![AnisoMetric3d::default(); msh.n_elems()];
@@ -98,7 +98,7 @@ pub fn triangle_implied_metric(ge: &GTriangle<2>) -> AnisoMetric2d {
     AnisoMetric2d::from_mat(m)
 }
 
-impl<'a, T: Idx, M: Mesh<2, Triangle<T>>> MetricField<'a, 2, Triangle<T>, M, AnisoMetric2d> {
+impl<'a, T: Idx, M: Mesh<2, C = Triangle<T>>> MetricField<'a, 2, M, AnisoMetric2d> {
     /// Compute the element-implied metric
     pub fn implied_metric_2d(msh: &'a M) -> Self {
         let mut implied_metric = vec![AnisoMetric2d::default(); msh.n_elems()];

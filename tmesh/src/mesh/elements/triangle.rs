@@ -95,16 +95,6 @@ impl<T: Idx> Simplex for Triangle<T> {
         self.0.contains(&i.try_into().unwrap())
     }
 
-    fn quadrature() -> (Vec<f64>, Vec<Vec<f64>>) {
-        let weights = vec![1. / 3., 1. / 3., 1. / 3.];
-        let pts = vec![
-            vec![2. / 3., 1. / 6.],
-            vec![1. / 6., 2. / 3.],
-            vec![1. / 6., 1. / 6.],
-        ];
-        (weights, pts)
-    }
-
     fn sorted(&self) -> Self {
         let mut tmp = *self;
         tmp.0.sort_unstable();
@@ -150,7 +140,7 @@ impl<const D: usize> GSimplex<D> for GTriangle<D> {
 
     fn vol(&self) -> f64 {
         if Self::has_normal() {
-            self.normal().norm()
+            self.normal(None).norm()
         } else {
             assert_eq!(D, 2);
             let e1 = self[1] - self[0];
@@ -160,11 +150,20 @@ impl<const D: usize> GSimplex<D> for GTriangle<D> {
         }
     }
 
-    fn normal(&self) -> Vertex<D> {
+    fn integrate<G: Fn(&Self::BCOORDS) -> f64>(&self, f: G) -> f64 {
+        let mut res = 0.0;
+        for &(weight, v, w) in &super::quadratures::QUADRATURE_TRIANGLE_3 {
+            res += weight * f(&[1.0 - v - w, v, w]);
+        }
+        res * self.vol()
+    }
+
+    fn normal(&self, bcoords: Option<&Self::BCOORDS>) -> Vertex<D> {
         if Self::has_normal() {
             let e1 = self[1] - self[0];
             let e2 = self[2] - self[0];
-            0.5 * e1.cross(&e2)
+            let n = 0.5 * e1.cross(&e2);
+            if bcoords.is_some() { n.normalize() } else { n }
         } else {
             unreachable!()
         }
@@ -176,6 +175,10 @@ impl<const D: usize> GSimplex<D> for GTriangle<D> {
         let c = (self[1] - self[0]).norm();
         let s = 0.5 * (a + b + c);
         ((s - a) * (s - b) * (s - c) / s).sqrt()
+    }
+
+    fn center_bcoords() -> Self::BCOORDS {
+        [1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0]
     }
 
     fn bcoords(&self, v: &Vertex<D>) -> [f64; 3] {
@@ -228,6 +231,18 @@ impl<const D: usize> GSimplex<D> for GTriangle<D> {
             4.0 * sina * sinb * sinc / tmp
         }
     }
+
+    fn bounding_box(&self) -> (Vertex<D>, Vertex<D>) {
+        self.into_iter()
+            .skip(1)
+            .fold((self[0], self[0]), |mut a, b| {
+                for i in 0..D {
+                    a.0[i] = a.0[i].min(b[i]);
+                    a.1[i] = a.1[i].max(b[i]);
+                }
+                a
+            })
+    }
 }
 
 #[cfg(test)]
@@ -237,6 +252,7 @@ mod tests {
         Vert2d, Vert3d, assert_delta,
         mesh::{GSimplex, Simplex},
     };
+    use nalgebra::{Point2, Point3};
     use rand::{Rng, SeedableRng, rngs::StdRng, seq::SliceRandom};
 
     #[test]
@@ -267,7 +283,7 @@ mod tests {
         for _ in 0..10 {
             o.0.shuffle(&mut rng);
             let is_same = e.is_same(&o);
-            let n = gt(&o).normal();
+            let n = gt(&o).normal(None);
             if is_same {
                 assert!(n[2] > 0.0);
             } else {
@@ -285,34 +301,34 @@ mod tests {
         let ge = GTriangle([p0, p1, p2]);
 
         let p = Vert3d::new(-1.0, -1.0, 1.0);
-        let proj = ge.project(&p);
+        let (proj, _) = ge.project(&p);
         assert!((proj - Vert3d::new(0.0, 0.0, 0.0)).norm() < 1e-12);
 
         let p = Vert3d::new(2.0, -1.0, 1.0);
-        let proj = ge.project(&p);
+        let (proj, _) = ge.project(&p);
         assert!((proj - Vert3d::new(1.0, 0.0, 0.0)).norm() < 1e-12);
 
         let p = Vert3d::new(-2.0, 3.0, -1.0);
-        let proj = ge.project(&p);
+        let (proj, _) = ge.project(&p);
         assert!((proj - Vert3d::new(0.0, 1.0, 0.0)).norm() < 1e-12);
 
         let p = Vert3d::new(0.5, -2.0, -1.0);
-        let proj = ge.project(&p);
+        let (proj, _) = ge.project(&p);
         assert!((proj - Vert3d::new(0.5, 0.0, 0.0)).norm() < 1e-12);
 
         let p = Vert3d::new(-10.0, 0.2, 1.0);
-        let proj = ge.project(&p);
+        let (proj, _) = ge.project(&p);
         assert!((proj - Vert3d::new(0.0, 0.2, 0.0)).norm() < 1e-12);
 
         let p = Vert3d::new(1.2, 0.6, 3.0);
-        let proj = ge.project(&p);
+        let (proj, _) = ge.project(&p);
         assert!((proj - Vert3d::new(0.8, 0.2, 0.0)).norm() < 1e-12);
 
         let p = 0.1 * p0 + 0.2 * p1 + 0.7 * p2;
-        let proj = ge.project(&p);
+        let (proj, _) = ge.project(&p);
         assert!((proj - p).norm() < 1e-12);
 
-        let proj = ge.project(&(p + Vert3d::new(0.0, 0.0, 2.0)));
+        let (proj, _) = ge.project(&(p + Vert3d::new(0.0, 0.0, 2.0)));
         assert!((proj - p).norm() < 1e-12);
     }
 
@@ -325,31 +341,31 @@ mod tests {
         let ge = GTriangle([p0, p1, p2]);
 
         let p = Vert2d::new(-1.0, -1.0);
-        let proj = ge.project(&p);
+        let (proj, _) = ge.project(&p);
         assert!((proj - Vert2d::new(0.0, 0.0)).norm() < 1e-12);
 
         let p = Vert2d::new(2.0, -1.0);
-        let proj = ge.project(&p);
+        let (proj, _) = ge.project(&p);
         assert!((proj - Vert2d::new(1.0, 0.0)).norm() < 1e-12);
 
         let p = Vert2d::new(-2.0, 3.0);
-        let proj = ge.project(&p);
+        let (proj, _) = ge.project(&p);
         assert!((proj - Vert2d::new(0.0, 1.0)).norm() < 1e-12);
 
         let p = Vert2d::new(0.5, -2.0);
-        let proj = ge.project(&p);
+        let (proj, _) = ge.project(&p);
         assert!((proj - Vert2d::new(0.5, 0.0)).norm() < 1e-12);
 
         let p = Vert2d::new(-10.0, 0.2);
-        let proj = ge.project(&p);
+        let (proj, _) = ge.project(&p);
         assert!((proj - Vert2d::new(0.0, 0.2)).norm() < 1e-12);
 
         let p = Vert2d::new(1.2, 0.6);
-        let proj = ge.project(&p);
+        let (proj, _) = ge.project(&p);
         assert!((proj - Vert2d::new(0.8, 0.2)).norm() < 1e-12);
 
         let p = 0.1 * p0 + 0.2 * p1 + 0.7 * p2;
-        let proj = ge.project(&p);
+        let (proj, _) = ge.project(&p);
         assert!((proj - p).norm() < 1e-12);
     }
 
@@ -388,6 +404,66 @@ mod tests {
             let l2 = (p2 - p).norm();
             assert_delta!(l0, l1, 1e-12);
             assert_delta!(l0, l2, 1e-12);
+        }
+    }
+
+    #[test]
+    fn test_projection_parry_2d() {
+        use parry2d_f64::query::PointQuery;
+
+        let mut rng = StdRng::seed_from_u64(1234);
+
+        for _ in 0..100 {
+            let p = Vert2d::from_fn(|_, _| 10.0 * (rng.random::<f64>() - 0.5));
+
+            let p0 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let p1 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let p2 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+
+            let parry_tri = parry2d_f64::shape::Triangle::new(
+                Point2::from_slice(p0.as_slice()),
+                Point2::from_slice(p1.as_slice()),
+                Point2::from_slice(p2.as_slice()),
+            );
+
+            let tri = GTriangle::new(&p0, &p1, &p2);
+
+            let proj_parry = parry_tri.project_local_point(&Point2::from_slice(p.as_slice()), true);
+            let (proj, is_inside) = tri.project(&p);
+            let proj = Point2::from_slice(proj.as_slice());
+            assert_eq!(is_inside, proj_parry.is_inside);
+            let d = (proj - proj_parry.point).norm();
+            assert_delta!(d, 0.0, 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_projection_parry_3d() {
+        use parry3d_f64::query::PointQuery;
+
+        let mut rng = StdRng::seed_from_u64(1234);
+
+        for _ in 0..100 {
+            let p = Vert3d::from_fn(|_, _| 10.0 * (rng.random::<f64>() - 0.5));
+
+            let p0 = Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let p1 = Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let p2 = Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+
+            let parry_tri = parry3d_f64::shape::Triangle::new(
+                Point3::from_slice(p0.as_slice()),
+                Point3::from_slice(p1.as_slice()),
+                Point3::from_slice(p2.as_slice()),
+            );
+
+            let tri = GTriangle::new(&p0, &p1, &p2);
+
+            let proj_parry = parry_tri.project_local_point(&Point3::from_slice(p.as_slice()), true);
+            let (proj, is_inside) = tri.project(&p);
+            let proj = Point3::from_slice(proj.as_slice());
+            assert_eq!(is_inside, proj_parry.is_inside);
+            let d = (proj - proj_parry.point).norm();
+            assert_delta!(d, 0.0, 1e-10);
         }
     }
 }

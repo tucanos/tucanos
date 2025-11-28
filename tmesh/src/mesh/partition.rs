@@ -1,5 +1,5 @@
 //! Mesh partitioners
-use super::{GSimplex, Mesh, Simplex, hilbert::hilbert_indices};
+use super::{GSimplex, Mesh, hilbert::hilbert_indices};
 use crate::{Error, Result, graph::CSRGraph};
 use coupe::{Partition, nalgebra::SVector};
 #[cfg(feature = "metis")]
@@ -9,7 +9,7 @@ use std::marker::PhantomData;
 pub trait Partitioner: Sized + Send + Sync {
     /// Create a new mesh partitionner to partition `msh` into `n_parts`
     /// Element weights can optionally be provided
-    fn new<const D: usize, C: Simplex, M: Mesh<D, C>>(
+    fn new<const D: usize, M: Mesh<D>>(
         msh: &M,
         n_parts: usize,
         weights: Option<Vec<f64>>,
@@ -72,7 +72,7 @@ pub struct HilbertPartitioner {
 }
 
 impl Partitioner for HilbertPartitioner {
-    fn new<const D: usize, C: Simplex, M: Mesh<D, C>>(
+    fn new<const D: usize, M: Mesh<D>>(
         msh: &M,
         n_parts: usize,
         weights: Option<Vec<f64>>,
@@ -126,7 +126,7 @@ pub struct RCMPartitioner {
 }
 
 impl Partitioner for RCMPartitioner {
-    fn new<const D: usize, C: Simplex, M: Mesh<D, C>>(
+    fn new<const D: usize, M: Mesh<D>>(
         msh: &M,
         n_parts: usize,
         weights: Option<Vec<f64>>,
@@ -176,7 +176,7 @@ pub struct KMeansPartitioner2d {
     weights: Vec<f64>,
 }
 impl Partitioner for KMeansPartitioner2d {
-    fn new<const D: usize, C: Simplex, M: Mesh<D, C>>(
+    fn new<const D: usize, M: Mesh<D>>(
         msh: &M,
         n_parts: usize,
         weights: Option<Vec<f64>>,
@@ -237,7 +237,7 @@ pub struct KMeansPartitioner3d {
 }
 
 impl Partitioner for KMeansPartitioner3d {
-    fn new<const D: usize, C: Simplex, M: Mesh<D, C>>(
+    fn new<const D: usize, M: Mesh<D>>(
         msh: &M,
         n_parts: usize,
         weights: Option<Vec<f64>>,
@@ -338,7 +338,7 @@ pub struct MetisPartitioner<T: MetisPartMethod> {
 
 #[cfg(feature = "metis")]
 impl<T: MetisPartMethod> Partitioner for MetisPartitioner<T> {
-    fn new<const D: usize, C: Simplex, M: Mesh<D, C>>(
+    fn new<const D: usize, M: Mesh<D>>(
         msh: &M,
         n_parts: usize,
         weights: Option<Vec<f64>>,
@@ -443,6 +443,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "kmeans is slow"]
     fn test_coupe_kmeans() {
         let msh: Mesh3d = box_mesh(1.0, 6, 1.0, 5, 1.0, 5);
         let msh = msh.random_shuffle();

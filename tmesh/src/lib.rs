@@ -59,7 +59,7 @@ macro_rules! assert_delta {
     ($x:expr, $y:expr, $d:expr) => {
         assert!(
             ($x - $y).abs() < $d,
-            "({} - {}).abs() = {}",
+            "({:.3e} - {:.3e}).abs() = {:.3e}",
             $x,
             $y,
             ($x - $y).abs()
