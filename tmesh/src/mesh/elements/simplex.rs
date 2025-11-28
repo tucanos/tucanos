@@ -112,6 +112,11 @@ where
 
     /// Invert the element
     fn invert(&mut self);
+
+    #[must_use]
+    fn has_face_normal<const D: usize>() -> bool {
+        <Self::FACE as Simplex>::GEOM::<D>::has_normal()
+    }
 }
 
 pub trait GSimplex<const D: usize>:

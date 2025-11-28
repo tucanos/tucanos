@@ -647,6 +647,9 @@ impl<'a, const D: usize, C: Simplex, M: Metric<D>> FilledCavity<'a, D, C, M> {
         geom: &G,
         threshold_degrees: f64,
     ) -> bool {
+        if !C::has_face_normal::<D>() {
+            return true;
+        }
         let (p0, _) = self.point();
 
         for (b, tag, s) in self.tagged_faces_boundary() {

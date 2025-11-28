@@ -256,12 +256,13 @@ where
         }
 
         let geom = Self { patches, edges };
-
-        let max_angle = geom.max_normal_angle(mesh);
-        if max_angle > 45.0 {
-            warn!(
-                "Max normal angle between the mesh boundary and the geometry is {max_angle} degrees"
-            );
+        if C2::has_face_normal::<D>() {
+            let max_angle = geom.max_normal_angle(mesh);
+            if max_angle > 45.0 {
+                warn!(
+                    "Max normal angle between the mesh boundary and the geometry is {max_angle} degrees"
+                );
+            }
         }
         Ok(geom)
     }
