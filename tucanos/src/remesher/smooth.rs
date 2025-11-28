@@ -217,7 +217,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             for omega in params.relax.iter().copied() {
                 p0_new = (1.0 - omega) * p0 + omega * p0_smoothed;
 
-                if t0.0 < C::DIM as Dim {
+                if t0.0 < D as Dim {
                     geom.project(&mut p0_new, t0);
                 }
 

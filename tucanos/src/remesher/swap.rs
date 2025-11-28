@@ -1,6 +1,6 @@
 use super::Remesher;
 use crate::{
-    Dim, Result,
+    Result,
     geometry::Geometry,
     metric::Metric,
     remesher::{
@@ -100,7 +100,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             return Ok(TrySwapResult::FixedEdge);
         }
 
-        if etag.0 < C::FACE::DIM as Dim {
+        if etag.0 == 1 {
             return Ok(TrySwapResult::CouldNotSwap);
         }
 
