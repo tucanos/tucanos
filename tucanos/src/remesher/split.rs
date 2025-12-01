@@ -9,8 +9,11 @@ use crate::{
         stats::{SplitStats, StepStats},
     },
 };
-use log::{debug, trace};
-use tmesh::mesh::{GSimplex, Simplex};
+use log::{debug, info, trace};
+use tmesh::{
+    mesh::{GSimplex, Simplex},
+    trace_if,
+};
 
 #[derive(Clone, Debug)]
 pub struct SplitParams {
@@ -91,10 +94,12 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             let mut n_removed = 0;
             for i_edge in indices {
                 let edg = edges[i_edge];
+                let dbg = self.debug_edge(&edg);
                 let length = dims_and_lengths[i_edge].1;
                 if length > params.l {
-                    trace!("Try to split edge {edg:?}, l = {length}");
+                    trace_if!(dbg, "Try to split edge {edg:?}, l = {length}");
                     if !self.edges.contains_key(&edg) {
+                        trace_if!(dbg, "Edge has been removed");
                         continue;
                     }
                     cavity.init_from_edge(edg, self);
@@ -110,6 +115,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
 
                     // tag < 0 on fixed boundaries
                     if tag.1 < 0 {
+                        trace_if!(dbg, "Cannot split: fixed boundary");
                         continue;
                     }
 
@@ -123,14 +129,28 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
 
                     // lower the min quality threshold if the min quality in the cavity increases
                     let q_min = if tag.0 == C::DIM as Dim {
+                        trace_if!(
+                            dbg,
+                            "cavity q_min {:.2e}, q_min = {q_min:.2e}",
+                            cavity.q_min
+                        );
                         q_min.min(cavity.q_min * params.min_q_rel)
                     } else {
+                        trace_if!(
+                            dbg,
+                            "cavity q_min {:.2e}, q_min = {q_min:.2e} (boundary)",
+                            cavity.q_min
+                        );
                         q_min.min(cavity.q_min * params.min_q_rel_bdy)
                     };
                     let l_min = l_min.min(cavity.l_min * params.min_l_rel);
                     let status = filled_cavity.check(l_min, f64::MAX, q_min);
+                    trace_if!(
+                        dbg,
+                        "status = {status:?}, l_min = {l_min:.2e}, q_min = {q_min:.2e}"
+                    );
                     if let CavityCheckStatus::Ok(_) = status {
-                        trace!("Edge split");
+                        trace_if!(dbg, "Edge split");
                         for i in &cavity.global_elem_ids {
                             self.remove_elem(*i)?;
                         }
@@ -190,7 +210,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                         } else {
                             // Extend the cavity until it can be filled
                             let mut cavity_extension_ok = false;
-                            trace!("Cavity extension {edg:?} - {edge_center:?}");
+                            trace_if!(dbg, "Cavity extension {edg:?} - {edge_center:?}");
                             for _ in 0..params.max_extensions {
                                 let mut tmp = Vec::new();
                                 for (face, tag) in cavity.faces() {
@@ -198,7 +218,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                                     let gf = self.gface(&f);
                                     let ge = C::GEOM::from_vert_and_face(&edge_center, &gf);
                                     if ge.vol() <= 0.0 {
-                                        trace!("f = {gf:?}, vol < 0");
+                                        trace_if!(dbg, "f = {gf:?}, vol < 0");
                                         tmp.push((face, tag));
                                     }
                                 }
@@ -217,17 +237,17 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                                 }
 
                                 if failed {
-                                    trace!("failed to extend");
+                                    trace_if!(dbg, "failed to extend");
                                     break;
                                 }
-                                trace!("extended by {} elems", tmp.len());
+                                trace_if!(dbg, "extended by {} elems", tmp.len());
                             }
 
                             if cavity_extension_ok {
                                 let filled_cavity = FilledCavity::new(&cavity, ftype);
                                 let status = filled_cavity.check(l_min, f64::MAX, q_min);
                                 if let CavityCheckStatus::Ok(_) = status {
-                                    trace!("Edge split");
+                                    trace_if!(dbg, "Edge split");
                                     for i in &cavity.global_elem_ids {
                                         self.remove_elem(*i)?;
                                     }
@@ -256,7 +276,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                                     n_splits += 1;
                                     n_extended += 1;
                                 } else {
-                                    trace!("Cannot split: {status:?}");
+                                    trace_if!(dbg, "Cannot split: {status:?}");
                                     n_fails += 1;
                                 }
                             } else {
@@ -267,6 +287,8 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                     } else {
                         n_fails += 1;
                     }
+                } else {
+                    trace_if!(dbg, "No need to split edge {edg:?}, l = {length}");
                 }
             }
 
