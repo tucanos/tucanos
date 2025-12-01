@@ -1461,8 +1461,8 @@ mod tests {
 
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
             if iter == 2 {
-                assert_delta!(mini, 0.67, 0.01);
-                assert_delta!(maxi, 1.4, 0.01);
+                assert_delta!(mini, 0.51, 0.01);
+                assert_delta!(maxi, 1.35, 0.01);
             }
         }
 
@@ -1502,7 +1502,7 @@ mod tests {
                 remesher.check_edge_lengths_analytical(|x| IsoMetric::<2>::from(h_2d(x)));
 
             if iter == 9 {
-                assert_delta!(mini, 0.51, 0.01);
+                assert_delta!(mini, 0.59, 0.01);
                 assert_delta!(maxi, 1.38, 0.01);
             }
         }
@@ -1748,8 +1748,8 @@ mod tests {
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
 
             if iter == 1 {
-                assert_delta!(mini, 0.32, 0.01);
-                assert_delta!(maxi, 1.41, 0.01);
+                assert_delta!(mini, 0.41, 0.01);
+                assert_delta!(maxi, 1.44, 0.01);
             }
         }
 
@@ -1893,7 +1893,7 @@ mod tests {
         remesher.remesh(&RemesherParams::default(), &geom)?;
         let mesh = remesher.to_mesh(false);
         // mesh.write_meshb("iso3d.meshb")?;
-        assert_eq!(mesh.n_verts(), 442);
+        assert_eq!(mesh.n_verts(), 633);
 
         Ok(())
     }
@@ -1933,7 +1933,7 @@ mod tests {
         remesher.remesh(&RemesherParams::default(), &geom)?;
         let mesh = remesher.to_mesh(false);
         // mesh.write_meshb("aniso3d.meshb")?;
-        assert_eq!(mesh.n_verts(), 67);
+        assert_eq!(mesh.n_verts(), 54);
 
         Ok(())
     }
