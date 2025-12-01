@@ -266,6 +266,7 @@ mod tests {
         Vert3d, assert_delta,
         mesh::{GSimplex, Simplex},
     };
+    use nalgebra::Point3;
     use rand::{Rng, SeedableRng, rngs::StdRng, seq::SliceRandom};
 
     #[test]
@@ -342,5 +343,37 @@ mod tests {
 
         assert_delta!((bb0 - Vert3d::new(-2.0, -1.0, -1.5)).norm(), 0., 1e-12);
         assert_delta!((bb1 - Vert3d::new(1.0, 2.0, 4.0)).norm(), 0., 1e-12);
+    }
+
+    #[test]
+    fn test_projection_parry_3d() {
+        use parry3d_f64::query::PointQuery;
+
+        let mut rng = StdRng::seed_from_u64(1234);
+
+        for _ in 0..100 {
+            let p = Vert3d::from_fn(|_, _| 10.0 * (rng.random::<f64>() - 0.5));
+
+            let p0 = Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let p1 = Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let p2 = Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let p3 = Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+
+            let parry_tri = parry3d_f64::shape::Tetrahedron::new(
+                Point3::from_slice(p0.as_slice()),
+                Point3::from_slice(p1.as_slice()),
+                Point3::from_slice(p2.as_slice()),
+                Point3::from_slice(p3.as_slice()),
+            );
+
+            let tri = GTetrahedron::new(&p0, &p1, &p2, &p3);
+
+            let proj_parry = parry_tri.project_local_point(&Point3::from_slice(p.as_slice()), true);
+            let (proj, is_inside) = tri.project(&p);
+            let proj = Point3::from_slice(proj.as_slice());
+            assert_eq!(is_inside, proj_parry.is_inside);
+            let d = (proj - proj_parry.point).norm();
+            assert_delta!(d, 0.0, 1e-10);
+        }
     }
 }
