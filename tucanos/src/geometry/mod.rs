@@ -30,7 +30,7 @@ pub trait Geometry<const D: usize>: Send + Sync {
     fn project_vertices<M: Mesh<D>>(&self, mesh: &mut M, topo: &MeshTopology) -> f64 {
         let mut d_max = 0.0;
         for (p, tag) in mesh.verts_mut().zip(topo.vtags()) {
-            if tag.0 < M::C::DIM as Dim {
+            if tag.0 < D as Dim {
                 let d = self.project(p, tag);
                 d_max = f64::max(d_max, d);
             }

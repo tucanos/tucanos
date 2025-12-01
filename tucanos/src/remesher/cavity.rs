@@ -641,7 +641,7 @@ impl<'a, const D: usize, C: Simplex, M: Metric<D>> FilledCavity<'a, D, C, M> {
 
     /// Check the the angle between the normal of the boundary faces and the normal given by the geometry is smaller than a threshold
     /// This is only required for swaps in 3D
-    pub fn check_boundary_normals<G: Geometry<D>>(
+    pub fn check_normals<G: Geometry<D>>(
         &self,
         topo: &Topology,
         geom: &G,
@@ -649,32 +649,50 @@ impl<'a, const D: usize, C: Simplex, M: Metric<D>> FilledCavity<'a, D, C, M> {
     ) -> bool {
         let (p0, _) = self.point();
 
-        for (b, tag, s) in self.tagged_faces_boundary() {
-            assert!(
-                tag > 0,
-                "Invalid tag {}\n{:?}\n{}\n{}",
-                tag,
-                self.ftype,
-                self.cavity,
-                topo
-            );
-            let gb = <<C::FACE as Simplex>::GEOM<D> as GSimplex<D>>::FACE::from_iter(
-                b.into_iter().map(|i| {
-                    let (vx, _, _) = self.cavity.vert(i);
-                    *vx
-                }),
-            );
-            let gf = <C::FACE as Simplex>::GEOM::from_vert_and_face(&p0, &gb);
-            let center = gf.center();
-            let mut normal = gf.normal(None).normalize();
-            if s {
-                normal *= -1.0;
+        if C::DIM == D {
+            for (b, tag, s) in self.tagged_faces_boundary() {
+                assert!(
+                    tag > 0,
+                    "Invalid tag {}\n{:?}\n{}\n{}",
+                    tag,
+                    self.ftype,
+                    self.cavity,
+                    topo
+                );
+                let gb = <<C::FACE as Simplex>::GEOM<D> as GSimplex<D>>::FACE::from_iter(
+                    b.into_iter().map(|i| {
+                        let (vx, _, _) = self.cavity.vert(i);
+                        *vx
+                    }),
+                );
+                let gf = <C::FACE as Simplex>::GEOM::from_vert_and_face(&p0, &gb);
+                let center = gf.center();
+                let mut normal = gf.normal(None).normalize();
+                if s {
+                    normal *= -1.0;
+                }
+                let a = geom.angle(&center, &normal, &(C::DIM as Dim - 1, tag));
+                if a > threshold_degrees {
+                    return false;
+                }
             }
-            let a = geom.angle(&center, &normal, &(C::DIM as Dim - 1, tag));
-            if a > threshold_degrees {
-                return false;
+        } else {
+            // all the element tags should be equal
+            // let etag_min = self.cavity.etags.iter().copied().min().unwrap();
+            // let etag_max = self.cavity.etags.iter().copied().max().unwrap();
+            // assert_eq!(etag_min, etag_max);
+            for (f, tag) in self.faces() {
+                let gf = self.cavity.gface(&f);
+                let ge = C::GEOM::from_vert_and_face(&p0, &gf);
+                let center = ge.center();
+                let normal = ge.normal(None).normalize();
+                let a = geom.angle(&center, &normal, &(C::DIM as Dim, tag));
+                if a > threshold_degrees {
+                    return false;
+                }
             }
         }
+
         true
     }
 }

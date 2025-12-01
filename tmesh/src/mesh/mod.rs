@@ -56,7 +56,7 @@ pub use elements::{
 };
 use hilbert::hilbert_indices;
 pub use mesh_2d::{Mesh2d, nonuniform_rectangle_mesh, rectangle_mesh};
-pub use mesh_3d::{Mesh3d, box_mesh, nonuniform_box_mesh};
+pub use mesh_3d::{Mesh3d, ball_mesh, box_mesh, nonuniform_box_mesh};
 use partition::Partitioner;
 use split::{split_edgs, split_tets, split_tris};
 pub use vector::Vector;

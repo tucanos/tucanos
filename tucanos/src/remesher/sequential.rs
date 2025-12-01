@@ -954,7 +954,7 @@ mod tests {
         Vert2d, Vert3d, assert_delta,
         mesh::{
             BoundaryMesh3d, Edge, GSimplex, GenericMesh, Mesh, Mesh3d, Simplex, Tetrahedron,
-            Triangle,
+            Triangle, ball_mesh, sphere_mesh,
         },
     };
 
@@ -966,7 +966,7 @@ mod tests {
             MeshTopology,
             test_meshes::{
                 ConcentricCircles, ConcentricSpheres, GeomHalfCircle2d, SphereGeometry,
-                concentric_circles_mesh, concentric_spheres_mesh, h_2d, h_3d, sphere_mesh,
+                concentric_circles_mesh, concentric_spheres_mesh, cylinder, h_2d, h_3d,
                 test_mesh_2d, test_mesh_3d, test_mesh_3d_single_tet, test_mesh_3d_two_tets,
                 test_mesh_moon_2d,
             },
@@ -1763,7 +1763,7 @@ mod tests {
 
     #[test]
     fn test_adapt_aniso_3d_geom() -> Result<()> {
-        let mut mesh = sphere_mesh(3);
+        let mut mesh: Mesh3d = ball_mesh(1.0, 3);
 
         let mfunc = |_p| {
             let v0 = Vert3d::new(0.5, 0., 0.);
@@ -1798,7 +1798,7 @@ mod tests {
 
             if iter == 1 {
                 assert_delta!(mini, 0.35, 0.01);
-                assert_delta!(maxi, 1.38, 0.01);
+                assert_delta!(maxi, 1.51, 0.01);
             }
 
             // let fname = format!("sphere_{}.vtu", iter + 1);
@@ -2000,6 +2000,137 @@ mod tests {
 
         let _msh = remesher.to_mesh(true);
         // msh.write_vtk("output.vtu")?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_adapt_3d_surf() -> Result<()> {
+        let mesh: BoundaryMesh3d = sphere_mesh(1.0, 3);
+
+        let h = |p: Vert3d| {
+            let c = Vert3d::new(1.0, 0.0, 0.0);
+            let d = (p - c).norm();
+            let s = 0.25;
+            let h_min = 1e-2;
+            let h_max = 1e-1;
+            h_max - (h_max - h_min) * f64::exp(-(d / s).powi(2))
+        };
+
+        let m = mesh
+            .verts()
+            .map(|p| IsoMetric::<3>::from(h(p)))
+            .collect::<Vec<_>>();
+
+        let geom = SphereGeometry;
+        let topo = MeshTopology::new(&mesh);
+
+        let mut remesher = Remesher::new(&mesh, &topo, &m, &geom)?;
+
+        let params = RemesherParams::new(20.0, 4);
+
+        remesher.remesh(&params, &geom)?;
+        remesher.check()?;
+
+        let _mesh = remesher.to_mesh(true);
+        // mesh.write_vtk("sphere_surf_iso.vtu")?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_adapt_3d_surf_aniso() -> Result<()> {
+        let mesh: BoundaryMesh3d = sphere_mesh(1.0, 3);
+
+        let m = |p: Vert3d| {
+            let s = 0.25;
+            let h_min = 1e-2;
+            let h_max = 1e-1;
+
+            let x = p[0];
+            let y = p[1];
+            let r_xy = x.hypot(y);
+            if r_xy > f64::EPSILON {
+                let r = p.norm();
+                let z = p[2];
+                let theta = (z / r).acos();
+
+                let e_r = p / r;
+                // let phi = y.signum() * (x / r_xy).acos();
+
+                let e_phi = Vert3d::new(y / r_xy, -x / r_xy, 0.0);
+                let e_theta = -e_r.cross(&e_phi);
+
+                let h_r = h_max;
+                let h_theta = h_max - (h_max - h_min) * f64::exp(-((theta - 0.5 * PI) / s).powi(2));
+                let h_phi = h_max;
+
+                let e_r = h_r * e_r;
+                let e_theta = h_theta * e_theta;
+                let e_phi = h_phi * e_phi;
+                AnisoMetric3d::from_sizes(&e_r, &e_theta, &e_phi)
+            } else {
+                let e_x = Vert3d::new(h_max, 0.0, 0.0);
+                let e_y = Vert3d::new(0.0, h_max, 0.0);
+                let e_z = Vert3d::new(0.0, 0.0, h_max);
+                AnisoMetric3d::from_sizes(&e_x, &e_y, &e_z)
+            }
+        };
+
+        let m = mesh.verts().map(m).collect::<Vec<_>>();
+
+        let geom = SphereGeometry;
+        let topo = MeshTopology::new(&mesh);
+
+        let mut remesher = Remesher::new(&mesh, &topo, &m, &geom)?;
+
+        let mut params = RemesherParams::default();
+        for step in &mut params.steps {
+            if let RemeshingStep::Split(p) = step {
+                p.min_q_abs = 0.4;
+            }
+        }
+
+        remesher.remesh(&params, &geom)?;
+        remesher.check()?;
+
+        let _mesh = remesher.to_mesh(true);
+        // mesh.write_vtk("sphere_surf_aniso.vtu")?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_mesh_cylinder() -> Result<()> {
+        // tmesh::init_log("debug");
+        let mesh = cylinder(0.1, 32);
+
+        let m = vec![IsoMetric::<3>::from(0.05); mesh.n_verts()];
+
+        let topo = MeshTopology::new(&mesh);
+        let bdy = cylinder(0.1, 128);
+
+        let geom = MeshedGeometry::new(&mesh, &topo, bdy).unwrap();
+
+        let mut remesher = Remesher::new(&mesh, &topo, &m, &geom)?;
+
+        let mut params = RemesherParams::new(20.0, 8);
+        for step in &mut params.steps {
+            if let RemeshingStep::Split(p) = step {
+                p.min_q_abs = 0.0;
+                p.min_l_abs = 0.0;
+            }
+            if let RemeshingStep::Collapse(p) = step {
+                p.min_q_abs = 0.0;
+                p.max_l_abs = f64::MAX;
+            }
+        }
+
+        remesher.remesh(&params, &geom)?;
+        remesher.check()?;
+
+        let mesh = remesher.to_mesh(true);
+        mesh.write_vtk("cylinder.vtu")?;
 
         Ok(())
     }

@@ -1,16 +1,16 @@
 use tmesh::{
     Vert2d, Vert3d,
     mesh::{
-        BoundaryMesh3d, Edge, GenericMesh, Mesh, Mesh2d, Mesh3d, Prism, Simplex, Tetrahedron,
-        Triangle, pri2tets,
+        BoundaryMesh3d, Edge, GenericMesh, Mesh, Mesh2d, Mesh3d, Prism, Quadrangle, Simplex,
+        Tetrahedron, Triangle, pri2tets, sphere_mesh,
     },
 };
 
+use crate::geometry::Geometry;
 use crate::{Dim, Error, Result, TopoTag};
-use crate::{geometry::Geometry, mesh::MeshTopology};
-use std::fs::File;
 use std::io::Write;
 use std::iter::{once, repeat_n};
+use std::{f64::consts::PI, fs::File};
 
 /// Build a 2d mesh of a square with 2 triangles tagged differently
 /// WARNING: the mesh tags are not valid as the diagonal (0, 2) is between
@@ -373,92 +373,6 @@ impl Geometry<3> for SphereGeometry {
     }
 }
 
-#[must_use]
-pub fn sphere_mesh_surf(level: usize) -> BoundaryMesh3d {
-    let verts = vec![
-        Vert3d::new(0., 0., 1.),
-        Vert3d::new(1., 0., 0.),
-        Vert3d::new(0., 1., 0.),
-        Vert3d::new(-1., 0., 0.),
-        Vert3d::new(0., -1., 0.),
-        Vert3d::new(0., 0., -1.),
-    ];
-
-    let elems = vec![
-        Triangle::new(0, 1, 2),
-        Triangle::new(0, 2, 3),
-        Triangle::new(0, 3, 4),
-        Triangle::new(0, 4, 1),
-        Triangle::new(5, 2, 1),
-        Triangle::new(5, 3, 2),
-        Triangle::new(5, 4, 3),
-        Triangle::new(5, 1, 4),
-    ];
-
-    let etags = vec![1; elems.len()];
-    let faces = Vec::new();
-    let ftags = Vec::new();
-
-    let mut grid = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
-
-    let geom = SphereGeometry;
-    for _ in 0..level {
-        grid = grid.split();
-        grid.verts_mut().for_each(|v| {
-            geom.project(v, &(2, 1));
-        });
-    }
-    grid
-}
-
-#[must_use]
-pub fn sphere_mesh(level: usize) -> Mesh3d {
-    let verts = vec![
-        Vert3d::new(0., 0., 1.),
-        Vert3d::new(1., 0., 0.),
-        Vert3d::new(0., 1., 0.),
-        Vert3d::new(-1., 0., 0.),
-        Vert3d::new(0., -1., 0.),
-        Vert3d::new(0., 0., -1.),
-        Vert3d::new(0., 0., 0.),
-    ];
-
-    let elems = vec![
-        Tetrahedron::new(6, 0, 1, 2),
-        Tetrahedron::new(6, 0, 2, 3),
-        Tetrahedron::new(6, 0, 3, 4),
-        Tetrahedron::new(6, 0, 4, 1),
-        Tetrahedron::new(6, 5, 2, 1),
-        Tetrahedron::new(6, 5, 3, 2),
-        Tetrahedron::new(6, 5, 4, 3),
-        Tetrahedron::new(6, 5, 1, 4),
-    ];
-
-    let etags = vec![1; elems.len()];
-
-    let faces = vec![
-        Triangle::new(0, 1, 2),
-        Triangle::new(0, 2, 3),
-        Triangle::new(0, 3, 4),
-        Triangle::new(0, 4, 1),
-        Triangle::new(5, 2, 1),
-        Triangle::new(5, 3, 2),
-        Triangle::new(5, 4, 3),
-        Triangle::new(5, 1, 4),
-    ];
-
-    let ftags = vec![1; faces.len()];
-
-    let mut grid = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
-    let topo = MeshTopology::new(&grid);
-    let geom = SphereGeometry;
-    for _ in 0..level {
-        grid = grid.split();
-        geom.project_vertices(&mut grid, &topo);
-    }
-    grid
-}
-
 pub struct ConcentricCircles;
 
 impl Geometry<2> for ConcentricCircles {
@@ -573,7 +487,7 @@ pub fn concentric_spheres_mesh(nr: usize) -> Mesh3d {
     assert!(nr >= 2);
     let dr = 0.5 / (nr as f64 - 1.0);
 
-    let surf = sphere_mesh_surf(0);
+    let surf: BoundaryMesh3d = sphere_mesh(1.0, 0);
     let n = surf.n_verts();
 
     let mut res = GenericMesh::empty();
@@ -617,6 +531,58 @@ pub fn concentric_spheres_mesh(nr: usize) -> Mesh3d {
             once(2),
         );
     }
+
+    res
+}
+
+#[must_use]
+pub fn cylinder(r: f64, n: usize) -> BoundaryMesh3d {
+    let dtheta = 2.0 * PI / n as f64;
+    let mut res = BoundaryMesh3d::empty();
+    res.add_verts(once(Vert3d::new(0.0, 0.0, 0.0)));
+    res.add_verts((0..n).map(|i| {
+        let theta = i as f64 * dtheta;
+        Vert3d::new(r * theta.cos(), r * theta.sin(), 0.0)
+    }));
+
+    res.add_verts(once(Vert3d::new(0.0, 0.0, 1.0)));
+    res.add_verts((0..n).map(|i| {
+        let theta = i as f64 * dtheta;
+        Vert3d::new(r * theta.cos(), r * theta.sin(), 1.0)
+    }));
+
+    let i_theta = |i| i % n;
+
+    let offset_bottom = 1;
+    res.add_elems_and_tags((0..n).map(|i| {
+        (
+            Triangle::new(
+                0,
+                offset_bottom + i_theta(i + 1),
+                offset_bottom + i_theta(i),
+            ),
+            1,
+        )
+    }));
+    let offset_top = n + 2;
+    res.add_elems_and_tags((0..n).map(|i| {
+        (
+            Triangle::new(n + 1, offset_top + i_theta(i), offset_top + i_theta(i + 1)),
+            2,
+        )
+    }));
+    res.add_quadrangles(
+        (0..n).map(|i| {
+            Quadrangle::new(
+                offset_bottom + i_theta(i),
+                offset_bottom + i_theta(i + 1),
+                offset_top + i_theta(i + 1),
+                offset_top + i_theta(i),
+            )
+        }),
+        repeat_n(3, n),
+    );
+    res.fix().unwrap();
 
     res
 }

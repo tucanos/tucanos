@@ -217,7 +217,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             for omega in params.relax.iter().copied() {
                 p0_new = (1.0 - omega) * p0 + omega * p0_smoothed;
 
-                if t0.0 < C::DIM as Dim {
+                if t0.0 < D as Dim {
                     geom.project(&mut p0_new, t0);
                 }
 
@@ -229,7 +229,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                 let ftype = FilledCavityType::MovedVertex((i0_local, p0_new, *m0));
                 let filled_cavity = FilledCavity::new(cavity, ftype);
 
-                if !filled_cavity.check_boundary_normals(&self.topo, geom, params.max_angle) {
+                if !filled_cavity.check_normals(&self.topo, geom, params.max_angle) {
                     trace!("Cannot smooth, would create a non smooth surface");
                     continue;
                 }
