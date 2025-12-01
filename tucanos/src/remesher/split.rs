@@ -114,7 +114,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                     }
 
                     // projection if needed
-                    if tag.0 < C::DIM as Dim {
+                    if tag.0 < D as Dim {
                         geom.project(&mut edge_center, &tag);
                     }
 

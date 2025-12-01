@@ -2,11 +2,11 @@ use tmesh::{
     Vert2d, Vert3d,
     mesh::{
         BoundaryMesh3d, Edge, GenericMesh, Mesh, Mesh2d, Mesh3d, Prism, Quadrangle, Simplex,
-        Tetrahedron, Triangle, pri2tets,
+        Tetrahedron, Triangle, pri2tets, sphere_mesh,
     },
 };
 
-use crate::{Dim, Error, Result, TopoTag, mesh::MeshTopology};
+use crate::{Dim, Error, Result, TopoTag};
 use crate::{geometry::Geometry, mesh::Topology};
 use std::{
     f64::consts::PI,
@@ -375,92 +375,6 @@ impl Geometry<3> for SphereGeometry {
     }
 }
 
-#[must_use]
-pub fn sphere_mesh_surf(level: usize) -> BoundaryMesh3d {
-    let verts = vec![
-        Vert3d::new(0., 0., 1.),
-        Vert3d::new(1., 0., 0.),
-        Vert3d::new(0., 1., 0.),
-        Vert3d::new(-1., 0., 0.),
-        Vert3d::new(0., -1., 0.),
-        Vert3d::new(0., 0., -1.),
-    ];
-
-    let elems = vec![
-        Triangle::new(0, 1, 2),
-        Triangle::new(0, 2, 3),
-        Triangle::new(0, 3, 4),
-        Triangle::new(0, 4, 1),
-        Triangle::new(5, 2, 1),
-        Triangle::new(5, 3, 2),
-        Triangle::new(5, 4, 3),
-        Triangle::new(5, 1, 4),
-    ];
-
-    let etags = vec![1; elems.len()];
-    let faces = Vec::new();
-    let ftags = Vec::new();
-
-    let mut grid = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
-
-    let geom = SphereGeometry;
-    for _ in 0..level {
-        grid = grid.split();
-        grid.verts_mut().for_each(|v| {
-            geom.project(v, &(2, 1));
-        });
-    }
-    grid
-}
-
-#[must_use]
-pub fn sphere_mesh(level: usize) -> Mesh3d {
-    let verts = vec![
-        Vert3d::new(0., 0., 1.),
-        Vert3d::new(1., 0., 0.),
-        Vert3d::new(0., 1., 0.),
-        Vert3d::new(-1., 0., 0.),
-        Vert3d::new(0., -1., 0.),
-        Vert3d::new(0., 0., -1.),
-        Vert3d::new(0., 0., 0.),
-    ];
-
-    let elems = vec![
-        Tetrahedron::new(6, 0, 1, 2),
-        Tetrahedron::new(6, 0, 2, 3),
-        Tetrahedron::new(6, 0, 3, 4),
-        Tetrahedron::new(6, 0, 4, 1),
-        Tetrahedron::new(6, 5, 2, 1),
-        Tetrahedron::new(6, 5, 3, 2),
-        Tetrahedron::new(6, 5, 4, 3),
-        Tetrahedron::new(6, 5, 1, 4),
-    ];
-
-    let etags = vec![1; elems.len()];
-
-    let faces = vec![
-        Triangle::new(0, 1, 2),
-        Triangle::new(0, 2, 3),
-        Triangle::new(0, 3, 4),
-        Triangle::new(0, 4, 1),
-        Triangle::new(5, 2, 1),
-        Triangle::new(5, 3, 2),
-        Triangle::new(5, 4, 3),
-        Triangle::new(5, 1, 4),
-    ];
-
-    let ftags = vec![1; faces.len()];
-
-    let mut grid = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
-    let topo = MeshTopology::new(&grid);
-    let geom = SphereGeometry;
-    for _ in 0..level {
-        grid = grid.split();
-        geom.project_vertices(&mut grid, &topo);
-    }
-    grid
-}
-
 pub struct ConcentricCircles;
 
 impl Geometry<2> for ConcentricCircles {
@@ -575,7 +489,7 @@ pub fn concentric_spheres_mesh(nr: usize) -> Mesh3d {
     assert!(nr >= 2);
     let dr = 0.5 / (nr as f64 - 1.0);
 
-    let surf = sphere_mesh_surf(0);
+    let surf: BoundaryMesh3d = sphere_mesh(1.0, 0);
     let n = surf.n_verts();
 
     let mut res = GenericMesh::empty();
