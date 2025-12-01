@@ -295,5 +295,5 @@ pub unsafe extern "C" fn tucanos_mesh33_delete(m: *mut tucanos_mesh33_t) {
 /// See <https://docs.rs/env_logger/latest/env_logger/#enabling-logging> for details
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tucanos_init_log() {
-    tucanos::init_log("warn");
+    tmesh::init_log("warn");
 }
