@@ -9,8 +9,8 @@ use crate::{
         stats::{CollapseStats, StepStats},
     },
 };
-use log::{debug, trace};
-use tmesh::mesh::Simplex;
+use log::{debug, info, trace};
+use tmesh::{mesh::Simplex, trace_if};
 
 #[derive(Clone, Debug)]
 pub struct CollapseParams {
@@ -65,9 +65,9 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         debug!("Collapse elements");
 
         let l_max = params.max_l_abs;
-        debug!("max. allowed length: {l_max:.2}");
+        debug!("max. allowed length: {l_max:.2e}");
         let q_min = params.min_q_abs;
-        debug!("min. allowed quality: {q_min:.2}");
+        debug!("min. allowed quality: {q_min:.2e}");
 
         let mut n_iter = 0;
         let mut cavity = Cavity::new();
@@ -82,16 +82,17 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             let mut n_fails = 0;
             for i_edge in indices {
                 let edg = edges[i_edge];
+                let dbg = self.debug_edge(&edg);
                 if dims_and_lengths[i_edge].1 < params.l {
-                    trace!("Try to collapse edgs {edg:?}");
+                    trace_if!(dbg, "Try to collapse edgs {edg:?}");
                     let mut i0 = edg.get(0);
                     let mut i1 = edg.get(1);
                     if !self.verts.contains_key(&i0) {
-                        trace!("Cannot collapse: vertex deleted");
+                        trace_if!(dbg, "Cannot collapse: vertex deleted");
                         continue;
                     }
                     if !self.verts.contains_key(&i1) {
-                        trace!("Cannot collapse: vertex deleted");
+                        trace_if!(dbg, "Cannot collapse: vertex deleted");
                         continue;
                     }
 
@@ -110,11 +111,11 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
 
                     if topo_0.0 != tag.0 || topo_0.1 != tag.1 {
                         if topo_1.0 == tag.0 && topo_1.1 == tag.1 {
-                            trace!("Swap vertices");
+                            trace_if!(dbg, "Swap vertices");
                             std::mem::swap(&mut i1, &mut i0);
                             std::mem::swap(&mut topo_1, &mut topo_0);
                         } else {
-                            trace!("Cannot collapse, incompatible geometry");
+                            trace_if!(dbg, "Cannot collapse, incompatible geometry");
                             continue;
                         }
                     }
@@ -132,12 +133,12 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                     let filled_cavity = FilledCavity::new(&cavity, ftype);
 
                     if !filled_cavity.check_tagged_faces(self) {
-                        trace!("Cannot collapse, tagged face already present");
+                        trace_if!(dbg, "Cannot collapse, tagged face already present");
                         continue;
                     }
 
                     if !filled_cavity.check_normals(&self.topo, geom, params.max_angle) {
-                        trace!("Cannot collapse, would create a non smooth surface");
+                        trace_if!(dbg, "Cannot collapse, would create a non smooth surface");
                         continue;
                     }
 
@@ -146,7 +147,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                     let q_min = q_min.min(params.min_q_rel * cavity.q_min);
                     let l_max = l_max.max(params.max_l_rel * cavity.l_max);
                     if let CavityCheckStatus::Ok(_) = filled_cavity.check(0.0, l_max, q_min) {
-                        trace!("Collapse edge");
+                        trace_if!(dbg, "Collapse edge");
                         for i in &cavity.global_elem_ids {
                             self.remove_elem(*i)?;
                         }
