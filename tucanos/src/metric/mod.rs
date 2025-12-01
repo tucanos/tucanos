@@ -126,7 +126,7 @@ pub trait Metric<const D: usize>:
         let m = Self::min_metric(metrics);
 
         let vol = ge.vol();
-        if vol < 0.0 {
+        if vol <= 0.0 {
             return -1.0;
         }
 
@@ -136,9 +136,24 @@ pub trait Metric<const D: usize>:
             .sum::<f64>();
 
         let l = l / G::TOPO::N_EDGES as f64;
-        let vol = vol / m.vol() / G::ideal_vol();
 
-        f64::powf(vol, 2. / G::TOPO::DIM as f64) / l
+        let fac = if G::has_normal() {
+            let n = ge.normal().normalize();
+            m.length(&n)
+        } else {
+            assert_eq!(D, G::TOPO::DIM);
+            1.0
+        };
+
+        let vol = vol / (fac * m.vol() * G::ideal_vol());
+        let q = f64::powf(vol, 2. / G::TOPO::DIM as f64) / l;
+        assert!(q >= 0.0, "q = {q:.2e}, ge = {ge:?}, vol = {:.2e}", ge.vol());
+        assert!(
+            q < 1.0 + 1e-8,
+            "q = {q:.2e}, ge = {ge:?}, vol = {:.2e}",
+            ge.vol()
+        );
+        q
     }
 }
 
