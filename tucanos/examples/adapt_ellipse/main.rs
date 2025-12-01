@@ -1,7 +1,6 @@
 mod ellipse;
 
 use ellipse::EllipseProjection;
-use env_logger::Env;
 use nalgebra::SMatrix;
 use rustc_hash::FxHashMap;
 use std::{path::Path, process::Command, time::Instant};
@@ -10,7 +9,7 @@ use tmesh::mesh::partition::HilbertPartitioner;
 #[cfg(feature = "metis")]
 use tmesh::mesh::partition::{MetisPartitioner, MetisRecursive};
 use tmesh::{
-    Vert3d,
+    Vert3d, init_log,
     io::{VTUEncoding, VTUFile},
     mesh::{BoundaryMesh3d, GSimplex, Mesh, Mesh3d, Simplex},
 };
@@ -21,12 +20,6 @@ use tucanos::{
     metric::{AnisoMetric3d, Metric, MetricField},
     remesher::{ParallelRemesher, ParallelRemesherParams, Remesher, RemesherParams},
 };
-
-pub fn init_log(level: &str) {
-    env_logger::Builder::from_env(Env::default().default_filter_or(level))
-        .format_timestamp(None)
-        .init();
-}
 
 /// .geo file to generate the input mesh with gmsh:
 const GEO_FILE: &str = r#"

@@ -6,7 +6,6 @@ links = "tucanos"
 
 [dependencies]
 nalgebra = { version = "0.34", features = ["rand"] }
-env_logger = "0.11.5"
 log = "0.4.22"
 serde_json = "1.0.145"
 serde = { version = "1.0.225", features = ["derive"] }
