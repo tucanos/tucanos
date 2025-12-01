@@ -59,6 +59,7 @@ pub trait Geometry<const D: usize>: Send + Sync {
     /// Compute the max angle between the face normals and the geometry normals
     fn max_normal_angle<C: Simplex, M: Mesh<D, C>>(&self, mesh: &M) -> f64 {
         let mut a_max = 0.0;
+        if C::DIM == D {
         for (gf, tag) in mesh.gfaces().zip(mesh.ftags()) {
             if tag > 0 {
                 let c = gf.center();
@@ -67,6 +68,19 @@ pub trait Geometry<const D: usize>: Send + Sync {
                 a_max = f64::max(a_max, a);
             }
         }
+        } else if C::DIM == D - 1 {
+            for (gf, tag) in mesh.gelems().zip(mesh.etags()) {
+                if tag > 0 {
+                    let c = gf.center();
+                    let n = gf.normal(None).normalize();
+                    let a = self.angle(&c, &n, &(C::DIM as Dim, tag));
+                    a_max = f64::max(a_max, a);
+                }
+            }
+        } else {
+            unreachable!();
+        }
+
         a_max
     }
 }
