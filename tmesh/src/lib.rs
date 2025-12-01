@@ -67,6 +67,18 @@ macro_rules! assert_delta {
     };
 }
 
+#[macro_export]
+macro_rules! trace_if {
+    ($dbg:expr, $($arg:tt)+) => {
+        if $dbg {
+            info!($($arg)+);
+        } else {
+            trace!($($arg)+);
+        }
+
+    };
+}
+
 // Set the log level for tests
 pub fn init_log(level: &str) {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(level))

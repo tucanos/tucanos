@@ -6,7 +6,7 @@ use super::swap::SwapParams;
 use crate::mesh::MeshTopology;
 use crate::metric::MetricElem;
 use crate::{Dim, Error, Result, Tag, TopoTag, geometry::Geometry, mesh::Topology, metric::Metric};
-use log::debug;
+use log::{debug, info};
 use rustc_hash::FxHashMap;
 use sorted_vec::SortedVec;
 use std::{cmp::Ordering, fs::File, io::Write, time::Instant};
@@ -506,6 +506,9 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             if let Some(e) = e {
                 *e += 1;
             } else {
+                if self.debug_edge(&edg) {
+                    info!("Insert edge {edg:?}");
+                }
                 self.edges.insert(edg, 1);
             }
         }
@@ -556,6 +559,29 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
     #[must_use]
     pub fn n_edges(&self) -> usize {
         self.edges.len()
+    }
+
+    /// Select edges for which trace is enabled, e.g. with
+    // let i0 = edg.get(0);
+    // let i1 = edg.get(1);
+    // if !self.verts.contains_key(&i0) || !self.verts.contains_key(&i1) {
+    //     return false;
+    // }
+    // let v0 = Vertex::from_column_slice(&[-0.1, 0.0, 0.0]);
+    // let v1 = Vertex::from_column_slice(&[-0.0923123, -0.0384391, 1.0]);
+    // let tol = 1e-6;
+    // let v = &self.verts.get(&i0).unwrap().vx;
+    // if (v - v0).norm() > tol && (v - v1).norm() > tol {
+    //     return false;
+    // }
+    // let v = &self.verts.get(&i1).unwrap().vx;
+    // if (v - v0).norm() > tol && (v - v1).norm() > tol {
+    //     return false;
+    // }
+    // true
+    #[must_use]
+    pub const fn debug_edge(&self, _edg: &Edge<usize>) -> bool {
+        false
     }
 
     /// Get the geometrical element corresponding to elem

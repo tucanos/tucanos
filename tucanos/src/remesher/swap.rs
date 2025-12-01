@@ -8,8 +8,11 @@ use crate::{
         stats::{StepStats, SwapStats},
     },
 };
-use log::{debug, trace};
-use tmesh::mesh::{Edge, Simplex};
+use log::{debug, info, trace};
+use tmesh::{
+    mesh::{Edge, Simplex},
+    trace_if,
+};
 
 enum TrySwapResult {
     QualitySufficient,
@@ -64,7 +67,9 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         cavity: &mut Cavity<D, C, M>,
         geom: &G,
     ) -> Result<TrySwapResult> {
-        trace!("Try to swap edge {edg:?}");
+        let dbg = self.debug_edge(&edg);
+
+        trace_if!(dbg, "Try to swap edge {edg:?}");
 
         cavity.init_from_edge(edg, self);
         if C::DIM == 2 {
@@ -72,19 +77,32 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         }
 
         if cavity.global_elem_ids.len() == 1 {
-            trace!("Cannot swap, only one adjacent cell");
+            trace_if!(dbg, "Cannot swap, only one adjacent cell");
             return Ok(TrySwapResult::QualitySufficient);
         }
 
         if cavity.q_min > params.q {
-            trace!("No need to swap, quality sufficient");
+            trace_if!(
+                dbg,
+                "No need to swap, quality sufficient ({:.2})",
+                cavity.q_min
+            );
             return Ok(TrySwapResult::QualitySufficient);
         }
 
         let l_min = params.min_l_abs.min(params.min_l_rel * cavity.l_min);
         let l_max = params.max_l_abs.max(params.max_l_rel * cavity.l_max);
 
-        trace!("min. / max. allowed edge length = {l_min:.2}, {l_max:.2}");
+        trace_if!(
+            dbg,
+            "min. / max. cavity edge length = {:.2}, {:.2}",
+            cavity.l_min,
+            cavity.l_max
+        );
+        trace_if!(
+            dbg,
+            "min. / max. allowed edge length = {l_min:.2}, {l_max:.2}"
+        );
 
         let Seed::Edge(local_edg) = cavity.seed else {
             unreachable!()
@@ -102,10 +120,12 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             .unwrap();
         // tag < 0 on fixed boundaries
         if etag.1 < 0 {
+            trace_if!(dbg, "Cannot swap: fixed edge");
             return Ok(TrySwapResult::FixedEdge);
         }
 
         if etag.0 == 1 {
+            trace_if!(dbg, "Cannot swap: tag");
             return Ok(TrySwapResult::CouldNotSwap);
         }
 
@@ -117,12 +137,12 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             // check topo
             let ptag = self.topo.parent(etag, cavity.tags[n]);
             if ptag.is_none() {
-                trace!("Cannot swap, incompatible geometry");
+                trace_if!(dbg, "Cannot swap, incompatible geometry");
                 continue;
             }
             let ptag = ptag.unwrap();
             if ptag.0 != etag.0 || ptag.1 != etag.1 {
-                trace!("Cannot swap, incompatible geometry");
+                trace_if!(dbg, "Cannot swap, incompatible geometry");
                 continue;
             }
 
@@ -142,12 +162,17 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             }
 
             if !filled_cavity.check_normals(&self.topo, geom, max_angle) {
-                trace!("Cannot swap, would create a non smooth surface");
+                trace_if!(dbg, "Cannot swap, would create a non smooth surface");
                 continue;
             }
 
-            if let CavityCheckStatus::Ok(min_quality) = filled_cavity.check(l_min, l_max, q_ref) {
-                trace!("Can swap  from {n} : ({min_quality} > {q_ref})");
+            let status = filled_cavity.check(l_min, l_max, q_ref);
+            trace_if!(
+                dbg,
+                "status = {status:?}, l_min = {l_min:.2e}, l_max = {l_max:.2e}, q_min = {q_ref:.2e}"
+            );
+            if let CavityCheckStatus::Ok(min_quality) = status {
+                trace_if!(dbg, "Can swap  from {n} : ({min_quality} > {q_ref})");
                 succeed = true;
                 q_ref = min_quality;
                 vx = n;
@@ -155,7 +180,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         }
 
         if succeed {
-            trace!("Swap from {vx}");
+            trace_if!(dbg, "Swap from {vx}");
             let ftype = FilledCavityType::ExistingVertex(vx);
             let filled_cavity = FilledCavity::new(cavity, ftype);
             for e in &cavity.global_elem_ids {
