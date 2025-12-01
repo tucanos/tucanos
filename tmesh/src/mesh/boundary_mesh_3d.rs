@@ -11,7 +11,7 @@ pub type QuadraticBoundaryMesh3d = GenericMesh<3, QuadraticTriangle<usize>>;
 
 /// Create a `Mesh<3, Triangle<_>>` of a sphere
 #[must_use]
-pub fn sphere_mesh<M: Mesh<3, Triangle<impl Idx>>>(r: f64, n: usize) -> M {
+pub fn sphere_mesh<M: Mesh<3, C = Triangle<impl Idx>>>(r: f64, n: usize) -> M {
     let mut res = M::empty();
 
     res.add_verts(
@@ -52,7 +52,7 @@ pub fn sphere_mesh<M: Mesh<3, Triangle<impl Idx>>>(r: f64, n: usize) -> M {
 
 /// Create a `Mesh<3, QuadraticTriangle<_>>` of a sphere
 #[must_use]
-pub fn quadratic_sphere_mesh<M: Mesh<3, QuadraticTriangle<impl Idx>>>(r: f64, n: usize) -> M {
+pub fn quadratic_sphere_mesh<M: Mesh<3, C = QuadraticTriangle<impl Idx>>>(r: f64, n: usize) -> M {
     let mut res: M = to_quadratic_triangle_mesh(&sphere_mesh::<BoundaryMesh3d>(r, n));
     res.verts_mut().for_each(|x| *x *= r / x.norm());
 
@@ -63,10 +63,10 @@ pub fn quadratic_sphere_mesh<M: Mesh<3, QuadraticTriangle<impl Idx>>>(r: f64, n:
 pub fn to_quadratic_triangle_mesh<
     const D: usize,
     T: Idx,
-    M: Mesh<D, QuadraticTriangle<T>>,
+    M: Mesh<D, C = QuadraticTriangle<T>>,
     T2: Idx,
 >(
-    msh: &impl Mesh<D, Triangle<T2>>,
+    msh: &impl Mesh<D, C = Triangle<T2>>,
 ) -> M {
     let edges = msh.edges();
 
@@ -107,7 +107,7 @@ pub fn to_quadratic_triangle_mesh<
 }
 
 /// Read a stl file
-pub fn read_stl<M: Mesh<3, Triangle<impl Idx>>>(file_name: &str) -> Result<M> {
+pub fn read_stl<M: Mesh<3, C = Triangle<impl Idx>>>(file_name: &str) -> Result<M> {
     let mut file = OpenOptions::new().read(true).open(file_name).unwrap();
     let stl = stl_io::read_stl(&mut file).unwrap();
 

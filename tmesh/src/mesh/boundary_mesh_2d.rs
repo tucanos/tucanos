@@ -12,7 +12,7 @@ pub type QuadraticBoundaryMesh2d = GenericMesh<2, QuadraticEdge<usize>>;
 
 /// Create a `Mesh<2, Edge<_>>` of a circle
 #[must_use]
-pub fn circle_mesh<M: Mesh<2, Edge<impl Idx>>>(r: f64, n: usize) -> M {
+pub fn circle_mesh<M: Mesh<2, C = Edge<impl Idx>>>(r: f64, n: usize) -> M {
     let dtheta = 2.0 * PI / n as f64;
 
     let mut res = M::empty();
@@ -26,7 +26,7 @@ pub fn circle_mesh<M: Mesh<2, Edge<impl Idx>>>(r: f64, n: usize) -> M {
 
 /// Create a `Mesh<2, QuadraticEdge<_>>` of a circle
 #[must_use]
-pub fn quadratic_circle_mesh<M: Mesh<2, QuadraticEdge<impl Idx>>>(r: f64, n: usize) -> M {
+pub fn quadratic_circle_mesh<M: Mesh<2, C = QuadraticEdge<impl Idx>>>(r: f64, n: usize) -> M {
     let mut res: M = to_quadratic_edge_mesh(&circle_mesh::<BoundaryMesh2d>(r, n));
     res.verts_mut().for_each(|x| *x *= r / x.norm());
 
@@ -34,8 +34,8 @@ pub fn quadratic_circle_mesh<M: Mesh<2, QuadraticEdge<impl Idx>>>(r: f64, n: usi
 }
 
 #[must_use]
-pub fn to_quadratic_edge_mesh<const D: usize, T: Idx, M: Mesh<D, QuadraticEdge<T>>, T2: Idx>(
-    msh: &impl Mesh<D, Edge<T2>>,
+pub fn to_quadratic_edge_mesh<const D: usize, T: Idx, M: Mesh<D, C = QuadraticEdge<T>>, T2: Idx>(
+    msh: &impl Mesh<D, C = Edge<T2>>,
 ) -> M {
     let edges = msh.edges();
 

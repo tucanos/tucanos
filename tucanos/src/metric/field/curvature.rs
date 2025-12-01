@@ -11,7 +11,7 @@ use tmesh::{
     mesh::{Edge, GenericMesh, Idx, Mesh, SubMesh, Tetrahedron, Triangle},
 };
 
-impl<'a, T: Idx, M: Mesh<3, Tetrahedron<T>>> MetricField<'a, 3, Tetrahedron<T>, M, AnisoMetric3d> {
+impl<'a, T: Idx, M: Mesh<3, C = Tetrahedron<T>>> MetricField<'a, 3, M, AnisoMetric3d> {
     /// Compute an anisotropic metric based on the boundary curvature
     /// - geom : the geometry on which the curvature is computed
     /// - r_h: the curvature radius to element size ratio
@@ -22,7 +22,7 @@ impl<'a, T: Idx, M: Mesh<3, Tetrahedron<T>>> MetricField<'a, 3, Tetrahedron<T>, 
     pub fn curvature_metric_3d<T2: Idx>(
         msh: &'a M,
         v2v: &'a CSRGraph,
-        geom: &MeshedGeometry<3, Triangle<T2>, impl Mesh<3, Triangle<T2>>>,
+        geom: &MeshedGeometry<3, impl Mesh<3, C = Triangle<T2>>>,
         r_h: f64,
         beta: f64,
         t: f64,
@@ -87,7 +87,7 @@ impl<'a, T: Idx, M: Mesh<3, Tetrahedron<T>>> MetricField<'a, 3, Tetrahedron<T>, 
     }
 }
 
-impl<'a, T: Idx, M: Mesh<2, Triangle<T>>> MetricField<'a, 2, Triangle<T>, M, AnisoMetric2d> {
+impl<'a, T: Idx, M: Mesh<2, C = Triangle<T>>> MetricField<'a, 2, M, AnisoMetric2d> {
     /// Compute an anisotropic metric based on the boundary curvature
     /// - geom : the geometry on which the curvature is computed
     /// - r_h: the curvature radius to element size ratio
@@ -98,7 +98,7 @@ impl<'a, T: Idx, M: Mesh<2, Triangle<T>>> MetricField<'a, 2, Triangle<T>, M, Ani
     pub fn curvature_metric_2d<T2: Idx>(
         msh: &'a M,
         v2v: &'a CSRGraph,
-        geom: &MeshedGeometry<2, Edge<T2>, impl Mesh<2, Edge<T2>>>,
+        geom: &MeshedGeometry<2, impl Mesh<2, C = Edge<T2>>>,
         r_h: f64,
         beta: f64,
         t: f64,

@@ -71,9 +71,9 @@ macro_rules! create_parallel_remesher {
         #[pyclass]
         pub struct $name {
             #[cfg(not(feature = "metis"))]
-            dd: ParallelRemesher<$dim, $etype<Idx>, GenericMesh<$dim, $etype<Idx>>, HilbertPartitioner>,
+            dd: ParallelRemesher<$dim, GenericMesh<$dim, $etype<Idx>>, HilbertPartitioner>,
             #[cfg(feature = "metis")]
-            dd: ParallelRemesher<$dim, $etype<Idx>, GenericMesh<$dim, $etype<Idx>>, MetisPartitioner<MetisRecursive>>,
+            dd: ParallelRemesher<$dim, GenericMesh<$dim, $etype<Idx>>, MetisPartitioner<MetisRecursive>>,
         }
 
         #[doc = concat!("Create a parallel remesher from a ", stringify!($pymesh), " and a ",

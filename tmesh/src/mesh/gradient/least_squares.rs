@@ -1,10 +1,5 @@
 //! Weighted least square gradient computation
-
-use crate::{
-    Error, Result,
-    graph::CSRGraph,
-    mesh::{Mesh, Simplex},
-};
+use crate::{Error, Result, graph::CSRGraph, mesh::Mesh};
 use nalgebra::{Const, DMatrix, DVector, Dim, Dyn, OMatrix, QR, SVector};
 use rayon::{
     iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
@@ -221,7 +216,7 @@ fn fix_not_computed(
 
 /// Compute the gradient of a field defined of the mesh vertices using weighted
 /// least squares
-pub fn gradient<const D: usize, C: Simplex, M: Mesh<D, C>>(
+pub fn gradient<const D: usize, M: Mesh<D>>(
     msh: &M,
     v2v: &CSRGraph,
     order: i32,
@@ -278,7 +273,7 @@ where
 
 /// Compute the hessian of a field defined of the mesh vertices using weighted
 /// least squares
-pub fn hessian<const D: usize, C: Simplex, M: Mesh<D, C>>(
+pub fn hessian<const D: usize, M: Mesh<D>>(
     msh: &M,
     v2v: &CSRGraph,
     weight: i32,
@@ -330,7 +325,7 @@ where
 
 /// Compute the gradient of a field defined of the mesh vertices using weighted
 /// least squares
-pub fn smooth<const D: usize, C: Simplex, M: Mesh<D, C>>(
+pub fn smooth<const D: usize, M: Mesh<D>>(
     msh: &M,
     v2v: &CSRGraph,
     order: i32,

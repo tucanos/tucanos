@@ -36,7 +36,7 @@ pub struct tucanos_mesh32_t {
 }
 
 pub struct tucanos_geom3d_t {
-    implem: MeshedGeometry<3, Triangle<Idx>, GenericMesh<3, Triangle<Idx>>>,
+    implem: MeshedGeometry<3, GenericMesh<3, Triangle<Idx>>>,
 }
 
 #[cfg(feature = "64bit-tags")]

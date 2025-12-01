@@ -25,7 +25,7 @@ pub struct tucanos_mesh21_t {
 }
 
 pub struct tucanos_geom2d_t {
-    implem: MeshedGeometry<2, Edge<Idx>, GenericMesh<2, Edge<Idx>>>,
+    implem: MeshedGeometry<2, GenericMesh<2, Edge<Idx>>>,
 }
 
 /// @brief Create a geometry for a tucanos_mesh22_t
