@@ -25,7 +25,7 @@ fn iso2d() {
         tucanos_mesh22_delete(mesh);
         let mesh = tucanos_remesher2diso_tomesh(remesher, false);
         let num_verts = tucanos_mesh22_num_verts(mesh);
-        assert_eq!(num_verts, 88);
+        assert_eq!(num_verts, 81);
         tucanos_mesh22_delete(mesh);
     }
 }

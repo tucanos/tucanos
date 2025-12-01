@@ -77,7 +77,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         }
 
         let l_min = params.min_l_abs.min(params.min_l_rel * cavity.l_min);
-        let l_max = params.max_l_abs.min(params.max_l_rel * cavity.l_max);
+        let l_max = params.max_l_abs.max(params.max_l_rel * cavity.l_max);
 
         trace!("min. / max. allowed edge length = {l_min:.2}, {l_max:.2}");
 
