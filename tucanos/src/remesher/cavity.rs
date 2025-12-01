@@ -678,15 +678,15 @@ impl<'a, const D: usize, C: Simplex, M: Metric<D>> FilledCavity<'a, D, C, M> {
             }
         } else {
             // all the element tags should be equal
-            let etag_min = self.cavity.etags.iter().copied().min().unwrap();
-            let etag_max = self.cavity.etags.iter().copied().max().unwrap();
-            assert_eq!(etag_min, etag_max);
-            for (f, _) in self.faces() {
+            // let etag_min = self.cavity.etags.iter().copied().min().unwrap();
+            // let etag_max = self.cavity.etags.iter().copied().max().unwrap();
+            // assert_eq!(etag_min, etag_max);
+            for (f, tag) in self.faces() {
                 let gf = self.cavity.gface(&f);
                 let ge = C::GEOM::from_vert_and_face(&p0, &gf);
                 let center = ge.center();
                 let normal = ge.normal(None).normalize();
-                let a = geom.angle(&center, &normal, &(C::DIM as Dim, etag_min));
+                let a = geom.angle(&center, &normal, &(C::DIM as Dim, tag));
                 if a > threshold_degrees {
                     return false;
                 }

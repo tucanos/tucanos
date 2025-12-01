@@ -966,8 +966,9 @@ mod tests {
             MeshTopology,
             test_meshes::{
                 ConcentricCircles, ConcentricSpheres, GeomHalfCircle2d, SphereGeometry,
-                concentric_circles_mesh, concentric_spheres_mesh, h_2d, h_3d, test_mesh_2d,
-                test_mesh_3d, test_mesh_3d_single_tet, test_mesh_3d_two_tets, test_mesh_moon_2d,
+                concentric_circles_mesh, concentric_spheres_mesh, cylinder, h_2d, h_3d,
+                test_mesh_2d, test_mesh_3d, test_mesh_3d_single_tet, test_mesh_3d_two_tets,
+                test_mesh_moon_2d,
             },
         },
         metric::{
@@ -1797,7 +1798,7 @@ mod tests {
 
             if iter == 1 {
                 assert_delta!(mini, 0.35, 0.01);
-                assert_delta!(maxi, 1.38, 0.01);
+                assert_delta!(maxi, 1.51, 0.01);
             }
 
             // let fname = format!("sphere_{}.vtu", iter + 1);
@@ -2095,6 +2096,41 @@ mod tests {
 
         let _mesh = remesher.to_mesh(true);
         // mesh.write_vtk("sphere_surf_aniso.vtu")?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_mesh_cylinder() -> Result<()> {
+        // tmesh::init_log("debug");
+        let mesh = cylinder(0.1, 32);
+
+        let m = vec![IsoMetric::<3>::from(0.05); mesh.n_verts()];
+
+        let topo = MeshTopology::new(&mesh);
+        let bdy = cylinder(0.1, 128);
+
+        let geom = MeshedGeometry::new(&mesh, &topo, bdy).unwrap();
+
+        let mut remesher = Remesher::new(&mesh, &topo, &m, &geom)?;
+
+        let mut params = RemesherParams::new(20.0, 8);
+        for step in &mut params.steps {
+            if let RemeshingStep::Split(p) = step {
+                p.min_q_abs = 0.0;
+                p.min_l_abs = 0.0;
+            }
+            if let RemeshingStep::Collapse(p) = step {
+                p.min_q_abs = 0.0;
+                p.max_l_abs = f64::MAX;
+            }
+        }
+
+        remesher.remesh(&params, &geom)?;
+        remesher.check()?;
+
+        let mesh = remesher.to_mesh(true);
+        mesh.write_vtk("cylinder.vtu")?;
 
         Ok(())
     }
