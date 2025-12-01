@@ -18,6 +18,7 @@ pub fn autotag<const D: usize, C: Simplex, M: Mesh<D, C>>(
     msh: &mut M,
     angle_deg: f64,
 ) -> Result<HashMap<Tag, Vec<Tag>>> {
+    assert_eq!(C::order(), 1);
     assert_eq!(D - 1, C::DIM);
 
     let faces = msh.all_faces();
@@ -26,8 +27,8 @@ pub fn autotag<const D: usize, C: Simplex, M: Mesh<D, C>>(
     let mut e2e = Vec::with_capacity(faces.len());
     for elems in faces.values() {
         if elems[1] != usize::MAX && elems[2] != usize::MAX {
-            let n0 = msh.gelem(&msh.elem(elems[1])).normal().normalize();
-            let n1 = msh.gelem(&msh.elem(elems[2])).normal().normalize();
+            let n0 = msh.gelem(&msh.elem(elems[1])).normal(None).normalize();
+            let n1 = msh.gelem(&msh.elem(elems[2])).normal(None).normalize();
             if n0.dot(&n1) > threshold {
                 e2e.push([elems[1], elems[2]]);
             }
@@ -78,7 +79,7 @@ pub fn autotag_bdy<const D: usize, C: Simplex, M: Mesh<D, C>>(
 /// to the tag of the element of `self` onto which the element center is projected.
 pub fn transfer_tags<const D: usize, C: Simplex, M: Mesh<D, C>, C2: Simplex, M2: Mesh<D, C2>>(
     msh: &M,
-    tree: &ObjectIndex<D>,
+    tree: &ObjectIndex<D, C, M>,
     mesh: &mut M2,
 ) {
     let get_tag = |pt: &Vertex<D>| {
@@ -175,7 +176,7 @@ mod tests {
         assert_eq!(new_tags.len(), 1);
         assert_eq!(*new_tags.get(&1).unwrap(), vec![1, 2, 3, 4, 5, 6]);
 
-        let tree = ObjectIndex::new(&bdy);
+        let tree = ObjectIndex::new(bdy.clone());
         transfer_tags(&bdy, &tree, &mut mesh);
 
         let mut res = HashMap::new();

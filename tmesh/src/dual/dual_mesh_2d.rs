@@ -178,7 +178,7 @@ impl<T: Idx> DualMesh<2, Triangle<T>> for DualMesh2d<T> {
                     n_empty_faces += 1;
                 } else {
                     let gf = GEdge::new(&verts[face.get(0)], &verts[face.get(1)]);
-                    edge_normals[i_edge] += sgn * gf.normal();
+                    edge_normals[i_edge] += sgn * gf.normal(None);
 
                     let i_new_face = faces.len();
                     faces.push(face);
@@ -223,7 +223,7 @@ impl<T: Idx> DualMesh<2, Triangle<T>> for DualMesh2d<T> {
                 n_empty_faces += 1;
             } else {
                 let gf = GEdge::new(&verts[face.get(0)], &verts[face.get(1)]);
-                bdy_faces.push((f.get(0), tag, gf.normal()));
+                bdy_faces.push((f.get(0), tag, gf.normal(None)));
 
                 let i_new_face = faces.len();
                 faces.push(face);
@@ -243,7 +243,7 @@ impl<T: Idx> DualMesh<2, Triangle<T>> for DualMesh2d<T> {
 
                 let face = Edge::new(vert_idx_edge(i_edge), vert_ids_bdy(f.get(1)));
                 let gf = GEdge::new(&verts[face.get(0)], &verts[face.get(1)]);
-                bdy_faces.push((f.get(0), tag, gf.normal()));
+                bdy_faces.push((f.get(0), tag, gf.normal(None)));
 
                 let i_new_face = faces.len();
                 faces.push(face);
@@ -365,7 +365,7 @@ mod tests {
 
         let n_empty_faces = dual
             .par_gfaces()
-            .filter(|gf| gf.normal().norm() < 1e-12)
+            .filter(|gf| gf.normal(None).norm() < 1e-12)
             .count();
         assert_eq!(n_empty_faces, 0);
     }
@@ -384,7 +384,7 @@ mod tests {
 
         let n_empty_faces = dual
             .par_gfaces()
-            .filter(|gf| gf.normal().norm() < 1e-10)
+            .filter(|gf| gf.normal(None).norm() < 1e-10)
             .count();
         assert_eq!(n_empty_faces, 0);
 
@@ -413,7 +413,7 @@ mod tests {
 
         let n_empty_faces = dual
             .par_gfaces()
-            .filter(|gf| gf.normal().norm() < 1e-10)
+            .filter(|gf| gf.normal(None).norm() < 1e-10)
             .count();
         assert_eq!(n_empty_faces, 0);
 

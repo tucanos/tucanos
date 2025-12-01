@@ -6,7 +6,7 @@ edition.workspace = true
 [dependencies]
 base64 = "0.22.1"
 log = "0.4.27"
-minimeshb = { git = "https://github.com/tucanos/minimeshb.git", tag = "0.1.0" }
+minimeshb = { git = "https://github.com/tucanos/minimeshb.git", rev = "293ef81" }
 nalgebra = { version = "0.34.0"}
 quick-xml = { version = "0.38.0", features = ["serialize"] }
 rand = "0.9.0"
@@ -21,6 +21,9 @@ coupe = { git = "https://github.com/LIHPC-Computational-Geometry/coupe.git", rev
 metis = { git = "https://github.com/tucanos/metis-rs.git", rev = "d31aa3e", optional=true}
 lindel = "0.1.1"
 stl_io = "0.8.5"
+argmin = "0.11.0"
+argmin-math = { version = "0.5.1", features = ["nalgebra_latest"] }
+argmin-observer-slog = "0.2.0"
 
 [features]
 32bit-tags = []

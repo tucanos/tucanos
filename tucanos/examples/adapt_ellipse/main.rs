@@ -179,7 +179,7 @@ fn check_geom(mesh: &Mesh3d, geom: &Simple3dGeometry) {
                 max_dist.insert(tag, dist);
             }
         }
-        let angle = geom.angle(&gface.center(), &gface.normal().normalize(), &(2, tag));
+        let angle = geom.angle(&gface.center(), &gface.normal(None).normalize(), &(2, tag));
         if let Some(v) = max_angle.get_mut(&tag) {
             *v = v.max(angle);
         } else {

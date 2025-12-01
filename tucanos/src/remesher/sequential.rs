@@ -178,6 +178,8 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         metric: impl ExactSizeIterator<Item = M>,
         geom: &impl Geometry<D>,
     ) -> Result<Self> {
+        assert_eq!(C::order(), 1);
+
         debug!(
             "Initialize the remesher with {} {D}D vertices / {} cells",
             mesh.n_verts(),
@@ -950,13 +952,16 @@ mod tests_topo {
 mod tests {
     use tmesh::{
         Vert2d, Vert3d, assert_delta,
-        mesh::{Edge, GSimplex, GenericMesh, Mesh, Mesh3d, Simplex, Tetrahedron, Triangle},
+        mesh::{
+            BoundaryMesh3d, Edge, GSimplex, GenericMesh, Mesh, Mesh3d, Simplex, Tetrahedron,
+            Triangle,
+        },
     };
 
     use super::RemesherParams;
     use crate::{
         Result,
-        geometry::{LinearGeometry, NoGeometry},
+        geometry::{MeshedGeometry, NoGeometry},
         mesh::{
             MeshTopology,
             test_meshes::{
@@ -1886,9 +1891,9 @@ mod tests {
             .map(|&x| IsoMetric::<3>::from(x))
             .collect::<Vec<_>>();
         let mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
-        let bdy = mesh.boundary().0;
+        let bdy: BoundaryMesh3d = mesh.boundary().0;
         let topo = MeshTopology::new(&mesh);
-        let geom = LinearGeometry::new(&mesh, &topo, bdy)?;
+        let geom = MeshedGeometry::new(&mesh, &topo, bdy)?;
         let mut remesher = Remesher::new(&mesh, &topo, &metric, &geom)?;
         remesher.remesh(&RemesherParams::default(), &geom)?;
         let mesh = remesher.to_mesh(false);
@@ -1926,9 +1931,9 @@ mod tests {
             .collect::<Vec<_>>();
 
         let mesh = Mesh3d::from_vecs(verts, elems, etags, faces, ftags);
-        let bdy = mesh.boundary().0;
+        let bdy: BoundaryMesh3d = mesh.boundary().0;
         let topo = MeshTopology::new(&mesh);
-        let geom = LinearGeometry::new(&mesh, &topo, bdy)?;
+        let geom = MeshedGeometry::new(&mesh, &topo, bdy)?;
         let mut remesher = Remesher::new(&mesh, &topo, &metric, &geom)?;
         remesher.remesh(&RemesherParams::default(), &geom)?;
         let mesh = remesher.to_mesh(false);

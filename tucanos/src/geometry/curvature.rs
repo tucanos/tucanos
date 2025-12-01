@@ -2,7 +2,8 @@ use crate::H_MAX;
 use log::debug;
 use nalgebra::{SMatrix, SVector, SymmetricEigen};
 use tmesh::{
-    Vertex,
+    Result, Vertex,
+    io::VTUFile,
     mesh::{Edge, GSimplex, GenericMesh, Idx, Mesh, Simplex, Triangle},
 };
 
@@ -19,13 +20,14 @@ use tmesh::{
 pub fn compute_vertex_normals<const D: usize, C: Simplex>(
     mesh: &impl Mesh<D, C>,
 ) -> Vec<Vertex<D>> {
+    assert_eq!(C::order(), 1);
     debug!("Compute the surface normals at the vertices");
 
     let mut normals = vec![Vertex::<D>::zeros(); mesh.n_verts()];
 
     for e in mesh.elems() {
         let ge = mesh.gelem(&e);
-        let n = ge.normal();
+        let n = ge.normal(None);
         for i_vert in e {
             normals[i_vert] += n;
         }
@@ -103,7 +105,7 @@ pub fn compute_curvature_tensor_3d<T: Idx>(
     for e in smesh.elems() {
         // Compute the element-based curvature
         let ge = smesh.gelem(&e);
-        let n = ge.normal().normalize();
+        let n = ge.normal(None).normalize();
 
         let edgs = [
             ge.face(0).as_vec(),
@@ -292,11 +294,22 @@ pub fn fix_curvature<const D: usize, C: Simplex>(
     }
 }
 
-pub trait HasCurvature<const D: usize> {
+pub trait HasCurvature<const D: usize, C: Simplex>: Mesh<D, C> {
     fn compute_curvature(&self) -> (Vec<Vertex<D>>, Option<Vec<Vertex<D>>>);
+
+    fn write_curvature(&self, fname: &str) -> Result<()> {
+        let (u, v) = self.compute_curvature();
+
+        let mut writer = VTUFile::from_mesh(self, tmesh::io::VTUEncoding::Binary);
+        writer.add_point_data("u", D, u.iter().flatten().copied());
+        writer.add_point_data("v", D, v.as_ref().unwrap().iter().flatten().copied());
+        writer.export(fname)?;
+
+        Ok(())
+    }
 }
 
-impl<T: Idx> HasCurvature<2> for GenericMesh<2, Edge<T>> {
+impl<T: Idx, M: Mesh<2, Edge<T>>> HasCurvature<2, Edge<T>> for M {
     fn compute_curvature(&self) -> (Vec<Vertex<2>>, Option<Vec<Vertex<2>>>) {
         let mut u = compute_curvature_tensor_2d(self);
         fix_curvature(self, &mut u, None);
@@ -305,7 +318,7 @@ impl<T: Idx> HasCurvature<2> for GenericMesh<2, Edge<T>> {
     }
 }
 
-impl<T: Idx> HasCurvature<3> for GenericMesh<3, Triangle<T>> {
+impl<T: Idx, M: Mesh<3, Triangle<T>>> HasCurvature<3, Triangle<T>> for M {
     fn compute_curvature(&self) -> (Vec<Vertex<3>>, Option<Vec<Vertex<3>>>) {
         let (mut u, mut v) = compute_curvature_tensor_3d(self);
         fix_curvature(self, &mut u, Some(&mut v));
@@ -320,7 +333,11 @@ mod tests {
         mesh::{BoundaryMesh2d, Edge, GSimplex, GenericMesh, Mesh, Node},
     };
 
-    use crate::{H_MAX, mesh::test_meshes::test_mesh_2d};
+    use crate::{
+        H_MAX,
+        geometry::MeshedGeometry,
+        mesh::{MeshTopology, test_meshes::test_mesh_2d},
+    };
 
     use super::{compute_curvature_tensor_2d, compute_curvature_tensor_3d, fix_curvature};
 
@@ -530,6 +547,58 @@ mod tests {
             v.normalize_mut();
             let cos_a = v.dot(&v_ref);
             assert!(f64::abs(cos_a) > 0.98);
+        }
+    }
+
+    #[test]
+    fn test_curvature_cylinder_fixed_geom() {
+        let radius = 0.1;
+
+        let mesh = test_mesh_2d().split().split().split().split().split();
+
+        let verts = mesh
+            .verts()
+            .map(|p| {
+                let z = p[0];
+                let theta = 2.0 * p[1];
+                let x = radius * f64::cos(theta);
+                let y = radius * f64::sin(theta);
+                Vertex::<3>::new(x, y, z)
+            })
+            .collect();
+
+        let mut surf = GenericMesh::from_vecs(
+            verts,
+            mesh.elems().collect::<Vec<_>>(),
+            mesh.etags().collect::<Vec<_>>(),
+            Vec::new(),
+            Vec::new(),
+        );
+        surf.fix().unwrap();
+
+        let geom = MeshedGeometry::new(&surf, &MeshTopology::new(&surf), surf.clone()).unwrap();
+
+        for (e, tag) in surf.elems().zip(surf.etags()) {
+            let ge = surf.gelem(&e);
+            let (mut u, v) = geom.curvature(&ge.center(), tag);
+            let mut v = v.unwrap();
+
+            assert!(u.norm() < 1.1 / H_MAX);
+            assert!(u.norm() > 1e-17);
+            let u_ref = Vertex::<3>::new(0.0, 0.0, 1.0);
+            u.normalize_mut();
+
+            let cos_a = u.dot(&u_ref);
+            assert!(f64::abs(cos_a) > 0.98, "{cos_a}");
+
+            assert!(f64::abs(v.norm() - 1. / radius) < 1e-3 / radius);
+            let c = ge.center();
+            let mut v_ref = Vertex::<3>::new(-c[1], c[0], 0.0);
+            v_ref.normalize_mut();
+            v.normalize_mut();
+            let cos_a = v.dot(&v_ref);
+
+            assert!(f64::abs(cos_a) > 0.98, "{cos_a}");
         }
     }
 }

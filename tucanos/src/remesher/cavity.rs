@@ -666,7 +666,7 @@ impl<'a, const D: usize, C: Simplex, M: Metric<D>> FilledCavity<'a, D, C, M> {
             );
             let gf = <C::FACE as Simplex>::GEOM::from_vert_and_face(&p0, &gb);
             let center = gf.center();
-            let mut normal = gf.normal().normalize();
+            let mut normal = gf.normal(None).normalize();
             if s {
                 normal *= -1.0;
             }

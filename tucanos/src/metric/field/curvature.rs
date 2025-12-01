@@ -1,6 +1,6 @@
 use crate::{
     Result, Tag,
-    geometry::LinearGeometry,
+    geometry::MeshedGeometry,
     metric::{AnisoMetric2d, AnisoMetric3d, MetricField},
 };
 use log::debug;
@@ -19,10 +19,10 @@ impl<'a, T: Idx, M: Mesh<3, Tetrahedron<T>>> MetricField<'a, 3, Tetrahedron<T>, 
     /// - h_n: the normal size, defined at the boundary vertices
     ///   if <0, the min of the tangential sizes is used
     #[allow(clippy::too_many_arguments)]
-    pub fn curvature_metric_3d(
+    pub fn curvature_metric_3d<T2: Idx>(
         msh: &'a M,
         v2v: &'a CSRGraph,
-        geom: &LinearGeometry<3, Triangle<impl Idx>>,
+        geom: &MeshedGeometry<3, Triangle<T2>, impl Mesh<3, Triangle<T2>>>,
         r_h: f64,
         beta: f64,
         t: f64,
@@ -50,7 +50,7 @@ impl<'a, T: Idx, M: Mesh<3, Tetrahedron<T>>> MetricField<'a, 3, Tetrahedron<T>, 
                 .map(|&i| (i, boundary_vertex_ids[i]))
                 .for_each(|(i_bdy_vert, i_vert)| {
                     let pt = msh.vert(i_vert);
-                    let (mut u, v) = geom.curvature(&pt, tag).unwrap();
+                    let (mut u, v) = geom.curvature(&pt, tag);
                     let mut v = v.unwrap();
                     let mut hu = 1. / (r_h * u.norm());
                     let mut hv = 1. / (r_h * v.norm());
@@ -95,10 +95,10 @@ impl<'a, T: Idx, M: Mesh<2, Triangle<T>>> MetricField<'a, 2, Triangle<T>, M, Ani
     /// - h_n: the normal size, defined at the boundary vertices
     ///   if <0, the min of the tangential sizes is used
     #[allow(clippy::too_many_arguments)]
-    pub fn curvature_metric_2d(
+    pub fn curvature_metric_2d<T2: Idx>(
         msh: &'a M,
         v2v: &'a CSRGraph,
-        geom: &LinearGeometry<2, Edge<impl Idx>>,
+        geom: &MeshedGeometry<2, Edge<T2>, impl Mesh<2, Edge<T2>>>,
         r_h: f64,
         beta: f64,
         t: f64,
@@ -126,7 +126,7 @@ impl<'a, T: Idx, M: Mesh<2, Triangle<T>>> MetricField<'a, 2, Triangle<T>, M, Ani
                 .map(|&i| (i, boundary_vertex_ids[i]))
                 .for_each(|(i_bdy_vert, i_vert)| {
                     let pt = msh.vert(i_vert);
-                    let (mut u, _) = geom.curvature(&pt, tag).unwrap();
+                    let (mut u, _) = geom.curvature(&pt, tag);
                     let mut hu = 1. / (r_h * u.norm());
                     let mut hn = hu;
                     if use_h_n && let Some(h_n) = h_n {
@@ -162,13 +162,13 @@ impl<'a, T: Idx, M: Mesh<2, Triangle<T>>> MetricField<'a, 2, Triangle<T>, M, Ani
 mod tests {
     use crate::{
         ANISO_MAX, Result,
-        geometry::LinearGeometry,
+        geometry::MeshedGeometry,
         mesh::{MeshTopology, test_meshes::test_mesh_3d},
         metric::{AnisoMetric3d, Metric, MetricField},
     };
     use nalgebra::SVector;
     use tmesh::{
-        Vert3d,
+        Vert3d, assert_delta,
         mesh::{BoundaryMesh3d, Mesh},
     };
 
@@ -210,8 +210,7 @@ mod tests {
 
         let topo = MeshTopology::new(&mesh);
 
-        let mut geom = LinearGeometry::new(&mesh, &topo, bdy.clone())?;
-        geom.compute_curvature();
+        let geom = MeshedGeometry::new(&mesh, &topo, bdy.clone())?;
 
         // curvature metric (no prescribes normal size)
         let v2v = mesh.vertex_to_vertices();
@@ -224,15 +223,15 @@ mod tests {
             if bdy_flg[i_bdy_vert] == 1 {
                 let m = m_curv[i_vert];
                 let s = m.sizes();
-                assert!(f64::abs(s[0] - r_in / 4.0) < r_in * 0.1);
-                assert!(f64::abs(s[1] - r_in / 4.0) < r_in * 0.1);
+                assert_delta!(s[0], r_in / 4.0, r_in * 0.1);
+                assert_delta!(s[1], r_in / 4.0, r_in * 0.1);
                 assert!(s[2] > 1000.0);
             }
             if bdy_flg[i_bdy_vert] == 2 {
                 let m = m_curv[i_vert];
                 let s = m.sizes();
-                assert!(f64::abs(s[0] - r_out / 4.0) < r_out * 0.1);
-                assert!(f64::abs(s[1] - r_out / 4.0) < r_out * 0.1);
+                assert_delta!(s[0], r_out / 4.0, r_out * 0.1);
+                assert_delta!(s[1], r_out / 4.0, r_out * 0.1);
                 assert!(s[2] > 1000.0);
             }
         }

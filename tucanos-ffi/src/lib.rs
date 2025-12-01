@@ -6,7 +6,7 @@
 use log::warn;
 use tmesh::mesh::{GenericMesh, Mesh, Simplex, Tetrahedron, Triangle};
 use tucanos::{
-    geometry::LinearGeometry,
+    geometry::MeshedGeometry,
     mesh::MeshTopology,
     metric::{AnisoMetric3d, IsoMetric, Metric},
     remesher::{Remesher, RemesherParams},
@@ -36,7 +36,7 @@ pub struct tucanos_mesh32_t {
 }
 
 pub struct tucanos_geom3d_t {
-    implem: LinearGeometry<3, Triangle<Idx>>,
+    implem: MeshedGeometry<3, Triangle<Idx>, GenericMesh<3, Triangle<Idx>>>,
 }
 
 #[cfg(feature = "64bit-tags")]
@@ -63,7 +63,7 @@ pub unsafe extern "C" fn tucanos_geom3d_new(
         let mesh = &mut (*mesh).implem;
         let boundary = Box::from_raw(boundary).implem;
         let topo = MeshTopology::new(mesh);
-        LinearGeometry::new(mesh, &topo, boundary).map_or(std::ptr::null_mut(), |implem| {
+        MeshedGeometry::new(mesh, &topo, boundary).map_or(std::ptr::null_mut(), |implem| {
             Box::into_raw(Box::new(tucanos_geom3d_t { implem }))
         })
     }
