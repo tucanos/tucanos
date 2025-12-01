@@ -1432,8 +1432,8 @@ mod tests {
             if iter == 4 {
                 let (mini, maxi, _) =
                     remesher.check_edge_lengths_analytical(|x| IsoMetric::<2>::from(h_2d(x)));
-                assert_delta!(mini, 0.37, 0.01);
-                assert_delta!(maxi, 1.40, 0.01);
+                assert_delta!(mini, 0.50, 0.01);
+                assert_delta!(maxi, 1.42, 0.01);
             }
         }
 
@@ -1466,7 +1466,7 @@ mod tests {
 
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
             if iter == 2 {
-                assert_delta!(mini, 0.67, 0.01);
+                assert_delta!(mini, 0.70, 0.01);
                 assert_delta!(maxi, 1.4, 0.01);
             }
         }
@@ -1507,8 +1507,8 @@ mod tests {
                 remesher.check_edge_lengths_analytical(|x| IsoMetric::<2>::from(h_2d(x)));
 
             if iter == 9 {
-                assert_delta!(mini, 0.51, 0.01);
-                assert_delta!(maxi, 1.38, 0.01);
+                assert_delta!(mini, 0.70, 0.01);
+                assert_delta!(maxi, 1.40, 0.01);
             }
         }
 
@@ -1705,8 +1705,8 @@ mod tests {
                 remesher.check_edge_lengths_analytical(|x| IsoMetric::<3>::from(h_3d(x)));
 
             if iter == 2 {
-                assert_delta!(mini, 0.42, 0.01);
-                assert_delta!(maxi, 1.50, 0.01);
+                assert_delta!(mini, 0.47, 0.01);
+                assert_delta!(maxi, 1.57, 0.01);
             }
         }
 
@@ -1753,8 +1753,8 @@ mod tests {
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
 
             if iter == 1 {
-                assert_delta!(mini, 0.32, 0.01);
-                assert_delta!(maxi, 1.41, 0.01);
+                assert_delta!(mini, 0.60, 0.01);
+                assert_delta!(maxi, 1.52, 0.01);
             }
         }
 
@@ -1797,7 +1797,7 @@ mod tests {
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
 
             if iter == 1 {
-                assert_delta!(mini, 0.35, 0.01);
+                assert_delta!(mini, 0.46, 0.01);
                 assert_delta!(maxi, 1.51, 0.01);
             }
 
@@ -1898,7 +1898,7 @@ mod tests {
         remesher.remesh(&RemesherParams::default(), &geom)?;
         let mesh = remesher.to_mesh(false);
         // mesh.write_meshb("iso3d.meshb")?;
-        assert_eq!(mesh.n_verts(), 442);
+        assert_eq!(mesh.n_verts(), 615);
 
         Ok(())
     }
@@ -1938,7 +1938,7 @@ mod tests {
         remesher.remesh(&RemesherParams::default(), &geom)?;
         let mesh = remesher.to_mesh(false);
         // mesh.write_meshb("aniso3d.meshb")?;
-        assert_eq!(mesh.n_verts(), 67);
+        assert_eq!(mesh.n_verts(), 52);
 
         Ok(())
     }
@@ -2008,29 +2008,31 @@ mod tests {
     fn test_adapt_3d_surf() -> Result<()> {
         let mesh: BoundaryMesh3d = sphere_mesh(1.0, 3);
 
-        let h = |p: Vert3d| {
+        let m_func = |p: &Vert3d| {
             let c = Vert3d::new(1.0, 0.0, 0.0);
             let d = (p - c).norm();
             let s = 0.25;
             let h_min = 1e-2;
             let h_max = 1e-1;
-            h_max - (h_max - h_min) * f64::exp(-(d / s).powi(2))
+            IsoMetric::from(h_max - (h_max - h_min) * f64::exp(-(d / s).powi(2)))
         };
 
-        let m = mesh
-            .verts()
-            .map(|p| IsoMetric::<3>::from(h(p)))
-            .collect::<Vec<_>>();
+        let m = mesh.verts().map(|p| m_func(&p)).collect::<Vec<_>>();
 
         let geom = SphereGeometry;
         let topo = MeshTopology::new(&mesh);
 
         let mut remesher = Remesher::new(&mesh, &topo, &m, &geom)?;
 
-        let params = RemesherParams::new(20.0, 4);
+        let params = RemesherParams::new(20.0, 6);
 
         remesher.remesh(&params, &geom)?;
         remesher.check()?;
+
+        let (mini, maxi, _) = remesher.check_edge_lengths_analytical(m_func);
+
+        assert_delta!(mini, 0.49, 0.01);
+        assert_delta!(maxi, 2.16, 0.01);
 
         let _mesh = remesher.to_mesh(true);
         // mesh.write_vtk("sphere_surf_iso.vtu")?;
@@ -2042,7 +2044,7 @@ mod tests {
     fn test_adapt_3d_surf_aniso() -> Result<()> {
         let mesh: BoundaryMesh3d = sphere_mesh(1.0, 3);
 
-        let m = |p: Vert3d| {
+        let m_func = |p: &Vert3d| {
             let s = 0.25;
             let h_min = 1e-2;
             let h_max = 1e-1;
@@ -2077,22 +2079,21 @@ mod tests {
             }
         };
 
-        let m = mesh.verts().map(m).collect::<Vec<_>>();
+        let m = mesh.verts().map(|x| m_func(&x)).collect::<Vec<_>>();
 
         let geom = SphereGeometry;
         let topo = MeshTopology::new(&mesh);
 
         let mut remesher = Remesher::new(&mesh, &topo, &m, &geom)?;
 
-        let mut params = RemesherParams::default();
-        for step in &mut params.steps {
-            if let RemeshingStep::Split(p) = step {
-                p.min_q_abs = 0.4;
-            }
-        }
+        let params = RemesherParams::new(20.0, 12);
 
         remesher.remesh(&params, &geom)?;
         remesher.check()?;
+
+        let (mini, maxi, _) = remesher.check_edge_lengths_analytical(m_func);
+        assert_delta!(mini, 0.51, 0.01);
+        assert_delta!(maxi, 1.70, 0.01);
 
         let _mesh = remesher.to_mesh(true);
         // mesh.write_vtk("sphere_surf_aniso.vtu")?;
@@ -2105,7 +2106,9 @@ mod tests {
         // tmesh::init_log("debug");
         let mesh = cylinder(0.1, 32);
 
-        let m = vec![IsoMetric::<3>::from(0.05); mesh.n_verts()];
+        let m_func = |_p: &Vert3d| IsoMetric::from(0.05);
+
+        let m = mesh.verts().map(|p| m_func(&p)).collect::<Vec<_>>();
 
         let topo = MeshTopology::new(&mesh);
         let bdy = cylinder(0.1, 128);
@@ -2114,7 +2117,7 @@ mod tests {
 
         let mut remesher = Remesher::new(&mesh, &topo, &m, &geom)?;
 
-        let mut params = RemesherParams::new(20.0, 8);
+        let mut params = RemesherParams::new(20.0, 4);
         for step in &mut params.steps {
             if let RemeshingStep::Split(p) = step {
                 p.min_q_abs = 0.0;
@@ -2128,6 +2131,10 @@ mod tests {
 
         remesher.remesh(&params, &geom)?;
         remesher.check()?;
+
+        let (mini, maxi, _) = remesher.check_edge_lengths_analytical(m_func);
+        assert_delta!(mini, 0.41, 0.01);
+        assert_delta!(maxi, 1.67, 0.01);
 
         let mesh = remesher.to_mesh(true);
         mesh.write_vtk("cylinder.vtu")?;
