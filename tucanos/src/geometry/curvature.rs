@@ -4,7 +4,7 @@ use nalgebra::{SMatrix, SVector, SymmetricEigen};
 use tmesh::{
     Result, Vertex,
     io::VTUFile,
-    mesh::{Edge, GSimplex, GenericMesh, Idx, Mesh, Simplex, Triangle},
+    mesh::{GSimplex, GenericMesh, Mesh, QuadraticGEdge, QuadraticGTriangle, Simplex},
 };
 
 /// Compute the surface normals at the mesh vertices
@@ -57,7 +57,7 @@ fn bound_curvature(x: f64) -> f64 {
 /// NB: curvature should not be computed across non smooth patches
 /// NB: curvature estimation is not accurate near the boundaires
 #[must_use]
-pub fn compute_curvature_tensor_2d<T: Idx>(smesh: &impl Mesh<2, C = Edge<T>>) -> Vec<Vertex<2>> {
+pub fn compute_curvature_tensor_2d<const D: usize>(smesh: &impl Mesh<D>) -> Vec<Vertex<D>> {
     debug!("Compute curvature tensors (2d)");
     let vertex_normals = compute_vertex_normals(smesh);
 
@@ -91,9 +91,9 @@ pub fn compute_curvature_tensor_2d<T: Idx>(smesh: &impl Mesh<2, C = Edge<T>>) ->
 /// NB: curvature should not be computed across non smooth patches
 /// NB: curvature estimation is not accurate near the boundaires
 #[must_use]
-pub fn compute_curvature_tensor_3d<T: Idx>(
-    smesh: &impl Mesh<3, C = Triangle<T>>,
-) -> (Vec<Vertex<3>>, Vec<Vertex<3>>) {
+pub fn compute_curvature_tensor_3d<const D: usize>(
+    smesh: &impl Mesh<D>,
+) -> (Vec<Vertex<D>>, Vec<Vertex<D>>) {
     debug!("Compute curvature tensors");
     let vertex_normals = compute_vertex_normals(smesh);
 
@@ -106,9 +106,9 @@ pub fn compute_curvature_tensor_3d<T: Idx>(
         let n = ge.normal(None).normalize();
 
         let edgs = [
-            ge.face(0).as_vec(),
-            ge.face(1).as_vec(),
-            ge.face(2).as_vec(),
+            ge.face(0)[1] - ge.face(0)[0],
+            ge.face(1)[1] - ge.face(1)[0],
+            ge.face(2)[1] - ge.face(2)[0],
         ];
         let n0 = &vertex_normals[e.get(0)];
         let n1 = &vertex_normals[e.get(1)];
@@ -292,49 +292,71 @@ pub fn fix_curvature<const D: usize, M: Mesh<D>>(
     }
 }
 
-pub trait HasCurvature<const D: usize>: Mesh<D> {
-    fn compute_curvature(&self) -> (Vec<Vertex<D>>, Option<Vec<Vertex<D>>>);
+pub fn compute_curvature<const D: usize, M: Mesh<D>>(
+    mesh: &M,
+) -> (Vec<Vertex<D>>, Option<Vec<Vertex<D>>>) {
+    if D == 2 {
+        if M::C::order() == 1 && M::C::N_VERTS == 2 {
+            let mut u = compute_curvature_tensor_2d(mesh);
+            fix_curvature(mesh, &mut u, None);
 
-    fn write_curvature(&self, fname: &str) -> Result<()> {
-        let (u, v) = self.compute_curvature();
-
-        let mut writer = VTUFile::from_mesh(self, tmesh::io::VTUEncoding::Binary);
-        writer.add_point_data("u", D, u.iter().flatten().copied());
-        writer.add_point_data("v", D, v.as_ref().unwrap().iter().flatten().copied());
-        writer.export(fname)?;
-
-        Ok(())
+            return (u, None);
+        } else if M::C::order() == 2 && M::C::N_VERTS == 3 {
+            let u = mesh
+                .gelems()
+                .map(|ge| QuadraticGEdge::from_iter(ge).curvature())
+                .collect::<Vec<_>>();
+            return (u, None);
+        }
     }
+
+    if D == 3 {
+        if M::C::order() == 1 && M::C::N_VERTS == 3 {
+            let (mut u, mut v) = compute_curvature_tensor_3d(mesh);
+            fix_curvature(mesh, &mut u, Some(&mut v));
+
+            return (u, Some(v));
+        } else if M::C::order() == 2 && M::C::N_VERTS == 6 {
+            let mut u = vec![Vertex::zeros(); mesh.n_verts()];
+            let mut v = vec![Vertex::zeros(); mesh.n_verts()];
+            for ((u, v), ge) in u.iter_mut().zip(v.iter_mut()).zip(mesh.gelems()) {
+                (*u, *v) = QuadraticGTriangle::from_iter(ge).curvature();
+            }
+            return (u, Some(v));
+        }
+    }
+
+    unimplemented!();
 }
 
-impl<T: Idx, M: Mesh<2, C = Edge<T>>> HasCurvature<2> for M {
-    fn compute_curvature(&self) -> (Vec<Vertex<2>>, Option<Vec<Vertex<2>>>) {
-        let mut u = compute_curvature_tensor_2d(self);
-        fix_curvature(self, &mut u, None);
+pub fn write_curvature<const D: usize, M: Mesh<D>>(mesh: &M, fname: &str) -> Result<()> {
+    let (u, v) = compute_curvature(mesh);
 
-        (u, None)
-    }
-}
+    let mut writer = VTUFile::from_mesh(mesh, tmesh::io::VTUEncoding::Binary);
+    writer.add_point_data("u", D, u.iter().flatten().copied());
+    writer.add_point_data("v", D, v.as_ref().unwrap().iter().flatten().copied());
+    writer.export(fname)?;
 
-impl<T: Idx, M: Mesh<3, C = Triangle<T>>> HasCurvature<3> for M {
-    fn compute_curvature(&self) -> (Vec<Vertex<3>>, Option<Vec<Vertex<3>>>) {
-        let (mut u, mut v) = compute_curvature_tensor_3d(self);
-        fix_curvature(self, &mut u, Some(&mut v));
-        (u, Some(v))
-    }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use tmesh::{
-        Vertex,
-        mesh::{BoundaryMesh2d, Edge, GSimplex, GenericMesh, Mesh, Node},
+        Vert3d, Vertex, assert_delta,
+        mesh::{
+            BoundaryMesh2d, Edge, GSimplex, GenericMesh, Mesh, Node, QuadraticBoundaryMesh2d,
+            QuadraticBoundaryMesh3d, quadratic_circle_mesh, quadratic_sphere_mesh,
+        },
     };
 
     use crate::{
         H_MAX,
-        geometry::MeshedGeometry,
-        mesh::{MeshTopology, test_meshes::test_mesh_2d},
+        geometry::{Geometry, MeshedGeometry, curvature::compute_curvature},
+        mesh::{
+            MeshTopology,
+            test_meshes::{CylinderGeometry, cylinder, test_mesh_2d},
+        },
     };
 
     use super::{compute_curvature_tensor_2d, compute_curvature_tensor_3d, fix_curvature};
@@ -597,6 +619,77 @@ mod tests {
             let cos_a = v.dot(&v_ref);
 
             assert!(f64::abs(cos_a) > 0.98, "{cos_a}");
+        }
+    }
+
+    #[test]
+    fn test_curvature_quadratic_circle() {
+        let r = 1.234;
+        let mesh: QuadraticBoundaryMesh2d = quadratic_circle_mesh(r, 20);
+        let (u, _) = compute_curvature(&mesh);
+        for (u, ge) in u.iter().zip(mesh.gelems()) {
+            let c = ge.center();
+            assert_delta!(u.norm(), 1.0 / r, 6e-3);
+            assert!(f64::abs(c.dot(u)) < 1e-2);
+        }
+    }
+
+    #[test]
+    fn test_curvature_quadratic_sphere() {
+        let r = 2.0;
+        let mesh: QuadraticBoundaryMesh3d = quadratic_sphere_mesh(r, 3);
+        let (u, v) = compute_curvature(&mesh);
+        let v = v.unwrap();
+
+        for ((u, v), ge) in u.iter().zip(&v).zip(mesh.gelems()) {
+            let c = ge.center();
+            assert_delta!(u.norm(), 1.0 / r, 7e-3);
+            assert!(f64::abs(c.dot(u)) < 1e-2);
+            assert_delta!(v.norm(), 1.0 / r, 7e-3);
+            assert!(f64::abs(c.dot(v)) < 1e-2);
+        }
+    }
+
+    #[test]
+    fn test_curvature_quadratic_cylinder() {
+        let r = 2.0;
+        let geom = CylinderGeometry(r);
+        let mut mesh = cylinder(r, 10);
+        mesh.fix().unwrap();
+        mesh.write_meshb("cylinder-lin0.meshb").unwrap();
+
+        let topo = MeshTopology::new(&mesh);
+        let d = geom.project_vertices(&mut mesh, &topo);
+        assert_delta!(d, 0.0, 1e-12);
+        mesh.write_meshb("cylinder-lin.meshb").unwrap();
+
+        let mesh: QuadraticBoundaryMesh3d = geom.to_quadratic_triangle_mesh(&mesh);
+        mesh.write_meshb("cylinder.meshb").unwrap();
+
+        let (u, v) = compute_curvature(&mesh);
+        let v = v.unwrap();
+
+        for (((u, v), ge), tag) in u.iter().zip(&v).zip(mesh.gelems()).zip(mesh.etags()) {
+            match tag {
+                1 | 2 => {
+                    assert_delta!(u.norm(), 0.0, 1e-8);
+                    assert_delta!(v.norm(), 0.0, 1e-8);
+                }
+                3 => {
+                    assert_delta!(u.norm(), 0.0, 1e-8);
+                    assert_delta!(v.norm(), 0.5, 5e-3);
+                    let v = v.normalize();
+                    assert_delta!(v[2], 0.0, 1e-8);
+                    let c = ge.center();
+                    let n = Vert3d::new(c[0], c[1], 0.0);
+                    assert_delta!(v.dot(&n), 0.0, 5e-3);
+
+                    let u = u.normalize();
+                    let ez = Vert3d::new(0.0, 0.0, 1.0);
+                    assert_delta!(u.dot(&ez).abs(), 1.0, 1e-8);
+                }
+                _ => unreachable!(),
+            }
         }
     }
 }

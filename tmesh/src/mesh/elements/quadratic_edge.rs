@@ -1,5 +1,3 @@
-use argmin::core::{CostFunction, Executor, Gradient, Hessian};
-
 use crate::{
     Vertex,
     mesh::{
@@ -7,6 +5,7 @@ use crate::{
         elements::{ho_simplex::HOType, quadratures::QUADRATURE_EDGE_6},
     },
 };
+use argmin::core::{CostFunction, Executor, Gradient, Hessian};
 use std::fmt::Debug;
 use std::ops::Index;
 
@@ -62,6 +61,27 @@ impl<const D: usize> QuadraticGEdge<D> {
 
     fn hess_mapping(&self, _bcoords: &[f64; 2]) -> [Vertex<D>; 3] {
         [4.0 * self[0], 4.0 * self[1], 4.0 * self[2]]
+    }
+
+    /// Curvature at the center of the edge
+    #[must_use]
+    pub fn curvature(&self) -> Vertex<D> {
+        let bcoords = [0.5, 0.5];
+        let [g_u, g_v] = self.jac_mapping(&bcoords);
+        let g = g_v - g_u;
+        let [h_uu, h_vv, h_uv] = self.hess_mapping(&bcoords);
+        let h = h_uu + h_vv - 2.0 * h_uv;
+        let f = if D == 3 {
+            g.cross(&h).norm()
+        } else {
+            (g[0] * h[1] - g[1] * h[0]).abs()
+        };
+        let res = f / g.norm_squared().powi(2) * g;
+        if res.norm() > 1e-12 {
+            res
+        } else {
+            1e-12 * g.normalize()
+        }
     }
 
     fn bezier(&self) -> Self {
