@@ -14,7 +14,7 @@ rayon = "1.10.0"
 rustc-hash = "2.1.1"
 serde = { version = "1.0.225", features = ["derive"]}
 tempfile = "3.22.0"
-kdtree = { version = "0.7" }
+kdtree = { version = "0.8" }
 parry3d-f64 = { version = "0.25.3" }
 parry2d-f64 = { version = "0.25.3" }
 coupe = { git = "https://github.com/LIHPC-Computational-Geometry/coupe.git", rev = "20f0de6" }
