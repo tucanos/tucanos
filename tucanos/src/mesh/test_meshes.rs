@@ -1,16 +1,18 @@
 use tmesh::{
     Vert2d, Vert3d,
     mesh::{
-        BoundaryMesh3d, Edge, GenericMesh, Mesh, Mesh2d, Mesh3d, Prism, Simplex, Tetrahedron,
-        Triangle, pri2tets,
+        BoundaryMesh3d, Edge, GenericMesh, Mesh, Mesh2d, Mesh3d, Prism, Quadrangle, Simplex,
+        Tetrahedron, Triangle, pri2tets,
     },
 };
 
-use crate::{Dim, Error, Result, TopoTag};
-use crate::{geometry::Geometry, mesh::MeshTopology};
-use std::fs::File;
-use std::io::Write;
-use std::iter::{once, repeat_n};
+use crate::{Dim, Error, Result, TopoTag, mesh::MeshTopology};
+use crate::{geometry::Geometry, mesh::Topology};
+use std::{
+    f64::consts::PI,
+    iter::{once, repeat_n},
+};
+use std::{fs::File, io::Write};
 
 /// Build a 2d mesh of a square with 2 triangles tagged differently
 /// WARNING: the mesh tags are not valid as the diagonal (0, 2) is between
@@ -114,7 +116,7 @@ pub fn test_mesh_moon_2d() -> Mesh2d {
 pub struct GeomHalfCircle2d();
 
 impl Geometry<2> for GeomHalfCircle2d {
-    fn check(&self, topo: &crate::mesh::Topology) -> Result<()> {
+    fn check(&self, topo: &Topology) -> Result<()> {
         let ntags = [1, 2, 1];
         let tags: [TopoTag; 4] = [(2, 1), (1, 1), (1, 2), (0, 1)];
 
@@ -356,7 +358,7 @@ endsolid Created by Gmsh";
 pub struct SphereGeometry;
 
 impl Geometry<3> for SphereGeometry {
-    fn check(&self, _topo: &super::Topology) -> Result<()> {
+    fn check(&self, _topo: &Topology) -> Result<()> {
         Ok(())
     }
 
@@ -462,7 +464,7 @@ pub fn sphere_mesh(level: usize) -> Mesh3d {
 pub struct ConcentricCircles;
 
 impl Geometry<2> for ConcentricCircles {
-    fn check(&self, _topo: &super::Topology) -> Result<()> {
+    fn check(&self, _topo: &Topology) -> Result<()> {
         Ok(())
     }
 
@@ -535,7 +537,7 @@ pub fn concentric_circles_mesh(nr: usize) -> Mesh2d {
 pub struct ConcentricSpheres;
 
 impl Geometry<3> for ConcentricSpheres {
-    fn check(&self, _topo: &super::Topology) -> Result<()> {
+    fn check(&self, _topo: &Topology) -> Result<()> {
         Ok(())
     }
 
@@ -617,6 +619,148 @@ pub fn concentric_spheres_mesh(nr: usize) -> Mesh3d {
             once(2),
         );
     }
+
+    res
+}
+
+pub struct CylinderGeometry(pub f64);
+
+impl Geometry<3> for CylinderGeometry {
+    fn check(&self, _topo: &Topology) -> Result<()> {
+        Ok(())
+    }
+
+    fn project(&self, pt: &mut Vert3d, tag: &TopoTag) -> f64 {
+        let r_xy = pt[0].hypot(pt[1]);
+        let z = pt[2];
+        if (z - 0.5).abs() < 1e-3 {
+            println!("{pt:?} {tag:?}");
+        }
+        match tag.0 {
+            2 => match tag.1 {
+                1 => {
+                    pt[2] = 0.0;
+                    if r_xy > self.0 {
+                        pt[0] *= self.0 / r_xy;
+                        pt[1] *= self.0 / r_xy;
+                        return (r_xy - self.0).hypot(z);
+                    }
+                    z.abs()
+                }
+                2 => {
+                    pt[2] = 1.0;
+                    if r_xy > self.0 {
+                        pt[0] *= self.0 / r_xy;
+                        pt[1] *= self.0 / r_xy;
+                        return (r_xy - self.0).hypot(z - 1.0);
+                    }
+                    (z - 1.0).abs()
+                }
+                3 => {
+                    println!("{pt:?} ->");
+                    pt[0] *= self.0 / r_xy;
+                    pt[1] *= self.0 / r_xy;
+                    if z < 0.0 {
+                        pt[2] = 0.0;
+                        return (r_xy - self.0).hypot(z);
+                    }
+                    if z > 1.0 {
+                        pt[2] = 1.0;
+                        return (r_xy - self.0).hypot(z - 1.0);
+                    }
+                    println!("{pt:?}");
+
+                    (r_xy - self.0).abs()
+                }
+                _ => unreachable!(),
+            },
+            1 => match tag.1 {
+                2 => {
+                    pt[2] = 0.0;
+                    pt[0] *= self.0 / r_xy;
+                    pt[1] *= self.0 / r_xy;
+                    (r_xy - self.0).hypot(z)
+                }
+                1 => {
+                    pt[2] = 1.0;
+                    pt[0] *= self.0 / r_xy;
+                    pt[1] *= self.0 / r_xy;
+                    (r_xy - self.0).hypot(z - 1.0)
+                }
+                _ => unreachable!(),
+            },
+            _ => unreachable!(),
+        }
+    }
+
+    fn angle(&self, pt: &Vert3d, n: &Vert3d, tag: &TopoTag) -> f64 {
+        let n_ref = match tag.0 {
+            2 => match tag.1 {
+                1 => Vert3d::new(0.0, 0.0, -1.0),
+                2 => Vert3d::new(0.0, 0.0, 1.0),
+                3 => {
+                    let mut pt = *pt;
+                    pt[2] = 0.0;
+                    pt.normalize_mut();
+                    pt
+                }
+                _ => unreachable!(),
+            },
+            _ => unreachable!(),
+        };
+        let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
+        f64::acos(cos_a).to_degrees()
+    }
+}
+
+#[must_use]
+pub fn cylinder(r: f64, n: usize) -> BoundaryMesh3d {
+    let dtheta = 2.0 * PI / n as f64;
+    let mut res = BoundaryMesh3d::empty();
+    res.add_verts(once(Vert3d::new(0.0, 0.0, 0.0)));
+    res.add_verts((0..n).map(|i| {
+        let theta = i as f64 * dtheta;
+        Vert3d::new(r * theta.cos(), r * theta.sin(), 0.0)
+    }));
+
+    res.add_verts(once(Vert3d::new(0.0, 0.0, 1.0)));
+    res.add_verts((0..n).map(|i| {
+        let theta = i as f64 * dtheta;
+        Vert3d::new(r * theta.cos(), r * theta.sin(), 1.0)
+    }));
+
+    let i_theta = |i| i % n;
+
+    let offset_bottom = 1;
+    res.add_elems_and_tags((0..n).map(|i| {
+        (
+            Triangle::new(
+                0,
+                offset_bottom + i_theta(i + 1),
+                offset_bottom + i_theta(i),
+            ),
+            1,
+        )
+    }));
+    let offset_top = n + 2;
+    res.add_elems_and_tags((0..n).map(|i| {
+        (
+            Triangle::new(n + 1, offset_top + i_theta(i), offset_top + i_theta(i + 1)),
+            2,
+        )
+    }));
+    res.add_quadrangles(
+        (0..n).map(|i| {
+            Quadrangle::new(
+                offset_bottom + i_theta(i),
+                offset_bottom + i_theta(i + 1),
+                offset_top + i_theta(i + 1),
+                offset_top + i_theta(i),
+            )
+        }),
+        repeat_n(3, n),
+    );
+    res.fix().unwrap();
 
     res
 }

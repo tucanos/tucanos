@@ -21,10 +21,11 @@ coupe = { git = "https://github.com/LIHPC-Computational-Geometry/coupe.git", rev
 metis = { git = "https://github.com/tucanos/metis-rs.git", rev = "d31aa3e", optional=true}
 lindel = "0.1.1"
 stl_io = "0.10.0"
+argmin = {path="../../argmin/crates/argmin"}
+argmin-math = { path="../../argmin/crates/argmin-math", features = ["nalgebra_latest"] }
+argmin-observer-slog = { path="../../argmin/crates/argmin-observer-slog"}
 env_logger = "0.11.8"
-argmin = "0.11.0"
-argmin-math = { version = "0.5.1", features = ["nalgebra_latest"] }
-argmin-observer-slog = "0.2.0"
+
 
 [features]
 32bit-tags = []

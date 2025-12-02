@@ -6,6 +6,7 @@ use crate::{
     },
 };
 use argmin::core::{CostFunction, Executor, Gradient, Hessian};
+use nalgebra::SMatrix;
 use std::fmt::Debug;
 use std::ops::Index;
 
@@ -86,6 +87,61 @@ impl<const D: usize> QuadraticGTriangle<D> {
             4.0 * self[5],
             4.0 * self[4],
         ]
+    }
+
+    /// Curvature at the center of the triangle
+    #[must_use]
+    pub fn curvature(&self) -> (Vertex<D>, Vertex<D>) {
+        assert_eq!(D, 3);
+        let bcoords = [1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0];
+        let [g_u, mut g_v, mut g_w] = self.jac_mapping(&bcoords);
+        g_v -= g_u;
+        g_w -= g_u;
+        let n = g_v.cross(&g_w).normalize();
+        let b = SMatrix::<f64, 2, 2>::new(
+            g_v.norm_squared(),
+            g_v.dot(&g_w),
+            g_v.dot(&g_w),
+            g_w.norm_squared(),
+        );
+
+        let [h_uu, h_vv, h_ww, h_uv, h_uw, h_vw] = self.hess_mapping(&bcoords);
+
+        let a = SMatrix::<f64, 2, 2>::new(
+            (h_uu + h_vv - 2.0 * h_uv).dot(&n),
+            (h_uu + h_vw - h_uv - h_uw).dot(&n),
+            (h_uu + h_vw - h_uv - h_uw).dot(&n),
+            (h_uu + h_ww - 2.0 * h_uw).dot(&n),
+        );
+        let mut eig = b.symmetric_eigen();
+        eig.eigenvalues.iter_mut().for_each(|s| *s = 1.0 / s.sqrt());
+        let tmp = eig.recompose();
+
+        let p = tmp * a * tmp;
+        let eig = p.symmetric_eigen();
+        let p = eig.eigenvectors;
+        let tmp = tmp * p;
+
+        let ev0 = if eig.eigenvalues[0].abs() < 1e-16 {
+            1e-12
+        } else {
+            eig.eigenvalues[0]
+        };
+        let ev1 = if eig.eigenvalues[1].abs() < 1e-16 {
+            1e-12
+        } else {
+            eig.eigenvalues[1]
+        };
+
+        let mut u = tmp[0] * g_v + tmp[1] * g_w;
+        u.normalize_mut();
+        u *= ev0;
+
+        let mut v = tmp[2] * g_v + tmp[3] * g_w;
+        v.normalize_mut();
+        v *= ev1;
+
+        (u, v)
     }
 
     fn bezier(&self) -> Self {
@@ -252,7 +308,8 @@ impl<const D: usize> GSimplex<D> for QuadraticGTriangle<D> {
 
     fn normal(&self, bcoords: Option<&Self::BCOORDS>) -> Vertex<D> {
         if Self::has_normal() {
-            let [du, mut dv, mut dw] = self.jac_mapping(bcoords.unwrap());
+            let [du, mut dv, mut dw] =
+                self.jac_mapping(bcoords.unwrap_or(&[1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0]));
             dv -= du;
             dw -= du;
             0.125 * dv.cross(&dw)
@@ -277,20 +334,16 @@ impl<const D: usize> GSimplex<D> for QuadraticGTriangle<D> {
             .with_tolerance(1e-10)
             .unwrap();
 
-        if let Ok(res) = Executor::new(QuadraticTriangleProjection { v, ge: self }, solver)
+        let res = Executor::new(QuadraticTriangleProjection { v, ge: self }, solver)
             .configure(|state| state.param([uvw[1], uvw[2]].into()).max_iters(100))
             // .add_observer(
             //     argmin_observer_slog::SlogLogger::term(),
             //     argmin::core::observers::ObserverMode::Always,
             // )
             .run()
-        {
-            let res = res.state.best_param.unwrap();
-            [1.0 - res[0] - res[1], res[0], res[1]]
-        } else {
-            panic!()
-            // [f64::NAN, f64::NAN, f64::NAN]
-        }
+            .unwrap();
+        let res = res.state.best_param.unwrap();
+        [1.0 - res[0] - res[1], res[0], res[1]]
     }
 
     /// Vertex from barycentric coordinates

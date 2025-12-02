@@ -119,8 +119,7 @@ pub enum GradientMethod {
     L2Projection,
 }
 
-/// D-dimensional mesh containing simplices with C nodes
-/// F = C-1 is given explicitely to be usable with rust stable
+/// D-dimensional mesh simplex mesh
 pub trait Mesh<const D: usize>: Send + Sync + Sized {
     type C: Simplex;
 
