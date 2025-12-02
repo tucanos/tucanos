@@ -308,7 +308,8 @@ impl<const D: usize> GSimplex<D> for QuadraticGTriangle<D> {
 
     fn normal(&self, bcoords: Option<&Self::BCOORDS>) -> Vertex<D> {
         if Self::has_normal() {
-            let [du, mut dv, mut dw] = self.jac_mapping(bcoords.unwrap());
+            let [du, mut dv, mut dw] =
+                self.jac_mapping(bcoords.unwrap_or(&[1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0]));
             dv -= du;
             dw -= du;
             0.125 * dv.cross(&dw)
@@ -333,20 +334,16 @@ impl<const D: usize> GSimplex<D> for QuadraticGTriangle<D> {
             .with_tolerance(1e-10)
             .unwrap();
 
-        if let Ok(res) = Executor::new(QuadraticTriangleProjection { v, ge: self }, solver)
+        let res = Executor::new(QuadraticTriangleProjection { v, ge: self }, solver)
             .configure(|state| state.param([uvw[1], uvw[2]].into()).max_iters(100))
             // .add_observer(
             //     argmin_observer_slog::SlogLogger::term(),
             //     argmin::core::observers::ObserverMode::Always,
             // )
             .run()
-        {
-            let res = res.state.best_param.unwrap();
-            [1.0 - res[0] - res[1], res[0], res[1]]
-        } else {
-            panic!()
-            // [f64::NAN, f64::NAN, f64::NAN]
-        }
+            .unwrap();
+        let res = res.state.best_param.unwrap();
+        [1.0 - res[0] - res[1], res[0], res[1]]
     }
 
     /// Vertex from barycentric coordinates

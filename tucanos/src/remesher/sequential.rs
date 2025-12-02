@@ -979,15 +979,15 @@ mod tests {
     use tmesh::{
         Vert2d, Vert3d, assert_delta,
         mesh::{
-            BoundaryMesh3d, Edge, GSimplex, GenericMesh, Mesh, Mesh3d, Simplex, Tetrahedron,
-            Triangle, ball_mesh, sphere_mesh,
+            BoundaryMesh3d, Edge, GSimplex, GenericMesh, Mesh, Mesh3d, QuadraticBoundaryMesh3d,
+            Simplex, Tetrahedron, Triangle, ball_mesh, sphere_mesh,
         },
     };
 
     use super::RemesherParams;
     use crate::{
         Result,
-        geometry::{MeshedGeometry, NoGeometry},
+        geometry::{Geometry, MeshedGeometry, NoGeometry},
         mesh::{
             MeshTopology,
             test_meshes::{
@@ -1825,6 +1825,105 @@ mod tests {
             if iter == 1 {
                 assert_delta!(mini, 0.46, 0.01);
                 assert_delta!(maxi, 1.51, 0.01);
+            }
+
+            // let fname = format!("sphere_{}.vtu", iter + 1);
+            // mesh.write_vtk(&fname, None, None)?;
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_adapt_aniso_3d_linear_geom() -> Result<()> {
+        let mut mesh: Mesh3d = ball_mesh(1.0, 3);
+        let bdy: BoundaryMesh3d = sphere_mesh(1.0, 6);
+
+        let topo = MeshTopology::new(&mesh);
+        let geom = MeshedGeometry::new(&mesh, &topo, bdy)?;
+
+        let mfunc = |_p| {
+            let v0 = Vert3d::new(0.5, 0., 0.);
+            let v1 = Vert3d::new(0.0, 0.5, 0.);
+            let v2 = Vert3d::new(0., 0.0, 0.1);
+            AnisoMetric3d::from_sizes(&v0, &v1, &v2)
+        };
+
+        // let fname = format!("sphere_{}.vtu", 0);
+        // mesh.write_vtk(&fname, None, None)?;
+
+        for iter in 0..2 {
+            let h: Vec<_> = mesh.verts().map(mfunc).collect();
+
+            let topo = MeshTopology::new(&mesh);
+            let mut remesher = Remesher::new(&mesh, &topo, &h, &geom)?;
+
+            let mut params = RemesherParams::default();
+            for step in &mut params.steps {
+                if let RemeshingStep::Split(p) = step {
+                    p.min_q_abs = 0.25;
+                }
+            }
+            remesher.remesh(&params, &geom)?;
+            remesher.check()?;
+
+            mesh = remesher.to_mesh(true);
+
+            let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
+
+            if iter == 1 {
+                assert_delta!(mini, 0.48, 0.01);
+                assert_delta!(maxi, 1.72, 0.01);
+            }
+
+            // let fname = format!("sphere_{}.vtu", iter + 1);
+            // mesh.write_vtk(&fname, None, None)?;
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_adapt_aniso_3d_quadratic_geom() -> Result<()> {
+        let mut mesh: Mesh3d = ball_mesh(1.0, 3);
+        let bdy: BoundaryMesh3d = sphere_mesh(1.0, 4);
+        let geom = SphereGeometry;
+        let bdy: QuadraticBoundaryMesh3d = geom.to_quadratic_triangle_mesh(&bdy);
+        let topo = MeshTopology::new(&mesh);
+        let geom = MeshedGeometry::new(&mesh, &topo, bdy)?;
+
+        let mfunc = |_p| {
+            let v0 = Vert3d::new(0.5, 0., 0.);
+            let v1 = Vert3d::new(0.0, 0.5, 0.);
+            let v2 = Vert3d::new(0., 0.0, 0.1);
+            AnisoMetric3d::from_sizes(&v0, &v1, &v2)
+        };
+
+        // let fname = format!("sphere_{}.vtu", 0);
+        // mesh.write_vtk(&fname, None, None)?;
+
+        for iter in 0..2 {
+            let h: Vec<_> = mesh.verts().map(mfunc).collect();
+
+            let topo = MeshTopology::new(&mesh);
+            let mut remesher = Remesher::new(&mesh, &topo, &h, &geom)?;
+
+            let mut params = RemesherParams::default();
+            for step in &mut params.steps {
+                if let RemeshingStep::Split(p) = step {
+                    p.min_q_abs = 0.25;
+                }
+            }
+            remesher.remesh(&params, &geom)?;
+            remesher.check()?;
+
+            mesh = remesher.to_mesh(true);
+
+            let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
+
+            if iter == 1 {
+                assert_delta!(mini, 0.48, 0.01);
+                assert_delta!(maxi, 1.54, 0.01);
             }
 
             // let fname = format!("sphere_{}.vtu", iter + 1);

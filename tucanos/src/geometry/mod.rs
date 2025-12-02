@@ -45,12 +45,23 @@ pub trait Geometry<const D: usize>: Send + Sync {
     /// Compute the max distance between the face centers and the geometry normals
     fn max_distance<M: Mesh<D>>(&self, mesh: &M) -> f64 {
         let mut d_max = 0.0;
-        for (gf, tag) in mesh.gfaces().zip(mesh.ftags()) {
-            let mut c = gf.center();
-            let d = self.project(&mut c, &(<M::C as Simplex>::FACE::DIM as Dim, tag));
-            d_max = f64::max(d_max, d);
+        if M::C::DIM == D {
+            for (gf, tag) in mesh.gfaces().zip(mesh.ftags()) {
+                let mut c = gf.center();
+                let d = self.project(&mut c, &(<M::C as Simplex>::FACE::DIM as Dim, tag));
+                d_max = f64::max(d_max, d);
+            }
+            d_max
+        } else if M::C::DIM == D - 1 {
+            for (gf, tag) in mesh.gelems().zip(mesh.etags()) {
+                let mut c = gf.center();
+                let d = self.project(&mut c, &(<M::C as Simplex>::DIM as Dim, tag));
+                d_max = f64::max(d_max, d);
+            }
+            d_max
+        } else {
+            unreachable!();
         }
-        d_max
     }
 
     /// Compute the max angle between the face normals and the geometry normals
