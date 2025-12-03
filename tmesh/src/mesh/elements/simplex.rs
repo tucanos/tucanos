@@ -21,8 +21,7 @@ pub trait Simplex:
     + Hash
     + Eq
     + PartialEq
-where
-    <Self as Simplex>::FACE: 'static,
+    + 'static
 {
     type T: Idx;
     type FACE: Simplex<T = Self::T>;
@@ -100,9 +99,6 @@ where
         (0..Self::N_FACES).map(|i| self.face(i))
     }
 
-    /// Get a quadrature (weights and points)
-    fn quadrature() -> (Vec<f64>, Vec<Vec<f64>>);
-
     /// Sort the vertex indices
     #[must_use]
     fn sorted(&self) -> Self;
@@ -112,6 +108,12 @@ where
 
     /// Invert the element
     fn invert(&mut self);
+
+    /// Is the simplex linear?
+    #[must_use]
+    fn order() -> u8 {
+        1
+    }
 }
 
 pub trait GSimplex<const D: usize>:
@@ -124,6 +126,7 @@ pub trait GSimplex<const D: usize>:
     + Sync
     + Copy
     + Clone
+    + 'static
 {
     type ARRAY<T: Debug + Default + Clone + Copy>: IntoIterator<Item = T>
         + Debug
@@ -188,14 +191,27 @@ pub trait GSimplex<const D: usize>:
     #[must_use]
     fn has_normal() -> bool;
 
+    /// Integration
+    fn integrate<G: Fn(&Self::BCOORDS) -> f64>(&self, f: G) -> f64;
+
     /// Get the volume of a simplex
     fn vol(&self) -> f64;
 
-    /// Normal to the vertex
-    fn normal(&self) -> Vertex<D>;
+    /// Normal to the simplex
+    ///   - if `bcoords.is_some()` at a given location (norm = 1)
+    ///   - if `bcoords.is_none()` integrated over the element
+    fn normal(&self, bcoords: Option<&Self::BCOORDS>) -> Vertex<D>;
 
     /// Radius (=diameter of the inner circle / sphere)
     fn radius(&self) -> f64;
+
+    /// Barycentric coordinates of the center
+    fn center_bcoords() -> Self::BCOORDS;
+
+    /// Center
+    fn center(&self) -> Vertex<D> {
+        self.vert(&Self::center_bcoords())
+    }
 
     /// Barycentric coordinates
     fn bcoords(&self, v: &Vertex<D>) -> Self::BCOORDS;
@@ -205,52 +221,53 @@ pub trait GSimplex<const D: usize>:
         bcoords.into_iter().zip(*self).map(|(w, v)| w * v).sum()
     }
 
-    /// Center
-    fn center(&self) -> Vertex<D> {
-        let res = self.into_iter().sum::<Vertex<D>>();
-        (1.0 / Self::N_VERTS as f64) * res
-    }
-
     /// Gamma quality measure, ratio of inscribed radius to circumradius
     /// normalized to be between 0 and 1
     fn gamma(&self) -> f64;
 
     /// Project a point on the simplex
-    fn project(&self, v: &Vertex<D>) -> Vertex<D> {
-        self.project_inside(v).map_or_else(
+    fn project(&self, v: &Vertex<D>) -> (Vertex<D>, bool) {
+        let (bcoords, p) = self.project_inside(v);
+
+        p.map_or_else(
             || {
-                let mut p = self.face(0).project(v);
-                let mut d = (v - p).norm_squared();
-                for j in 1..Self::TOPO::N_FACES {
-                    let p1 = self.face(j).project(v);
-                    let d1 = (v - p1).norm_squared();
-                    if d1 < d {
-                        d = d1;
-                        p = p1;
+                let mut p = Vertex::zeros();
+                let mut d = f64::MAX;
+                let mut ok = false;
+                for (x, f) in bcoords.into_iter().zip(self.faces()) {
+                    if x <= 0.0 {
+                        let (p1, _) = f.project(v);
+                        let d1 = (v - p1).norm_squared();
+                        if d1 < d {
+                            d = d1;
+                            p = p1;
+                            ok = true;
+                        }
                     }
                 }
-                p
+                debug_assert!(ok, "bcoords = {bcoords:?}");
+                (p, false)
             },
-            |pt| pt,
+            |pt| (pt, true),
         )
     }
 
     /// Try to project a point inside the simplex
     #[must_use]
-    fn project_inside(&self, v: &Vertex<D>) -> Option<Vertex<D>> {
+    fn project_inside(&self, v: &Vertex<D>) -> (Self::BCOORDS, Option<Vertex<D>>) {
         let bcoords = self.bcoords(v);
-        let p = self.vert(&bcoords);
         if bcoords.into_iter().all(|x| x > 0.0) {
-            Some(p)
+            let p = self.vert(&bcoords);
+            (bcoords, Some(p))
         } else {
-            None
+            (bcoords, None)
         }
     }
 
     /// Distance from a point to the simplex
     #[must_use]
     fn distance(&self, v: &Vertex<D>) -> f64 {
-        let pt = self.project(v);
+        let (pt, _) = self.project(v);
         (v - pt).norm()
     }
 
@@ -284,6 +301,9 @@ pub trait GSimplex<const D: usize>:
         }
         res
     }
+
+    /// Get the bounding box
+    fn bounding_box(&self) -> (Vertex<D>, Vertex<D>);
 }
 
 /// Compute a `FxHashMap` that maps face-to-vertex connectivity (sorted) to a vector of element indices

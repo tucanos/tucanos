@@ -172,7 +172,7 @@ fn check_geom(mesh: &Mesh3d, geom: &Simple3dGeometry) {
                 max_dist.insert(tag, dist);
             }
         }
-        let angle = geom.angle(&gface.center(), &gface.normal().normalize(), &(2, tag));
+        let angle = geom.angle(&gface.center(), &gface.normal(None).normalize(), &(2, tag));
         if let Some(v) = max_angle.get_mut(&tag) {
             *v = v.max(angle);
         } else {
@@ -317,9 +317,9 @@ fn main() -> Result<()> {
     } else {
         #[cfg(feature = "metis")]
         let mut dd =
-            ParallelRemesher::<_, _, _, MetisPartitioner<MetisRecursive>>::new(mesh, topo, n_part)?;
+            ParallelRemesher::<_, _, MetisPartitioner<MetisRecursive>>::new(mesh, topo, n_part)?;
         #[cfg(not(feature = "metis"))]
-        let mut dd = ParallelRemesher::<_, _, _, HilbertPartitioner>::new(mesh, topo, n_part)?;
+        let mut dd = ParallelRemesher::<_, _, HilbertPartitioner>::new(mesh, topo, n_part)?;
         dd.set_debug(debug);
         let dd_params = ParallelRemesherParams::new(2, 2, 10000);
         let (mesh, stats, _) = dd.remesh(&metric, &geom, params, &dd_params)?;

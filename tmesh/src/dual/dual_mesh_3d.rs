@@ -113,9 +113,11 @@ impl<T: Idx> PolyMesh<3> for DualMesh3d<T> {
     }
 }
 
-impl<T: Idx> DualMesh<3, Tetrahedron<T>> for DualMesh3d<T> {
+impl<T: Idx> DualMesh<3> for DualMesh3d<T> {
+    type C = Tetrahedron<T>;
+
     #[allow(clippy::too_many_lines)]
-    fn new(msh: &impl Mesh<3, Tetrahedron<T>>, t: DualType) -> Self {
+    fn new(msh: &impl Mesh<3, C = Tetrahedron<T>>, t: DualType) -> Self {
         // edges
         let all_edges = msh.edges();
         let n_edges = all_edges.len();
@@ -251,7 +253,7 @@ impl<T: Idx> DualMesh<3, Tetrahedron<T>> for DualMesh3d<T> {
                             &verts[face.get(1)],
                             &verts[face.get(2)],
                         );
-                        edge_normals[i_edge] += sgn * gf.normal();
+                        edge_normals[i_edge] += sgn * gf.normal(None);
 
                         let sorted_face = face.sorted();
                         let is_sorted = face.is_same(&sorted_face);
@@ -333,7 +335,7 @@ impl<T: Idx> DualMesh<3, Tetrahedron<T>> for DualMesh3d<T> {
                         &verts[face.get(1)],
                         &verts[face.get(2)],
                     );
-                    bdy_faces.push((edg.get(0), tag, gf.normal()));
+                    bdy_faces.push((edg.get(0), tag, gf.normal(None)));
 
                     let sorted_face = face.sorted();
                     let is_sorted = face.is_same(&sorted_face);
@@ -376,7 +378,7 @@ impl<T: Idx> DualMesh<3, Tetrahedron<T>> for DualMesh3d<T> {
                         &verts[face.get(1)],
                         &verts[face.get(2)],
                     );
-                    bdy_faces.push((edg.get(0), tag, gf.normal()));
+                    bdy_faces.push((edg.get(0), tag, gf.normal(None)));
 
                     let sorted_face = face.sorted();
                     let is_sorted = face.is_same(&sorted_face);

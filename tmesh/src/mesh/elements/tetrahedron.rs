@@ -108,17 +108,6 @@ impl<T: Idx> Simplex for Tetrahedron<T> {
         self.0.contains(&i.try_into().unwrap())
     }
 
-    fn quadrature() -> (Vec<f64>, Vec<Vec<f64>>) {
-        let weights = vec![0.25, 0.25, 0.25, 0.25];
-        let pts = vec![
-            vec![0.1381966011250105, 0.1381966011250105, 0.1381966011250105],
-            vec![0.5854101966249685, 0.1381966011250105, 0.1381966011250105],
-            vec![0.1381966011250105, 0.5854101966249685, 0.1381966011250105],
-            vec![0.1381966011250105, 0.1381966011250105, 0.5854101966249685],
-        ];
-        (weights, pts)
-    }
-
     fn sorted(&self) -> Self {
         let mut tmp = *self;
         tmp.0.sort_unstable();
@@ -174,7 +163,15 @@ impl<const D: usize> GSimplex<D> for GTetrahedron<D> {
         e3.dot(&e1.cross(&e2)) / 6.0
     }
 
-    fn normal(&self) -> Vertex<D> {
+    fn integrate<G: Fn(&Self::BCOORDS) -> f64>(&self, f: G) -> f64 {
+        let mut res = 0.0;
+        for &(weight, v, w, t) in &super::quadratures::QUADRATURE_TETRAHEDRON_4 {
+            res += weight * f(&[1.0 - v - w - t, v, w, t]);
+        }
+        res * self.vol()
+    }
+
+    fn normal(&self, _bcoords: Option<&Self::BCOORDS>) -> Vertex<D> {
         unreachable!()
     }
 
@@ -185,6 +182,10 @@ impl<const D: usize> GSimplex<D> for GTetrahedron<D> {
         let a3 = self.face(3).vol();
         let v = self.vol();
         3.0 * v / (a0 + a1 + a2 + a3)
+    }
+
+    fn center_bcoords() -> Self::BCOORDS {
+        [0.25, 0.25, 0.25, 0.25]
     }
 
     fn bcoords(&self, v: &Vertex<D>) -> Self::BCOORDS {
@@ -243,6 +244,18 @@ impl<const D: usize> GSimplex<D> for GTetrahedron<D> {
         let rho = 9.0 * vol / (s1 + s2 + s3 + s4);
 
         rho / r
+    }
+
+    fn bounding_box(&self) -> (Vertex<D>, Vertex<D>) {
+        self.into_iter()
+            .skip(1)
+            .fold((self[0], self[0]), |mut a, b| {
+                for i in 0..D {
+                    a.0[i] = a.0[i].min(b[i]);
+                    a.1[i] = a.1[i].max(b[i]);
+                }
+                a
+            })
     }
 }
 
@@ -316,5 +329,18 @@ mod tests {
             assert_delta!(l0, l2, 1e-12);
             assert_delta!(l0, l3, 1e-12);
         }
+    }
+
+    #[test]
+    fn test_bb() {
+        let v0 = Vert3d::new(-1.0, 0.0, 2.0);
+        let v1 = Vert3d::new(1.0, -1.0, -1.5);
+        let v2 = Vert3d::new(-2.0, 0.0, 4.0);
+        let v3 = Vert3d::new(-1.0, 2.0, -1.0);
+        let ge = GTetrahedron([v0, v1, v2, v3]);
+        let (bb0, bb1) = ge.bounding_box();
+
+        assert_delta!((bb0 - Vert3d::new(-2.0, -1.0, -1.5)).norm(), 0., 1e-12);
+        assert_delta!((bb1 - Vert3d::new(1.0, 2.0, 4.0)).norm(), 0., 1e-12);
     }
 }

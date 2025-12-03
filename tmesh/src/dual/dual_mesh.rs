@@ -35,9 +35,11 @@ pub enum DualCellCenter<const D: usize, C: Simplex> {
 }
 
 /// Dual of a `Mesh<D, C, F>`
-pub trait DualMesh<const D: usize, C: Simplex>: PolyMesh<D> {
+pub trait DualMesh<const D: usize>: PolyMesh<D> {
+    type C: Simplex;
+
     /// Compute the dual of `mesh`
-    fn new(msh: &impl Mesh<D, C>, t: DualType) -> Self;
+    fn new(msh: &impl Mesh<D, C = Self::C>, t: DualType) -> Self;
 
     /// Display element `i`
     fn print_elem_info(&self, i: usize) {
@@ -67,24 +69,32 @@ pub trait DualMesh<const D: usize, C: Simplex>: PolyMesh<D> {
     }
 
     /// Get the vertex coordinates for face `f`
-    fn gface(&self, f: &C::FACE) -> <C::FACE as Simplex>::GEOM<D> {
-        <C::FACE as Simplex>::GEOM::from_iter(f.into_iter().map(|i| self.vert(i)))
+    fn gface(
+        &self,
+        f: &<Self::C as Simplex>::FACE,
+    ) -> <<Self::C as Simplex>::FACE as Simplex>::GEOM<D> {
+        <<Self::C as Simplex>::FACE as Simplex>::GEOM::from_iter(
+            f.into_iter().map(|i| self.vert(i)),
+        )
     }
 
     /// Parallel iterator over the faces vertex coordinates
     fn par_gfaces(
         &self,
-    ) -> impl IndexedParallelIterator<Item = <C::FACE as Simplex>::GEOM<D>> + '_ {
+    ) -> impl IndexedParallelIterator<Item = <<Self::C as Simplex>::FACE as Simplex>::GEOM<D>> + '_
+    {
         self.par_faces().map(|f| {
-            let f = C::FACE::from_iter(f);
+            let f = <Self::C as Simplex>::FACE::from_iter(f);
             self.gface(&f)
         })
     }
 
     /// Sequential iterator over the faces vertex coordinates
-    fn gfaces(&self) -> impl ExactSizeIterator<Item = <C::FACE as Simplex>::GEOM<D>> + '_ {
+    fn gfaces(
+        &self,
+    ) -> impl ExactSizeIterator<Item = <<Self::C as Simplex>::FACE as Simplex>::GEOM<D>> + '_ {
         self.faces().map(|f| {
-            let f = C::FACE::from_iter(f);
+            let f = <Self::C as Simplex>::FACE::from_iter(f);
             self.gface(&f)
         })
     }
@@ -93,15 +103,17 @@ pub trait DualMesh<const D: usize, C: Simplex>: PolyMesh<D> {
     fn n_edges(&self) -> usize;
 
     /// Get the `i`th edge
-    fn edge(&self, i: usize) -> Edge<C::T>;
+    fn edge(&self, i: usize) -> Edge<<Self::C as Simplex>::T>;
 
     /// Parallel itertator over the edges
-    fn par_edges(&self) -> impl IndexedParallelIterator<Item = Edge<C::T>> + '_ + Clone {
+    fn par_edges(
+        &self,
+    ) -> impl IndexedParallelIterator<Item = Edge<<Self::C as Simplex>::T>> + '_ + Clone {
         (0..self.n_edges()).into_par_iter().map(|i| self.edge(i))
     }
 
     /// Sequential iterator over the edges
-    fn edges(&self) -> impl ExactSizeIterator<Item = Edge<C::T>> + '_ + Clone {
+    fn edges(&self) -> impl ExactSizeIterator<Item = Edge<<Self::C as Simplex>::T>> + '_ + Clone {
         (0..self.n_edges()).map(|i| self.edge(i))
     }
 
@@ -111,14 +123,16 @@ pub trait DualMesh<const D: usize, C: Simplex>: PolyMesh<D> {
     /// Parallel iterator over the edges and edge normals
     fn par_edges_and_normals(
         &self,
-    ) -> impl IndexedParallelIterator<Item = (Edge<C::T>, Vertex<D>)> + '_ {
+    ) -> impl IndexedParallelIterator<Item = (Edge<<Self::C as Simplex>::T>, Vertex<D>)> + '_ {
         (0..self.n_edges())
             .into_par_iter()
             .map(|i| (self.edge(i), self.edge_normal(i)))
     }
 
     /// Sequential iterator over the edges and edge normals
-    fn edges_and_normals(&self) -> impl ExactSizeIterator<Item = (Edge<C::T>, Vertex<D>)> + '_ {
+    fn edges_and_normals(
+        &self,
+    ) -> impl ExactSizeIterator<Item = (Edge<<Self::C as Simplex>::T>, Vertex<D>)> + '_ {
         (0..self.n_edges()).map(|i| (self.edge(i), self.edge_normal(i)))
     }
 
@@ -137,13 +151,13 @@ pub trait DualMesh<const D: usize, C: Simplex>: PolyMesh<D> {
     fn vol(&self, i: usize) -> f64 {
         self.elem(i)
             .map(|(i, orient)| {
-                let mut f = C::FACE::from_iter(self.face(i));
+                let mut f = <Self::C as Simplex>::FACE::from_iter(self.face(i));
                 if !orient {
                     f.invert();
                 }
                 self.gface(&f)
             })
-            .map(|gf| gf.center().dot(&gf.normal()))
+            .map(|gf| gf.center().dot(&gf.normal(None)))
             .sum::<f64>()
             / D as f64
     }
@@ -163,14 +177,14 @@ pub trait DualMesh<const D: usize, C: Simplex>: PolyMesh<D> {
         let mut res = [0.0; D];
 
         e.map(|(i, orient)| {
-            let mut f = C::FACE::from_iter(self.face(i));
+            let mut f = <Self::C as Simplex>::FACE::from_iter(self.face(i));
             if !orient {
                 f.invert();
             }
             self.gface(&f)
         })
         .for_each(|gf| {
-            let n = gf.normal();
+            let n = gf.normal(None);
             res.iter_mut().zip(n.iter()).for_each(|(x, y)| *x += y);
         });
         res.iter().map(|x| x.abs()).sum::<f64>() < 1e-10
@@ -218,8 +232,8 @@ pub trait DualMesh<const D: usize, C: Simplex>: PolyMesh<D> {
         // all faces appear only once
         let mut faces = FxHashMap::with_hasher(FxBuildHasher);
         for (i, f) in self.faces().enumerate() {
-            assert_eq!(f.len(), C::FACE::N_VERTS);
-            let res = C::FACE::from_iter(f.clone()).sorted();
+            assert_eq!(f.len(), <Self::C as Simplex>::FACE::N_VERTS);
+            let res = <Self::C as Simplex>::FACE::from_iter(f.clone()).sorted();
             if let std::collections::hash_map::Entry::Vacant(e) = faces.entry(res) {
                 e.insert(i);
             } else {
@@ -271,7 +285,10 @@ pub trait DualMesh<const D: usize, C: Simplex>: PolyMesh<D> {
     }
 
     /// Return a `Mesh<D, C2, F2>` containing the faces such that `filter(tag)` is true.
-    fn extract_faces<M: Mesh<D, C::FACE>, G: Fn(Tag) -> bool>(&self, filter: G) -> (M, Vec<usize>) {
+    fn extract_faces<M: Mesh<D, C = <Self::C as Simplex>::FACE>, G: Fn(Tag) -> bool>(
+        &self,
+        filter: G,
+    ) -> (M, Vec<usize>) {
         // find out if faces needs to be inverted (boundary faces will only be seen once)
         let mut flg = vec![true; self.n_faces()];
         self.elems().flatten().for_each(|(i, x)| flg[i] = x);
@@ -310,7 +327,7 @@ pub trait DualMesh<const D: usize, C: Simplex>: PolyMesh<D> {
             .zip(flg.iter())
             .filter(|((f, _), _)| f.clone().all(|i| new_ids[i] != usize::MAX))
             .for_each(|((f, t), &invert)| {
-                let mut f = C::FACE::from_iter(f.map(|i| new_ids[i]));
+                let mut f = <Self::C as Simplex>::FACE::from_iter(f.map(|i| new_ids[i]));
                 if invert {
                     f.invert();
                 }
@@ -326,7 +343,7 @@ pub trait DualMesh<const D: usize, C: Simplex>: PolyMesh<D> {
     }
 
     /// Return a `Mesh<D, C2, F2>` containing all the boundary faces.
-    fn boundary<M: Mesh<D, C::FACE>>(&self) -> (M, Vec<usize>) {
+    fn boundary<M: Mesh<D, C = <Self::C as Simplex>::FACE>>(&self) -> (M, Vec<usize>) {
         self.extract_faces(|t| t > 0)
     }
 }

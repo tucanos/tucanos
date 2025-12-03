@@ -1,6 +1,5 @@
 mod curvature;
 mod orient;
-
 use crate::{
     Dim, Error, Result, Tag, TopoTag,
     geometry::curvature::HasCurvature,
@@ -11,7 +10,6 @@ pub use orient::orient_geometry;
 use rustc_hash::{FxHashMap, FxHashSet};
 use tmesh::{
     Vertex,
-    io::VTUFile,
     mesh::{GSimplex, GenericMesh, Mesh, Simplex, SubMesh},
     spatialindex::ObjectIndex,
 };
@@ -29,14 +27,10 @@ pub trait Geometry<const D: usize>: Send + Sync {
     fn angle(&self, pt: &Vertex<D>, n: &Vertex<D>, tag: &TopoTag) -> f64;
 
     /// Compute the max distance between the face centers and the geometry normals
-    fn project_vertices<C: Simplex, M: Mesh<D, C>>(
-        &self,
-        mesh: &mut M,
-        topo: &MeshTopology,
-    ) -> f64 {
+    fn project_vertices<M: Mesh<D>>(&self, mesh: &mut M, topo: &MeshTopology) -> f64 {
         let mut d_max = 0.0;
         for (p, tag) in mesh.verts_mut().zip(topo.vtags()) {
-            if tag.0 < C::DIM as Dim {
+            if tag.0 < M::C::DIM as Dim {
                 let d = self.project(p, tag);
                 d_max = f64::max(d_max, d);
             }
@@ -46,34 +40,34 @@ pub trait Geometry<const D: usize>: Send + Sync {
     }
 
     /// Compute the max distance between the face centers and the geometry normals
-    fn max_distance<C: Simplex, M: Mesh<D, C>>(&self, mesh: &M) -> f64 {
+    fn max_distance<M: Mesh<D>>(&self, mesh: &M) -> f64 {
         let mut d_max = 0.0;
         for (gf, tag) in mesh.gfaces().zip(mesh.ftags()) {
             let mut c = gf.center();
-            let d = self.project(&mut c, &(C::FACE::DIM as Dim, tag));
+            let d = self.project(&mut c, &(<M::C as Simplex>::FACE::DIM as Dim, tag));
             d_max = f64::max(d_max, d);
         }
         d_max
     }
 
     /// Compute the max angle between the face normals and the geometry normals
-    fn max_normal_angle<C: Simplex, M: Mesh<D, C>>(&self, mesh: &M) -> f64 {
+    fn max_normal_angle<M: Mesh<D>>(&self, mesh: &M) -> f64 {
         let mut a_max = 0.0;
-        if C::DIM == D {
+        if M::C::DIM == D {
             for (gf, tag) in mesh.gfaces().zip(mesh.ftags()) {
                 if tag > 0 {
                     let c = gf.center();
-                    let n = gf.normal().normalize();
-                    let a = self.angle(&c, &n, &(C::FACE::DIM as Dim, tag));
+                    let n = gf.normal(None).normalize();
+                    let a = self.angle(&c, &n, &(<M::C as Simplex>::FACE::DIM as Dim, tag));
                     a_max = f64::max(a_max, a);
                 }
             }
-        } else if C::DIM == D - 1 {
+        } else if M::C::DIM == D - 1 {
             for (gf, tag) in mesh.gelems().zip(mesh.etags()) {
                 if tag > 0 {
                     let c = gf.center();
-                    let n = gf.normal().normalize();
-                    let a = self.angle(&c, &n, &(C::DIM as Dim, tag));
+                    let n = gf.normal(None).normalize();
+                    let a = self.angle(&c, &n, &(M::C::DIM as Dim, tag));
                     a_max = f64::max(a_max, a);
                 }
             }
@@ -105,17 +99,17 @@ impl<const D: usize> Geometry<D> for NoGeometry<D> {
 }
 
 /// Geometry for a patch of faces with a constant tag
-struct LinearPatchGeometry<const D: usize> {
+struct MeshedPatchGeometry<const D: usize, M: Mesh<D>> {
     /// The ObjectIndex
-    tree: ObjectIndex<D>,
+    tree: ObjectIndex<D, M>,
 }
 
-impl<const D: usize> LinearPatchGeometry<D> {
+impl<const D: usize, M: Mesh<D>> MeshedPatchGeometry<D, M> {
     /// Create a `LinearPatchGeometry` from a `SimplexMesh`
-    pub fn new<C: Simplex, M: Mesh<D, C>>(mesh: &M) -> Self {
-        let tree = ObjectIndex::new(mesh);
-
-        Self { tree }
+    pub fn new(mesh: M) -> Self {
+        Self {
+            tree: ObjectIndex::new(mesh),
+        }
     }
 
     // Perform projection
@@ -125,36 +119,24 @@ impl<const D: usize> LinearPatchGeometry<D> {
 }
 
 /// Geometry for a patch of faces with a constant tag, with curvature information
-struct LinearPatchGeometryWithCurvature<const D: usize, C: Simplex>
-where
-    GenericMesh<D, C>: HasCurvature<D>,
-{
-    /// The face mesh
-    mesh: GenericMesh<D, C>,
+struct MeshedPatchGeometryWithCurvature<const D: usize, M: Mesh<D> + HasCurvature<D>> {
     /// The ObjectIndex
-    tree: ObjectIndex<D>,
+    tree: ObjectIndex<D, M>,
     /// Optionally, the first principal curvature direction
-    u: Option<Vec<Vertex<D>>>,
+    u: Vec<Vertex<D>>,
     /// Optionally, the second principal curvature direction (3D only)
     v: Option<Vec<Vertex<D>>>,
 }
 
-impl<const D: usize, C: Simplex> LinearPatchGeometryWithCurvature<D, C>
-where
-    GenericMesh<D, C>: HasCurvature<D>,
-{
+impl<const D: usize, M: Mesh<D> + HasCurvature<D>> MeshedPatchGeometryWithCurvature<D, M> {
     /// Create a `LinearPatchGeometry` from a `SimplexMesh`
-    pub fn new(mut mesh: GenericMesh<D, C>) -> Self {
+    pub fn new(mut mesh: M) -> Self {
         mesh.fix().unwrap();
+        let (u, v) = mesh.compute_curvature();
 
-        let tree = ObjectIndex::new(&mesh);
+        let tree = ObjectIndex::new(mesh);
 
-        Self {
-            mesh,
-            tree,
-            u: None,
-            v: None,
-        }
+        Self { tree, u, v }
     }
 
     // Perform projection
@@ -162,108 +144,85 @@ where
         self.tree.project(pt)
     }
 
-    fn compute_curvature(&mut self) {
-        let (u, v) = self.mesh.compute_curvature();
-
-        self.u = Some(u);
-        self.v = v;
-    }
-
-    fn curvature(&self, pt: &Vertex<D>) -> Result<(Vertex<D>, Option<Vertex<D>>)> {
-        if self.u.is_none() {
-            return Err(Error::from("LinearGeometry: compute_curvature not called"));
-        }
-
+    fn curvature(&self, pt: &Vertex<D>) -> (Vertex<D>, Option<Vertex<D>>) {
         let i_elem = self.tree.nearest_elem(pt);
-        let u = self.u.as_ref().unwrap();
+
         self.v.as_ref().map_or_else(
-            || Ok((u[i_elem], None)),
-            |v| Ok((u[i_elem], Some(v[i_elem]))),
+            || (self.u[i_elem], None),
+            |v| (self.u[i_elem], Some(v[i_elem])),
         )
-    }
-
-    pub fn write_curvature(&self, fname: &str) -> Result<()> {
-        let mut writer = VTUFile::from_mesh(&self.mesh, tmesh::io::VTUEncoding::Binary);
-        writer.add_point_data("u", D, self.u.as_ref().unwrap().iter().flatten().copied());
-        writer.add_point_data("v", D, self.v.as_ref().unwrap().iter().flatten().copied());
-        writer.export(fname)?;
-
-        Ok(())
     }
 }
 
 /// Piecewise linear (stl-like) representation of a geometry
 /// doc TODO
-pub struct LinearGeometry<const D: usize, C: Simplex>
-where
-    GenericMesh<D, C>: HasCurvature<D>,
-{
+pub struct MeshedGeometry<const D: usize, M: Mesh<D> + HasCurvature<D>> {
     /// The surface patches
-    patches: FxHashMap<Tag, LinearPatchGeometryWithCurvature<D, C>>,
+    patches: FxHashMap<Tag, MeshedPatchGeometryWithCurvature<D, M>>,
     /// The edges
-    edges: FxHashMap<Tag, LinearPatchGeometry<D>>,
+    edges: FxHashMap<Tag, MeshedPatchGeometry<D, GenericMesh<D, <M::C as Simplex>::FACE>>>,
 }
 
-impl<const D: usize, C: Simplex> LinearGeometry<D, C>
-where
-    GenericMesh<D, C>: HasCurvature<D>,
-{
+impl<const D: usize, M: Mesh<D> + HasCurvature<D>> MeshedGeometry<D, M> {
     /// Create a `LinearGeometry` for the boundary of `mesh` (with positive tags) from a
     /// `SimplexMesh` representation of the boundary
-    pub fn new<C2: Simplex>(
-        mesh: &impl Mesh<D, C2>,
-        topo: &MeshTopology,
-        mut bdy: GenericMesh<D, C>,
-    ) -> Result<Self> {
-        assert!(C2::DIM >= C::DIM);
+    pub fn new<M2: Mesh<D>>(mesh: &M2, topo: &MeshTopology, mut bdy: M) -> Result<Self> {
+        assert_eq!(M::C::order(), 1);
+        assert_eq!(M2::C::order(), 1);
+        assert!(M2::C::DIM >= M::C::DIM);
 
         let mesh_topo = topo.topo();
 
         // Faces
-        let mesh_face_tags = mesh_topo.tags(C::DIM as Dim);
-        let face_tags: FxHashSet<Tag> = if C2::DIM == C::DIM + 1 {
+        let mesh_face_tags = mesh_topo.tags(M::C::DIM as Dim);
+        let face_tags: FxHashSet<Tag> = if M2::C::DIM == M::C::DIM + 1 {
             mesh.ftags().filter(|&t| t > 0).collect()
-        } else if C2::DIM == C::DIM {
+        } else if M2::C::DIM == M::C::DIM {
             mesh.etags().filter(|&t| t > 0).collect()
         } else {
-            unimplemented!("mesh dimension {}, bdy dimension {}", C::DIM, C2::DIM);
+            unimplemented!("mesh dimension {}, bdy dimension {}", M::C::DIM, M2::C::DIM);
         };
 
         let mut patches = FxHashMap::default();
         for tag in face_tags.iter().copied() {
             debug!("Create LinearPatchGeometryWithCurvature for patch {tag}");
-            if mesh_topo.get((C::DIM as Dim, tag)).is_none() {
+            if mesh_topo.get((M::C::DIM as Dim, tag)).is_none() {
                 return Err(Error::from(&format!(
                     "LinearGeometry: face tag {tag:?} not found in topo (mesh: {mesh_face_tags:?}, bdy: {face_tags:?})"
                 )));
             }
             let submesh = SubMesh::new(&bdy, |t| t == tag).mesh;
             assert_ne!(submesh.n_verts(), 0, "Geometry mesh empty for tag {tag}");
-            patches.insert(tag, LinearPatchGeometryWithCurvature::new(submesh));
+
+            patches.insert(tag, MeshedPatchGeometryWithCurvature::new(submesh));
         }
 
         // Edges
         let mut edges = FxHashMap::default();
-        if C::DIM == 2 {
+        if M::C::DIM == 2 {
             bdy.fix().unwrap();
             let topo = MeshTopology::new(&bdy);
             let bdy_topo = topo.topo();
-            let (bdy_edges, _) = bdy.boundary::<GenericMesh<D, C::FACE>>();
+            let (bdy_edges, _) = bdy.boundary::<GenericMesh<D, <M::C as Simplex>::FACE>>();
 
             let edge_tags: FxHashSet<Tag> = bdy_edges.etags().collect();
 
             for tag in edge_tags {
                 debug!("Create LinearPatchGeometry for edge {tag}");
                 // find the edge tag in mesh_topo
-                let bdy_topo_node = bdy_topo.get((C::FACE::DIM as Dim, tag)).unwrap();
+                let bdy_topo_node = bdy_topo
+                    .get((<M::C as Simplex>::FACE::DIM as Dim, tag))
+                    .unwrap();
                 let bdy_parents = &bdy_topo_node.parents;
-                let mesh_topo_node = mesh_topo
-                    .get_from_parents_iter(C::FACE::DIM as Dim, bdy_parents.iter().copied());
+                let mesh_topo_node = mesh_topo.get_from_parents_iter(
+                    <M::C as Simplex>::FACE::DIM as Dim,
+                    bdy_parents.iter().copied(),
+                );
 
                 if let Some(mesh_topo_node) = mesh_topo_node {
                     let submesh = SubMesh::new(&bdy_edges, |t| t == tag).mesh;
                     if mesh_topo_node.tag.1 > 0 {
-                        edges.insert(mesh_topo_node.tag.1, LinearPatchGeometry::new(&submesh));
+                        edges.insert(mesh_topo_node.tag.1, MeshedPatchGeometry::new(submesh));
                     }
                 }
             }
@@ -280,30 +239,24 @@ where
         Ok(geom)
     }
 
-    pub fn compute_curvature(&mut self) {
-        for (&i, patch) in &mut self.patches {
-            debug!("Compute curvature for patch {i}");
-            patch.compute_curvature();
-        }
-    }
-
-    pub fn curvature(&self, pt: &Vertex<D>, tag: Tag) -> Result<(Vertex<D>, Option<Vertex<D>>)> {
+    #[must_use]
+    pub fn curvature(&self, pt: &Vertex<D>, tag: Tag) -> (Vertex<D>, Option<Vertex<D>>) {
         self.patches.get(&tag).unwrap().curvature(pt)
     }
 
     pub fn write_curvature(&self, fname: &str) -> Result<()> {
         for (tag, patch) in &self.patches {
-            patch.write_curvature(&String::from(fname).replace(".vtu", &format!("_{tag}.vtu")))?;
+            patch
+                .tree
+                .mesh()
+                .write_curvature(&String::from(fname).replace(".vtu", &format!("_{tag}.vtu")))?;
         }
 
         Ok(())
     }
 }
 
-impl<const D: usize, C: Simplex> Geometry<D> for LinearGeometry<D, C>
-where
-    GenericMesh<D, C>: HasCurvature<D>,
-{
+impl<const D: usize, M: Mesh<D> + HasCurvature<D>> Geometry<D> for MeshedGeometry<D, M> {
     fn check(&self, _topo: &Topology) -> Result<()> {
         // The check is performed during creation
         Ok(())
@@ -314,7 +267,7 @@ where
 
         let (dist, p) = if tag.1 < 0 {
             (0.0, *pt)
-        } else if tag.0 == C::DIM as Dim {
+        } else if tag.0 == M::C::DIM as Dim {
             let patch = self.patches.get(&tag.1).unwrap_or_else(|| {
                 panic!(
                     "Invalid face tag {tag:?}. Available tags are {:?}",
@@ -324,7 +277,7 @@ where
             patch.project(pt)
         } else if tag.0 == 0 {
             (0.0, *pt)
-        } else if tag.0 == C::DIM as Dim - 1 {
+        } else if tag.0 == M::C::DIM as Dim - 1 {
             // after 0 to make sure that if is used only for E=Triangle
             let edge = self.edges.get(&tag.1).unwrap_or_else(|| {
                 panic!(
@@ -346,7 +299,12 @@ where
 
         let patch = self.patches.get(&tag.1).unwrap();
         let idx = patch.tree.nearest_elem(pt);
-        let n_ref = patch.mesh.gelem(&patch.mesh.elem(idx)).normal().normalize();
+        let n_ref = patch
+            .tree
+            .mesh()
+            .gelem(&patch.tree.mesh().elem(idx))
+            .normal(None)
+            .normalize();
         let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
         f64::acos(cos_a).to_degrees()
     }
@@ -359,7 +317,7 @@ mod tests {
         mesh::{BoundaryMesh2d, BoundaryMesh3d, Mesh, read_stl},
     };
 
-    use super::{Geometry, LinearGeometry};
+    use super::{Geometry, MeshedGeometry};
     use crate::{
         Result,
         mesh::{
@@ -378,7 +336,7 @@ mod tests {
         let mesh = geom.clone();
         let topo = MeshTopology::new(&mesh);
 
-        let geom = LinearGeometry::new(&mesh, &topo, geom)?;
+        let geom = MeshedGeometry::new(&mesh, &topo, geom)?;
         let mut p = Vertex::<3>::new(2., 0.5, 0.5);
         let d = geom.project(&mut p, &(2, 1));
         assert!(f64::abs(d - 1.) < 1e-12);
@@ -399,7 +357,7 @@ mod tests {
         let topo = MeshTopology::new(&mesh);
 
         let (bdy, _) = mesh.boundary::<BoundaryMesh2d>();
-        let geom = LinearGeometry::new(&mesh, &topo, bdy)?;
+        let geom = MeshedGeometry::new(&mesh, &topo, bdy)?;
 
         let mut pt = Vertex::<2>::new(0.75, 0.5);
         let d = geom.project(&mut pt, &(1, 1));
@@ -427,7 +385,7 @@ mod tests {
         let topo = MeshTopology::new(&mesh);
 
         let (bdy, _) = mesh.boundary::<BoundaryMesh3d>();
-        let geom = LinearGeometry::new(&mesh, &topo, bdy)?;
+        let geom = MeshedGeometry::new(&mesh, &topo, bdy)?;
 
         let mut pt = Vertex::<3>::new(0.75, 0.5, 0.25);
         let _ = geom.project(&mut pt, &(2, 1));
