@@ -103,10 +103,20 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                         unreachable!()
                     };
                     let (mut edge_center, new_metric) = cavity.seed_barycenter();
-                    let tag = self
-                        .topo
-                        .parent(cavity.tags[local_edg.get(0)], cavity.tags[local_edg.get(1)])
-                        .unwrap();
+
+                    let tag = match (C::N_VERTS, &cavity.etags[..]) {
+                        // A 3D boundary edge with two identical tags is never a boundary edge
+                        // whatever his vertices tags are
+                        (3, [t1, t2]) if t1 == t2 => (2, *t1),
+                        _ => {
+                            // Compute edge tag from vertex tags
+                            let t_start = cavity.tags[local_edg.get(0)];
+                            let t_end = cavity.tags[local_edg.get(1)];
+                            self.topo
+                                .parent(t_start, t_end)
+                                .expect("Topology error: Parent tag not found for edge")
+                        }
+                    };
 
                     // tag < 0 on fixed boundaries
                     if tag.1 < 0 {
