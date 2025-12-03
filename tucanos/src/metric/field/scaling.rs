@@ -99,18 +99,17 @@ impl<const D: usize, C: Simplex, M: Mesh<D, C>, T: Metric<D>> MetricField<'_, D,
     /// ```
     /// An error is returned if $`\mathcal L(\mathcal C(\mathcal M_f), \mathcal M_i, f)`$ is larger than the target
     /// number of elements
-    #[allow(clippy::too_many_arguments)]
     #[allow(clippy::too_many_lines)]
     pub fn scale(
         &mut self,
-        h_min: f64,
-        h_max: f64,
+        h_range: (f64, f64),
         n_elems: usize,
         fixed_m: Option<&Self>,
         implied_m: Option<&Self>,
         step: Option<f64>,
         max_iter: u32,
     ) -> Result<f64> {
+        let (h_min, h_max) = h_range;
         let fixed_m = fixed_m.map(MetricField::metric);
         let implied_m = implied_m.map(MetricField::metric);
 
@@ -261,7 +260,7 @@ mod tests {
         let m: Vec<_> = h.iter().map(|&x| IsoMetric::<2>::from(x)).collect();
         let mut m = MetricField::new(&mesh, m);
 
-        let c0 = m.scale(0.0, 0.05, 1000, None, None, None, 10).unwrap();
+        let c0 = m.scale((0.0, 0.05), 1000, None, None, None, 10).unwrap();
         assert!(c0 > 0.0);
         let c1 = m.complexity(0.0, 0.05);
         assert!(f64::abs(c1 - 1000.) < 100.);
@@ -280,7 +279,7 @@ mod tests {
         let m: Vec<_> = mesh.verts().map(mfunc).collect();
         let mut m = MetricField::new(&mesh, m);
 
-        let c0 = m.scale(0.0, 0.05, 1000, None, None, None, 10).unwrap();
+        let c0 = m.scale((0.0, 0.05), 1000, None, None, None, 10).unwrap();
         assert!(c0 > 0.0);
         let c1 = m.complexity(0.0, 0.05);
         assert!(f64::abs(c1 - 1000.) < 100.);
@@ -294,11 +293,11 @@ mod tests {
         let m: Vec<_> = h.iter().map(|&x| IsoMetric::<3>::from(x)).collect();
         let mut m = MetricField::new(&mesh, m);
 
-        let c0 = m.scale(0.0, 0.05, 1000, None, None, None, 10);
+        let c0 = m.scale((-0.0, 0.05), 1000, None, None, None, 10);
         assert!(c0.is_err());
 
         let n_target = (1.0 / f64::powi(0.05, 3) * 15.0) as usize;
-        let c0 = m.scale(0.0, 0.05, n_target, None, None, None, 10)?;
+        let c0 = m.scale((0.0, 0.05), n_target, None, None, None, 10)?;
         assert!(c0 > 0.0);
         let c1 = m.complexity(0.0, 0.05);
         assert!(f64::abs(c1 - n_target as f64) < 0.1 * n_target as f64);
@@ -320,11 +319,11 @@ mod tests {
         let m: Vec<_> = mesh.verts().map(mfunc).collect();
         let mut m = MetricField::new(&mesh, m);
 
-        let c0 = m.scale(0.0, 0.05, 1000, None, None, None, 10);
+        let c0 = m.scale((0.0, 0.05), 1000, None, None, None, 10);
         assert!(c0.is_err());
 
         let n_target = (1.0 / f64::powi(0.05, 3) * 50.0) as usize;
-        let c0 = m.scale(0.0, 0.05, n_target, None, None, None, 10)?;
+        let c0 = m.scale((0.0, 0.05), n_target, None, None, None, 10)?;
         assert!(c0 > 0.0);
         let c1 = m.complexity(0.0, 0.05);
         assert!(f64::abs(c1 - n_target as f64) < 0.1 * n_target as f64);
@@ -347,7 +346,7 @@ mod tests {
 
         let n_target = (1.0 / f64::powi(0.05, 3) * 15.0) as usize;
 
-        let c0 = m.scale(0.0, 0.05, n_target, Some(&fixed_m), None, None, 10)?;
+        let c0 = m.scale((0.0, 0.05), n_target, Some(&fixed_m), None, None, 10)?;
         assert!(c0 > 0.0);
         let c1 = m.complexity(0.0, 0.05);
         assert!(f64::abs(c1 - n_target as f64) < 0.1 * n_target as f64);

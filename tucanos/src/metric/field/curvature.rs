@@ -288,7 +288,7 @@ mod tests {
         let mut m = MetricField::new(&mesh, m);
 
         // Complexity
-        m.scale(1e-2, 0.2, 10000, Some(&m_curv), None, None, 20)?;
+        m.scale((1e-2, 0.2), 10000, Some(&m_curv), None, None, 20)?;
         let c = m.complexity(0.0, 1.0);
         assert!(f64::abs(c - 10000.) < 1000.);
 

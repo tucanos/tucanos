@@ -50,28 +50,9 @@ impl Idx for i32 {
 pub struct Hexahedron<T: Idx>([T; 8]);
 
 impl<T: Idx> Hexahedron<T> {
-    #[allow(clippy::too_many_arguments)]
     #[must_use]
-    pub fn new(
-        i0: usize,
-        i1: usize,
-        i2: usize,
-        i3: usize,
-        i4: usize,
-        i5: usize,
-        i6: usize,
-        i7: usize,
-    ) -> Self {
-        Self([
-            i0.try_into().unwrap(),
-            i1.try_into().unwrap(),
-            i2.try_into().unwrap(),
-            i3.try_into().unwrap(),
-            i4.try_into().unwrap(),
-            i5.try_into().unwrap(),
-            i6.try_into().unwrap(),
-            i7.try_into().unwrap(),
-        ])
+    pub fn new(indices: [usize; 8]) -> Self {
+        Self(indices.map(|x| x.try_into().unwrap()))
     }
 
     pub fn get(&self, index: usize) -> usize {

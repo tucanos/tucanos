@@ -54,7 +54,7 @@ pub fn nonuniform_box_mesh<M: Mesh<3, Tetrahedron<impl Idx>>>(
     for i in 0..nx - 1 {
         for j in 0..ny - 1 {
             for k in 0..nz - 1 {
-                hexas.push(Hexahedron::new(
+                hexas.push(Hexahedron::new([
                     idx(i, j, k),
                     idx(i + 1, j, k),
                     idx(i + 1, j + 1, k),
@@ -63,7 +63,7 @@ pub fn nonuniform_box_mesh<M: Mesh<3, Tetrahedron<impl Idx>>>(
                     idx(i + 1, j, k + 1),
                     idx(i + 1, j + 1, k + 1),
                     idx(i, j + 1, k + 1),
-                ));
+                ]));
                 etags.push(1);
             }
         }

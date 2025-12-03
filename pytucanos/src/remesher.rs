@@ -498,8 +498,7 @@ macro_rules! create_remesher {
                         let implied_m = MetricField::new(&mesh.0, implied_m);
 
                         m.scale(
-                            h_min,
-                            h_max,
+                            (h_min, h_max),
                             n_elems,
                             Some(&fixed_m),
                             Some(&implied_m),
@@ -508,8 +507,7 @@ macro_rules! create_remesher {
                         )
                     } else {
                         m.scale(
-                            h_min,
-                            h_max,
+                            (h_min, h_max),
                             n_elems,
                             Some(&fixed_m),
                             None,
@@ -525,8 +523,7 @@ macro_rules! create_remesher {
                         .collect();
                     let implied_m = MetricField::new(&mesh.0, implied_m);
                     m.scale(
-                        h_min,
-                        h_max,
+                        (h_min, h_max),
                         n_elems,
                         None,
                         Some(&implied_m),
@@ -535,8 +532,7 @@ macro_rules! create_remesher {
                     )
                 } else {
                     m.scale(
-                        h_min,
-                        h_max,
+                        (h_min, h_max),
                         n_elems,
                         None,
                         None,
