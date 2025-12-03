@@ -1,6 +1,6 @@
 //! Extrude 2d triangle meshes to 3d as 1 layer of prisms
 use crate::{
-    Error, Result, Tag, Vert2d, Vert3d,
+    Result, Tag, Vert2d, Vert3d,
     dual::{DualMesh2d, PolyMesh, PolyMeshType, SimplePolyMesh, merge_polylines},
     io::{VTUEncoding, VTUFile},
     mesh::{Edge, GenericMesh, Idx, Mesh, Prism, Quadrangle, Simplex, Triangle},
@@ -94,24 +94,19 @@ impl<T: Idx> ExtrudedMesh2d<T> {
     }
 
     /// Get a `Mesh2d` from the z=0 face
-    pub fn to_mesh2d<M: Mesh<2, Triangle<impl Idx>>>(&self) -> Result<M> {
+    #[must_use]
+    pub fn to_mesh2d<M: Mesh<2, Triangle<impl Idx>>>(&self) -> M {
         let n = self.verts.len() / 2;
 
-        let mut ok = true;
         let verts = self
             .verts
             .iter()
             .take(n)
             .map(|v| {
-                if v[2].abs() > 1e-12 {
-                    ok = false;
-                }
+                assert!(v[2].abs() < 1e-12);
                 Vert2d::new(v[0], v[1])
             })
             .collect::<Vec<_>>();
-        if !ok {
-            return Err(Error::from("Unable to convert to Mesh2d"));
-        }
 
         let elems = self
             .prisms
@@ -131,7 +126,7 @@ impl<T: Idx> ExtrudedMesh2d<T> {
         msh2d.fix_elems_orientation();
         msh2d.fix_faces_orientation(&msh2d.all_faces());
 
-        Ok(msh2d)
+        msh2d
     }
 
     /// Number of vertices
@@ -286,7 +281,7 @@ mod tests {
         let extruded = ExtrudedMesh2d::<u32>::from_mesh2d(&msh, 1.0);
         // extruded.write_vtk("extruded.vtu").unwrap();
 
-        let msh2: Mesh2d = extruded.to_mesh2d().unwrap();
+        let msh2: Mesh2d = extruded.to_mesh2d();
         msh.check_equals(&msh2, 1e-12).unwrap();
     }
 
