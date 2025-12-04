@@ -223,6 +223,8 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Cavity<D, C, M> {
     fn compute(&mut self, r: &Remesher<D, C, M>, global_elems: &[usize], x: Seed) {
         self.clear();
         self.q_min = f64::INFINITY;
+        self.l_min = f64::INFINITY;
+        self.l_max = 0.0;
 
         // Compute local2global & get the elements
         for i_global in global_elems.iter().copied() {
