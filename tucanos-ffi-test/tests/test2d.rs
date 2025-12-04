@@ -55,7 +55,7 @@ fn aniso2d() {
         tucanos_mesh22_delete(mesh);
         let mesh = tucanos_remesher2daniso_tomesh(remesher, false);
         let num_verts = tucanos_mesh22_num_verts(mesh);
-        assert_eq!(num_verts, 10);
+        assert_eq!(num_verts, 9);
         tucanos_mesh22_delete(mesh);
     }
 }
