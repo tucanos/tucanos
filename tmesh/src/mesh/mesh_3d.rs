@@ -4,10 +4,10 @@ use crate::{
     mesh::{GenericMesh, Hexahedron, Mesh, Quadrangle, Tetrahedron, elements::Idx},
 };
 
-/// Create a `Mesh<3, 4, 3>` of a `lx` by `ly` by `lz` box by splitting a `nx` by `ny` by `nz`
+/// Create a `Mesh<3, Tetrahedron<_>>` of a `lx` by `ly` by `lz` box by splitting a `nx` by `ny` by `nz`
 /// uniform structured grid
 #[must_use]
-pub fn box_mesh<M: Mesh<3, Tetrahedron<impl Idx>>>(
+pub fn box_mesh<M: Mesh<3, C = Tetrahedron<impl Idx>>>(
     lx: f64,
     nx: usize,
     ly: f64,
@@ -27,9 +27,9 @@ pub fn box_mesh<M: Mesh<3, Tetrahedron<impl Idx>>>(
     nonuniform_box_mesh(&x_1d, &y_1d, &z_1d)
 }
 
-/// Create a `Mesh<2, 3, 2>` of box by splitting a structured grid`
+/// Create a `Mesh<2, Tetrahedron<_>>` of box by splitting a structured grid`
 #[must_use]
-pub fn nonuniform_box_mesh<M: Mesh<3, Tetrahedron<impl Idx>>>(
+pub fn nonuniform_box_mesh<M: Mesh<3, C = Tetrahedron<impl Idx>>>(
     x: &[f64],
     y: &[f64],
     z: &[f64],

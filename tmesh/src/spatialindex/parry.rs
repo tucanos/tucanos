@@ -28,7 +28,7 @@ mod parry2d {
     };
     use std::marker::PhantomData;
 
-    use crate::mesh::{GSimplex, Mesh, Simplex};
+    use crate::mesh::{GSimplex, Mesh};
 
     pub trait MeshToShape {
         type Shape: Shape + PointQueryWithLocation<Location = Self::Location> + Copy + Clone;
@@ -98,7 +98,7 @@ mod parry2d {
             Aabb::new(min, max)
         }
 
-        pub fn new<C: Simplex, M: Mesh<D, C>>(mesh: &M) -> Self {
+        pub fn new<M: Mesh<D>>(mesh: &M) -> Self {
             assert_eq!(D, 2);
             let data = mesh
                 .gelems()
@@ -198,7 +198,7 @@ mod parry3d {
 
     use crate::{
         Vertex,
-        mesh::{GSimplex, Mesh, Simplex},
+        mesh::{GSimplex, Mesh},
     };
     /// Create a parry Shape from a tucanos Elem
     pub trait MeshToShape {
@@ -353,7 +353,7 @@ mod parry3d {
 
             Aabb::new(min, max)
         }
-        pub fn new<C: Simplex, M: Mesh<D, C>>(mesh: &M) -> Self {
+        pub fn new<M: Mesh<D>>(mesh: &M) -> Self {
             assert_eq!(D, 3);
             let data = mesh
                 .gelems()
@@ -476,8 +476,8 @@ enum ParryImpl<const D: usize> {
 
 impl<const D: usize> ObjectIndex<D> {
     /// Create a PointIndex from a mesh
-    pub fn new<C: Simplex, M: Mesh<D, C>>(mesh: &M) -> Self {
-        if D == 3 && C::N_VERTS == 3 {
+    pub fn new<M: Mesh<D>>(mesh: &M) -> Self {
+        if D == 3 && M::C::N_VERTS == 3 {
             let coords = mesh
                 .verts()
                 .map(|p| Point3::from_slice(p.as_slice()))
@@ -489,19 +489,19 @@ impl<const D: usize> ObjectIndex<D> {
             Self {
                 inner: ParryImpl::Tria3D(parry3d_f64::shape::TriMesh::new(coords, elems).unwrap()),
             }
-        } else if D == 2 && C::N_VERTS == 2 {
+        } else if D == 2 && M::C::N_VERTS == 2 {
             Self {
                 inner: ParryImpl::Edge2D(parry2d::MeshShape::new(mesh)),
             }
-        } else if D == 3 && C::N_VERTS == 4 {
+        } else if D == 3 && M::C::N_VERTS == 4 {
             Self {
                 inner: ParryImpl::Tetra(parry3d::MeshShape::new(mesh)),
             }
-        } else if D == 3 && C::N_VERTS == 2 {
+        } else if D == 3 && M::C::N_VERTS == 2 {
             Self {
                 inner: ParryImpl::Edge3D(parry3d::MeshShape::new(mesh)),
             }
-        } else if D == 2 && C::N_VERTS == 3 {
+        } else if D == 2 && M::C::N_VERTS == 3 {
             let coords = mesh
                 .verts()
                 .map(|p| Point2::from_slice(p.as_slice()))
@@ -514,7 +514,7 @@ impl<const D: usize> ObjectIndex<D> {
                 inner: ParryImpl::Tria2D(parry2d_f64::shape::TriMesh::new(coords, elems).unwrap()),
             }
         } else {
-            unimplemented!("D={D} C={}", C::N_VERTS);
+            unimplemented!("D={D} C={}", M::C::N_VERTS);
         }
     }
 

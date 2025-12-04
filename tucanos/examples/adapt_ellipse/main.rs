@@ -317,9 +317,9 @@ fn main() -> Result<()> {
     } else {
         #[cfg(feature = "metis")]
         let mut dd =
-            ParallelRemesher::<_, _, _, MetisPartitioner<MetisRecursive>>::new(mesh, topo, n_part)?;
+            ParallelRemesher::<_, _, MetisPartitioner<MetisRecursive>>::new(mesh, topo, n_part)?;
         #[cfg(not(feature = "metis"))]
-        let mut dd = ParallelRemesher::<_, _, _, HilbertPartitioner>::new(mesh, topo, n_part)?;
+        let mut dd = ParallelRemesher::<_, _, HilbertPartitioner>::new(mesh, topo, n_part)?;
         dd.set_debug(debug);
         let dd_params = ParallelRemesherParams::new(2, 2, 10000);
         let (mesh, stats, _) = dd.remesh(&metric, &geom, params, &dd_params)?;

@@ -39,10 +39,7 @@ pub struct VTUFile {
 
 impl VTUFile {
     /// Create a vtu Mesh writer
-    pub fn from_mesh<const D: usize, C: Simplex, M: Mesh<D, C>>(
-        mesh: &M,
-        encoding: VTUEncoding,
-    ) -> Self {
+    pub fn from_mesh<const D: usize, M: Mesh<D>>(mesh: &M, encoding: VTUEncoding) -> Self {
         Self {
             grid_type: "UnstructuredGrid".to_string(),
             version: 0.1,
@@ -399,24 +396,21 @@ struct Cells {
 }
 
 impl Cells {
-    fn from_elems<const D: usize, C: Simplex, M: Mesh<D, C>>(
-        mesh: &M,
-        encoding: VTUEncoding,
-    ) -> Self {
+    fn from_elems<const D: usize, M: Mesh<D>>(mesh: &M, encoding: VTUEncoding) -> Self {
         let n = mesh.n_elems();
 
         let connectivity = DataArray::new_i64(
             "connectivity",
             1,
-            C::N_VERTS * n,
+            <M::C as Simplex>::N_VERTS * n,
             mesh.elems().flatten().map(|x| x as i64),
             encoding,
         );
 
-        let data = (0..n).map(|i| (C::N_VERTS * (i + 1)) as i64);
+        let data = (0..n).map(|i| (<M::C as Simplex>::N_VERTS * (i + 1)) as i64);
         let offsets = DataArray::new_i64("offsets", 1, data.len(), data, encoding);
 
-        let cell_type: u8 = match C::N_VERTS {
+        let cell_type: u8 = match M::C::N_VERTS {
             4 => 10,
             3 => 5,
             2 => 4,

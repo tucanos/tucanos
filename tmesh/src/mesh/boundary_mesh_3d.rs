@@ -9,7 +9,7 @@ use std::fs::OpenOptions;
 pub type BoundaryMesh3d = GenericMesh<3, Triangle<usize>>;
 
 /// Read a stl file
-pub fn read_stl<M: Mesh<3, Triangle<impl Idx>>>(file_name: &str) -> Result<M> {
+pub fn read_stl<M: Mesh<3, C = Triangle<impl Idx>>>(file_name: &str) -> Result<M> {
     let mut file = OpenOptions::new().read(true).open(file_name).unwrap();
     let stl = stl_io::read_stl(&mut file).unwrap();
 

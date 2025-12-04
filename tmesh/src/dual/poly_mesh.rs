@@ -375,8 +375,8 @@ impl<const D: usize> SimplePolyMesh<D> {
     }
 
     /// PolyMesh representation of a `Mesh<D, C, F>`
-    pub fn from_mesh<C: Simplex, M: Mesh<D, C>>(mesh: &M) -> Self {
-        let poly_type = match C::N_VERTS {
+    pub fn from_mesh<M: Mesh<D>>(mesh: &M) -> Self {
+        let poly_type = match <M::C as Simplex>::N_VERTS {
             4 => PolyMeshType::Polyhedra,
             3 => PolyMeshType::Polygons,
             2 => PolyMeshType::Polylines,
@@ -390,18 +390,19 @@ impl<const D: usize> SimplePolyMesh<D> {
             .collect::<FxHashMap<_, _>>();
 
         let mut elem_to_face_ptr = vec![0; mesh.n_elems() + 1];
-        let mut elem_to_face = vec![(usize::MAX, true); mesh.n_elems() * C::N_VERTS];
+        let mut elem_to_face =
+            vec![(usize::MAX, true); mesh.n_elems() * <M::C as Simplex>::N_VERTS];
         let mut face_to_node_ptr = vec![0; all_faces.len() + 1];
-        let mut face_to_node = vec![0; all_faces.len() * C::FACE::N_VERTS];
+        let mut face_to_node = vec![0; all_faces.len() * <M::C as Simplex>::FACE::N_VERTS];
         let mut ftags = vec![0; all_faces.len()];
 
         for i_elem in 0..mesh.n_elems() {
-            elem_to_face_ptr[i_elem + 1] = C::N_VERTS * (i_elem + 1);
+            elem_to_face_ptr[i_elem + 1] = <M::C as Simplex>::N_VERTS * (i_elem + 1);
         }
         for (f, &[i_face, i0, i1]) in &all_faces {
-            face_to_node_ptr[i_face + 1] = C::FACE::N_VERTS * (i_face + 1);
-            for k in 0..C::FACE::N_VERTS {
-                face_to_node[C::FACE::N_VERTS * i_face + k] = f.get(k);
+            face_to_node_ptr[i_face + 1] = <M::C as Simplex>::FACE::N_VERTS * (i_face + 1);
+            for k in 0..<M::C as Simplex>::FACE::N_VERTS {
+                face_to_node[<M::C as Simplex>::FACE::N_VERTS * i_face + k] = f.get(k);
             }
             if i0 != usize::MAX {
                 let mut ok = false;

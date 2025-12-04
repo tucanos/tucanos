@@ -113,9 +113,11 @@ impl<T: Idx> PolyMesh<3> for DualMesh3d<T> {
     }
 }
 
-impl<T: Idx> DualMesh<3, Tetrahedron<T>> for DualMesh3d<T> {
+impl<T: Idx> DualMesh<3> for DualMesh3d<T> {
+    type C = Tetrahedron<T>;
+
     #[allow(clippy::too_many_lines)]
-    fn new(msh: &impl Mesh<3, Tetrahedron<T>>, t: DualType) -> Self {
+    fn new(msh: &impl Mesh<3, C = Tetrahedron<T>>, t: DualType) -> Self {
         // edges
         let all_edges = msh.edges();
         let n_edges = all_edges.len();
