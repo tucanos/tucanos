@@ -658,7 +658,19 @@ impl<'a, const D: usize, C: Simplex, M: Metric<D>> FilledCavity<'a, D, C, M> {
         G: Geometry<D>,
     {
         let (p0, _) = self.point();
-
+        if C::DIM != D {
+            for (f, tag) in self.faces() {
+                let gf = self.cavity.gface(&f);
+                let ge = C::GEOM::from_vert_and_face(&p0, &gf);
+                let center = ge.center();
+                let normal = ge.normal().normalize();
+                let a = geom.angle(&center, &normal, &(C::DIM as Dim, tag));
+                if a > max_angle {
+                    return false;
+                }
+            }
+            return true;
+        }
         for (b, tag, s) in self.tagged_faces_boundary() {
             assert!(
                 tag > 0,

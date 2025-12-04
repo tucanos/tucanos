@@ -1,6 +1,6 @@
 use super::Remesher;
 use crate::{
-    Dim, Result,
+    Result,
     geometry::Geometry,
     metric::Metric,
     remesher::{
@@ -65,7 +65,12 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         geom: &G,
     ) -> Result<TrySwapResult> {
         trace!("Try to swap edge {edg:?}");
+
         cavity.init_from_edge(edg, self);
+        if C::DIM == 2 {
+            assert!(cavity.n_elems() <= 2);
+        }
+
         if cavity.global_elem_ids.len() == 1 {
             trace!("Cannot swap, only one adjacent cell");
             return Ok(TrySwapResult::QualitySufficient);
@@ -100,7 +105,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             return Ok(TrySwapResult::FixedEdge);
         }
 
-        if etag.0 < C::FACE::DIM as Dim {
+        if etag.0 == 1 {
             return Ok(TrySwapResult::CouldNotSwap);
         }
 
