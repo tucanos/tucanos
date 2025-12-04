@@ -639,14 +639,24 @@ impl<'a, const D: usize, C: Simplex, M: Metric<D>> FilledCavity<'a, D, C, M> {
         CavityCheckStatus::Ok(min_quality)
     }
 
-    /// Check the the angle between the normal of the boundary faces and the normal given by the geometry is smaller than a threshold
-    /// This is only required for swaps in 3D
-    pub fn check_boundary_normals<G: Geometry<D>>(
-        &self,
-        topo: &Topology,
-        geom: &G,
-        threshold_degrees: f64,
-    ) -> bool {
+    /// Verifies that the angle between boundary face normals and geometry normals is within a
+    /// specified limit.
+    ///
+    /// This is only required for swap operations in 3D meshes.
+    ///
+    /// # Arguments
+    ///
+    /// * `topo` - The mesh topology structure.
+    /// * `geom` - The geometric data provider.
+    /// * `max_angle` - The maximum allowable deviation in degrees.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if the angle difference is strictly less than `max_angle`.
+    pub fn check_normals<G>(&self, topo: &Topology, geom: &G, max_angle: f64) -> bool
+    where
+        G: Geometry<D>,
+    {
         let (p0, _) = self.point();
 
         for (b, tag, s) in self.tagged_faces_boundary() {
@@ -668,10 +678,10 @@ impl<'a, const D: usize, C: Simplex, M: Metric<D>> FilledCavity<'a, D, C, M> {
             let center = gf.center();
             let mut normal = gf.normal().normalize();
             if s {
-                normal *= -1.0;
+                normal = -normal;
             }
             let a = geom.angle(&center, &normal, &(C::DIM as Dim - 1, tag));
-            if a > threshold_degrees {
+            if a > max_angle {
                 return false;
             }
         }

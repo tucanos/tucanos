@@ -136,7 +136,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                         continue;
                     }
 
-                    if !filled_cavity.check_boundary_normals(&self.topo, geom, params.max_angle) {
+                    if !filled_cavity.check_normals(&self.topo, geom, params.max_angle) {
                         trace!("Cannot collapse, would create a non smooth surface");
                         continue;
                     }
