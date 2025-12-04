@@ -136,7 +136,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                 continue;
             }
 
-            if !filled_cavity.check_boundary_normals(&self.topo, geom, max_angle) {
+            if !filled_cavity.check_normals(&self.topo, geom, max_angle) {
                 trace!("Cannot swap, would create a non smooth surface");
                 continue;
             }
