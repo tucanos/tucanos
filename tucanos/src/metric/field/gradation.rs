@@ -13,7 +13,7 @@ use tmesh::{
     mesh::{Mesh, Simplex},
 };
 
-impl<const D: usize, C: Simplex, M: Mesh<D, C>, T: Metric<D>> MetricField<'_, D, C, M, T> {
+impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
     /// Compute the gradation on an edge
     fn edge_gradation(m0: &T, m1: &T, e: &Vertex<D>) -> f64 {
         let l0 = m0.length(e);
@@ -211,7 +211,7 @@ mod tests {
     use rand::{Rng, SeedableRng, rngs::StdRng};
     use tmesh::{
         Vert3d,
-        mesh::{Mesh, Mesh3d, Simplex, Tetrahedron},
+        mesh::{Mesh, Mesh3d, Simplex},
     };
 
     #[test]
@@ -223,23 +223,17 @@ mod tests {
             let m1 = IsoMetric::<3>::from(h);
             let m = m0.span(&e, beta, 1.0);
             let m1 = m1.intersect(&m);
-            let g = MetricField::<'_, 3, Tetrahedron<usize>, Mesh3d, IsoMetric<3>>::edge_gradation(
-                &m0, &m1, &e,
-            );
+            let g = MetricField::<'_, 3, Mesh3d, IsoMetric<3>>::edge_gradation(&m0, &m1, &e);
             assert!(g < 1.01 * beta, "{g} > {beta}");
         }
 
         for h in [0.02, 0.1, 1.0, 10.0, 100.0] {
             let m1 = IsoMetric::<3>::from(h);
-            let g = MetricField::<'_, 3, Tetrahedron<usize>, Mesh3d, IsoMetric<3>>::edge_gradation(
-                &m0, &m1, &e,
-            );
+            let g = MetricField::<'_, 3, Mesh3d, IsoMetric<3>>::edge_gradation(&m0, &m1, &e);
             let beta = (0.5 * g).max(1.1);
             let m = m0.span(&e, beta, 1.0);
             let m1 = m1.intersect(&m);
-            let g = MetricField::<'_, 3, Tetrahedron<usize>, Mesh3d, IsoMetric<3>>::edge_gradation(
-                &m0, &m1, &e,
-            );
+            let g = MetricField::<'_, 3, Mesh3d, IsoMetric<3>>::edge_gradation(&m0, &m1, &e);
             assert!(g < 1.01 * beta, "{g} > {beta}");
         }
     }
@@ -260,16 +254,10 @@ mod tests {
             let mat = 0.1 * SMatrix::<f64, 3, 3>::from_fn(|_, _| rng.random());
             let mat = mat.transpose() * mat;
             let m1 = AnisoMetric3d::from_mat(mat);
-            let before =
-                MetricField::<'_, 3, Tetrahedron<usize>, Mesh3d, AnisoMetric3d>::edge_gradation(
-                    &m0, &m1, &e,
-                );
+            let before = MetricField::<'_, 3, Mesh3d, AnisoMetric3d>::edge_gradation(&m0, &m1, &e);
             let m = m0.span(&e, beta, t);
             let m1 = m1.intersect(&m);
-            let after =
-                MetricField::<'_, 3, Tetrahedron<usize>, Mesh3d, AnisoMetric3d>::edge_gradation(
-                    &m0, &m1, &e,
-                );
+            let after = MetricField::<'_, 3, Mesh3d, AnisoMetric3d>::edge_gradation(&m0, &m1, &e);
             // println!("{before} {after} {}", after < before);
             assert!(after < before, "{after} > {before}");
         }
@@ -285,10 +273,7 @@ mod tests {
             let m1 = AnisoMetric3d::from_mat(mat);
             let m = m0.span(&e, beta, t);
             let m1 = m1.intersect(&m);
-            let after =
-                MetricField::<'_, 3, Tetrahedron<usize>, Mesh3d, AnisoMetric3d>::edge_gradation(
-                    &m0, &m1, &e,
-                );
+            let after = MetricField::<'_, 3, Mesh3d, AnisoMetric3d>::edge_gradation(&m0, &m1, &e);
             assert!(after < 1.01 * beta, "{after} > {beta}");
         }
     }

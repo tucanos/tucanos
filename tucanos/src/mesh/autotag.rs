@@ -14,11 +14,11 @@ use tmesh::{
 ///       - the angle between the normals to these elements is lower than a threshold
 ///   - The new element tag is the index of the connected component of this graph
 ///     to which the element belongs
-pub fn autotag<const D: usize, C: Simplex, M: Mesh<D, C>>(
+pub fn autotag<const D: usize, M: Mesh<D>>(
     msh: &mut M,
     angle_deg: f64,
 ) -> Result<HashMap<Tag, Vec<Tag>>> {
-    assert_eq!(D - 1, C::DIM);
+    assert_eq!(D - 1, M::C::DIM);
 
     let faces = msh.all_faces();
     let threshold = angle_deg.to_radians().cos();
@@ -57,13 +57,13 @@ pub fn autotag<const D: usize, C: Simplex, M: Mesh<D, C>>(
 }
 
 /// Automatically tag the mesh faces applying `autotag` to the mesh boundary
-pub fn autotag_bdy<const D: usize, C: Simplex, M: Mesh<D, C>>(
+pub fn autotag_bdy<const D: usize, M: Mesh<D>>(
     msh: &mut M,
     angle_deg: f64,
 ) -> Result<HashMap<Tag, Vec<Tag>>> {
-    assert_eq!(D, C::DIM);
+    assert_eq!(D, <M::C as Simplex>::DIM);
 
-    let mut bdy = msh.boundary::<GenericMesh<D, C::FACE>>().0;
+    let mut bdy = msh.boundary::<GenericMesh<D, <M::C as Simplex>::FACE>>().0;
     let new_tags = autotag(&mut bdy, angle_deg)?;
 
     msh.ftags_mut()
@@ -76,7 +76,7 @@ pub fn autotag_bdy<const D: usize, C: Simplex, M: Mesh<D, C>>(
 /// Transfer the tag information to another mesh.
 /// For each element or face in `mesh` (depending on the dimension), its tag is updated
 /// to the tag of the element of `self` onto which the element center is projected.
-pub fn transfer_tags<const D: usize, C: Simplex, M: Mesh<D, C>, C2: Simplex, M2: Mesh<D, C2>>(
+pub fn transfer_tags<const D: usize, M: Mesh<D>, M2: Mesh<D>>(
     msh: &M,
     tree: &ObjectIndex<D>,
     mesh: &mut M2,
@@ -86,14 +86,14 @@ pub fn transfer_tags<const D: usize, C: Simplex, M: Mesh<D, C>, C2: Simplex, M2:
         msh.etag(idx)
     };
 
-    if C2::DIM == C::DIM {
+    if <M2::C as Simplex>::DIM == <M::C as Simplex>::DIM {
         debug!("Computing the mesh element tags");
         let tags = mesh
             .gelems()
             .map(|ge| get_tag(&ge.center()))
             .collect::<Vec<_>>();
         mesh.etags_mut().zip(tags).for_each(|(t, new_t)| *t = new_t);
-    } else if C2::DIM == C::DIM + 1 {
+    } else if <M2::C as Simplex>::DIM == <M::C as Simplex>::DIM + 1 {
         debug!("Computing the mesh face tags");
         let tags = mesh
             .gfaces()

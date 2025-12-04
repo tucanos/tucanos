@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use crate::metric::Metric;
 use log::debug;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
@@ -12,27 +10,21 @@ pub mod implied;
 mod scaling;
 mod smoothing;
 
-pub struct MetricField<'a, const D: usize, C: Simplex, M: Mesh<D, C>, T: Metric<D>> {
+pub struct MetricField<'a, const D: usize, M: Mesh<D>, T: Metric<D>> {
     msh: &'a M,
     metric: Vec<T>,
     vols: Vec<f64>,
-    _c: PhantomData<C>,
 }
 
-impl<'a, const D: usize, C: Simplex, M: Mesh<D, C>, T: Metric<D>> MetricField<'a, D, C, M, T> {
+impl<'a, const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'a, D, M, T> {
     pub fn new(msh: &'a M, metric: Vec<T>) -> Self {
         let mut vols = vec![0.0; msh.n_verts()];
         for e in msh.elems() {
-            let v = msh.gelem(&e).vol() / C::N_VERTS as f64;
+            let v = msh.gelem(&e).vol() / <M::C as Simplex>::N_VERTS as f64;
             e.into_iter().for_each(|i| vols[i] += v);
         }
 
-        Self {
-            msh,
-            metric,
-            vols,
-            _c: PhantomData,
-        }
+        Self { msh, metric, vols }
     }
 
     #[must_use]
@@ -86,14 +78,14 @@ impl<'a, const D: usize, C: Simplex, M: Mesh<D, C>, T: Metric<D>> MetricField<'a
 
         let mut res = vec![T::default(); n_elems];
 
-        let f = 1. / C::N_VERTS as f64;
+        let f = 1. / M::C::N_VERTS as f64;
 
         res.par_iter_mut()
             .zip(self.msh.par_elems())
             .for_each(|(m_elem, e)| {
-                let mut weights = Vec::with_capacity(C::N_VERTS);
-                let mut metrics = Vec::with_capacity(C::N_VERTS);
-                weights.resize(C::N_VERTS, f);
+                let mut weights = Vec::with_capacity(M::C::N_VERTS);
+                let mut metrics = Vec::with_capacity(M::C::N_VERTS);
+                weights.resize(M::C::N_VERTS, f);
                 metrics.extend(e.into_iter().map(|i| self.metric[i]));
                 let wm = weights.iter().copied().zip(metrics.iter());
                 *m_elem = T::interpolate(wm);

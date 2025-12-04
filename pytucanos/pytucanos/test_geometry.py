@@ -27,8 +27,7 @@ class TestGeometry(unittest.TestCase):
         coords, elems, etags, faces, ftags = get_cube()
         msh = Mesh3d(coords, elems, etags, faces, ftags)
         msh.fix()
-        geom = LinearGeometry3d(msh)
-        geom.compute_curvature()
+        _ = LinearGeometry3d(msh)
 
     def test_project_2d(self):
         coords, elems, etags, faces, ftags = get_square()

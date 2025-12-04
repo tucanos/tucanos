@@ -8,13 +8,13 @@ use tmesh::{
 
 /// Reorder a surface mesh that provides a representation of the geometry of the boundary of a
 /// volume mesh such that boundary faces are oriented outwards.
-pub fn orient_geometry<const D: usize, C: Simplex, M: Mesh<D, C>, M2: Mesh<D, C::FACE>>(
+pub fn orient_geometry<const D: usize, M: Mesh<D>, M2: Mesh<D, C = <M::C as Simplex>::FACE>>(
     mesh: &M,
     stl_mesh: &mut M2,
 ) -> (usize, f64) {
     debug!("Orient the boundary mesh");
 
-    let (bdy, _) = mesh.boundary::<GenericMesh<D, C::FACE>>();
+    let (bdy, _) = mesh.boundary::<GenericMesh<D, <M::C as Simplex>::FACE>>();
     let tags = bdy.etags().collect::<FxHashSet<_>>();
 
     let mut new_elems = stl_mesh.elems().collect::<Vec<_>>();

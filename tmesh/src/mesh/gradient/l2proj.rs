@@ -19,11 +19,7 @@ use crate::{
 /// ```
 /// where the sum is considered over all elements that contain vertex $`i`$.
 ///
-pub fn gradient_l2proj<const D: usize, C: Simplex, M: Mesh<D, C>>(
-    msh: &M,
-    v2e: &CSRGraph,
-    f: &[f64],
-) -> Vec<f64> {
+pub fn gradient_l2proj<const D: usize, M: Mesh<D>>(msh: &M, v2e: &CSRGraph, f: &[f64]) -> Vec<f64> {
     debug!("Compute gradient using L2 projection");
 
     assert_eq!(f.len(), msh.n_verts());
@@ -38,7 +34,7 @@ pub fn gradient_l2proj<const D: usize, C: Simplex, M: Mesh<D, C>>(
         .for_each(|((g, e), v)| {
             let ge = msh.gelem(&e);
             let mut grad = Vertex::<D>::zeros();
-            for i_face in 0..C::N_FACES {
+            for i_face in 0..<M::C as Simplex>::N_FACES {
                 let i_vert = e.get(i_face);
                 let gf = ge.face(i_face);
                 grad += f[i_vert] * gf.normal();
@@ -62,7 +58,7 @@ pub fn gradient_l2proj<const D: usize, C: Simplex, M: Mesh<D, C>>(
                 g[i] += tmp[D * i_elem + i];
             }
         }
-        v /= C::N_VERTS as f64;
+        v /= <M::C as Simplex>::N_VERTS as f64;
         for x in g.iter_mut() {
             *x /= fac * v;
         }
@@ -74,7 +70,7 @@ pub fn gradient_l2proj<const D: usize, C: Simplex, M: Mesh<D, C>>(
 /// Compute the hessian of a scalar field defined at the mesh vertices
 /// applying twice the L2 projection gradient.
 /// NB: this actually does not converge the the hessian!
-pub fn hessian_l2proj<const D: usize, C: Simplex, M: Mesh<D, C>>(
+pub fn hessian_l2proj<const D: usize, M: Mesh<D>>(
     msh: &M,
     v2e: &CSRGraph,
     gradf: &[f64],
@@ -101,7 +97,7 @@ pub fn hessian_l2proj<const D: usize, C: Simplex, M: Mesh<D, C>>(
         .for_each(|((h, e), v)| {
             let ge = msh.gelem(&e);
             let mut hess = SMatrix::<f64, D, D>::zeros();
-            for i_face in 0..C::N_FACES {
+            for i_face in 0..<M::C as Simplex>::N_FACES {
                 let i_vert = e.get(i_face);
                 let start = D * i_vert;
                 let end = start + D;
@@ -139,7 +135,7 @@ pub fn hessian_l2proj<const D: usize, C: Simplex, M: Mesh<D, C>>(
                 g[i] += tmp[n * i_elem + i];
             }
         }
-        v /= C::N_VERTS as f64;
+        v /= <M::C as Simplex>::N_VERTS as f64;
 
         for x in g.iter_mut() {
             *x /= fac * v;

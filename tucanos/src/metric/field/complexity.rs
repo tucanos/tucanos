@@ -5,7 +5,7 @@ use rayon::{
 };
 use tmesh::mesh::{GSimplex, Mesh, Simplex};
 
-impl<const D: usize, C: Simplex, M: Mesh<D, C>, T: Metric<D>> MetricField<'_, D, C, M, T> {
+impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
     /// Get the metric information (min/max size, max anisotropy, complexity)
     pub fn info(&self) -> (f64, f64, f64, f64) {
         let (h_min, h_max, aniso_max) = self
@@ -73,7 +73,7 @@ impl<const D: usize, C: Simplex, M: Mesh<D, C>, T: Metric<D>> MetricField<'_, D,
                 let vol = s
                     .iter()
                     .fold(1.0, |a, b| a * f64::min(h_max, f64::max(h_min, *b)));
-                v / (C::GEOM::<D>::ideal_vol() * vol)
+                v / (<M::C as Simplex>::GEOM::<D>::ideal_vol() * vol)
             })
             .sum::<f64>()
     }
@@ -93,7 +93,7 @@ impl<const D: usize, C: Simplex, M: Mesh<D, C>, T: Metric<D>> MetricField<'_, D,
                 let vol = s
                     .iter()
                     .fold(1.0, |a, b| a * f64::min(h_max, f64::max(h_min, *b)));
-                v / (C::GEOM::<D>::ideal_vol() * vol)
+                v / (<M::C as Simplex>::GEOM::<D>::ideal_vol() * vol)
             })
             .sum::<f64>()
     }
