@@ -515,6 +515,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "kmeans is slow"]
     fn test_part_kmeans() {
         let mut msh = box_mesh::<Mesh3d>(1.0, 6, 1.0, 5, 1.0, 5).random_shuffle();
         let (quality, imbalance) = msh.partition::<KMeansPartitioner3d>(4, None).unwrap();

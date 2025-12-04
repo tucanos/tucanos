@@ -18,13 +18,14 @@ use tmesh::{
 /// and is exact for vertices that lie on a sphere."
 #[must_use]
 pub fn compute_vertex_normals<const D: usize, M: Mesh<D>>(mesh: &M) -> Vec<Vertex<D>> {
+    assert_eq!(<M::C as Simplex>::order(), 1);
     debug!("Compute the surface normals at the vertices");
 
     let mut normals = vec![Vertex::<D>::zeros(); mesh.n_verts()];
 
     for e in mesh.elems() {
         let ge = mesh.gelem(&e);
-        let n = ge.normal();
+        let n = ge.normal(None);
         for i_vert in e {
             normals[i_vert] += n;
         }
@@ -102,7 +103,7 @@ pub fn compute_curvature_tensor_3d<T: Idx>(
     for e in smesh.elems() {
         // Compute the element-based curvature
         let ge = smesh.gelem(&e);
-        let n = ge.normal().normalize();
+        let n = ge.normal(None).normalize();
 
         let edgs = [
             ge.face(0).as_vec(),
