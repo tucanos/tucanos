@@ -8,6 +8,46 @@ use std::fs::OpenOptions;
 /// Triangle mesh in 3d
 pub type BoundaryMesh3d = GenericMesh<3, Triangle<usize>>;
 
+/// Create a `Mesh<3, Triangle<_>>` of a sphere
+#[must_use]
+pub fn sphere_mesh<M: Mesh<3, C = Triangle<impl Idx>>>(r: f64, n: usize) -> M {
+    let mut res = M::empty();
+    res.add_verts(
+        [
+            (0., 0., 1.),
+            (1., 0., 0.),
+            (0., 1., 0.),
+            (-1., 0., 0.),
+            (0., -1., 0.),
+            (0., 0., -1.),
+        ]
+        .into_iter()
+        .map(|(x, y, z)| Vert3d::new(x, y, z)),
+    );
+    res.add_elems_and_tags(
+        [
+            [0, 1, 2],
+            [0, 2, 3],
+            [0, 3, 4],
+            [0, 4, 1],
+            [5, 2, 1],
+            [5, 3, 2],
+            [5, 4, 3],
+            [5, 1, 4],
+        ]
+        .into_iter()
+        .map(|[a, b, c]| (Triangle::new(a, b, c), 1)),
+    );
+    for _ in 0..n {
+        res = res.split();
+        for x in res.verts_mut() {
+            *x *= r / x.norm();
+        }
+    }
+
+    res
+}
+
 /// Read a stl file
 pub fn read_stl<M: Mesh<3, C = Triangle<impl Idx>>>(file_name: &str) -> Result<M> {
     let mut file = OpenOptions::new().read(true).open(file_name).unwrap();

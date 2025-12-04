@@ -36,7 +36,7 @@ use crate::{
     spatialindex::PointIndex,
 };
 pub use boundary_mesh_2d::BoundaryMesh2d;
-pub use boundary_mesh_3d::{BoundaryMesh3d, read_stl};
+pub use boundary_mesh_3d::{BoundaryMesh3d, read_stl, sphere_mesh};
 pub use elements::{
     Hexahedron, Idx, Prism, Pyramid, Quadrangle,
     edge::{Edge, GEdge},
@@ -48,7 +48,7 @@ pub use elements::{
 };
 use hilbert::hilbert_indices;
 pub use mesh_2d::{Mesh2d, nonuniform_rectangle_mesh, rectangle_mesh};
-pub use mesh_3d::{Mesh3d, box_mesh, nonuniform_box_mesh};
+pub use mesh_3d::{Mesh3d, ball_mesh, box_mesh, nonuniform_box_mesh};
 use partition::Partitioner;
 use split::{split_edgs, split_tets, split_tris};
 pub use vector::Vector;

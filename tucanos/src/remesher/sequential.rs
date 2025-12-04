@@ -952,7 +952,7 @@ mod tests {
         Vert2d, Vert3d, assert_delta,
         mesh::{
             BoundaryMesh3d, Edge, GSimplex, GenericMesh, Mesh, Mesh3d, Simplex, Tetrahedron,
-            Triangle,
+            Triangle, ball_mesh,
         },
     };
 
@@ -964,9 +964,8 @@ mod tests {
             MeshTopology,
             test_meshes::{
                 ConcentricCircles, ConcentricSpheres, GeomHalfCircle2d, SphereGeometry,
-                concentric_circles_mesh, concentric_spheres_mesh, h_2d, h_3d, sphere_mesh,
-                test_mesh_2d, test_mesh_3d, test_mesh_3d_single_tet, test_mesh_3d_two_tets,
-                test_mesh_moon_2d,
+                concentric_circles_mesh, concentric_spheres_mesh, h_2d, h_3d, test_mesh_2d,
+                test_mesh_3d, test_mesh_3d_single_tet, test_mesh_3d_two_tets, test_mesh_moon_2d,
             },
         },
         metric::{
@@ -1761,7 +1760,7 @@ mod tests {
 
     #[test]
     fn test_adapt_aniso_3d_geom() -> Result<()> {
-        let mut mesh = sphere_mesh(3);
+        let mut mesh: Mesh3d = ball_mesh(1.0, 3);
 
         let mfunc = |_p| {
             let v0 = Vert3d::new(0.5, 0., 0.);
@@ -1795,8 +1794,8 @@ mod tests {
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
 
             if iter == 1 {
-                assert_delta!(mini, 0.35, 0.01);
-                assert_delta!(maxi, 1.38, 0.01);
+                assert_delta!(mini, 0.31, 0.01);
+                assert_delta!(maxi, 1.49, 0.01);
             }
 
             // let fname = format!("sphere_{}.vtu", iter + 1);

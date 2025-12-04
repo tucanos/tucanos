@@ -1,7 +1,7 @@
 //! Tetrahedron meshes in 3d
 use crate::{
     Vert3d,
-    mesh::{GenericMesh, Hexahedron, Mesh, Quadrangle, Tetrahedron, elements::Idx},
+    mesh::{GenericMesh, Hexahedron, Mesh, Quadrangle, Tetrahedron, Triangle, elements::Idx},
 };
 
 /// Create a `Mesh<3, Tetrahedron<_>>` of a `lx` by `ly` by `lz` box by splitting a `nx` by `ny` by `nz`
@@ -146,6 +146,69 @@ pub fn nonuniform_box_mesh<M: Mesh<3, C = Tetrahedron<impl Idx>>>(
     res
 }
 
+/// Create a `Mesh<3, Tetrahedron<_>>` of a ball
+#[must_use]
+pub fn ball_mesh<M: Mesh<3, C = Tetrahedron<impl Idx>>>(r: f64, n: usize) -> M {
+    let mut res = M::empty();
+
+    res.add_verts(
+        [
+            (0., 0., 1.),
+            (1., 0., 0.),
+            (0., 1., 0.),
+            (-1., 0., 0.),
+            (0., -1., 0.),
+            (0., 0., -1.),
+            (0., 0., 0.),
+        ]
+        .into_iter()
+        .map(|(x, y, z)| Vert3d::new(x, y, z)),
+    );
+
+    res.add_elems_and_tags(
+        [
+            (6, 0, 1, 2),
+            (6, 0, 2, 3),
+            (6, 0, 3, 4),
+            (6, 0, 4, 1),
+            (6, 5, 2, 1),
+            (6, 5, 3, 2),
+            (6, 5, 4, 3),
+            (6, 5, 1, 4),
+        ]
+        .into_iter()
+        .map(|(a, b, c, d)| (Tetrahedron::new(a, b, c, d), 1)),
+    );
+
+    res.add_faces_and_tags(
+        [
+            (0, 1, 2),
+            (0, 2, 3),
+            (0, 3, 4),
+            (0, 4, 1),
+            (5, 2, 1),
+            (5, 3, 2),
+            (5, 4, 3),
+            (5, 1, 4),
+        ]
+        .into_iter()
+        .map(|(a, b, c)| (Triangle::new(a, b, c), 1)),
+    );
+
+    for _ in 0..n {
+        res = res.split();
+        let flg = res.boundary_flag();
+
+        for (x, is_boundary) in res.verts_mut().zip(flg) {
+            if is_boundary {
+                *x *= r / x.norm();
+            }
+        }
+    }
+
+    res
+}
+
 /// Tetrahedron mesh in 3d
 pub type Mesh3d = GenericMesh<3, Tetrahedron<usize>>;
 
@@ -155,10 +218,12 @@ mod tests {
         Vert3d, assert_delta,
         mesh::{
             BoundaryMesh3d, GSimplex, GradientMethod, Mesh, Mesh3d, bandwidth, box_mesh,
+            mesh_3d::ball_mesh,
             partition::{HilbertPartitioner, KMeansPartitioner3d, RCMPartitioner},
         },
     };
     use rayon::iter::ParallelIterator;
+    use std::f64::consts::PI;
 
     #[test]
     fn test_box() {
@@ -600,5 +665,14 @@ mod tests {
         assert_eq!(mesh1.n_verts(), 2 * mesh2.n_verts() - 4);
         assert_eq!(mesh1.n_tagged_faces(6), 8);
         assert_eq!(mesh1.n_tagged_faces(11), 8);
+    }
+
+    #[test]
+    fn test_ball() {
+        let r = 1.234;
+        let msh: Mesh3d = ball_mesh(r, 6);
+        let surf: BoundaryMesh3d = msh.boundary().0;
+        assert_delta!(msh.vol(), 4.0 / 3.0 * PI * r.powi(3), 0.003);
+        assert_delta!(surf.vol(), 4.0 * PI * r.powi(2), 0.004);
     }
 }
