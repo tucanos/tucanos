@@ -8,6 +8,7 @@ use std::{fs::OpenOptions, iter::once};
 /// Triangle mesh in 3d
 pub type BoundaryMesh3d = GenericMesh<3, Triangle<usize>>;
 pub type QuadraticBoundaryMesh3d = GenericMesh<3, QuadraticTriangle<usize>>;
+pub type FastQuadraticBoundaryMesh3d = GenericMesh<3, QuadraticTriangle<usize, true>>;
 
 /// Create a `Mesh<3, Triangle<_>>` of a sphere
 #[must_use]
@@ -52,7 +53,13 @@ pub fn sphere_mesh<M: Mesh<3, C = Triangle<impl Idx>>>(r: f64, n: usize) -> M {
 
 /// Create a `Mesh<3, QuadraticTriangle<_>>` of a sphere
 #[must_use]
-pub fn quadratic_sphere_mesh<M: Mesh<3, C = QuadraticTriangle<impl Idx>>>(r: f64, n: usize) -> M {
+pub fn quadratic_sphere_mesh<
+    const FAST: bool,
+    M: Mesh<3, C = QuadraticTriangle<impl Idx, FAST>>,
+>(
+    r: f64,
+    n: usize,
+) -> M {
     let mut res: M = to_quadratic_triangle_mesh(&sphere_mesh::<BoundaryMesh3d>(r, n));
     res.verts_mut().for_each(|x| *x *= r / x.norm());
 
@@ -62,8 +69,8 @@ pub fn quadratic_sphere_mesh<M: Mesh<3, C = QuadraticTriangle<impl Idx>>>(r: f64
 #[must_use]
 pub fn to_quadratic_triangle_mesh<
     const D: usize,
-    T: Idx,
-    M: Mesh<D, C = QuadraticTriangle<T>>,
+    const FAST: bool,
+    M: Mesh<D, C = QuadraticTriangle<impl Idx, FAST>>,
     T2: Idx,
 >(
     msh: &impl Mesh<D, C = Triangle<T2>>,

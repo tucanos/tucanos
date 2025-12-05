@@ -2,19 +2,22 @@ use crate::{
     Vertex,
     mesh::{
         Edge, GEdge, GSimplex, GTriangle, Idx, QuadraticEdge, QuadraticGEdge, Simplex,
-        elements::ho_simplex::HOType,
+        elements::{
+            ho_simplex::HOType,
+            newton::{NewtonConvergenceStatus, newton_minimization},
+        },
     },
 };
 use argmin::core::{CostFunction, Executor, Gradient, Hessian};
-use nalgebra::SMatrix;
+use nalgebra::{Matrix2, SMatrix, Vector2};
 use std::fmt::Debug;
 use std::ops::Index;
 
 /// Edge
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct QuadraticTriangle<T: Idx>(pub(crate) [T; 6]);
+pub struct QuadraticTriangle<T: Idx, const FAST: bool = false>(pub(crate) [T; 6]);
 
-impl<T: Idx> QuadraticTriangle<T> {
+impl<T: Idx, const FAST: bool> QuadraticTriangle<T, FAST> {
     #[must_use]
     pub fn new(i0: usize, i1: usize, i2: usize, i3: usize, i4: usize, i5: usize) -> Self {
         Self([
@@ -28,7 +31,7 @@ impl<T: Idx> QuadraticTriangle<T> {
     }
 }
 
-impl<T: Idx> IntoIterator for QuadraticTriangle<T> {
+impl<T: Idx, const FAST: bool> IntoIterator for QuadraticTriangle<T, FAST> {
     type Item = usize;
     type IntoIter = std::iter::Map<std::array::IntoIter<T, 6>, fn(T) -> usize>;
 
@@ -38,9 +41,9 @@ impl<T: Idx> IntoIterator for QuadraticTriangle<T> {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct QuadraticGTriangle<const D: usize>([Vertex<D>; 6], HOType);
+pub struct QuadraticGTriangle<const D: usize, const FAST: bool = false>([Vertex<D>; 6], HOType);
 
-impl<const D: usize> QuadraticGTriangle<D> {
+impl<const D: usize, const FAST: bool> QuadraticGTriangle<D, FAST> {
     #[must_use]
     pub const fn new(
         v0: &Vertex<D>,
@@ -157,7 +160,7 @@ impl<const D: usize> QuadraticGTriangle<D> {
     }
 }
 
-impl<const D: usize> Index<usize> for QuadraticGTriangle<D> {
+impl<const D: usize, const FAST: bool> Index<usize> for QuadraticGTriangle<D, FAST> {
     type Output = Vertex<D>;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -165,7 +168,7 @@ impl<const D: usize> Index<usize> for QuadraticGTriangle<D> {
     }
 }
 
-impl<const D: usize> IntoIterator for QuadraticGTriangle<D> {
+impl<const D: usize, const FAST: bool> IntoIterator for QuadraticGTriangle<D, FAST> {
     type Item = Vertex<D>;
     type IntoIter = std::array::IntoIter<Self::Item, 6>;
 
@@ -174,7 +177,7 @@ impl<const D: usize> IntoIterator for QuadraticGTriangle<D> {
     }
 }
 
-impl<const D: usize> Default for QuadraticGTriangle<D> {
+impl<const D: usize, const FAST: bool> Default for QuadraticGTriangle<D, FAST> {
     fn default() -> Self {
         Self([Vertex::zeros(); 6], HOType::Lagrange)
     }
@@ -186,7 +189,7 @@ const QUADRATICTRIANGLE2FACE: [QuadraticEdge<usize>; 3] = [
     QuadraticEdge([2, 0, 5]),
 ];
 
-impl<T: Idx> Simplex for QuadraticTriangle<T> {
+impl<T: Idx, const FAST: bool> Simplex for QuadraticTriangle<T, FAST> {
     type T = T;
     type FACE = QuadraticEdge<T>;
     type GEOM<const D: usize> = QuadraticGTriangle<D>;
@@ -263,7 +266,7 @@ impl<T: Idx> Simplex for QuadraticTriangle<T> {
     }
 }
 
-impl<const D: usize> GSimplex<D> for QuadraticGTriangle<D> {
+impl<const D: usize, const FAST: bool> GSimplex<D> for QuadraticGTriangle<D, FAST> {
     const N_VERTS: usize = 6;
     type ARRAY<T: Debug + Default + Clone + Copy> = [T; 3];
     type BCOORDS = Self::ARRAY<f64>;
@@ -329,21 +332,44 @@ impl<const D: usize> GSimplex<D> for QuadraticGTriangle<D> {
     fn bcoords(&self, v: &Vertex<D>) -> Self::BCOORDS {
         let uvw = self.linear().bcoords(v);
 
-        let linesearch = argmin::solver::linesearch::MoreThuenteLineSearch::new();
-        let solver = argmin::solver::newton::NewtonCG::new(linesearch)
-            .with_tolerance(1e-10)
-            .unwrap();
+        let proj = QuadraticTriangleProjection { v, ge: self };
+        if FAST {
+            let max_iters = 3;
+            let tolerance = 1e-10;
+            let x = Vector2::new(uvw[1], uvw[2]);
+            let res = newton_minimization(
+                x,
+                |x| proj.cost(x).unwrap(),
+                |x| proj.gradient(x).unwrap(),
+                |x| proj.hessian(x).unwrap(),
+                max_iters,
+                tolerance,
+            );
+            let res = match res {
+                NewtonConvergenceStatus::Converged(x) => x,
+                NewtonConvergenceStatus::MaxItersReached(x) => x,
+                NewtonConvergenceStatus::HessianNonInvertible => {
+                    panic!("Newton minimization failed.")
+                }
+            };
+            [1.0 - res[0] - res[1], res[0], res[1]]
+        } else {
+            let linesearch = argmin::solver::linesearch::MoreThuenteLineSearch::new();
+            let solver = argmin::solver::newton::NewtonCG::new(linesearch)
+                .with_tolerance(1e-10)
+                .unwrap();
 
-        let res = Executor::new(QuadraticTriangleProjection { v, ge: self }, solver)
-            .configure(|state| state.param([uvw[1], uvw[2]].into()).max_iters(100))
-            // .add_observer(
-            //     argmin_observer_slog::SlogLogger::term(),
-            //     argmin::core::observers::ObserverMode::Always,
-            // )
-            .run()
-            .unwrap();
-        let res = res.state.best_param.unwrap();
-        [1.0 - res[0] - res[1], res[0], res[1]]
+            let res = Executor::new(proj, solver)
+                .configure(|state| state.param([uvw[1], uvw[2]].into()).max_iters(100))
+                // .add_observer(
+                //     argmin_observer_slog::SlogLogger::term(),
+                //     argmin::core::observers::ObserverMode::Always,
+                // )
+                .run()
+                .unwrap();
+            let res = res.state.best_param.unwrap();
+            [1.0 - res[0] - res[1], res[0], res[1]]
+        }
     }
 
     /// Vertex from barycentric coordinates
@@ -372,13 +398,13 @@ impl<const D: usize> GSimplex<D> for QuadraticGTriangle<D> {
     }
 }
 
-struct QuadraticTriangleProjection<'a, const D: usize> {
+struct QuadraticTriangleProjection<'a, const D: usize, const FAST: bool> {
     v: &'a Vertex<D>,
-    ge: &'a QuadraticGTriangle<D>,
+    ge: &'a QuadraticGTriangle<D, FAST>,
 }
 
-impl<const D: usize> CostFunction for QuadraticTriangleProjection<'_, D> {
-    type Param = nalgebra::Vector2<f64>;
+impl<const D: usize, const FAST: bool> CostFunction for QuadraticTriangleProjection<'_, D, FAST> {
+    type Param = Vector2<f64>;
     type Output = f64;
 
     fn cost(&self, param: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
@@ -388,9 +414,9 @@ impl<const D: usize> CostFunction for QuadraticTriangleProjection<'_, D> {
     }
 }
 
-impl<const D: usize> Gradient for QuadraticTriangleProjection<'_, D> {
-    type Param = nalgebra::Vector2<f64>;
-    type Gradient = nalgebra::Vector2<f64>;
+impl<const D: usize, const FAST: bool> Gradient for QuadraticTriangleProjection<'_, D, FAST> {
+    type Param = Vector2<f64>;
+    type Gradient = Vector2<f64>;
 
     fn gradient(&self, param: &Self::Param) -> Result<Self::Gradient, argmin::core::Error> {
         let uvw = [1.0 - param[0] - param[1], param[0], param[1]];
@@ -400,9 +426,9 @@ impl<const D: usize> Gradient for QuadraticTriangleProjection<'_, D> {
     }
 }
 
-impl<const D: usize> Hessian for QuadraticTriangleProjection<'_, D> {
-    type Param = nalgebra::Vector2<f64>;
-    type Hessian = nalgebra::Matrix2<f64>;
+impl<const D: usize, const FAST: bool> Hessian for QuadraticTriangleProjection<'_, D, FAST> {
+    type Param = Vector2<f64>;
+    type Hessian = Matrix2<f64>;
 
     fn hessian(&self, param: &Self::Param) -> Result<Self::Hessian, argmin::core::Error> {
         let uvw = [1.0 - param[0] - param[1], param[0], param[1]];
@@ -466,7 +492,7 @@ mod tests {
         let p5 = Vert3d::new(0.25, 0.5, 0.5);
 
         let ge = GTriangle::new(&p0, &p1, &p2);
-        let ge2 = QuadraticGTriangle::new(
+        let ge2 = QuadraticGTriangle::<_, false>::new(
             &p0,
             &p1,
             &p2,

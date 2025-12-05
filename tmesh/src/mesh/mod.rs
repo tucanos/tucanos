@@ -36,12 +36,12 @@ use crate::{
     spatialindex::PointIndex,
 };
 pub use boundary_mesh_2d::{
-    BoundaryMesh2d, QuadraticBoundaryMesh2d, circle_mesh, quadratic_circle_mesh,
-    to_quadratic_edge_mesh,
+    BoundaryMesh2d, FastQuadraticBoundaryMesh2d, QuadraticBoundaryMesh2d, circle_mesh,
+    quadratic_circle_mesh, to_quadratic_edge_mesh,
 };
 pub use boundary_mesh_3d::{
-    BoundaryMesh3d, QuadraticBoundaryMesh3d, quadratic_sphere_mesh, read_stl, sphere_mesh,
-    to_quadratic_triangle_mesh,
+    BoundaryMesh3d, FastQuadraticBoundaryMesh3d, QuadraticBoundaryMesh3d, quadratic_sphere_mesh,
+    read_stl, sphere_mesh, to_quadratic_triangle_mesh,
 };
 pub use elements::{
     Hexahedron, Idx, Prism, Pyramid, Quadrangle,

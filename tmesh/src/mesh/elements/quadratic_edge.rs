@@ -2,18 +2,23 @@ use crate::{
     Vertex,
     mesh::{
         Edge, GEdge, GNode, GSimplex, Idx, Node, Simplex,
-        elements::{ho_simplex::HOType, quadratures::QUADRATURE_EDGE_6},
+        elements::{
+            ho_simplex::HOType,
+            newton::{NewtonConvergenceStatus, newton_minimization},
+            quadratures::QUADRATURE_EDGE_6,
+        },
     },
 };
 use argmin::core::{CostFunction, Executor, Gradient, Hessian};
+use nalgebra::{Matrix1, Vector1};
 use std::fmt::Debug;
 use std::ops::Index;
 
 /// Edge
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct QuadraticEdge<T: Idx>(pub(crate) [T; 3]);
+pub struct QuadraticEdge<T: Idx, const FAST: bool = false>(pub(crate) [T; 3]);
 
-impl<T: Idx> QuadraticEdge<T> {
+impl<T: Idx, const FAST: bool> QuadraticEdge<T, FAST> {
     #[must_use]
     pub fn new(i0: usize, i1: usize, i2: usize) -> Self {
         Self([
@@ -24,7 +29,7 @@ impl<T: Idx> QuadraticEdge<T> {
     }
 }
 
-impl<T: Idx> IntoIterator for QuadraticEdge<T> {
+impl<T: Idx, const FAST: bool> IntoIterator for QuadraticEdge<T, FAST> {
     type Item = usize;
     type IntoIter = std::iter::Map<std::array::IntoIter<T, 3>, fn(T) -> usize>;
 
@@ -34,9 +39,9 @@ impl<T: Idx> IntoIterator for QuadraticEdge<T> {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct QuadraticGEdge<const D: usize>([Vertex<D>; 3], HOType);
+pub struct QuadraticGEdge<const D: usize, const FAST: bool = false>([Vertex<D>; 3], HOType);
 
-impl<const D: usize> QuadraticGEdge<D> {
+impl<const D: usize, const FAST: bool> QuadraticGEdge<D, FAST> {
     #[must_use]
     pub const fn new(v0: &Vertex<D>, v1: &Vertex<D>, v2: &Vertex<D>, etype: HOType) -> Self {
         Self([*v0, *v1, *v2], etype)
@@ -95,7 +100,7 @@ impl<const D: usize> QuadraticGEdge<D> {
     }
 }
 
-impl<const D: usize> Index<usize> for QuadraticGEdge<D> {
+impl<const D: usize, const FAST: bool> Index<usize> for QuadraticGEdge<D, FAST> {
     type Output = Vertex<D>;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -103,7 +108,7 @@ impl<const D: usize> Index<usize> for QuadraticGEdge<D> {
     }
 }
 
-impl<const D: usize> IntoIterator for QuadraticGEdge<D> {
+impl<const D: usize, const FAST: bool> IntoIterator for QuadraticGEdge<D, FAST> {
     type Item = Vertex<D>;
     type IntoIter = std::array::IntoIter<Self::Item, 3>;
 
@@ -112,7 +117,7 @@ impl<const D: usize> IntoIterator for QuadraticGEdge<D> {
     }
 }
 
-impl<const D: usize> Default for QuadraticGEdge<D> {
+impl<const D: usize, const FAST: bool> Default for QuadraticGEdge<D, FAST> {
     fn default() -> Self {
         Self([Vertex::zeros(); 3], HOType::Lagrange)
     }
@@ -120,10 +125,10 @@ impl<const D: usize> Default for QuadraticGEdge<D> {
 
 const QUADRATICEDGE2FACES: [Node<usize>; 2] = [Node([1]), Node([0])];
 
-impl<T: Idx> Simplex for QuadraticEdge<T> {
+impl<T: Idx, const FAST: bool> Simplex for QuadraticEdge<T, FAST> {
     type T = T;
     type FACE = Node<T>;
-    type GEOM<const D: usize> = QuadraticGEdge<D>;
+    type GEOM<const D: usize> = QuadraticGEdge<D, FAST>;
     const DIM: usize = 1;
     const N_VERTS: usize = 3;
     const N_EDGES: usize = 1;
@@ -170,11 +175,11 @@ impl<T: Idx> Simplex for QuadraticEdge<T> {
     }
 }
 
-impl<const D: usize> GSimplex<D> for QuadraticGEdge<D> {
+impl<const D: usize, const FAST: bool> GSimplex<D> for QuadraticGEdge<D, FAST> {
     const N_VERTS: usize = 3;
     type ARRAY<T: Debug + Default + Clone + Copy> = [T; 2];
     type BCOORDS = Self::ARRAY<f64>;
-    type TOPO = QuadraticEdge<usize>;
+    type TOPO = QuadraticEdge<usize, FAST>;
     type FACE = GNode<D>;
 
     fn ideal_vol() -> f64 {
@@ -235,20 +240,44 @@ impl<const D: usize> GSimplex<D> for QuadraticGEdge<D> {
     fn bcoords(&self, v: &Vertex<D>) -> Self::BCOORDS {
         let uv = self.linear().bcoords(v);
 
-        let linesearch = argmin::solver::linesearch::MoreThuenteLineSearch::new();
-        let solver = argmin::solver::newton::NewtonCG::new(linesearch)
-            .with_tolerance(1e-10)
-            .unwrap();
-        let res = Executor::new(QuadraticEdgeProjection { v, ge: self }, solver)
-            .configure(|state| state.param([uv[1]].into()).max_iters(100))
-            // .add_observer(
-            //     argmin_observer_slog::SlogLogger::term(),
-            //     argmin::core::observers::ObserverMode::Always,
-            // )
-            .run()
-            .unwrap();
-        let v = res.state.best_param.unwrap();
-        [1.0 - v[0], v[0]]
+        let proj = QuadraticEdgeProjection { v, ge: self };
+        if FAST {
+            let max_iters = 20;
+            let tolerance = 1e-10;
+            let x = Vector1::new(uv[1]);
+            let res = newton_minimization(
+                x,
+                |x| proj.cost(x).unwrap(),
+                |x| proj.gradient(x).unwrap(),
+                |x| proj.hessian(x).unwrap(),
+                max_iters,
+                tolerance,
+            );
+            let v = match res {
+                NewtonConvergenceStatus::Converged(x) => x,
+                NewtonConvergenceStatus::MaxItersReached(x) => x,
+                NewtonConvergenceStatus::HessianNonInvertible => {
+                    panic!("Newton minimization failed.")
+                }
+            };
+            [1.0 - v[0], v[0]]
+        } else {
+            let linesearch = argmin::solver::linesearch::MoreThuenteLineSearch::new();
+            let solver = argmin::solver::newton::NewtonCG::new(linesearch)
+                .with_tolerance(1e-10)
+                .unwrap();
+            let res = Executor::new(proj, solver)
+                .configure(|state| state.param([uv[1]].into()).max_iters(100))
+                // .add_observer(
+                //     argmin_observer_slog::SlogLogger::term(),
+                //     argmin::core::observers::ObserverMode::Always,
+                // )
+                .run()
+                .unwrap();
+            let v = res.state.best_param.unwrap();
+            println!("v = {v}");
+            [1.0 - v[0], v[0]]
+        }
     }
 
     /// Vertex from barycentric coordinates
@@ -277,13 +306,13 @@ impl<const D: usize> GSimplex<D> for QuadraticGEdge<D> {
     }
 }
 
-struct QuadraticEdgeProjection<'a, const D: usize> {
+struct QuadraticEdgeProjection<'a, const D: usize, const FAST: bool> {
     v: &'a Vertex<D>,
-    ge: &'a QuadraticGEdge<D>,
+    ge: &'a QuadraticGEdge<D, FAST>,
 }
 
-impl<const D: usize> CostFunction for QuadraticEdgeProjection<'_, D> {
-    type Param = nalgebra::Vector1<f64>;
+impl<const D: usize, const FAST: bool> CostFunction for QuadraticEdgeProjection<'_, D, FAST> {
+    type Param = Vector1<f64>;
     type Output = f64;
 
     fn cost(&self, param: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
@@ -293,9 +322,9 @@ impl<const D: usize> CostFunction for QuadraticEdgeProjection<'_, D> {
     }
 }
 
-impl<const D: usize> Gradient for QuadraticEdgeProjection<'_, D> {
-    type Param = nalgebra::Vector1<f64>;
-    type Gradient = nalgebra::Vector1<f64>;
+impl<const D: usize, const FAST: bool> Gradient for QuadraticEdgeProjection<'_, D, FAST> {
+    type Param = Vector1<f64>;
+    type Gradient = Vector1<f64>;
 
     fn gradient(&self, param: &Self::Param) -> Result<Self::Gradient, argmin::core::Error> {
         let uv = [1.0 - param[0], param[0]];
@@ -305,9 +334,9 @@ impl<const D: usize> Gradient for QuadraticEdgeProjection<'_, D> {
     }
 }
 
-impl<const D: usize> Hessian for QuadraticEdgeProjection<'_, D> {
-    type Param = nalgebra::Vector1<f64>;
-    type Hessian = nalgebra::Matrix1<f64>;
+impl<const D: usize, const FAST: bool> Hessian for QuadraticEdgeProjection<'_, D, FAST> {
+    type Param = Vector1<f64>;
+    type Hessian = Matrix1<f64>;
 
     fn hessian(&self, param: &Self::Param) -> Result<Self::Hessian, argmin::core::Error> {
         let uv = [1.0 - param[0], param[0]];
@@ -339,7 +368,7 @@ mod tests {
             let p0 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
             let p1 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
             let p2 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
-            let ge = QuadraticGEdge::new(&p0, &p1, &p2, HOType::Lagrange);
+            let ge = QuadraticGEdge::<_, false>::new(&p0, &p1, &p2, HOType::Lagrange);
             let v = Vert2d::from_fn(|_, _| 10.0 * (rng.random::<f64>() - 0.5));
             let proj = QuadraticEdgeProjection { v: &v, ge: &ge };
 
@@ -362,7 +391,7 @@ mod tests {
             let p0 = Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5);
             let p1 = Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5);
             let p2 = Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5);
-            let ge = QuadraticGEdge::new(&p0, &p1, &p2, HOType::Lagrange);
+            let ge = QuadraticGEdge::<_, false>::new(&p0, &p1, &p2, HOType::Lagrange);
             let v = Vert3d::from_fn(|_, _| 10.0 * (rng.random::<f64>() - 0.5));
             let proj = QuadraticEdgeProjection { v: &v, ge: &ge };
 
@@ -389,7 +418,7 @@ mod tests {
 
         let ge = GEdge::new(&p0, &p1);
         let p2 = 0.5 * (p0 + p1);
-        let ge2 = QuadraticGEdge::new(&p0, &p1, &p2, HOType::Lagrange);
+        let ge2 = QuadraticGEdge::<_, false>::new(&p0, &p1, &p2, HOType::Lagrange);
 
         let n = ge.normal(None);
         let n2 = ge2.normal(Some(&[0.5, 0.5]));
@@ -400,7 +429,8 @@ mod tests {
         assert_delta!(v, v2, 1e-12);
 
         let p2 = Vert2d::new(0.5, 1.2);
-        let ge2 = QuadraticGEdge::new(&p0, &p1, &p2, HOType::Lagrange);
+        let ge2 = QuadraticGEdge::<_, false>::new(&p0, &p1, &p2, HOType::Lagrange);
+        let ge3 = QuadraticGEdge::<_, true>::new(&p0, &p1, &p2, HOType::Lagrange);
 
         let n = 100;
         let t = (0..=n)
@@ -424,7 +454,9 @@ mod tests {
 
         for p2 in [p + 0.1 * n, p + n, p + 10.0 * n] {
             let (p3, _) = ge2.project(&p2);
-            assert!((p - p3).norm() < 1e-12);
+            assert_delta!((p - p3).norm(), 0.0, 1e-12);
+            let (p4, _) = ge3.project(&p2);
+            assert_delta!((p - p4).norm(), 0.0, 1e-12);
         }
     }
 }
