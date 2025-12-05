@@ -17,9 +17,9 @@ fn main() {
     }
     println!("cargo:rerun-if-env-changed=REMESH_LIBRARIES");
 
+    // Needed to build the tests
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     for p in &rpath {
-        // Needed to build the tests
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
         println!("cargo:rustc-link-arg=-Wl,-rpath,{p}");
     }
 
