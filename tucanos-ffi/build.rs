@@ -13,8 +13,8 @@ const TUCANOS_INT: &str = "";
 fn main() {
     println!("cargo:rerun-if-env-changed=DEP_TUCANOS_RPATH");
     println!("cargo:rerun-if-changed=src");
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     if let Ok(rpath) = env::var("DEP_TUCANOS_RPATH") {
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
         println!("cargo:rustc-link-arg=-Wl,-rpath,{rpath}");
     }
     let mut out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
