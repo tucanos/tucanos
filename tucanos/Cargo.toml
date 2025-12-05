@@ -27,5 +27,8 @@ trace_edges = []
 [[example]]
 name = "adapt_ellipse"
 
+[[bin]]
+name = "test_proj"
+
 [lints]
 workspace = true
