@@ -22,7 +22,7 @@ pub struct Interpolator<'a, const D: usize, M: Mesh<D>> {
     /// Index for nearest neighbor interpolation
     point_index: Option<PointIndex<D>>,
     /// Index for linear interpolation
-    elem_index: Option<ObjectIndex<D>>,
+    elem_index: Option<ObjectIndex<D, M>>,
 }
 
 impl<'a, const D: usize, M: Mesh<D> + Clone> Interpolator<'a, D, M> {
@@ -30,7 +30,7 @@ impl<'a, const D: usize, M: Mesh<D> + Clone> Interpolator<'a, D, M> {
     pub fn new(mesh: &'a M, method: InterpolationMethod) -> Self {
         let (point_index, elem_index) = match method {
             InterpolationMethod::Nearest => (Some(PointIndex::new(mesh.verts())), None),
-            InterpolationMethod::Linear(_) => (None, Some(ObjectIndex::new(mesh))),
+            InterpolationMethod::Linear(_) => (None, Some(ObjectIndex::new((*mesh).clone()))),
         };
         Self {
             mesh,
