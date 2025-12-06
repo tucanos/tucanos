@@ -12,6 +12,8 @@ pub fn orient_geometry<const D: usize, M: Mesh<D>, M2: Mesh<D, C = <M::C as Simp
     mesh: &M,
     stl_mesh: &mut M2,
 ) -> (usize, f64) {
+    assert_eq!(M::C::order(), 1);
+
     debug!("Orient the boundary mesh");
 
     let (bdy, _) = mesh.boundary::<GenericMesh<D, <M::C as Simplex>::FACE>>();
@@ -23,19 +25,19 @@ pub fn orient_geometry<const D: usize, M: Mesh<D>, M2: Mesh<D, C = <M::C as Simp
 
     for tag in tags {
         let bdy = SubMesh::new(&bdy, |t| t == tag);
-        let tree = ObjectIndex::new(&bdy.mesh);
+        let tree = ObjectIndex::new(bdy.mesh);
         for (i, (e, t)) in stl_mesh.elems().zip(stl_mesh.etags()).enumerate() {
             if t == tag {
                 let ge = stl_mesh.gelem(&e);
                 let c = ge.center();
-                let n = ge.normal().normalize();
+                let n = ge.normal(None).normalize();
                 let i_face_mesh = tree.nearest_elem(&c);
                 let i_face_mesh = bdy.parent_elem_ids[i_face_mesh];
                 let f_mesh = mesh.face(i_face_mesh);
                 let t_mesh = mesh.ftag(i_face_mesh);
                 assert_eq!(t, t_mesh);
                 let gf_mesh = mesh.gface(&f_mesh);
-                let n_mesh = gf_mesh.normal().normalize();
+                let n_mesh = gf_mesh.normal(None).normalize();
                 let mut d = n.dot(&n_mesh);
                 if d < 0.0 {
                     new_elems[i].invert();
