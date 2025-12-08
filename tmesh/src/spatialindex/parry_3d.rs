@@ -296,7 +296,8 @@ mod tests {
 
     #[test]
     fn test_quadraticboundarymesh3d() {
-        let mesh = quadratic_sphere_mesh::<QuadraticBoundaryMesh3d>(1.0, 1).random_shuffle();
+        let mesh: QuadraticBoundaryMesh3d = quadratic_sphere_mesh(1.0, 1);
+        let mesh = mesh.random_shuffle();
         let tree = ObjectIndex3d::new(mesh.clone());
 
         let mut rng = StdRng::seed_from_u64(1234);

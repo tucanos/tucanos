@@ -293,7 +293,8 @@ mod tests {
 
     #[test]
     fn test_quadraticboundarymesh2d() {
-        let mesh = quadratic_circle_mesh::<QuadraticBoundaryMesh2d>(1.0, 10).random_shuffle();
+        let mesh: QuadraticBoundaryMesh2d = quadratic_circle_mesh(1.0, 10);
+        let mesh = mesh.random_shuffle();
         let tree = ObjectIndex2d::new(mesh.clone());
 
         let mut rng = StdRng::seed_from_u64(1234);

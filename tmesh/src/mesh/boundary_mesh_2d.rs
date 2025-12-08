@@ -9,6 +9,7 @@ use crate::{
 /// Edge mesh in 2d
 pub type BoundaryMesh2d = GenericMesh<2, Edge<usize>>;
 pub type QuadraticBoundaryMesh2d = GenericMesh<2, QuadraticEdge<usize>>;
+pub type FastQuadraticBoundaryMesh2d = GenericMesh<2, QuadraticEdge<usize, true>>;
 
 /// Create a `Mesh<2, Edge<_>>` of a circle
 #[must_use]
@@ -26,7 +27,10 @@ pub fn circle_mesh<M: Mesh<2, C = Edge<impl Idx>>>(r: f64, n: usize) -> M {
 
 /// Create a `Mesh<2, QuadraticEdge<_>>` of a circle
 #[must_use]
-pub fn quadratic_circle_mesh<M: Mesh<2, C = QuadraticEdge<impl Idx>>>(r: f64, n: usize) -> M {
+pub fn quadratic_circle_mesh<const FAST: bool, M: Mesh<2, C = QuadraticEdge<impl Idx, FAST>>>(
+    r: f64,
+    n: usize,
+) -> M {
     let mut res: M = to_quadratic_edge_mesh(&circle_mesh::<BoundaryMesh2d>(r, n));
     res.verts_mut().for_each(|x| *x *= r / x.norm());
 
@@ -34,7 +38,12 @@ pub fn quadratic_circle_mesh<M: Mesh<2, C = QuadraticEdge<impl Idx>>>(r: f64, n:
 }
 
 #[must_use]
-pub fn to_quadratic_edge_mesh<const D: usize, T: Idx, M: Mesh<D, C = QuadraticEdge<T>>, T2: Idx>(
+pub fn to_quadratic_edge_mesh<
+    const D: usize,
+    const FAST: bool,
+    M: Mesh<D, C = QuadraticEdge<impl Idx, FAST>>,
+    T2: Idx,
+>(
     msh: &impl Mesh<D, C = Edge<T2>>,
 ) -> M {
     let edges = msh.edges();

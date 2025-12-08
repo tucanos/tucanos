@@ -304,7 +304,7 @@ pub fn compute_curvature<const D: usize, M: Mesh<D>>(
         } else if M::C::order() == 2 && M::C::N_VERTS == 3 {
             let u = mesh
                 .gelems()
-                .map(|ge| QuadraticGEdge::from_iter(ge).curvature())
+                .map(|ge| QuadraticGEdge::<_, false>::from_iter(ge).curvature())
                 .collect::<Vec<_>>();
             return (u, None);
         }
@@ -320,7 +320,7 @@ pub fn compute_curvature<const D: usize, M: Mesh<D>>(
             let mut u = vec![Vertex::zeros(); mesh.n_verts()];
             let mut v = vec![Vertex::zeros(); mesh.n_verts()];
             for ((u, v), ge) in u.iter_mut().zip(v.iter_mut()).zip(mesh.gelems()) {
-                (*u, *v) = QuadraticGTriangle::from_iter(ge).curvature();
+                (*u, *v) = QuadraticGTriangle::<_, false>::from_iter(ge).curvature();
             }
             return (u, Some(v));
         }
