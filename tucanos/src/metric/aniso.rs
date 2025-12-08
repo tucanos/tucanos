@@ -28,6 +28,8 @@ where
 
     fn update_from_mat_and_vol(&mut self, mat: SMatrix<f64, D, D>, vol: f64);
 
+    fn length_sqr(&self, e: &Vertex<D>) -> f64;
+
     /// Get a matrix representation of the metric
     fn as_mat(&self) -> SMatrix<f64, D, D>;
 
@@ -119,7 +121,7 @@ where
     /// l_\mathcal M(e) =  \sqrt{e^T \mathcal M e}
     /// ```
     fn length(&self, e: &Vertex<D>) -> f64 {
-        (self.as_mat() * e).dot(e).sqrt()
+        self.length_sqr(e).sqrt()
     }
 
     /// For an anisotropic metric, the volume is
@@ -392,6 +394,16 @@ impl AnisoMetric<2> for AnisoMetric2d {
         }
         self.v /= f64::sqrt(f64::powi(s, 2));
     }
+
+    fn length_sqr(&self, e: &Vertex<2>) -> f64 {
+        // In debug mode this implementation is much faster than nalgrebra's matrix-vector
+        // multiplication. In release mode it's the same.
+        let m = &self.m;
+        let e = &e.data.0[0];
+        // (m * e).dot(e)
+        let p = [m[0] * e[0] + m[2] * e[1], m[2] * e[0] + m[1] * e[1]];
+        p[0] * e[0] + p[1] * e[1]
+    }
 }
 
 impl IntoIterator for AnisoMetric2d {
@@ -559,6 +571,20 @@ impl AnisoMetric<3> for AnisoMetric3d {
             self.m[i] *= s;
         }
         self.v /= f64::sqrt(f64::powi(s, 3));
+    }
+
+    fn length_sqr(&self, e: &Vertex<3>) -> f64 {
+        // In debug mode this implementation is much faster than nalgrebra's matrix-vector
+        // multiplication. In release mode it's the same.
+        let m = &self.m;
+        let e = &e.data.0[0];
+        // (m * e).dot(e)
+        let p = [
+            m[0] * e[0] + m[3] * e[1] + m[5] * e[2],
+            m[3] * e[0] + m[1] * e[1] + m[4] * e[2],
+            m[5] * e[0] + m[4] * e[1] + m[2] * e[2],
+        ];
+        p[0] * e[0] + p[1] * e[1] + p[2] * e[2]
     }
 }
 
