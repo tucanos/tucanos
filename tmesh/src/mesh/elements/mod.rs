@@ -13,7 +13,6 @@ pub(super) mod simplex;
 pub(super) mod tetrahedron;
 pub(super) mod to_simplices;
 pub(super) mod triangle;
-mod newton;
 mod twovec;
 
 pub trait Idx:

@@ -2,14 +2,11 @@ use crate::{
     Vertex,
     mesh::{
         Edge, GEdge, GNode, GSimplex, Idx, Node, Simplex,
-        elements::{
-            ho_simplex::HOType,
-            newton::{NewtonConvergenceStatus, newton_minimization},
-            quadratures::QUADRATURE_EDGE_6,
-        },
+        elements::{ho_simplex::HOType, quadratures::QUADRATURE_EDGE_6},
     },
 };
 use argmin::core::{CostFunction, Executor, Gradient, Hessian};
+use core::iter::Iterator;
 use nalgebra::{Matrix1, Vector1};
 use std::fmt::Debug;
 use std::ops::Index;
@@ -239,45 +236,25 @@ impl<const D: usize, const FAST: bool> GSimplex<D> for QuadraticGEdge<D, FAST> {
 
     fn bcoords(&self, v: &Vertex<D>) -> Self::BCOORDS {
         let uv = self.linear().bcoords(v);
-
         let proj = QuadraticEdgeProjection { v, ge: self };
-        if FAST {
-            let max_iters = 20;
-            let tolerance = 1e-10;
-            let x = Vector1::new(uv[1]);
-            let res = newton_minimization(
-                x,
-                |x| proj.cost(x).unwrap(),
-                |x| proj.gradient(x).unwrap(),
-                |x| proj.hessian(x).unwrap(),
-                max_iters,
-                tolerance,
-            );
-            let v = match res {
-                NewtonConvergenceStatus::Converged(x) => x,
-                NewtonConvergenceStatus::MaxItersReached(x) => x,
-                NewtonConvergenceStatus::HessianNonInvertible => {
-                    panic!("Newton minimization failed.")
-                }
-            };
-            [1.0 - v[0], v[0]]
-        } else {
-            let linesearch = argmin::solver::linesearch::MoreThuenteLineSearch::new();
-            let solver = argmin::solver::newton::NewtonCG::new(linesearch)
-                .with_tolerance(1e-10)
-                .unwrap();
-            let res = Executor::new(proj, solver)
-                .configure(|state| state.param([uv[1]].into()).max_iters(100))
-                // .add_observer(
-                //     argmin_observer_slog::SlogLogger::term(),
-                //     argmin::core::observers::ObserverMode::Always,
-                // )
-                .run()
-                .unwrap();
-            let v = res.state.best_param.unwrap();
-            println!("v = {v}");
-            [1.0 - v[0], v[0]]
-        }
+        let (width_tolerance, max_iters) = if FAST { (0.1, 2) } else { (1e-4, 100) };
+
+        let linesearch = argmin::solver::linesearch::MoreThuenteLineSearch::new()
+            .with_width_tolerance(width_tolerance)
+            .unwrap();
+        let solver = argmin::solver::newton::NewtonCG::new(linesearch)
+            .with_tolerance(1e-10)
+            .unwrap();
+        let res = Executor::new(proj, solver)
+            .configure(|state| state.param([uv[1]].into()).max_iters(max_iters))
+            // .add_observer(
+            //     argmin_observer_slog::SlogLogger::term(),
+            //     argmin::core::observers::ObserverMode::Always,
+            // )
+            .run()
+            .unwrap();
+        let v = res.state.best_param.unwrap();
+        [1.0 - v[0], v[0]]
     }
 
     /// Vertex from barycentric coordinates
