@@ -2,7 +2,10 @@ use crate::{
     Vertex,
     mesh::{
         Edge, GEdge, GNode, GSimplex, Idx, Node, Simplex,
-        elements::{ho_simplex::HOType, quadratures::QUADRATURE_EDGE_6},
+        elements::{
+            ho_simplex::{FAST_PROJ_MAX_ITERS, FAST_PROJ_TOLERANCE, HOType},
+            quadratures::QUADRATURE_EDGE_6,
+        },
     },
 };
 use argmin::core::{CostFunction, Executor, Gradient, Hessian};
@@ -236,8 +239,17 @@ impl<const D: usize, const FAST: bool> GSimplex<D> for QuadraticGEdge<D, FAST> {
 
     fn bcoords(&self, v: &Vertex<D>) -> Self::BCOORDS {
         let uv = self.linear().bcoords(v);
+
+        if FAST && FAST_PROJ_MAX_ITERS == 0 {
+            return uv;
+        }
+
         let proj = QuadraticEdgeProjection { v, ge: self };
-        let (width_tolerance, max_iters) = if FAST { (0.1, 2) } else { (1e-4, 100) };
+        let (width_tolerance, max_iters) = if FAST {
+            (FAST_PROJ_TOLERANCE, FAST_PROJ_MAX_ITERS)
+        } else {
+            (1e-4, 100)
+        };
 
         let linesearch = argmin::solver::linesearch::MoreThuenteLineSearch::new()
             .with_width_tolerance(width_tolerance)

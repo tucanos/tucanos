@@ -2,7 +2,7 @@ use crate::{
     Vertex,
     mesh::{
         Edge, GEdge, GSimplex, GTriangle, Idx, QuadraticEdge, QuadraticGEdge, Simplex,
-        elements::ho_simplex::HOType,
+        elements::ho_simplex::{FAST_PROJ_MAX_ITERS, FAST_PROJ_TOLERANCE, HOType},
     },
 };
 use argmin::core::{CostFunction, Executor, Gradient, Hessian};
@@ -188,8 +188,8 @@ const QUADRATICTRIANGLE2FACE: [QuadraticEdge<usize>; 3] = [
 
 impl<T: Idx, const FAST: bool> Simplex for QuadraticTriangle<T, FAST> {
     type T = T;
-    type FACE = QuadraticEdge<T>;
-    type GEOM<const D: usize> = QuadraticGTriangle<D>;
+    type FACE = QuadraticEdge<T, FAST>;
+    type GEOM<const D: usize> = QuadraticGTriangle<D, FAST>;
     const DIM: usize = 2;
     const N_VERTS: usize = 6;
     const N_EDGES: usize = 3;
@@ -268,7 +268,7 @@ impl<const D: usize, const FAST: bool> GSimplex<D> for QuadraticGTriangle<D, FAS
     type ARRAY<T: Debug + Default + Clone + Copy> = [T; 3];
     type BCOORDS = Self::ARRAY<f64>;
     type TOPO = QuadraticTriangle<usize>;
-    type FACE = QuadraticGEdge<D>;
+    type FACE = QuadraticGEdge<D, FAST>;
 
     fn ideal_vol() -> f64 {
         1.0
@@ -328,9 +328,16 @@ impl<const D: usize, const FAST: bool> GSimplex<D> for QuadraticGTriangle<D, FAS
 
     fn bcoords(&self, v: &Vertex<D>) -> Self::BCOORDS {
         let uvw = self.linear().bcoords(v);
+        if FAST && FAST_PROJ_MAX_ITERS == 0 {
+            return uvw;
+        }
 
         let proj = QuadraticTriangleProjection { v, ge: self };
-        let (width_tolerance, max_iters) = if FAST { (0.1, 2) } else { (1e-4, 100) };
+        let (width_tolerance, max_iters) = if FAST {
+            (FAST_PROJ_TOLERANCE, FAST_PROJ_MAX_ITERS)
+        } else {
+            (1e-4, 100)
+        };
 
         let linesearch = argmin::solver::linesearch::MoreThuenteLineSearch::new()
             .with_width_tolerance(width_tolerance)
