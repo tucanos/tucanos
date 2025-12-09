@@ -126,7 +126,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Cavity<D, C, M> {
     }
 
     /// Intersect two sorted slices
-    fn intersection(a: &[usize], b: &[usize]) -> Vec<usize> {
+    pub fn intersection(a: &[usize], b: &[usize]) -> Vec<usize> {
         let mut result = Vec::with_capacity(min(a.len(), b.len()));
         let mut i = 0;
         let mut j = 0;

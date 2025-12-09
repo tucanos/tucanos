@@ -5,6 +5,7 @@ use crate::{
     metric::Metric,
     remesher::{
         cavity::{Cavity, CavityCheckStatus, FilledCavity, FilledCavityType, Seed},
+        sequential::argsort_edges_increasing_length,
         stats::{StepStats, SwapStats},
     },
 };
@@ -230,13 +231,19 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         let mut cavity = Cavity::new();
         loop {
             n_iter += 1;
+
             let mut edges = Vec::with_capacity(self.edges.len());
             edges.extend(self.edges.keys().copied());
+
+            let mut dims_and_qualities = Vec::with_capacity(self.edges.len());
+            dims_and_qualities.extend(self.dim_and_min_quality_iter());
+            let indices = argsort_edges_increasing_length(&dims_and_qualities);
 
             let mut n_swaps = 0;
             let mut n_fails = 0;
             let mut n_ok = 0;
-            for edg in edges {
+            for i_edge in indices {
+                let edg = edges[i_edge];
                 let res = self.try_swap(edg, params, params.max_angle, &mut cavity, geom)?;
                 match res {
                     TrySwapResult::CouldNotSwap => n_fails += 1,
