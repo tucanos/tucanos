@@ -217,7 +217,7 @@ mod tests {
     use crate::{
         Vert3d, assert_delta,
         mesh::{
-            BoundaryMesh3d, GSimplex, GradientMethod, Mesh, Mesh3d, bandwidth, box_mesh,
+            BoundaryMesh3d, GSimplex, GradientMethod, Mesh, Mesh3d, Simplex, bandwidth, box_mesh,
             mesh_3d::ball_mesh,
             partition::{HilbertPartitioner, KMeansPartitioner3d, RCMPartitioner},
         },
@@ -674,5 +674,45 @@ mod tests {
         let surf: BoundaryMesh3d = msh.boundary().0;
         assert_delta!(msh.vol(), 4.0 / 3.0 * PI * r.powi(3), 0.003);
         assert_delta!(surf.vol(), 4.0 * PI * r.powi(2), 0.004);
+    }
+
+    #[test]
+    fn test_shake() {
+        let mut mesh = box_mesh::<Mesh3d>(1.0, 3, 1.0, 3, 1.0, 3).random_shuffle();
+        mesh.random_shake(0.1);
+        mesh.check(&mesh.all_faces()).unwrap();
+
+        assert_delta!(mesh.vol(), 1.0, 1e-12);
+
+        let mut l = mesh
+            .edges()
+            .keys()
+            .map(|e| (mesh.vert(e.get(0)) - mesh.vert(e.get(1))).norm())
+            .collect::<Vec<_>>();
+        l.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        for tmp in l.windows(2) {
+            assert!(tmp[1] > tmp[0] + 1e-8);
+        }
+    }
+
+    #[test]
+    fn test_shake_ball() {
+        let mut mesh = ball_mesh::<Mesh3d>(1.0, 3).random_shuffle();
+        assert_delta!(mesh.vol(), 4.0 / 3.0 * PI, 0.1);
+
+        mesh.random_shake(0.1);
+        mesh.check(&mesh.all_faces()).unwrap();
+
+        assert_delta!(mesh.vol(), 4.0 / 3.0 * PI, 0.21);
+
+        let mut l = mesh
+            .edges()
+            .keys()
+            .map(|e| (mesh.vert(e.get(0)) - mesh.vert(e.get(1))).norm())
+            .collect::<Vec<_>>();
+        l.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        for tmp in l.windows(2) {
+            assert!(tmp[1] > tmp[0] + 1e-10);
+        }
     }
 }
