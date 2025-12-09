@@ -61,7 +61,7 @@ jobs:
       uses: clechasseur/rs-cargo@v4
       with:
         command: run
-        args: --example dual_mesh_2d --release
+        args: --example dual_mesh_2d --features=metis --release
     - name: Run example/partition_3d
       uses: clechasseur/rs-cargo@v4
       with:
@@ -71,7 +71,7 @@ jobs:
       uses: clechasseur/rs-cargo@v4
       with:
         command: run
-        args: --example dual_mesh_3d --release
+        args: --example dual_mesh_3d --features=metis --release
   c_api:
     runs-on: ubuntu-latest
     steps:
