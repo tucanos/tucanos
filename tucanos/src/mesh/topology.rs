@@ -558,7 +558,7 @@ mod tests {
         Tag,
         mesh::{
             Topology,
-            test_meshes::{test_mesh_2d, test_mesh_2d_nobdy},
+            test_meshes::{square_two_tags, square_two_tags_nobdy},
             topology::MeshTopology,
         },
     };
@@ -650,7 +650,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_invalid_2d_1() {
-        let mut mesh = test_mesh_2d();
+        let mut mesh = square_two_tags();
         mesh.ftags_mut().for_each(|tag| *tag = 1);
         let _ = MeshTopology::new(&mesh);
     }
@@ -658,14 +658,14 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_invalid_2d_2() {
-        let mesh = test_mesh_2d_nobdy();
+        let mesh = square_two_tags_nobdy();
         let _ = MeshTopology::new(&mesh);
     }
 
     #[test]
     #[should_panic]
     fn test_invalid_2d_3() {
-        let mut mesh = test_mesh_2d();
+        let mut mesh = square_two_tags();
         mesh.ftags_mut()
             .zip([2, 1, 1, 3])
             .for_each(|(tag, v)| *tag = v);
@@ -675,7 +675,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_invalid_2d_4() {
-        let mut mesh = test_mesh_2d();
+        let mut mesh = square_two_tags();
         mesh.ftags_mut()
             .zip([1, 1, 2, 2])
             .for_each(|(tag, v)| *tag = v);
@@ -684,7 +684,7 @@ mod tests {
 
     #[test]
     fn test_valid_2d_1() {
-        let mut mesh = test_mesh_2d();
+        let mut mesh = square_two_tags();
         mesh.ftags_mut()
             .zip([1, 1, 2, 2])
             .for_each(|(tag, v)| *tag = v);
@@ -698,7 +698,7 @@ mod tests {
 
     #[test]
     fn test_valid_2d_1_split() {
-        let mut mesh = test_mesh_2d();
+        let mut mesh = square_two_tags();
         mesh.ftags_mut()
             .zip([1, 1, 2, 2])
             .for_each(|(tag, v)| *tag = v);
@@ -715,7 +715,7 @@ mod tests {
 
     #[test]
     fn test_valid_2d_2() {
-        let mut mesh = test_mesh_2d();
+        let mut mesh = square_two_tags();
         mesh.fix().unwrap();
 
         let mtopo = MeshTopology::new(&mesh);
@@ -728,7 +728,7 @@ mod tests {
 
     #[test]
     fn test_valid_2d_2_split() {
-        let mut mesh = test_mesh_2d();
+        let mut mesh = square_two_tags();
         mesh.fix().unwrap();
 
         let mesh = mesh.split().split();

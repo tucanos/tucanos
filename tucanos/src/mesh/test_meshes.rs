@@ -15,7 +15,7 @@ use std::{f64::consts::PI, fs::File};
 /// WARNING: the mesh tags are not valid as the diagonal (0, 2) is between
 /// two different element tags not is not tagged
 #[must_use]
-pub fn test_mesh_2d() -> Mesh2d {
+pub fn square_two_tags() -> Mesh2d {
     let coords = vec![
         Vert2d::new(0., 0.),
         Vert2d::new(1., 0.),
@@ -38,7 +38,7 @@ pub fn test_mesh_2d() -> Mesh2d {
 /// Build a 2d mesh of a square with 2 triangles tagged differently
 /// Boundaries are not defined
 #[must_use]
-pub fn test_mesh_2d_nobdy() -> Mesh2d {
+pub fn square_two_tags_nobdy() -> Mesh2d {
     let coords = vec![
         Vert2d::new(0., 0.),
         Vert2d::new(1., 0.),

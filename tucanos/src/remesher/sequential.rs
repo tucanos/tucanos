@@ -793,7 +793,7 @@ mod tests_topo {
     use crate::{
         Tag,
         geometry::NoGeometry,
-        mesh::{MeshTopology, test_meshes::test_mesh_2d},
+        mesh::{MeshTopology, test_meshes::square_two_tags},
         metric::IsoMetric,
         remesher::Remesher,
     };
@@ -805,7 +805,7 @@ mod tests_topo {
     };
 
     fn test_topo_2d(etags: [Tag; 2], ftags: [Tag; 4], add_boundary_faces: bool, n_split: i32) {
-        let mut mesh = test_mesh_2d();
+        let mut mesh = square_two_tags();
         mesh.etags_mut().zip(etags).for_each(|(e, t)| *e = t);
         mesh.ftags_mut().zip(ftags).for_each(|(e, t)| *e = t);
 
@@ -995,7 +995,7 @@ mod tests {
             test_meshes::{
                 ConcentricCircles, ConcentricSpheres, GeomHalfCircle2d, SphereGeometry,
                 concentric_circles_mesh, concentric_spheres_mesh, cylinder, h_2d, h_3d,
-                test_mesh_2d, test_mesh_3d_single_tet, test_mesh_3d_two_tets, test_mesh_moon_2d,
+                square_two_tags, test_mesh_3d_single_tet, test_mesh_3d_two_tets, test_mesh_moon_2d,
             },
         },
         metric::{
@@ -1013,7 +1013,7 @@ mod tests {
 
     #[test]
     fn test_init() -> Result<()> {
-        let mut mesh = test_mesh_2d();
+        let mut mesh = square_two_tags();
         mesh.fix().unwrap();
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts()];
         let geom = NoGeometry();
@@ -1064,7 +1064,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_remove_vertex_error() {
-        let mesh = test_mesh_2d();
+        let mesh = square_two_tags();
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts()];
 
         let topo = MeshTopology::new(&mesh);
@@ -1077,7 +1077,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_remove_vertex_error_2() {
-        let mut mesh = test_mesh_2d();
+        let mut mesh = square_two_tags();
         mesh.fix().unwrap();
 
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts()];
@@ -1091,7 +1091,7 @@ mod tests {
 
     #[test]
     fn test_remove_elem() -> Result<()> {
-        let mut mesh = test_mesh_2d();
+        let mut mesh = square_two_tags();
         mesh.fix().unwrap();
 
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts()];
@@ -1114,7 +1114,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_remove_elem_2() {
-        let mut mesh = test_mesh_2d();
+        let mut mesh = square_two_tags();
         mesh.fix().unwrap();
 
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts()];
@@ -1127,7 +1127,7 @@ mod tests {
 
     #[test]
     fn test_split_2d() -> Result<()> {
-        let mut mesh = test_mesh_2d().split().split();
+        let mut mesh = square_two_tags().split().split();
         mesh.fix().unwrap();
 
         let h: Vec<_> = mesh
@@ -1155,7 +1155,7 @@ mod tests {
 
     #[test]
     fn test_swap_2d() -> Result<()> {
-        let mut mesh = test_mesh_2d().split().split();
+        let mut mesh = square_two_tags().split().split();
         mesh.fix().unwrap();
 
         // collapse to lower the quality
@@ -1201,7 +1201,7 @@ mod tests {
 
     #[test]
     fn test_collapse_2d() -> Result<()> {
-        let mut mesh = test_mesh_2d().split().split();
+        let mut mesh = square_two_tags().split().split();
         mesh.fix().unwrap();
 
         let h = vec![IsoMetric::<2>::from(2.); mesh.n_verts()];
@@ -1439,7 +1439,7 @@ mod tests {
 
     #[test]
     fn test_adapt_2d() -> Result<()> {
-        let mut mesh = test_mesh_2d().split().split();
+        let mut mesh = square_two_tags().split().split();
         mesh.fix().unwrap();
 
         for iter in 0..5 {
@@ -1469,7 +1469,7 @@ mod tests {
 
     #[test]
     fn test_adapt_aniso_2d() -> Result<()> {
-        let mut mesh = test_mesh_2d();
+        let mut mesh = square_two_tags();
         mesh.etags_mut().for_each(|t| *t = 1);
 
         let mfunc = |pt: Vert2d| {
@@ -1843,7 +1843,7 @@ mod tests {
 
     #[test]
     fn test_complexity_2d() -> Result<()> {
-        let mut mesh = test_mesh_2d().split().split();
+        let mut mesh = square_two_tags().split().split();
         mesh.fix().unwrap();
         let topo = MeshTopology::new(&mesh);
 

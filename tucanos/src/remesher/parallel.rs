@@ -488,7 +488,7 @@ mod tests {
     use crate::{
         Result,
         geometry::NoGeometry,
-        mesh::{MeshTopology, test_meshes::test_mesh_2d},
+        mesh::MeshTopology,
         metric::IsoMetric,
         remesher::{ParallelRemesher, ParallelRemesherParams, RemesherParams},
     };
@@ -497,15 +497,16 @@ mod tests {
     use tmesh::{
         Vert2d, Vert3d,
         mesh::{
-            Mesh, Mesh3d, box_mesh,
+            Mesh, Mesh2d, Mesh3d, box_mesh,
             partition::{HilbertPartitioner, Partitioner},
+            rectangle_mesh,
         },
     };
 
     fn test_domain_decomposition_2d<P: Partitioner>(debug: bool, n_parts: usize) -> Result<()> {
         // use crate::init_log;
         // init_log("debug");
-        let mut mesh = test_mesh_2d().split().split().split().split().split();
+        let mut mesh: Mesh2d = rectangle_mesh(1.0, 33, 1.0, 33);
         mesh.etags_mut().for_each(|t| *t = 1);
         let topo = MeshTopology::new(&mesh);
 

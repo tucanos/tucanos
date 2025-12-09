@@ -327,14 +327,10 @@ impl<T: Idx, M: Mesh<3, C = Triangle<T>>> HasCurvature<3> for M {
 mod tests {
     use tmesh::{
         Vertex,
-        mesh::{BoundaryMesh2d, Edge, GSimplex, GenericMesh, Mesh, Node},
+        mesh::{BoundaryMesh2d, Edge, GSimplex, GenericMesh, Mesh, Mesh2d, Node, rectangle_mesh},
     };
 
-    use crate::{
-        H_MAX,
-        geometry::MeshedGeometry,
-        mesh::{MeshTopology, test_meshes::test_mesh_2d},
-    };
+    use crate::{H_MAX, geometry::MeshedGeometry, mesh::MeshTopology};
 
     use super::{compute_curvature_tensor_2d, compute_curvature_tensor_3d, fix_curvature};
 
@@ -343,7 +339,7 @@ mod tests {
         let r_in = 0.1;
         let r_out = 0.5;
 
-        let mesh = test_mesh_2d().split().split().split().split().split();
+        let mesh: Mesh2d = rectangle_mesh(1.0, 33, 1.0, 33);
         let (mut mesh, _) = mesh.boundary::<BoundaryMesh2d>();
 
         mesh.verts_mut().for_each(|p| {
@@ -397,7 +393,7 @@ mod tests {
         let r_in = 0.1;
         let r_out = 0.5;
 
-        let mesh = test_mesh_2d().split().split().split().split().split();
+        let mesh: Mesh2d = rectangle_mesh(1.0, 33, 1.0, 33);
         let (mut mesh, _) = mesh.boundary::<BoundaryMesh2d>();
 
         mesh.verts_mut().for_each(|p| {
@@ -442,7 +438,7 @@ mod tests {
     fn test_curvature_cylinder() {
         let radius = 0.1;
 
-        let mesh = test_mesh_2d().split().split().split().split().split();
+        let mesh: Mesh2d = rectangle_mesh(1.0, 33, 1.0, 33);
 
         let verts = mesh
             .verts()
@@ -500,7 +496,7 @@ mod tests {
     fn test_curvature_cylinder_fixed() {
         let radius = 0.1;
 
-        let mesh = test_mesh_2d().split().split().split().split().split();
+        let mesh: Mesh2d = rectangle_mesh(1.0, 33, 1.0, 33);
 
         let verts = mesh
             .verts()
@@ -551,7 +547,7 @@ mod tests {
     fn test_curvature_cylinder_fixed_geom() {
         let radius = 0.1;
 
-        let mesh = test_mesh_2d().split().split().split().split().split();
+        let mesh: Mesh2d = rectangle_mesh(1.0, 33, 1.0, 33);
 
         let verts = mesh
             .verts()

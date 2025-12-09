@@ -313,16 +313,16 @@ impl<const D: usize, M: Mesh<D> + HasCurvature<D>> Geometry<D> for MeshedGeometr
 mod tests {
     use tmesh::{
         Vertex,
-        mesh::{BoundaryMesh2d, BoundaryMesh3d, Mesh, Mesh3d, box_mesh, read_stl},
+        mesh::{
+            BoundaryMesh2d, BoundaryMesh3d, Mesh, Mesh2d, Mesh3d, box_mesh, read_stl,
+            rectangle_mesh,
+        },
     };
 
     use super::{Geometry, MeshedGeometry};
     use crate::{
         Result,
-        mesh::{
-            MeshTopology,
-            test_meshes::{test_mesh_2d, write_stl_file},
-        },
+        mesh::{MeshTopology, test_meshes::write_stl_file},
     };
     use std::fs::remove_file;
 
@@ -351,7 +351,7 @@ mod tests {
 
     #[test]
     fn test_linear_geometry_2d() -> Result<()> {
-        let mut mesh = test_mesh_2d().split().split();
+        let mut mesh: Mesh2d = rectangle_mesh(1.0, 5, 1.0, 5);
         mesh.fix().unwrap();
         let topo = MeshTopology::new(&mesh);
 
