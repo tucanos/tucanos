@@ -261,10 +261,12 @@ mod tests {
         }
     }
 
-    fn run_gradient(method: GradientMethod, n: u32) -> f64 {
+    fn run_gradient(method: GradientMethod, n: u32, shake: bool) -> f64 {
         let n = 2_usize.pow(n) + 1;
-        let mesh = box_mesh::<Mesh3d>(1.0, n, 1.0, n, 1.0, n).random_shuffle();
-
+        let mut mesh = box_mesh::<Mesh3d>(1.0, n, 1.0, n, 1.0, n).random_shuffle();
+        if shake {
+            mesh.random_shake(0.1);
+        }
         let f = mesh.verts().map(|p| p[0] * p[1] * p[2]).collect::<Vec<_>>();
         let grad = mesh
             .verts()
@@ -294,7 +296,24 @@ mod tests {
         ] {
             let mut prev = f64::MAX;
             for n in 2..5 {
-                let nrm = run_gradient(method, n);
+                let nrm = run_gradient(method, n, false);
+                assert!(nrm < 0.5 * prev, "{method:?}, {nrm:.2e} {prev:.2e}");
+                prev = nrm;
+            }
+        }
+    }
+
+    #[test]
+    fn test_gradient_shake() {
+        for method in [
+            GradientMethod::LinearLeastSquares(1),
+            GradientMethod::LinearLeastSquares(2),
+            GradientMethod::QuadraticLeastSquares(1),
+            GradientMethod::L2Projection,
+        ] {
+            let mut prev = f64::MAX;
+            for n in 2..5 {
+                let nrm = run_gradient(method, n, true);
                 assert!(nrm < 0.5 * prev, "{method:?}, {nrm:.2e} {prev:.2e}");
                 prev = nrm;
             }
@@ -341,9 +360,12 @@ mod tests {
         }
     }
 
-    fn run_hessian(method: GradientMethod, n: u32) -> f64 {
+    fn run_hessian(method: GradientMethod, n: u32, shake: bool) -> f64 {
         let n = 2_usize.pow(n) + 1;
-        let mesh = box_mesh::<Mesh3d>(1.0, n, 1.0, n, 1.0, n).random_shuffle();
+        let mut mesh = box_mesh::<Mesh3d>(1.0, n, 1.0, n, 1.0, n).random_shuffle();
+        if shake {
+            mesh.random_shake(0.1);
+        }
 
         let f: Vec<_> = mesh
             .verts()
@@ -393,7 +415,7 @@ mod tests {
     fn test_hessian() {
         let mut prev = f64::MAX;
         for n in 2..5 {
-            let nrm = run_hessian(GradientMethod::QuadraticLeastSquares(1), n);
+            let nrm = run_hessian(GradientMethod::QuadraticLeastSquares(1), n, false);
             assert!(nrm < 0.5 * prev);
             prev = nrm;
         }
@@ -404,7 +426,28 @@ mod tests {
         // WARNING: l2proj hessian does not converge
         let mut prev = f64::MAX;
         for n in 2..5 {
-            let nrm = run_hessian(GradientMethod::L2Projection, n);
+            let nrm = run_hessian(GradientMethod::L2Projection, n, false);
+            assert!(nrm < prev, "{nrm:.2e} {prev:.2e}");
+            prev = nrm;
+        }
+    }
+
+    #[test]
+    fn test_hessian_shake() {
+        let mut prev = f64::MAX;
+        for n in 2..5 {
+            let nrm = run_hessian(GradientMethod::QuadraticLeastSquares(1), n, true);
+            assert!(nrm < 0.5 * prev);
+            prev = nrm;
+        }
+    }
+
+    #[test]
+    fn test_hessian_l2proj_shake() {
+        // WARNING: l2proj hessian does not converge
+        let mut prev = f64::MAX;
+        for n in 2..5 {
+            let nrm = run_hessian(GradientMethod::L2Projection, n, true);
             assert!(nrm < prev, "{nrm:.2e} {prev:.2e}");
             prev = nrm;
         }
