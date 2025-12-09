@@ -551,14 +551,14 @@ impl MeshTopology {
 mod tests {
     use tmesh::{
         Vert2d, Vert3d,
-        mesh::{GenericMesh, Mesh, Tetrahedron, Triangle},
+        mesh::{GenericMesh, Mesh, Mesh3d, Tetrahedron, Triangle, box_mesh},
     };
 
     use crate::{
         Tag,
         mesh::{
             Topology,
-            test_meshes::{test_mesh_2d, test_mesh_2d_nobdy, test_mesh_3d},
+            test_meshes::{test_mesh_2d, test_mesh_2d_nobdy},
             topology::MeshTopology,
         },
     };
@@ -742,7 +742,7 @@ mod tests {
 
     #[test]
     fn test_valid_3d() {
-        let mesh = test_mesh_3d();
+        let mesh: Mesh3d = box_mesh(1.0, 2, 1.0, 2, 1.0, 2);
         let mtopo = MeshTopology::new(&mesh);
         let topo = mtopo.topo();
 

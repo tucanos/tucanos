@@ -204,14 +204,14 @@ impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
 mod tests {
     use crate::{
         Result,
-        mesh::test_meshes::{test_mesh_2d, test_mesh_3d},
+        mesh::test_meshes::test_mesh_2d,
         metric::{AnisoMetric, AnisoMetric3d, IsoMetric, Metric, MetricField},
     };
     use nalgebra::SMatrix;
     use rand::{Rng, SeedableRng, rngs::StdRng};
     use tmesh::{
         Vert3d,
-        mesh::{Mesh, Mesh3d, Simplex},
+        mesh::{Mesh, Mesh3d, Simplex, box_mesh},
     };
 
     #[test]
@@ -324,7 +324,7 @@ mod tests {
 
     #[test]
     fn test_extend() -> Result<()> {
-        let mesh = test_mesh_3d().split().split().split();
+        let mesh: Mesh3d = box_mesh(1.0, 9, 1.0, 9, 1.0, 9);
 
         let mut m = vec![IsoMetric::<3>::default(); mesh.n_verts()];
 

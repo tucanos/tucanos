@@ -163,13 +163,13 @@ mod tests {
     use crate::{
         ANISO_MAX, Result,
         geometry::MeshedGeometry,
-        mesh::{MeshTopology, test_meshes::test_mesh_3d},
+        mesh::MeshTopology,
         metric::{AnisoMetric3d, Metric, MetricField},
     };
     use nalgebra::SVector;
     use tmesh::{
         Vert3d, assert_delta,
-        mesh::{BoundaryMesh3d, Mesh},
+        mesh::{BoundaryMesh3d, Mesh, Mesh3d, box_mesh},
     };
 
     #[test]
@@ -177,7 +177,7 @@ mod tests {
     fn test_curvature() -> Result<()> {
         // build a cylinder mesh
         let (r_in, r_out) = (0.1, 0.5);
-        let mut mesh = test_mesh_3d().split().split().split();
+        let mut mesh: Mesh3d = box_mesh(1.0, 9, 1.0, 9, 1.0, 9);
 
         mesh.verts_mut().for_each(|p| {
             let r = r_in + (r_out - r_in) * p[0];
@@ -193,7 +193,7 @@ mod tests {
 
         // tag vertices on the interior & exterior cylinders
         let mut bdy_flg = vec![0; bdy.n_verts()];
-        let (tag_in, tag_out) = (6, 5);
+        let (tag_in, tag_out) = (5, 6);
         bdy.elems().zip(bdy.etags()).for_each(|(f, t)| {
             if t == tag_in {
                 f.into_iter().for_each(|i| bdy_flg[i] = 1);

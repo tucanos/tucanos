@@ -313,7 +313,7 @@ impl<const D: usize, M: Mesh<D> + HasCurvature<D>> Geometry<D> for MeshedGeometr
 mod tests {
     use tmesh::{
         Vertex,
-        mesh::{BoundaryMesh2d, BoundaryMesh3d, Mesh, read_stl},
+        mesh::{BoundaryMesh2d, BoundaryMesh3d, Mesh, Mesh3d, box_mesh, read_stl},
     };
 
     use super::{Geometry, MeshedGeometry};
@@ -321,7 +321,7 @@ mod tests {
         Result,
         mesh::{
             MeshTopology,
-            test_meshes::{test_mesh_2d, test_mesh_3d, write_stl_file},
+            test_meshes::{test_mesh_2d, write_stl_file},
         },
     };
     use std::fs::remove_file;
@@ -379,7 +379,7 @@ mod tests {
 
     #[test]
     fn test_linear_geometry_3d() -> Result<()> {
-        let mut mesh = test_mesh_3d().split().split();
+        let mut mesh: Mesh3d = box_mesh(1.0, 5, 1.0, 5, 1.0, 5);
         mesh.fix().unwrap();
         let topo = MeshTopology::new(&mesh);
 
@@ -412,19 +412,19 @@ mod tests {
 
         let mut pt = Vertex::<3>::new(0.75, 0.5, 0.25);
         let _ = geom.project(&mut pt, &(2, 5));
-        assert!(f64::abs(pt[0] - 1.0) < 1e-12);
+        assert!(f64::abs(pt[0] - 0.0) < 1e-12);
         assert!(f64::abs(pt[1] - 0.5) < 1e-12);
         assert!(f64::abs(pt[2] - 0.25) < 1e-12);
 
         let mut pt = Vertex::<3>::new(0.75, 0.5, 0.25);
         let _ = geom.project(&mut pt, &(2, 6));
-        assert!(f64::abs(pt[0] - 0.0) < 1e-12);
+        assert!(f64::abs(pt[0] - 1.0) < 1e-12);
         assert!(f64::abs(pt[1] - 0.5) < 1e-12);
         assert!(f64::abs(pt[2] - 0.25) < 1e-12);
 
         let topo = MeshTopology::new(&mesh);
 
-        let topo_node = topo.topo().get_from_parents(1, &[6, 3]).unwrap();
+        let topo_node = topo.topo().get_from_parents(1, &[5, 3]).unwrap();
         let mut pt = Vertex::<3>::new(0.75, 0.5, 0.25);
         let _ = geom.project(&mut pt, &(1, topo_node.tag.1));
         assert!(f64::abs(pt[0] - 0.0) < 1e-12);
