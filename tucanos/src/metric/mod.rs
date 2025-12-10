@@ -25,6 +25,8 @@ pub trait Metric<const D: usize>:
     fn from_slice(m: &[f64]) -> Self;
     /// Check if the metric is valid (i.e. positive)
     fn check(&self) -> Result<()>;
+    /// Compute the square of the length of an edge in metric space
+    fn length_sqr(&self, e: &Vertex<D>) -> f64;
     /// Compute the length of an edge in metric space
     fn length(&self, e: &Vertex<D>) -> f64;
     /// Compute the volume associated with the metric
@@ -130,10 +132,7 @@ pub trait Metric<const D: usize>:
             return -1.0;
         }
 
-        let l = ge
-            .edges()
-            .map(|e| m.length(&e.as_vec()).powi(2))
-            .sum::<f64>();
+        let l = ge.edges().map(|e| m.length_sqr(&e.as_vec())).sum::<f64>();
 
         let l = l / G::TOPO::N_EDGES as f64;
 

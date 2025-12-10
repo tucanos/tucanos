@@ -47,6 +47,9 @@ impl<const D: usize> Metric<D> for IsoMetric<D> {
         e.norm() / self.0
     }
 
+    fn length_sqr(&self, e: &Vertex<D>) -> f64 {
+        e.norm_squared() / self.0.powi(2)
+    }
     /// For an isotropic metric in $`d`$ dimensions, the volume is
     /// ```math
     /// V(\mathcal M) = h^d
