@@ -236,7 +236,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             edges.extend(self.edges.keys().copied());
 
             let mut dims_and_qualities = Vec::with_capacity(self.edges.len());
-            dims_and_qualities.extend(self.dim_and_min_quality_iter());
+            dims_and_qualities.extend(self.edge_dim_and_min_quality_iter());
             let indices = argsort_edges_increasing_length(&dims_and_qualities);
 
             let mut n_swaps = 0;

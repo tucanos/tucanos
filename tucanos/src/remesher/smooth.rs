@@ -6,6 +6,7 @@ use crate::{
     min_iter,
     remesher::{
         cavity::{Cavity, CavityCheckStatus, FilledCavity, FilledCavityType, Seed},
+        sequential::argsort_edges_increasing_length,
         stats::{SmoothStats, StepStats},
     },
 };
@@ -296,6 +297,11 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         // the keys. Apart from going unsafe the only way to avoid this would be
         // to have one RefCell for each VtxInfo but copying self.verts is cheaper.
         let verts = self.verts.keys().copied().collect::<Vec<_>>();
+
+        let mut dims_and_qualities = Vec::with_capacity(verts.len());
+        dims_and_qualities.extend(self.vertex_dim_and_min_quality_iter());
+        let indices = argsort_edges_increasing_length(&dims_and_qualities);
+        let verts = indices.iter().map(|&i| verts[i]).collect::<Vec<_>>();
 
         let mut cavity = Cavity::new();
         for iter in 0..params.n_iter {

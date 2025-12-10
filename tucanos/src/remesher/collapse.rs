@@ -75,7 +75,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             n_iter += 1;
 
             let edges: Vec<_> = self.edges.keys().copied().collect();
-            let dims_and_lengths: Vec<_> = self.dims_and_lengths_iter().collect();
+            let dims_and_lengths: Vec<_> = self.edge_dims_and_lengths_iter().collect();
             let indices = argsort_edges_increasing_length(&dims_and_lengths);
 
             let mut n_collapses = 0;
