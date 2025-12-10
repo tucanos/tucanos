@@ -121,7 +121,11 @@ where
     /// l_\mathcal M(e) =  \sqrt{e^T \mathcal M e}
     /// ```
     fn length(&self, e: &Vertex<D>) -> f64 {
-        self.length_sqr(e).sqrt()
+        AnisoMetric::length_sqr(self, e).sqrt()
+    }
+
+    fn length_sqr(&self, e: &Vertex<D>) -> f64 {
+        AnisoMetric::length_sqr(self, e)
     }
 
     /// For an anisotropic metric, the volume is

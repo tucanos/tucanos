@@ -1737,7 +1737,7 @@ mod tests {
 
             if iter == 2 {
                 assert_delta!(mini, 0.48, 0.01);
-                assert_delta!(maxi, 1.57, 0.01);
+                assert_delta!(maxi, 1.67, 0.01);
             }
         }
 
@@ -1828,8 +1828,8 @@ mod tests {
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
 
             if iter == 1 {
-                assert_delta!(mini, 0.46, 0.01);
-                assert_delta!(maxi, 1.52, 0.01);
+                assert_delta!(mini, 0.44, 0.01);
+                assert_delta!(maxi, 1.65, 0.01);
             }
 
             // let fname = format!("sphere_{}.vtu", iter + 1);
@@ -2162,8 +2162,8 @@ mod tests {
         remesher.remesh(&params, &geom)?;
         remesher.check()?;
         let (mini, maxi, _) = remesher.check_edge_lengths_analytical(m_func);
-        assert_delta!(mini, 0.36, 0.01);
-        assert_delta!(maxi, 1.56, 0.01);
+        assert_delta!(mini, 0.40, 0.01);
+        assert_delta!(maxi, 1.47, 0.01);
         Ok(())
     }
 }
