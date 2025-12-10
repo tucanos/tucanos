@@ -15,7 +15,7 @@ use std::{f64::consts::PI, fs::File};
 /// WARNING: the mesh tags are not valid as the diagonal (0, 2) is between
 /// two different element tags not is not tagged
 #[must_use]
-pub fn test_mesh_2d() -> Mesh2d {
+pub fn square_two_tags() -> Mesh2d {
     let coords = vec![
         Vert2d::new(0., 0.),
         Vert2d::new(1., 0.),
@@ -38,7 +38,7 @@ pub fn test_mesh_2d() -> Mesh2d {
 /// Build a 2d mesh of a square with 2 triangles tagged differently
 /// Boundaries are not defined
 #[must_use]
-pub fn test_mesh_2d_nobdy() -> Mesh2d {
+pub fn square_two_tags_nobdy() -> Mesh2d {
     let coords = vec![
         Vert2d::new(0., 0.),
         Vert2d::new(1., 0.),
@@ -200,46 +200,6 @@ pub fn test_mesh_3d_two_tets() -> Mesh3d {
         Triangle::new(0, 4, 3),
     ];
     let ftags = vec![1, 2, 3, 1, 2, 3];
-
-    GenericMesh::from_vecs(coords, elems, etags, faces, ftags)
-}
-
-/// Build a 3d mesh of a cube with 5 tetrahedra
-#[must_use]
-pub fn test_mesh_3d() -> Mesh3d {
-    let coords = vec![
-        Vert3d::new(0., 0., 0.),
-        Vert3d::new(1., 0., 0.),
-        Vert3d::new(1., 1., 0.),
-        Vert3d::new(0., 1., 0.),
-        Vert3d::new(0., 0., 1.),
-        Vert3d::new(1., 0., 1.),
-        Vert3d::new(1., 1., 1.),
-        Vert3d::new(0., 1., 1.),
-    ];
-    let elems = vec![
-        Tetrahedron::new(0, 1, 2, 5),
-        Tetrahedron::new(0, 2, 7, 5),
-        Tetrahedron::new(0, 2, 3, 7),
-        Tetrahedron::new(0, 5, 7, 4),
-        Tetrahedron::new(2, 7, 5, 6),
-    ];
-    let etags = vec![1, 1, 1, 1, 1];
-    let faces = vec![
-        Triangle::new(0, 2, 1),
-        Triangle::new(0, 3, 2),
-        Triangle::new(5, 6, 7),
-        Triangle::new(5, 7, 4),
-        Triangle::new(0, 1, 5),
-        Triangle::new(0, 5, 4),
-        Triangle::new(2, 7, 6),
-        Triangle::new(2, 3, 7),
-        Triangle::new(1, 2, 5),
-        Triangle::new(2, 6, 5),
-        Triangle::new(0, 7, 3),
-        Triangle::new(0, 4, 7),
-    ];
-    let ftags = vec![1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6];
 
     GenericMesh::from_vecs(coords, elems, etags, faces, ftags)
 }

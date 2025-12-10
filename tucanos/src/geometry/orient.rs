@@ -62,13 +62,10 @@ pub fn orient_geometry<const D: usize, M: Mesh<D>, M2: Mesh<D, C = <M::C as Simp
 mod tests {
     use std::fs::remove_file;
 
-    use tmesh::mesh::{BoundaryMesh3d, Mesh, Simplex, read_stl};
+    use tmesh::mesh::{BoundaryMesh3d, Mesh, Mesh3d, Simplex, box_mesh, read_stl};
 
     use super::orient_geometry;
-    use crate::{
-        Result,
-        mesh::test_meshes::{test_mesh_3d, write_stl_file},
-    };
+    use crate::{Result, mesh::test_meshes::write_stl_file};
 
     #[test]
     fn test_stl() -> Result<()> {
@@ -84,7 +81,7 @@ mod tests {
 
     #[test]
     fn test_reorient() -> Result<()> {
-        let mut mesh = test_mesh_3d().split().split();
+        let mut mesh: Mesh3d = box_mesh(1.0, 5, 1.0, 5, 1.0, 5);
         mesh.fix().unwrap();
         mesh.ftags_mut().for_each(|t| *t = 1);
 

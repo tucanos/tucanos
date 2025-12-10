@@ -122,16 +122,16 @@ impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
 
 #[cfg(test)]
 mod tests {
-    use tmesh::{Vert2d, Vert3d, mesh::Mesh};
-
-    use crate::{
-        mesh::test_meshes::{test_mesh_2d, test_mesh_3d},
-        metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, MetricField},
+    use tmesh::{
+        Vert2d, Vert3d,
+        mesh::{Mesh, Mesh2d, Mesh3d, box_mesh, rectangle_mesh},
     };
+
+    use crate::metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, MetricField};
 
     #[test]
     fn test_complexity_2d() {
-        let mesh = test_mesh_2d().split().split();
+        let mesh: Mesh2d = rectangle_mesh(1.0, 5, 1.0, 5);
 
         let h = vec![0.1; mesh.n_verts() as usize];
         let m: Vec<_> = h.iter().map(|&x| IsoMetric::<2>::from(x)).collect();
@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn test_complexity_2d_aniso() {
-        let mesh = test_mesh_2d().split().split();
+        let mesh: Mesh2d = rectangle_mesh(1.0, 5, 1.0, 5);
 
         let mfunc = |_p| {
             let v0 = Vert2d::new(0.5, 0.);
@@ -167,7 +167,7 @@ mod tests {
 
     #[test]
     fn test_complexity_3d() {
-        let mesh = test_mesh_3d().split().split();
+        let mesh: Mesh3d = box_mesh(1.0, 5, 1.0, 5, 1.0, 5);
 
         let h = vec![0.1; mesh.n_verts() as usize];
         let m: Vec<_> = h.iter().map(|&x| IsoMetric::<3>::from(x)).collect();
@@ -182,7 +182,7 @@ mod tests {
 
     #[test]
     fn test_complexity_3d_aniso() {
-        let mesh = test_mesh_3d().split().split();
+        let mesh: Mesh3d = box_mesh(1.0, 5, 1.0, 5, 1.0, 5);
 
         let mfunc = |_p| {
             let v0 = Vert3d::new(0.5, 0., 0.);

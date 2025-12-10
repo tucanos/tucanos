@@ -107,19 +107,16 @@ pub fn transfer_tags<const D: usize, M: Mesh<D>, M2: Mesh<D>>(
 
 #[cfg(test)]
 mod tests {
-    use crate::mesh::{
-        autotag::{autotag, autotag_bdy, transfer_tags},
-        test_meshes::{test_mesh_2d, test_mesh_3d},
-    };
+    use crate::mesh::autotag::{autotag, autotag_bdy, transfer_tags};
     use std::collections::HashMap;
     use tmesh::{
-        mesh::{BoundaryMesh3d, Mesh, Simplex},
+        mesh::{BoundaryMesh3d, Mesh, Mesh2d, Mesh3d, Simplex, box_mesh, rectangle_mesh},
         spatialindex::ObjectIndex,
     };
 
     #[test]
     fn test_square() {
-        let mut mesh = test_mesh_2d().split();
+        let mut mesh: Mesh2d = rectangle_mesh(1.0, 3, 1.0, 3);
         mesh.ftags_mut().for_each(|t| *t = 1);
 
         let new_tags = autotag_bdy(&mut mesh, 30.0).unwrap();
@@ -129,7 +126,7 @@ mod tests {
 
     #[test]
     fn test_square_2() {
-        let mut mesh = test_mesh_2d().split();
+        let mut mesh: Mesh2d = rectangle_mesh(1.0, 3, 1.0, 3);
         let tmp = mesh.faces().collect::<Vec<_>>();
         mesh.ftags_mut().zip(tmp).for_each(|(t, f)| {
             if f.get(0) == 0 || f.get(1) == 0 {
@@ -141,13 +138,13 @@ mod tests {
 
         let new_tags = autotag_bdy(&mut mesh, 30.0).unwrap();
         assert_eq!(new_tags.len(), 2);
-        assert_eq!(*new_tags.get(&1).unwrap(), vec![1, 6]);
-        assert_eq!(*new_tags.get(&2).unwrap(), vec![2, 3, 4, 5]);
+        assert_eq!(*new_tags.get(&1).unwrap(), vec![1, 5]);
+        assert_eq!(*new_tags.get(&2).unwrap(), vec![2, 3, 4, 6]);
     }
 
     #[test]
     fn test_cube() {
-        let mut mesh = test_mesh_3d().split();
+        let mut mesh: Mesh3d = box_mesh(1.0, 5, 1.0, 5, 1.0, 5);
         let tmp = mesh.faces().collect::<Vec<_>>();
         mesh.ftags_mut().zip(tmp).for_each(|(t, f)| {
             if f.get(0) == 0 || f.get(1) == 0 || f.get(2) == 1 {
@@ -159,13 +156,13 @@ mod tests {
 
         let new_tags = autotag_bdy(&mut mesh, 30.0).unwrap();
         assert_eq!(new_tags.len(), 2);
-        assert_eq!(*new_tags.get(&1).unwrap(), vec![1, 4, 8]);
-        assert_eq!(*new_tags.get(&2).unwrap(), vec![2, 3, 5, 6, 7, 9]);
+        assert_eq!(*new_tags.get(&1).unwrap(), vec![1, 4, 7]);
+        assert_eq!(*new_tags.get(&2).unwrap(), vec![2, 3, 5, 6, 8, 9]);
     }
 
     #[test]
     fn test_cube_geom() {
-        let mut mesh = test_mesh_3d().split();
+        let mut mesh: Mesh3d = box_mesh(1.0, 3, 1.0, 3, 1.0, 3);
         let tmp = mesh.faces().collect::<Vec<_>>();
         mesh.ftags_mut().zip(tmp).for_each(|(t, _)| *t = 1);
 

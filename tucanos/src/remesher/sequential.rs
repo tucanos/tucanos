@@ -5,6 +5,8 @@ use super::stats::{InitStats, Stats, StepStats};
 use super::swap::SwapParams;
 use crate::mesh::MeshTopology;
 use crate::metric::MetricElem;
+use crate::min_iter;
+use crate::remesher::cavity::Cavity;
 use crate::{Dim, Error, Result, Tag, TopoTag, geometry::Geometry, mesh::Topology, metric::Metric};
 use log::{debug, info};
 use rustc_hash::FxHashMap;
@@ -660,13 +662,41 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
     }
 
     /// Compute the length of an edge in metric space and the dimension of its topo entity
-    fn dim_and_scaled_edge_length(&self, edg: Edge<usize>) -> (Dim, f64) {
+    fn edge_dim_and_scaled_length(&self, edg: Edge<usize>) -> (Dim, f64) {
         let p0 = self.verts.get(&edg.get(0)).unwrap();
         let p1 = self.verts.get(&edg.get(1)).unwrap();
 
         (
             self.topo.parent(p0.tag, p1.tag).unwrap().0,
             M::edge_length(&p0.vx, &p0.m, &p1.vx, &p1.m),
+        )
+    }
+
+    /// Compute the minimum quality around an edge and the dimension of its topo entity
+    fn edge_dim_and_min_quality(&self, edg: Edge<usize>) -> (Dim, f64) {
+        let global_elems = Cavity::<D, C, M>::intersection(
+            self.vertex_elements(edg.get(0)),
+            self.vertex_elements(edg.get(1)),
+        );
+        let p0 = self.verts.get(&edg.get(1)).unwrap();
+        let p1 = self.verts.get(&edg.get(1)).unwrap();
+
+        (
+            self.topo.parent(p0.tag, p1.tag).unwrap().0,
+            min_iter(global_elems.iter().map(|i| self.elems.get(i).unwrap().q)),
+        )
+    }
+
+    /// Compute the minimum quality around a vertex and the dimension of its topo entity
+    fn vertex_dim_and_min_quality(&self, i: usize) -> (Dim, f64) {
+        let p0 = self.verts.get(&i).unwrap();
+        (
+            p0.tag.0,
+            min_iter(
+                self.vertex_elements(i)
+                    .iter()
+                    .map(|i| self.elems.get(i).unwrap().q),
+            ),
         )
     }
 
@@ -682,10 +712,22 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
     }
 
     /// Get an iterator over edge topo dimension and length
-    pub(super) fn dims_and_lengths_iter(&self) -> impl Iterator<Item = (Dim, f64)> + '_ {
+    pub(super) fn edge_dims_and_lengths_iter(&self) -> impl Iterator<Item = (Dim, f64)> + '_ {
         self.edges
             .keys()
-            .map(|k| self.dim_and_scaled_edge_length(*k))
+            .map(|k| self.edge_dim_and_scaled_length(*k))
+    }
+
+    /// Get an iterator over edge topo dimension and qualit
+    pub(super) fn edge_dim_and_min_quality_iter(&self) -> impl Iterator<Item = (Dim, f64)> + '_ {
+        self.edges.keys().map(|k| self.edge_dim_and_min_quality(*k))
+    }
+
+    /// Get an iterator over vertex topo dimension and qualit
+    pub(super) fn vertex_dim_and_min_quality_iter(&self) -> impl Iterator<Item = (Dim, f64)> + '_ {
+        self.verts
+            .keys()
+            .map(|k| self.vertex_dim_and_min_quality(*k))
     }
 
     /// Get the edge lengths
@@ -793,10 +835,7 @@ mod tests_topo {
     use crate::{
         Tag,
         geometry::NoGeometry,
-        mesh::{
-            MeshTopology,
-            test_meshes::{test_mesh_2d, test_mesh_3d},
-        },
+        mesh::{MeshTopology, test_meshes::square_two_tags},
         metric::IsoMetric,
         remesher::Remesher,
     };
@@ -804,11 +843,11 @@ mod tests_topo {
     use std::collections::hash_map::Entry;
     use tmesh::{
         Vert2d, Vert3d,
-        mesh::{BoundaryMesh2d, BoundaryMesh3d, Mesh, SubMesh},
+        mesh::{BoundaryMesh2d, BoundaryMesh3d, Mesh, Mesh3d, SubMesh, box_mesh},
     };
 
     fn test_topo_2d(etags: [Tag; 2], ftags: [Tag; 4], add_boundary_faces: bool, n_split: i32) {
-        let mut mesh = test_mesh_2d();
+        let mut mesh = square_two_tags();
         mesh.etags_mut().zip(etags).for_each(|(e, t)| *e = t);
         mesh.ftags_mut().zip(ftags).for_each(|(e, t)| *e = t);
 
@@ -909,7 +948,7 @@ mod tests_topo {
     }
 
     fn test_topo_3d(ftags: [Tag; 12], n_split: i32) {
-        let mut mesh = test_mesh_3d();
+        let mut mesh: Mesh3d = box_mesh(1.0, 2, 1.0, 2, 1.0, 2);
         mesh.ftags_mut().zip(ftags).for_each(|(e, t)| *e = t);
 
         for _ in 0..n_split {
@@ -985,21 +1024,20 @@ mod tests {
         Vert2d, Vert3d, assert_delta,
         mesh::{
             BoundaryMesh3d, Edge, GSimplex, GenericMesh, Mesh, Mesh3d, Simplex, Tetrahedron,
-            Triangle, ball_mesh, sphere_mesh,
+            Triangle, ball_mesh, box_mesh, sphere_mesh,
         },
     };
 
     use super::RemesherParams;
     use crate::{
         Result,
-        geometry::{MeshedGeometry, NoGeometry},
+        geometry::{Geometry, MeshedGeometry, NoGeometry},
         mesh::{
             MeshTopology,
             test_meshes::{
                 ConcentricCircles, ConcentricSpheres, GeomHalfCircle2d, SphereGeometry,
                 concentric_circles_mesh, concentric_spheres_mesh, cylinder, h_2d, h_3d,
-                test_mesh_2d, test_mesh_3d, test_mesh_3d_single_tet, test_mesh_3d_two_tets,
-                test_mesh_moon_2d,
+                square_two_tags, test_mesh_3d_single_tet, test_mesh_3d_two_tets, test_mesh_moon_2d,
             },
         },
         metric::{
@@ -1017,7 +1055,7 @@ mod tests {
 
     #[test]
     fn test_init() -> Result<()> {
-        let mut mesh = test_mesh_2d();
+        let mut mesh = square_two_tags();
         mesh.fix().unwrap();
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts()];
         let geom = NoGeometry();
@@ -1068,7 +1106,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_remove_vertex_error() {
-        let mesh = test_mesh_2d();
+        let mesh = square_two_tags();
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts()];
 
         let topo = MeshTopology::new(&mesh);
@@ -1081,7 +1119,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_remove_vertex_error_2() {
-        let mut mesh = test_mesh_2d();
+        let mut mesh = square_two_tags();
         mesh.fix().unwrap();
 
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts()];
@@ -1095,7 +1133,7 @@ mod tests {
 
     #[test]
     fn test_remove_elem() -> Result<()> {
-        let mut mesh = test_mesh_2d();
+        let mut mesh = square_two_tags();
         mesh.fix().unwrap();
 
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts()];
@@ -1118,7 +1156,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_remove_elem_2() {
-        let mut mesh = test_mesh_2d();
+        let mut mesh = square_two_tags();
         mesh.fix().unwrap();
 
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts()];
@@ -1131,7 +1169,7 @@ mod tests {
 
     #[test]
     fn test_split_2d() -> Result<()> {
-        let mut mesh = test_mesh_2d().split().split();
+        let mut mesh = square_two_tags().split().split();
         mesh.fix().unwrap();
 
         let h: Vec<_> = mesh
@@ -1159,7 +1197,7 @@ mod tests {
 
     #[test]
     fn test_swap_2d() -> Result<()> {
-        let mut mesh = test_mesh_2d().split().split();
+        let mut mesh = square_two_tags().split().split();
         mesh.fix().unwrap();
 
         // collapse to lower the quality
@@ -1205,7 +1243,7 @@ mod tests {
 
     #[test]
     fn test_collapse_2d() -> Result<()> {
-        let mut mesh = test_mesh_2d().split().split();
+        let mut mesh = square_two_tags().split().split();
         mesh.fix().unwrap();
 
         let h = vec![IsoMetric::<2>::from(2.); mesh.n_verts()];
@@ -1443,7 +1481,7 @@ mod tests {
 
     #[test]
     fn test_adapt_2d() -> Result<()> {
-        let mut mesh = test_mesh_2d().split().split();
+        let mut mesh = square_two_tags().split().split();
         mesh.fix().unwrap();
 
         for iter in 0..5 {
@@ -1463,8 +1501,8 @@ mod tests {
             if iter == 4 {
                 let (mini, maxi, _) =
                     remesher.check_edge_lengths_analytical(|x| IsoMetric::<2>::from(h_2d(x)));
-                assert_delta!(mini, 0.37, 0.01);
-                assert_delta!(maxi, 1.40, 0.01);
+                assert_delta!(mini, 0.47, 0.01);
+                assert_delta!(maxi, 1.50, 0.01);
             }
         }
 
@@ -1473,7 +1511,7 @@ mod tests {
 
     #[test]
     fn test_adapt_aniso_2d() -> Result<()> {
-        let mut mesh = test_mesh_2d();
+        let mut mesh = square_two_tags();
         mesh.etags_mut().for_each(|t| *t = 1);
 
         let mfunc = |pt: Vert2d| {
@@ -1497,8 +1535,8 @@ mod tests {
 
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
             if iter == 2 {
-                assert_delta!(mini, 0.51, 0.01);
-                assert_delta!(maxi, 1.35, 0.01);
+                assert_delta!(mini, 0.42, 0.01);
+                assert_delta!(maxi, 1.31, 0.01);
             }
         }
 
@@ -1538,8 +1576,8 @@ mod tests {
                 remesher.check_edge_lengths_analytical(|x| IsoMetric::<2>::from(h_2d(x)));
 
             if iter == 9 {
-                assert_delta!(mini, 0.59, 0.01);
-                assert_delta!(maxi, 1.38, 0.01);
+                assert_delta!(mini, 0.50, 0.01);
+                assert_delta!(maxi, 1.49, 0.01);
             }
         }
 
@@ -1572,7 +1610,7 @@ mod tests {
 
     #[test]
     fn test_split_3d() -> Result<()> {
-        let mesh = test_mesh_3d().split().split();
+        let mesh: Mesh3d = box_mesh(1.0, 5, 1.0, 5, 1.0, 5);
         let topo = MeshTopology::new(&mesh);
 
         let h: Vec<_> = mesh
@@ -1600,7 +1638,7 @@ mod tests {
 
     #[test]
     fn test_collapse_3d() -> Result<()> {
-        let mesh = test_mesh_3d().split().split();
+        let mesh: Mesh3d = box_mesh(1.0, 5, 1.0, 5, 1.0, 5);
         let topo = MeshTopology::new(&mesh);
 
         let h = vec![IsoMetric::<3>::from(2.); mesh.n_verts()];
@@ -1655,7 +1693,7 @@ mod tests {
 
     #[test]
     fn test_swap_3d() -> Result<()> {
-        let mesh = test_mesh_3d().split().split();
+        let mesh: Mesh3d = box_mesh(1.0, 5, 1.0, 5, 1.0, 5);
         let topo = MeshTopology::new(&mesh);
 
         // collapse to lower the quality
@@ -1711,7 +1749,8 @@ mod tests {
 
     #[test]
     fn test_adapt_3d() -> Result<()> {
-        let mut mesh = test_mesh_3d().split().split();
+        let mut mesh: Mesh3d = box_mesh(1.0, 5, 1.0, 5, 1.0, 5);
+        mesh.random_shake(0.1);
 
         let geom = NoGeometry();
 
@@ -1736,8 +1775,8 @@ mod tests {
                 remesher.check_edge_lengths_analytical(|x| IsoMetric::<3>::from(h_3d(x)));
 
             if iter == 2 {
-                assert_delta!(mini, 0.32, 0.01);
-                assert_delta!(maxi, 1.58, 0.01);
+                assert_delta!(mini, 0.44, 0.01);
+                assert_delta!(maxi, 1.57, 0.01);
             }
         }
 
@@ -1753,7 +1792,8 @@ mod tests {
 
     #[test]
     fn test_adapt_aniso_3d() -> Result<()> {
-        let mut mesh = test_mesh_3d();
+        let mut mesh: Mesh3d = box_mesh(1.0, 2, 1.0, 2, 1.0, 2);
+        mesh.random_shake(0.1);
 
         let mfunc = |_p| {
             let v0 = Vert3d::new(0.5, 0., 0.);
@@ -1784,8 +1824,8 @@ mod tests {
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
 
             if iter == 1 {
-                assert_delta!(mini, 0.41, 0.01);
-                assert_delta!(maxi, 1.44, 0.01);
+                assert_delta!(mini, 0.40, 0.01);
+                assert_delta!(maxi, 1.42, 0.01);
             }
         }
 
@@ -1795,6 +1835,7 @@ mod tests {
     #[test]
     fn test_adapt_aniso_3d_geom() -> Result<()> {
         let mut mesh: Mesh3d = ball_mesh(1.0, 3);
+        mesh.random_shake(0.1);
 
         let mfunc = |_p| {
             let v0 = Vert3d::new(0.5, 0., 0.);
@@ -1804,6 +1845,9 @@ mod tests {
         };
 
         let geom = SphereGeometry;
+
+        let topo = MeshTopology::new(&mesh);
+        geom.project_vertices(&mut mesh, &topo);
 
         // let fname = format!("sphere_{}.vtu", 0);
         // mesh.write_vtk(&fname, None, None)?;
@@ -1828,8 +1872,8 @@ mod tests {
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
 
             if iter == 1 {
-                assert_delta!(mini, 0.33, 0.01);
-                assert_delta!(maxi, 1.64, 0.01);
+                assert_delta!(mini, 0.32, 0.01);
+                assert_delta!(maxi, 1.60, 0.01);
             }
 
             // let fname = format!("sphere_{}.vtu", iter + 1);
@@ -1841,7 +1885,7 @@ mod tests {
 
     #[test]
     fn test_complexity_2d() -> Result<()> {
-        let mut mesh = test_mesh_2d().split().split();
+        let mut mesh = square_two_tags().split().split();
         mesh.fix().unwrap();
         let topo = MeshTopology::new(&mesh);
 
@@ -1867,7 +1911,7 @@ mod tests {
 
     #[test]
     fn test_complexity_3d() -> Result<()> {
-        let mesh = test_mesh_3d().split().split();
+        let mesh: Mesh3d = box_mesh(1.0, 5, 1.0, 5, 1.0, 5);
         let topo = MeshTopology::new(&mesh);
 
         let mfunc = |_p| {
@@ -1921,7 +1965,9 @@ mod tests {
             .iter()
             .map(|&x| IsoMetric::<3>::from(x))
             .collect::<Vec<_>>();
-        let mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
+        let mut mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
+        mesh.random_shake(0.1);
+
         let bdy: BoundaryMesh3d = mesh.boundary().0;
         let topo = MeshTopology::new(&mesh);
         let geom = MeshedGeometry::new(&mesh, &topo, bdy)?;
@@ -1929,7 +1975,7 @@ mod tests {
         remesher.remesh(&RemesherParams::default(), &geom)?;
         let mesh = remesher.to_mesh(false);
         // mesh.write_meshb("iso3d.meshb")?;
-        assert_eq!(mesh.n_verts(), 633);
+        assert_eq!(mesh.n_verts(), 638);
 
         Ok(())
     }
@@ -1961,7 +2007,9 @@ mod tests {
             .map(|x| AnisoMetric3d::from_slice(x))
             .collect::<Vec<_>>();
 
-        let mesh = Mesh3d::from_vecs(verts, elems, etags, faces, ftags);
+        let mut mesh = Mesh3d::from_vecs(verts, elems, etags, faces, ftags);
+        mesh.random_shake(0.1);
+
         let bdy: BoundaryMesh3d = mesh.boundary().0;
         let topo = MeshTopology::new(&mesh);
         let geom = MeshedGeometry::new(&mesh, &topo, bdy)?;
@@ -2037,7 +2085,8 @@ mod tests {
 
     #[test]
     fn test_adapt_3d_surf() -> Result<()> {
-        let mesh: BoundaryMesh3d = sphere_mesh(1.0, 3);
+        let mut mesh: BoundaryMesh3d = sphere_mesh(1.0, 3);
+        mesh.random_shake(0.1);
 
         let m_func = |p: &Vert3d| {
             let c = Vert3d::new(1.0, 0.0, 0.0);
@@ -2052,6 +2101,7 @@ mod tests {
 
         let geom = SphereGeometry;
         let topo = MeshTopology::new(&mesh);
+        geom.project_vertices(&mut mesh, &topo);
 
         let mut remesher = Remesher::new(&mesh, &topo, &m, &geom)?;
 
@@ -2062,8 +2112,8 @@ mod tests {
 
         let (mini, maxi, _) = remesher.check_edge_lengths_analytical(m_func);
 
-        assert_delta!(mini, 0.47, 0.01);
-        assert_delta!(maxi, 2.21, 0.01);
+        assert_delta!(mini, 0.46, 0.01);
+        assert_delta!(maxi, 2.37, 0.01);
 
         let _mesh = remesher.to_mesh(true);
         // mesh.write_vtk("sphere_surf_iso.vtu")?;
@@ -2073,7 +2123,8 @@ mod tests {
 
     #[test]
     fn test_adapt_3d_surf_aniso() -> Result<()> {
-        let mesh: BoundaryMesh3d = sphere_mesh(1.0, 3);
+        let mut mesh: BoundaryMesh3d = sphere_mesh(1.0, 3);
+        mesh.random_shake(0.1);
 
         let m_func = |p: &Vert3d| {
             let s = 0.25;
@@ -2114,6 +2165,7 @@ mod tests {
 
         let geom = SphereGeometry;
         let topo = MeshTopology::new(&mesh);
+        geom.project_vertices(&mut mesh, &topo);
 
         let mut remesher = Remesher::new(&mesh, &topo, &m, &geom)?;
 
@@ -2123,8 +2175,8 @@ mod tests {
         remesher.check()?;
 
         let (mini, maxi, _) = remesher.check_edge_lengths_analytical(m_func);
-        assert_delta!(mini, 0.35, 0.01);
-        assert_delta!(maxi, 2.48, 0.01);
+        assert_delta!(mini, 0.36, 0.01);
+        assert_delta!(maxi, 2.09, 0.01);
 
         let _mesh = remesher.to_mesh(true);
         // mesh.write_vtk("sphere_surf_aniso.vtu")?;
@@ -2134,7 +2186,8 @@ mod tests {
 
     #[test]
     fn test_mesh_cylinder() -> Result<()> {
-        let mesh = cylinder(0.1, 32);
+        let mut mesh = cylinder(0.1, 32);
+        mesh.random_shake(0.1);
 
         let m_func = |_p: &Vert3d| IsoMetric::from(0.05);
 
@@ -2162,8 +2215,8 @@ mod tests {
         remesher.remesh(&params, &geom)?;
         remesher.check()?;
         let (mini, maxi, _) = remesher.check_edge_lengths_analytical(m_func);
-        assert_delta!(mini, 0.36, 0.01);
-        assert_delta!(maxi, 1.56, 0.01);
+        assert_delta!(mini, 0.32, 0.01);
+        assert_delta!(maxi, 1.54, 0.01);
         Ok(())
     }
 }

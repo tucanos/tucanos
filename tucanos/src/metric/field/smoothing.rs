@@ -70,17 +70,19 @@ impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
 
 #[cfg(test)]
 mod tests {
-    use tmesh::{Vert2d, Vert3d, mesh::Mesh};
+    use tmesh::{
+        Vert2d, Vert3d,
+        mesh::{Mesh, Mesh2d, Mesh3d, box_mesh, rectangle_mesh},
+    };
 
     use crate::{
-        mesh::test_meshes::{test_mesh_2d, test_mesh_3d},
         metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric, MetricField},
         min_iter,
     };
 
     #[test]
     fn test_smooth_2d() {
-        let mesh = test_mesh_2d().split().split();
+        let mesh: Mesh2d = rectangle_mesh(1.0, 5, 1.0, 5);
         let v2v = mesh.vertex_to_vertices();
 
         let mut m: Vec<_> = (0..mesh.n_verts())
@@ -102,7 +104,7 @@ mod tests {
 
     #[test]
     fn test_smooth_2d_aniso() {
-        let mesh = test_mesh_2d().split().split();
+        let mesh: Mesh2d = rectangle_mesh(1.0, 5, 1.0, 5);
         let v2v = mesh.vertex_to_vertices();
 
         let v0 = Vert2d::new(0.5, 0.);
@@ -132,7 +134,7 @@ mod tests {
 
     #[test]
     fn test_smooth_3d() {
-        let mesh = test_mesh_3d().split().split();
+        let mesh: Mesh3d = box_mesh(1.0, 5, 1.0, 5, 1.0, 5);
         let v2v = mesh.vertex_to_vertices();
 
         let mut m: Vec<_> = (0..mesh.n_verts())
@@ -154,7 +156,7 @@ mod tests {
 
     #[test]
     fn test_smooth_3d_aniso() {
-        let mesh = test_mesh_3d().split().split();
+        let mesh: Mesh3d = box_mesh(1.0, 5, 1.0, 5, 1.0, 5);
         let v2v = mesh.vertex_to_vertices();
 
         let v0 = Vert3d::new(0.5, 0.0, 0.0);

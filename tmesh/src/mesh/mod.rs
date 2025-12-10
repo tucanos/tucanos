@@ -21,7 +21,7 @@ mod vector;
 
 use log::{debug, warn};
 use minimeshb::{reader::MeshbReader, writer::MeshbWriter};
-use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
+use rand::{Rng, SeedableRng, rngs::StdRng, seq::SliceRandom};
 use rayon::{
     prelude::{IndexedParallelIterator, ParallelIterator},
     slice::ParallelSliceMut,
@@ -354,7 +354,12 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                             if arr[1] == usize::MAX {
                                 arr[1] = i_elem;
                             } else {
-                                assert_eq!(arr[2], usize::MAX);
+                                assert_eq!(
+                                    arr[2],
+                                    usize::MAX,
+                                    "f = {f:?}, i_elem = {i_elem}, elems = {:?}",
+                                    self.elems().collect::<Vec<_>>()
+                                );
                                 arr[2] = i_elem;
                             }
                         }
@@ -886,6 +891,49 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         res.reorder_faces(&face_ids);
 
         res
+    }
+
+    /// Randomly shake the vertices of a mesh
+    fn random_shake_verts(&self, alpha: f64, rng: &mut StdRng) -> Vec<Vertex<D>> {
+        let v2v = self.vertex_to_vertices();
+        let flg = self.boundary_flag();
+        let mut new_verts = flg
+            .iter()
+            .enumerate()
+            .map(|(i, flg)| {
+                let mut v = self.vert(i);
+                if !flg {
+                    for &j in v2v.row(i) {
+                        v += alpha * rng.random::<f64>() * (self.vert(j) - self.vert(i));
+                    }
+                }
+                v
+            })
+            .collect::<Vec<_>>();
+
+        if Self::C::DIM > 1 {
+            let (mut bdy, ids) = self.boundary::<GenericMesh<D, <Self::C as Simplex>::FACE>>();
+            bdy.fix().unwrap();
+            let tags = bdy.etags().collect::<FxHashSet<_>>();
+            for tag in tags {
+                let sbdy = SubMesh::new(&bdy, |t| t == tag);
+                let tmp = sbdy.mesh.random_shake_verts(alpha, rng);
+                for (i, &v) in tmp.iter().enumerate() {
+                    new_verts[ids[sbdy.parent_vert_ids[i]]] = v;
+                }
+            }
+        }
+
+        new_verts
+    }
+
+    /// Randomly shake the mesh
+    fn random_shake(&mut self, alpha: f64) {
+        let mut rng = StdRng::seed_from_u64(1234);
+
+        let new_verts = self.random_shake_verts(alpha, &mut rng);
+
+        self.verts_mut().zip(&new_verts).for_each(|(a, b)| *a = *b);
     }
 
     /// Import a mesh from a `.meshb` file

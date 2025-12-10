@@ -217,7 +217,7 @@ mod tests {
     use crate::{
         Vert3d, assert_delta,
         mesh::{
-            BoundaryMesh3d, GSimplex, GradientMethod, Mesh, Mesh3d, bandwidth, box_mesh,
+            BoundaryMesh3d, GSimplex, GradientMethod, Mesh, Mesh3d, Simplex, bandwidth, box_mesh,
             mesh_3d::ball_mesh,
             partition::{HilbertPartitioner, KMeansPartitioner3d, RCMPartitioner},
         },
@@ -261,10 +261,12 @@ mod tests {
         }
     }
 
-    fn run_gradient(method: GradientMethod, n: u32) -> f64 {
+    fn run_gradient(method: GradientMethod, n: u32, shake: bool) -> f64 {
         let n = 2_usize.pow(n) + 1;
-        let mesh = box_mesh::<Mesh3d>(1.0, n, 1.0, n, 1.0, n).random_shuffle();
-
+        let mut mesh = box_mesh::<Mesh3d>(1.0, n, 1.0, n, 1.0, n).random_shuffle();
+        if shake {
+            mesh.random_shake(0.1);
+        }
         let f = mesh.verts().map(|p| p[0] * p[1] * p[2]).collect::<Vec<_>>();
         let grad = mesh
             .verts()
@@ -294,7 +296,24 @@ mod tests {
         ] {
             let mut prev = f64::MAX;
             for n in 2..5 {
-                let nrm = run_gradient(method, n);
+                let nrm = run_gradient(method, n, false);
+                assert!(nrm < 0.5 * prev, "{method:?}, {nrm:.2e} {prev:.2e}");
+                prev = nrm;
+            }
+        }
+    }
+
+    #[test]
+    fn test_gradient_shake() {
+        for method in [
+            GradientMethod::LinearLeastSquares(1),
+            GradientMethod::LinearLeastSquares(2),
+            GradientMethod::QuadraticLeastSquares(1),
+            GradientMethod::L2Projection,
+        ] {
+            let mut prev = f64::MAX;
+            for n in 2..5 {
+                let nrm = run_gradient(method, n, true);
                 assert!(nrm < 0.5 * prev, "{method:?}, {nrm:.2e} {prev:.2e}");
                 prev = nrm;
             }
@@ -341,9 +360,12 @@ mod tests {
         }
     }
 
-    fn run_hessian(method: GradientMethod, n: u32) -> f64 {
+    fn run_hessian(method: GradientMethod, n: u32, shake: bool) -> f64 {
         let n = 2_usize.pow(n) + 1;
-        let mesh = box_mesh::<Mesh3d>(1.0, n, 1.0, n, 1.0, n).random_shuffle();
+        let mut mesh = box_mesh::<Mesh3d>(1.0, n, 1.0, n, 1.0, n).random_shuffle();
+        if shake {
+            mesh.random_shake(0.1);
+        }
 
         let f: Vec<_> = mesh
             .verts()
@@ -393,7 +415,7 @@ mod tests {
     fn test_hessian() {
         let mut prev = f64::MAX;
         for n in 2..5 {
-            let nrm = run_hessian(GradientMethod::QuadraticLeastSquares(1), n);
+            let nrm = run_hessian(GradientMethod::QuadraticLeastSquares(1), n, false);
             assert!(nrm < 0.5 * prev);
             prev = nrm;
         }
@@ -404,7 +426,28 @@ mod tests {
         // WARNING: l2proj hessian does not converge
         let mut prev = f64::MAX;
         for n in 2..5 {
-            let nrm = run_hessian(GradientMethod::L2Projection, n);
+            let nrm = run_hessian(GradientMethod::L2Projection, n, false);
+            assert!(nrm < prev, "{nrm:.2e} {prev:.2e}");
+            prev = nrm;
+        }
+    }
+
+    #[test]
+    fn test_hessian_shake() {
+        let mut prev = f64::MAX;
+        for n in 2..5 {
+            let nrm = run_hessian(GradientMethod::QuadraticLeastSquares(1), n, true);
+            assert!(nrm < 0.5 * prev);
+            prev = nrm;
+        }
+    }
+
+    #[test]
+    fn test_hessian_l2proj_shake() {
+        // WARNING: l2proj hessian does not converge
+        let mut prev = f64::MAX;
+        for n in 2..5 {
+            let nrm = run_hessian(GradientMethod::L2Projection, n, true);
             assert!(nrm < prev, "{nrm:.2e} {prev:.2e}");
             prev = nrm;
         }
@@ -674,5 +717,45 @@ mod tests {
         let surf: BoundaryMesh3d = msh.boundary().0;
         assert_delta!(msh.vol(), 4.0 / 3.0 * PI * r.powi(3), 0.003);
         assert_delta!(surf.vol(), 4.0 * PI * r.powi(2), 0.004);
+    }
+
+    #[test]
+    fn test_shake() {
+        let mut mesh = box_mesh::<Mesh3d>(1.0, 3, 1.0, 3, 1.0, 3).random_shuffle();
+        mesh.random_shake(0.1);
+        mesh.check(&mesh.all_faces()).unwrap();
+
+        assert_delta!(mesh.vol(), 1.0, 1e-12);
+
+        let mut l = mesh
+            .edges()
+            .keys()
+            .map(|e| (mesh.vert(e.get(0)) - mesh.vert(e.get(1))).norm())
+            .collect::<Vec<_>>();
+        l.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        for tmp in l.windows(2) {
+            assert!(tmp[1] > tmp[0] + 1e-8);
+        }
+    }
+
+    #[test]
+    fn test_shake_ball() {
+        let mut mesh = ball_mesh::<Mesh3d>(1.0, 3).random_shuffle();
+        assert_delta!(mesh.vol(), 4.0 / 3.0 * PI, 0.1);
+
+        mesh.random_shake(0.1);
+        mesh.check(&mesh.all_faces()).unwrap();
+
+        assert_delta!(mesh.vol(), 4.0 / 3.0 * PI, 0.21);
+
+        let mut l = mesh
+            .edges()
+            .keys()
+            .map(|e| (mesh.vert(e.get(0)) - mesh.vert(e.get(1))).norm())
+            .collect::<Vec<_>>();
+        l.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        for tmp in l.windows(2) {
+            assert!(tmp[1] > tmp[0] + 1e-10);
+        }
     }
 }

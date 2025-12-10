@@ -114,17 +114,13 @@ impl<'a, T: Idx, M: Mesh<2, C = Triangle<T>>> MetricField<'a, 2, M, AnisoMetric2
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        mesh::test_meshes::test_mesh_3d,
-        metric::{Metric, MetricField},
-    };
+    use crate::metric::{Metric, MetricField};
     use nalgebra::Matrix3;
-    use tmesh::mesh::Mesh;
+    use tmesh::mesh::{Mesh, Mesh3d, box_mesh};
 
     #[test]
     fn test_implied_metric() {
-        let mesh = test_mesh_3d();
-        let mut mesh = mesh.split().split().split();
+        let mut mesh: Mesh3d = box_mesh(1.0, 9, 1.0, 9, 1.0, 9);
 
         let h0 = 10.;
         let h1 = 0.1;

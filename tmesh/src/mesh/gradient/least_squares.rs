@@ -261,7 +261,7 @@ where
             }
         });
 
-    if fix_not_computed(v2v, &mut res, &mut failed, D, 3) {
+    if fix_not_computed(v2v, &mut res, &mut failed, D, 6) {
         if res.iter().copied().any(f64::is_nan) {
             return Err(Error::from("NaN in gradient computation"));
         }
@@ -313,7 +313,7 @@ where
             }
         });
 
-    if fix_not_computed(v2v, &mut res, &mut failed, D * (D + 1) / 2, 3) {
+    if fix_not_computed(v2v, &mut res, &mut failed, D * (D + 1) / 2, 6) {
         if res.iter().copied().any(f64::is_nan) {
             return Err(Error::from("NaN in gradient computation"));
         }
