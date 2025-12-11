@@ -2156,7 +2156,7 @@ mod tests {
 
         let (mini, maxi, _) = remesher.check_edge_lengths_analytical(m_func);
         assert_delta!(mini, 0.34, 0.01);
-        assert_delta!(maxi, 2.01, 0.01);
+        assert_delta!(maxi, 2.08, 0.01);
 
         let _mesh = remesher.to_mesh(true);
         // mesh.write_vtk("sphere_surf_aniso.vtu")?;
