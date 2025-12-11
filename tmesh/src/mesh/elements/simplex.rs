@@ -217,22 +217,19 @@ pub trait GSimplex<const D: usize>:
 
     /// Project a point on the simplex
     fn project(&self, v: &Vertex<D>) -> Vertex<D> {
-        self.project_inside(v).map_or_else(
-            || {
-                let mut p = self.face(0).project(v);
-                let mut d = (v - p).norm_squared();
-                for j in 1..Self::TOPO::N_FACES {
-                    let p1 = self.face(j).project(v);
-                    let d1 = (v - p1).norm_squared();
-                    if d1 < d {
-                        d = d1;
-                        p = p1;
-                    }
+        self.project_inside(v).unwrap_or_else(|| {
+            let mut p = self.face(0).project(v);
+            let mut d = (v - p).norm_squared();
+            for j in 1..Self::TOPO::N_FACES {
+                let p1 = self.face(j).project(v);
+                let d1 = (v - p1).norm_squared();
+                if d1 < d {
+                    d = d1;
+                    p = p1;
                 }
-                p
-            },
-            |pt| pt,
-        )
+            }
+            p
+        })
     }
 
     /// Try to project a point inside the simplex
