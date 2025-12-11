@@ -1389,6 +1389,9 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                 let (faces, ftags) = split_edgs(self.faces().zip(self.ftags()), &edges);
                 res.add_faces(faces.iter().copied(), ftags.iter().copied());
             }
+            1 => {
+                res.add_faces(self.faces(), self.ftags());
+            }
             _ => unreachable!(),
         }
         res
