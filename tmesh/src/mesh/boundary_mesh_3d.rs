@@ -9,7 +9,7 @@ use std::{fs::OpenOptions, iter::once};
 pub type BoundaryMesh3d = GenericMesh<3, Triangle<usize>>;
 pub type QuadraticBoundaryMesh3d = GenericMesh<3, QuadraticTriangle<usize>>;
 
-/// Create a `Mesh<3, Triangle<_>>` of a sphere
+/// Create a `Mesh<3, C=Triangle<_>>` of a sphere
 #[must_use]
 pub fn sphere_mesh<M: Mesh<3, C = Triangle<impl Idx>>>(r: f64, n: usize) -> M {
     let mut res = M::empty();
@@ -50,7 +50,7 @@ pub fn sphere_mesh<M: Mesh<3, C = Triangle<impl Idx>>>(r: f64, n: usize) -> M {
     res
 }
 
-/// Create a `Mesh<3, QuadraticTriangle<_>>` of a sphere
+/// Create a `Mesh<3, C=QuadraticTriangle<_>>` of a sphere
 #[must_use]
 pub fn quadratic_sphere_mesh<M: Mesh<3, C = QuadraticTriangle<impl Idx>>>(r: f64, n: usize) -> M {
     let mut res: M = to_quadratic_triangle_mesh(&sphere_mesh::<BoundaryMesh3d>(r, n));

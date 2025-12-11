@@ -10,7 +10,7 @@ use crate::{
 pub type BoundaryMesh2d = GenericMesh<2, Edge<usize>>;
 pub type QuadraticBoundaryMesh2d = GenericMesh<2, QuadraticEdge<usize>>;
 
-/// Create a `Mesh<2, Edge<_>>` of a circle
+/// Create a `Mesh<2, C=Edge<_>>` of a circle
 #[must_use]
 pub fn circle_mesh<M: Mesh<2, C = Edge<impl Idx>>>(r: f64, n: usize) -> M {
     let dtheta = 2.0 * PI / n as f64;
@@ -24,7 +24,7 @@ pub fn circle_mesh<M: Mesh<2, C = Edge<impl Idx>>>(r: f64, n: usize) -> M {
     res
 }
 
-/// Create a `Mesh<2, QuadraticEdge<_>>` of a circle
+/// Create a `Mesh<2, C=QuadraticEdge<_>>` of a circle
 #[must_use]
 pub fn quadratic_circle_mesh<M: Mesh<2, C = QuadraticEdge<impl Idx>>>(r: f64, n: usize) -> M {
     let mut res: M = to_quadratic_edge_mesh(&circle_mesh::<BoundaryMesh2d>(r, n));
