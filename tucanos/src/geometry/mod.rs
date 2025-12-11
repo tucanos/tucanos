@@ -2,7 +2,7 @@ mod curvature;
 mod orient;
 use crate::{
     Dim, Error, Result, Tag, TopoTag,
-    geometry::curvature::HasCurvature,
+    geometry::curvature::{compute_curvature, write_curvature},
     mesh::{MeshTopology, Topology},
 };
 use log::{debug, warn};
@@ -10,7 +10,10 @@ pub use orient::orient_geometry;
 use rustc_hash::{FxHashMap, FxHashSet};
 use tmesh::{
     Vertex,
-    mesh::{GSimplex, GenericMesh, Mesh, Simplex, SubMesh},
+    mesh::{
+        Edge, GSimplex, GenericMesh, Idx, Mesh, QuadraticEdge, QuadraticTriangle, Simplex, SubMesh,
+        Triangle, to_quadratic_edge_mesh, to_quadratic_triangle_mesh,
+    },
     spatialindex::ObjectIndex,
 };
 
@@ -42,12 +45,23 @@ pub trait Geometry<const D: usize>: Send + Sync {
     /// Compute the max distance between the face centers and the geometry normals
     fn max_distance<M: Mesh<D>>(&self, mesh: &M) -> f64 {
         let mut d_max = 0.0;
-        for (gf, tag) in mesh.gfaces().zip(mesh.ftags()) {
-            let mut c = gf.center();
-            let d = self.project(&mut c, &(<M::C as Simplex>::FACE::DIM as Dim, tag));
-            d_max = f64::max(d_max, d);
+        if M::C::DIM == D {
+            for (gf, tag) in mesh.gfaces().zip(mesh.ftags()) {
+                let mut c = gf.center();
+                let d = self.project(&mut c, &(<M::C as Simplex>::FACE::DIM as Dim, tag));
+                d_max = f64::max(d_max, d);
+            }
+            d_max
+        } else if M::C::DIM == D - 1 {
+            for (gf, tag) in mesh.gelems().zip(mesh.etags()) {
+                let mut c = gf.center();
+                let d = self.project(&mut c, &(<M::C as Simplex>::DIM as Dim, tag));
+                d_max = f64::max(d_max, d);
+            }
+            d_max
+        } else {
+            unreachable!();
         }
-        d_max
     }
 
     /// Compute the max angle between the face normals and the geometry normals
@@ -76,6 +90,29 @@ pub trait Geometry<const D: usize>: Send + Sync {
         }
 
         a_max
+    }
+
+    /// Convert a linear mesh to a quadratic mesh (triangles)
+    fn to_quadratic_triangle_mesh<M: Mesh<D, C = QuadraticTriangle<impl Idx>>>(
+        &self,
+        mesh: &impl Mesh<D, C = Triangle<impl Idx>>,
+    ) -> M {
+        let mut res = to_quadratic_triangle_mesh(mesh);
+        let topo = MeshTopology::new(&res);
+
+        self.project_vertices(&mut res, &topo);
+        res
+    }
+
+    /// Convert a linear mesh to a quadratic mesh (edges)
+    fn to_quadratic_edge_mesh<M: Mesh<D, C = QuadraticEdge<impl Idx>>>(
+        &self,
+        mesh: &impl Mesh<D, C = Edge<impl Idx>>,
+    ) -> M {
+        let mut res = to_quadratic_edge_mesh(mesh);
+        let topo = MeshTopology::new(&res);
+        self.project_vertices(&mut res, &topo);
+        res
     }
 }
 
@@ -119,7 +156,7 @@ impl<const D: usize, M: Mesh<D>> MeshedPatchGeometry<D, M> {
 }
 
 /// Geometry for a patch of faces with a constant tag, with curvature information
-struct MeshedPatchGeometryWithCurvature<const D: usize, M: Mesh<D> + HasCurvature<D>> {
+struct MeshedPatchGeometryWithCurvature<const D: usize, M: Mesh<D>> {
     /// The ObjectIndex
     tree: ObjectIndex<D, M>,
     /// Optionally, the first principal curvature direction
@@ -128,11 +165,11 @@ struct MeshedPatchGeometryWithCurvature<const D: usize, M: Mesh<D> + HasCurvatur
     v: Option<Vec<Vertex<D>>>,
 }
 
-impl<const D: usize, M: Mesh<D> + HasCurvature<D>> MeshedPatchGeometryWithCurvature<D, M> {
+impl<const D: usize, M: Mesh<D>> MeshedPatchGeometryWithCurvature<D, M> {
     /// Create a `LinearPatchGeometry` from a `SimplexMesh`
     pub fn new(mut mesh: M) -> Self {
         mesh.fix().unwrap();
-        let (u, v) = mesh.compute_curvature();
+        let (u, v) = compute_curvature(&mesh);
 
         let tree = ObjectIndex::new(mesh);
 
@@ -156,18 +193,17 @@ impl<const D: usize, M: Mesh<D> + HasCurvature<D>> MeshedPatchGeometryWithCurvat
 
 /// Piecewise linear (stl-like) representation of a geometry
 /// doc TODO
-pub struct MeshedGeometry<const D: usize, M: Mesh<D> + HasCurvature<D>> {
+pub struct MeshedGeometry<const D: usize, M: Mesh<D>> {
     /// The surface patches
     patches: FxHashMap<Tag, MeshedPatchGeometryWithCurvature<D, M>>,
     /// The edges
     edges: FxHashMap<Tag, MeshedPatchGeometry<D, GenericMesh<D, <M::C as Simplex>::FACE>>>,
 }
 
-impl<const D: usize, M: Mesh<D> + HasCurvature<D>> MeshedGeometry<D, M> {
+impl<const D: usize, M: Mesh<D>> MeshedGeometry<D, M> {
     /// Create a `LinearGeometry` for the boundary of `mesh` (with positive tags) from a
     /// `SimplexMesh` representation of the boundary
     pub fn new<M2: Mesh<D>>(mesh: &M2, topo: &MeshTopology, mut bdy: M) -> Result<Self> {
-        assert_eq!(M::C::order(), 1);
         assert_eq!(M2::C::order(), 1);
         assert!(M2::C::DIM >= M::C::DIM);
 
@@ -246,17 +282,17 @@ impl<const D: usize, M: Mesh<D> + HasCurvature<D>> MeshedGeometry<D, M> {
 
     pub fn write_curvature(&self, fname: &str) -> Result<()> {
         for (tag, patch) in &self.patches {
-            patch
-                .tree
-                .mesh()
-                .write_curvature(&String::from(fname).replace(".vtu", &format!("_{tag}.vtu")))?;
+            write_curvature(
+                patch.tree.mesh(),
+                &String::from(fname).replace(".vtu", &format!("_{tag}.vtu")),
+            )?;
         }
 
         Ok(())
     }
 }
 
-impl<const D: usize, M: Mesh<D> + HasCurvature<D>> Geometry<D> for MeshedGeometry<D, M> {
+impl<const D: usize, M: Mesh<D>> Geometry<D> for MeshedGeometry<D, M> {
     fn check(&self, _topo: &Topology) -> Result<()> {
         // The check is performed during creation
         Ok(())

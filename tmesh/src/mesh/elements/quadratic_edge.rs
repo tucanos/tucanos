@@ -1,5 +1,3 @@
-use argmin::core::{CostFunction, Executor, Gradient, Hessian};
-
 use crate::{
     Vertex,
     mesh::{
@@ -7,6 +5,7 @@ use crate::{
         elements::{ho_simplex::HOType, quadratures::QUADRATURE_EDGE_6},
     },
 };
+use argmin::core::{CostFunction, Executor, Gradient, Hessian};
 use std::fmt::Debug;
 use std::ops::Index;
 
@@ -62,6 +61,27 @@ impl<const D: usize> QuadraticGEdge<D> {
 
     fn hess_mapping(&self, _bcoords: &[f64; 2]) -> [Vertex<D>; 3] {
         [4.0 * self[0], 4.0 * self[1], 4.0 * self[2]]
+    }
+
+    /// Curvature at the center of the edge
+    #[must_use]
+    pub fn curvature(&self) -> Vertex<D> {
+        let bcoords = [0.5, 0.5];
+        let [g_u, g_v] = self.jac_mapping(&bcoords);
+        let g = g_v - g_u;
+        let [h_uu, h_vv, h_uv] = self.hess_mapping(&bcoords);
+        let h = h_uu + h_vv - 2.0 * h_uv;
+        let f = if D == 3 {
+            g.cross(&h).norm()
+        } else {
+            (g[0] * h[1] - g[1] * h[0]).abs()
+        };
+        let res = f / g.norm_squared().powi(2) * g;
+        if res.norm() > 1e-12 {
+            res
+        } else {
+            1e-12 * g.normalize()
+        }
     }
 
     fn bezier(&self) -> Self {
@@ -219,20 +239,16 @@ impl<const D: usize> GSimplex<D> for QuadraticGEdge<D> {
         let solver = argmin::solver::newton::NewtonCG::new(linesearch)
             .with_tolerance(1e-10)
             .unwrap();
-        if let Ok(res) = Executor::new(QuadraticEdgeProjection { v, ge: self }, solver)
+        let res = Executor::new(QuadraticEdgeProjection { v, ge: self }, solver)
             .configure(|state| state.param([uv[1]].into()).max_iters(100))
             // .add_observer(
             //     argmin_observer_slog::SlogLogger::term(),
             //     argmin::core::observers::ObserverMode::Always,
             // )
             .run()
-        {
-            let v = res.state.best_param.unwrap();
-            [1.0 - v[0], v[0]]
-        } else {
-            panic!()
-            // [f64::NAN, f64::NAN]
-        }
+            .unwrap();
+        let v = res.state.best_param.unwrap();
+        [1.0 - v[0], v[0]]
     }
 
     /// Vertex from barycentric coordinates
@@ -304,10 +320,67 @@ impl<const D: usize> Hessian for QuadraticEdgeProjection<'_, D> {
 
 #[cfg(test)]
 mod tests {
+    use argmin::core::{CostFunction, Gradient, Hessian};
+    use rand::{Rng, SeedableRng, rngs::StdRng};
+
     use crate::{
-        Vert2d, assert_delta,
-        mesh::{GEdge, GSimplex, QuadraticGEdge, elements::ho_simplex::HOType},
+        Vert2d, Vert3d, assert_delta,
+        mesh::{
+            GEdge, GSimplex, QuadraticGEdge,
+            elements::{ho_simplex::HOType, quadratic_edge::QuadraticEdgeProjection},
+        },
     };
+
+    #[test]
+    fn test_projection() {
+        let mut rng = StdRng::seed_from_u64(1234);
+
+        for _ in 0..10000 {
+            let p0 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let p1 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let p2 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let ge = QuadraticGEdge::new(&p0, &p1, &p2, HOType::Lagrange);
+            let v = Vert2d::from_fn(|_, _| 10.0 * (rng.random::<f64>() - 0.5));
+            let proj = QuadraticEdgeProjection { v: &v, ge: &ge };
+
+            let x = rng.random::<f64>();
+            let g = proj.gradient(&[x].into()).unwrap()[0];
+            let h = proj.hessian(&[x].into()).unwrap()[0];
+
+            let eps = 1e-6;
+            let g2 = (proj.cost(&[x + eps].into()).unwrap()
+                - proj.cost(&[x - eps].into()).unwrap())
+                / (2.0 * eps);
+            let h3 = (proj.gradient(&[x + eps].into()).unwrap()[0]
+                - proj.gradient(&[x - eps].into()).unwrap()[0])
+                / (2.0 * eps);
+            assert_delta!(g, g2, 1e-6);
+            assert_delta!(h, h3, 1e-6);
+        }
+
+        for _ in 0..10000 {
+            let p0 = Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let p1 = Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let p2 = Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let ge = QuadraticGEdge::new(&p0, &p1, &p2, HOType::Lagrange);
+            let v = Vert3d::from_fn(|_, _| 10.0 * (rng.random::<f64>() - 0.5));
+            let proj = QuadraticEdgeProjection { v: &v, ge: &ge };
+
+            let x = rng.random::<f64>();
+            let g = proj.gradient(&[x].into()).unwrap()[0];
+            let h = proj.hessian(&[x].into()).unwrap()[0];
+
+            let eps = 1e-6;
+            let g2 = (proj.cost(&[x + eps].into()).unwrap()
+                - proj.cost(&[x - eps].into()).unwrap())
+                / (2.0 * eps);
+            let h3 = (proj.gradient(&[x + eps].into()).unwrap()[0]
+                - proj.gradient(&[x - eps].into()).unwrap()[0])
+                / (2.0 * eps);
+            assert_delta!(g, g2, 1e-6);
+            assert_delta!(h, h3, 1e-6);
+        }
+    }
 
     #[test]
     fn test_quadratic_edge() {
