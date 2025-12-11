@@ -8,11 +8,12 @@ use tmesh::{
 
 /// Reorder a surface mesh that provides a representation of the geometry of the boundary of a
 /// volume mesh such that boundary faces are oriented outwards.
-pub fn orient_geometry<const D: usize, M: Mesh<D>, M2: Mesh<D, C = <M::C as Simplex>::FACE>>(
+pub fn orient_geometry<const D: usize, M: Mesh<D>, M2: Mesh<D>>(
     mesh: &M,
     stl_mesh: &mut M2,
 ) -> (usize, f64) {
     assert_eq!(M::C::order(), 1);
+    assert_eq!(M::C::DIM, M2::C::DIM + 1);
 
     debug!("Orient the boundary mesh");
 
