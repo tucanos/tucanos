@@ -1924,9 +1924,12 @@ mod tests {
             .map(|&x| IsoMetric::<3>::from(x))
             .collect::<Vec<_>>();
         let mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
-        let bdy: BoundaryMesh3d = mesh.boundary().0;
+        let mut bdy: BoundaryMesh3d = mesh.boundary().0;
+        bdy.fix().unwrap();
+
         let topo = MeshTopology::new(&mesh);
-        let geom = MeshedGeometry::new(&mesh, &topo, bdy)?;
+        let mut geom = MeshedGeometry::new(&bdy)?;
+        geom.set_topo_map(topo.topo());
         let mut remesher = Remesher::new(&mesh, &topo, &metric, &geom)?;
         remesher.remesh(&RemesherParams::default(), &geom)?;
         let mesh = remesher.to_mesh(false);
@@ -1964,9 +1967,12 @@ mod tests {
             .collect::<Vec<_>>();
 
         let mesh = Mesh3d::from_vecs(verts, elems, etags, faces, ftags);
-        let bdy: BoundaryMesh3d = mesh.boundary().0;
+        let mut bdy: BoundaryMesh3d = mesh.boundary().0;
+        bdy.fix().unwrap();
+
         let topo = MeshTopology::new(&mesh);
-        let geom = MeshedGeometry::new(&mesh, &topo, bdy)?;
+        let mut geom = MeshedGeometry::new(&bdy)?;
+        geom.set_topo_map(topo.topo());
         let mut remesher = Remesher::new(&mesh, &topo, &metric, &geom)?;
         remesher.remesh(&RemesherParams::default(), &geom)?;
         let mesh = remesher.to_mesh(false);
@@ -2142,11 +2148,12 @@ mod tests {
 
         let m = mesh.verts().map(|p| m_func(&p)).collect::<Vec<_>>();
 
+        let mut bdy = cylinder(0.1, 128);
+        bdy.fix().unwrap();
+
         let topo = MeshTopology::new(&mesh);
-        let bdy = cylinder(0.1, 128);
-
-        let geom = MeshedGeometry::new(&mesh, &topo, bdy).unwrap();
-
+        let mut geom = MeshedGeometry::new(&bdy).unwrap();
+        geom.set_topo_map(topo.topo());
         let mut remesher = Remesher::new(&mesh, &topo, &m, &geom)?;
 
         let mut params = RemesherParams::new(20.0, 4);

@@ -31,7 +31,8 @@ if __name__ == "__main__":
     msh = Mesh2d(coords, elems, etags, faces, ftags).split().split().split().split()
     msh.fix()
 
-    geom = LinearGeometry2d(msh)
+    bdy = msh.boundary()[0]
+    geom = LinearGeometry2d(bdy)
 
     m = get_h(msh).reshape((-1, 1))
 

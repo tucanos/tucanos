@@ -32,6 +32,11 @@ setuptools.setup(
         )
     ],
     cmdclass={"build_rust": BuildRustCommand},
+    entry_points={
+        "console_scripts": [
+            "cgns2meshb = pytucanos.cgns_io:cgns2meshb",
+        ]
+    },
     # rust extensions are not zip safe, just like C-extensions.
     zip_safe=False,
 )

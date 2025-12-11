@@ -596,7 +596,7 @@ mod tests {
         );
         surf.fix().unwrap();
 
-        let geom = MeshedGeometry::new(&surf, &MeshTopology::new(&surf), surf.clone()).unwrap();
+        let geom = MeshedGeometry::new(&surf).unwrap();
 
         for (e, tag) in surf.elems().zip(surf.etags()) {
             let ge = surf.gelem(&e);

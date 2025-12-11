@@ -31,7 +31,8 @@ class TestRemesh(unittest.TestCase):
     def test_2d_iso(self):
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh2d(coords, elems, etags, faces, ftags).split().split()
-        geom = LinearGeometry2d(msh)
+        bdy, _ = msh.boundary()
+        geom = LinearGeometry2d(bdy)
 
         h = 0.1 * np.ones(msh.n_verts()).reshape((-1, 1))
 
@@ -54,7 +55,9 @@ class TestRemesh(unittest.TestCase):
     def test_2d_iso_parallel(self):
         coords, elems, etags, faces, ftags = get_square(two_tags=False)
         msh = Mesh2d(coords, elems, etags, faces, ftags).split().split()
-        geom = LinearGeometry2d(msh)
+        bdy, _ = msh.boundary()
+        bdy.fix()
+        geom = LinearGeometry2d(bdy)
 
         h = 0.1 * np.ones(msh.n_verts()).reshape((-1, 1))
 
@@ -120,7 +123,8 @@ class TestRemesh(unittest.TestCase):
 
         faces = np.zeros((0, 1), dtype=Idx)
         ftags = np.zeros(0, dtype=np.int16)
-        geom = LinearGeometry2d(msh, BoundaryMesh2d(coords, elems, etags, faces, ftags))
+        bdy = BoundaryMesh2d(coords, elems, etags, faces, ftags)
+        geom = LinearGeometry2d(bdy)
 
         h = 0.1 * np.ones(msh.n_verts()).reshape((-1, 1))
 
@@ -151,7 +155,8 @@ class TestRemesh(unittest.TestCase):
         msh = Mesh2d(coords, elems, etags, faces, ftags).split().split()
 
         for _ in range(4):
-            geom = LinearGeometry2d(msh)
+            bdy, _ = msh.boundary()
+            geom = LinearGeometry2d(bdy)
             hx = 0.3
             hy = 0.03
             m = np.zeros((msh.n_verts(), 3))
@@ -190,8 +195,9 @@ class TestRemesh(unittest.TestCase):
     def test_2d_aniso_parallel(self):
         coords, elems, etags, faces, ftags = get_square(two_tags=False)
         msh = Mesh2d(coords, elems, etags, faces, ftags).split().split()
+        bdy, _ = msh.boundary()
+        geom = LinearGeometry2d(bdy)
 
-        geom = LinearGeometry2d(msh)
         hx = 0.3
         hy = 0.03
         for _ in range(4):

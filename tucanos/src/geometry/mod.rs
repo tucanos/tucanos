@@ -1,13 +1,13 @@
 mod curvature;
 mod orient;
 use crate::{
-    Dim, Error, Result, Tag, TopoTag,
+    Dim, Result, Tag, TopoTag,
     geometry::curvature::{compute_curvature, write_curvature},
     mesh::{MeshTopology, Topology},
 };
-use log::{debug, warn};
+use log::debug;
 pub use orient::orient_geometry;
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 use tmesh::{
     Vertex,
     mesh::{
@@ -191,43 +191,33 @@ impl<const D: usize, M: Mesh<D>> MeshedPatchGeometryWithCurvature<D, M> {
     }
 }
 
-/// Piecewise linear (stl-like) representation of a geometry
+/// Meshed (stl-like) representation of a geometry
 /// doc TODO
 pub struct MeshedGeometry<const D: usize, M: Mesh<D>> {
     /// The surface patches
     patches: FxHashMap<Tag, MeshedPatchGeometryWithCurvature<D, M>>,
     /// The edges
     edges: FxHashMap<Tag, MeshedPatchGeometry<D, GenericMesh<D, <M::C as Simplex>::FACE>>>,
+    /// Topology map (for edges in 3d)
+    edge2faces: FxHashMap<Tag, Vec<Tag>>,
+    /// Topology map (for edges in 3d)
+    edge_map: FxHashMap<Tag, Tag>,
 }
 
 impl<const D: usize, M: Mesh<D>> MeshedGeometry<D, M> {
-    /// Create a `LinearGeometry` for the boundary of `mesh` (with positive tags) from a
-    /// `SimplexMesh` representation of the boundary
-    pub fn new<M2: Mesh<D>>(mesh: &M2, topo: &MeshTopology, mut bdy: M) -> Result<Self> {
-        assert_eq!(M2::C::order(), 1);
-        assert!(M2::C::DIM >= M::C::DIM);
+    /// Create a `MeshedGeometry`
+    /// For triangle meshes,
+    ///     - the edges of `bdy` mut be properly tagged, e.g. with `bdy.fix()`
+    ///     - to set the edge tag map from a given mesh to the current geometry, use `set_topo_map`
+    pub fn new(bdy: &M) -> Result<Self> {
+        assert!(<M::C as Simplex>::GEOM::<D>::has_normal());
 
-        let mesh_topo = topo.topo();
-
-        // Faces
-        let mesh_face_tags = mesh_topo.tags(M::C::DIM as Dim);
-        let face_tags: FxHashSet<Tag> = if M2::C::DIM == M::C::DIM + 1 {
-            mesh.ftags().filter(|&t| t > 0).collect()
-        } else if M2::C::DIM == M::C::DIM {
-            mesh.etags().filter(|&t| t > 0).collect()
-        } else {
-            unimplemented!("mesh dimension {}, bdy dimension {}", M::C::DIM, M2::C::DIM);
-        };
+        let face_tags: FxHashSet<Tag> = bdy.etags().collect();
 
         let mut patches = FxHashMap::default();
         for tag in face_tags.iter().copied() {
             debug!("Create LinearPatchGeometryWithCurvature for patch {tag}");
-            if mesh_topo.get((M::C::DIM as Dim, tag)).is_none() {
-                return Err(Error::from(&format!(
-                    "LinearGeometry: face tag {tag:?} not found in topo (mesh: {mesh_face_tags:?}, bdy: {face_tags:?})"
-                )));
-            }
-            let submesh = SubMesh::new(&bdy, |t| t == tag).mesh;
+            let submesh = SubMesh::new(bdy, |t| t == tag).mesh;
             assert_ne!(submesh.n_verts(), 0, "Geometry mesh empty for tag {tag}");
 
             patches.insert(tag, MeshedPatchGeometryWithCurvature::new(submesh));
@@ -235,44 +225,46 @@ impl<const D: usize, M: Mesh<D>> MeshedGeometry<D, M> {
 
         // Edges
         let mut edges = FxHashMap::default();
+        let mut edge2faces = FxHashMap::default();
+
         if M::C::DIM == 2 {
-            bdy.fix().unwrap();
-            let topo = MeshTopology::new(&bdy);
-            let bdy_topo = topo.topo();
+            let topo = MeshTopology::new(bdy);
+            let topo = topo.topo().clone();
             let (bdy_edges, _) = bdy.boundary::<GenericMesh<D, <M::C as Simplex>::FACE>>();
 
             let edge_tags: FxHashSet<Tag> = bdy_edges.etags().collect();
 
             for tag in edge_tags {
                 debug!("Create LinearPatchGeometry for edge {tag}");
-                // find the edge tag in mesh_topo
-                let bdy_topo_node = bdy_topo
+                let submesh = SubMesh::new(&bdy_edges, |t| t == tag).mesh;
+                let bdy_topo_node = topo
                     .get((<M::C as Simplex>::FACE::DIM as Dim, tag))
                     .unwrap();
-                let bdy_parents = &bdy_topo_node.parents;
-                let mesh_topo_node = mesh_topo.get_from_parents_iter(
-                    <M::C as Simplex>::FACE::DIM as Dim,
-                    bdy_parents.iter().copied(),
-                );
-
-                if let Some(mesh_topo_node) = mesh_topo_node {
-                    let submesh = SubMesh::new(&bdy_edges, |t| t == tag).mesh;
-                    if mesh_topo_node.tag.1 > 0 {
-                        edges.insert(mesh_topo_node.tag.1, MeshedPatchGeometry::new(submesh));
-                    }
-                }
+                let parents = &bdy_topo_node.parents;
+                edges.insert(tag, MeshedPatchGeometry::new(submesh));
+                edge2faces.insert(tag, parents.iter().copied().collect());
             }
         }
 
-        let geom = Self { patches, edges };
+        let geom = Self {
+            patches,
+            edges,
+            edge2faces,
+            edge_map: FxHashMap::with_hasher(FxBuildHasher),
+        };
 
-        let max_angle = geom.max_normal_angle(mesh);
-        if max_angle > 45.0 {
-            warn!(
-                "Max normal angle between the mesh boundary and the geometry is {max_angle} degrees"
-            );
-        }
         Ok(geom)
+    }
+
+    pub fn set_topo_map(&mut self, mesh_topo: &Topology) {
+        self.edge_map.clear();
+        for &tag in self.edges.keys() {
+            let parents = self.edge2faces.get(&tag).unwrap();
+            let mesh_topo_node = mesh_topo
+                .get_from_parents_iter(<M::C as Simplex>::FACE::DIM as Dim, parents.iter().copied())
+                .unwrap();
+            self.edge_map.insert(mesh_topo_node.tag.1, tag);
+        }
     }
 
     #[must_use]
@@ -315,7 +307,12 @@ impl<const D: usize, M: Mesh<D>> Geometry<D> for MeshedGeometry<D, M> {
             (0.0, *pt)
         } else if tag.0 == M::C::DIM as Dim - 1 {
             // after 0 to make sure that if is used only for E=Triangle
-            let edge = self.edges.get(&tag.1).unwrap_or_else(|| {
+            let tag = if self.edge_map.is_empty() {
+                tag.1
+            } else {
+                *self.edge_map.get(&tag.1).unwrap()
+            };
+            let edge = self.edges.get(&tag).unwrap_or_else(|| {
                 panic!(
                     "Invalid edge tag {tag:?}. Available tags are {:?}",
                     self.edges.keys().collect::<Vec<_>>()
@@ -369,10 +366,7 @@ mod tests {
         let geom: BoundaryMesh3d = read_stl("cube2.stl")?;
         remove_file("cube2.stl")?;
 
-        let mesh = geom.clone();
-        let topo = MeshTopology::new(&mesh);
-
-        let geom = MeshedGeometry::new(&mesh, &topo, geom)?;
+        let geom = MeshedGeometry::new(&geom)?;
         let mut p = Vertex::<3>::new(2., 0.5, 0.5);
         let d = geom.project(&mut p, &(2, 1));
         assert!(f64::abs(d - 1.) < 1e-12);
@@ -390,10 +384,9 @@ mod tests {
     fn test_linear_geometry_2d() -> Result<()> {
         let mut mesh = test_mesh_2d().split().split();
         mesh.fix().unwrap();
-        let topo = MeshTopology::new(&mesh);
 
         let (bdy, _) = mesh.boundary::<BoundaryMesh2d>();
-        let geom = MeshedGeometry::new(&mesh, &topo, bdy)?;
+        let geom = MeshedGeometry::new(&bdy)?;
 
         let mut pt = Vertex::<2>::new(0.75, 0.5);
         let d = geom.project(&mut pt, &(1, 1));
@@ -420,8 +413,10 @@ mod tests {
         mesh.fix().unwrap();
         let topo = MeshTopology::new(&mesh);
 
-        let (bdy, _) = mesh.boundary::<BoundaryMesh3d>();
-        let geom = MeshedGeometry::new(&mesh, &topo, bdy)?;
+        let (mut bdy, _) = mesh.boundary::<BoundaryMesh3d>();
+        bdy.fix().unwrap();
+        let mut geom = MeshedGeometry::new(&bdy)?;
+        geom.set_topo_map(topo.topo());
 
         let mut pt = Vertex::<3>::new(0.75, 0.5, 0.25);
         let _ = geom.project(&mut pt, &(2, 1));
