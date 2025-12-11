@@ -76,7 +76,7 @@ pub struct ParallelRemeshingInfo {
     partition_quality: f64,
     partition_imbalance: f64,
     partitions: Vec<RemeshingInfo>,
-    interface: Option<Box<ParallelRemeshingInfo>>,
+    interface: Option<Box<Self>>,
 }
 
 impl ParallelRemeshingInfo {
