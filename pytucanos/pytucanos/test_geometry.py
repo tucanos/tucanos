@@ -27,7 +27,7 @@ class TestGeometry(unittest.TestCase):
         coords, elems, etags, faces, ftags = get_cube()
         msh = Mesh3d(coords, elems, etags, faces, ftags)
         msh.fix()
-        _ = LinearGeometry3d(msh)
+        _geom = LinearGeometry3d(msh)
 
     def test_project_2d(self):
         coords, elems, etags, faces, ftags = get_square()

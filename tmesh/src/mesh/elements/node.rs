@@ -90,10 +90,6 @@ impl<T: Idx> Simplex for Node<T> {
         self.0.contains(&i.try_into().unwrap())
     }
 
-    fn quadrature() -> (Vec<f64>, Vec<Vec<f64>>) {
-        unreachable!()
-    }
-
     fn sorted(&self) -> Self {
         *self
     }
@@ -132,12 +128,24 @@ impl<const D: usize> GSimplex<D> for GNode<D> {
         unreachable!()
     }
 
-    fn normal(&self) -> Vertex<D> {
+    fn integrate<G: Fn(&Self::BCOORDS) -> f64>(&self, _f: G) -> f64 {
+        unreachable!()
+    }
+
+    fn normal(&self, _bcoords: Option<&Self::BCOORDS>) -> Vertex<D> {
         unreachable!()
     }
 
     fn radius(&self) -> f64 {
         unreachable!()
+    }
+
+    fn center_bcoords() -> Self::BCOORDS {
+        [1.0]
+    }
+
+    fn center(&self) -> Vertex<D> {
+        self.0[0]
     }
 
     fn bcoords(&self, _v: &Vertex<D>) -> Self::BCOORDS {
@@ -156,11 +164,15 @@ impl<const D: usize> GSimplex<D> for GNode<D> {
         unreachable!()
     }
 
-    fn project(&self, _v: &Vertex<D>) -> Vertex<D> {
-        self.0[0]
+    fn project(&self, _v: &Vertex<D>) -> (Vertex<D>, bool) {
+        (self.0[0], true)
     }
 
-    fn project_inside(&self, _v: &Vertex<D>) -> Option<Vertex<D>> {
-        Some(self.0[0])
+    fn project_inside(&self, _v: &Vertex<D>) -> (Self::BCOORDS, Option<Vertex<D>>) {
+        ([1.0], Some(self.0[0]))
+    }
+
+    fn bounding_box(&self) -> (Vertex<D>, Vertex<D>) {
+        unreachable!()
     }
 }
