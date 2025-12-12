@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use super::Remesher;
 use crate::{
     Dim, Result,
@@ -5,13 +7,12 @@ use crate::{
     metric::Metric,
     remesher::{
         cavity::{Cavity, CavityCheckStatus, FilledCavity, FilledCavityType, Seed},
-        sequential::argsort_edges_decreasing_length,
         stats::{SplitStats, StepStats},
     },
 };
 use log::{debug, info, trace};
 use tmesh::{
-    mesh::{GSimplex, Simplex},
+    mesh::{Edge, GSimplex, Simplex},
     trace_if,
 };
 
@@ -62,7 +63,7 @@ struct NumSplitOps {
 impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
     fn edge_split(
         &mut self,
-        edg: tmesh::mesh::Edge<usize>,
+        edg: Edge<usize>,
         cavity: &Cavity<D, C, M>,
         filled_cavity: &FilledCavity<D, C, M>,
         edge_center: tmesh::Vertex<D>,
@@ -135,7 +136,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
     fn extend_cavity(
         &self,
         dbg: bool,
-        edg: tmesh::mesh::Edge<usize>,
+        edg: Edge<usize>,
         params: &SplitParams,
         cavity: &mut Cavity<D, C, M>,
         edge_center: tmesh::Vertex<D>,
@@ -180,7 +181,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
     fn try_split<G: Geometry<D>>(
         &mut self,
         dbg: bool,
-        edg: tmesh::mesh::Edge<usize>,
+        edg: Edge<usize>,
         params: &SplitParams,
         geom: &G,
         cavity: &mut Cavity<D, C, M>,
@@ -286,6 +287,32 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         Ok(())
     }
 
+    fn sort_edges_split(&self) -> Vec<Edge<usize>> {
+        let mut edges: Vec<_> = self.edges.keys().copied().collect();
+
+        let func = |e: &Edge<usize>| {
+            let p0 = self.verts.get(&e.get(0)).unwrap();
+            let p1 = self.verts.get(&e.get(1)).unwrap();
+
+            (
+                self.topo.parent(p0.tag, p1.tag).unwrap().0,
+                M::edge_length(&p0.vx, &p0.m, &p1.vx, &p1.m),
+            )
+        };
+
+        edges.sort_by(|e0, e1| {
+            let (d0, l0) = func(e0);
+            let (d1, l1) = func(e1);
+
+            match d0.cmp(&d1) {
+                Ordering::Less => Ordering::Less,
+                Ordering::Equal => l1.partial_cmp(&l0).unwrap(),
+                Ordering::Greater => Ordering::Greater,
+            }
+        });
+        edges
+    }
+
     /// Loop over the edges and split them if
     /// - their length is larger that `l_0`
     /// - no edge smaller than
@@ -312,19 +339,12 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         loop {
             n_iter += 1;
 
-            let mut edges = Vec::with_capacity(self.edges.len());
-            edges.extend(self.edges.keys().copied());
+            let edges = self.sort_edges_split();
 
-            let mut dims_and_lengths = Vec::with_capacity(self.edges.len());
-            dims_and_lengths.extend(self.dims_and_lengths_iter());
-
-            // loop through the edges by increasing dimension and decreasing length
-            let indices = argsort_edges_decreasing_length(&dims_and_lengths);
             let mut num_ops = NumSplitOps::default();
-            for i_edge in indices {
-                let edg = edges[i_edge];
-                let dbg = self.debug_edge(&edg);
-                let length = dims_and_lengths[i_edge].1;
+            for edg in edges {
+                let dbg = self.debug_edge(edg);
+                let length = self.scaled_edge_length(edg);
                 if length > params.l {
                     trace_if!(dbg, "Try to split edge {edg:?}, l = {length}");
                     self.try_split(dbg, edg, params, geom, &mut cavity, &mut num_ops)?;
