@@ -235,7 +235,8 @@ if __name__ == "__main__":
 
     msh.write_vtk("naca_0.vtu")
 
-    geom = LinearGeometry2d(msh, bmsh)
+    geom = LinearGeometry2d(bmsh)
+    geom.compute_curvature()
 
     for it in range(6):
         bdy, bdy_ids = msh.boundary()

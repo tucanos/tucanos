@@ -65,8 +65,10 @@ pub fn pytucanos(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     pyo3_log::init();
     m.add_class::<mesh::PyMesh2d>()?;
     m.add_class::<mesh::PyBoundaryMesh2d>()?;
+    m.add_class::<mesh::PyQuadraticBoundaryMesh2d>()?;
     m.add_class::<mesh::PyMesh3d>()?;
     m.add_class::<mesh::PyBoundaryMesh3d>()?;
+    m.add_class::<mesh::PyQuadraticBoundaryMesh3d>()?;
     m.add_class::<mesh::PyPartitionerType>()?;
     m.add_class::<dual::PyDualType>()?;
     m.add_class::<dual::PyDualMesh2d>()?;
@@ -96,7 +98,9 @@ pub fn pytucanos(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(metric::implied_metric_2d, m)?)?;
     m.add_function(wrap_pyfunction!(metric::curvature_metric_2d, m)?)?;
     m.add_class::<geometry::LinearGeometry2d>()?;
+    m.add_class::<geometry::QuadraticGeometry2d>()?;
     m.add_class::<geometry::LinearGeometry3d>()?;
+    m.add_class::<geometry::QuadraticGeometry3d>()?;
     m.add_class::<remesher::PyCollapseParams>()?;
     m.add_class::<remesher::PySplitParams>()?;
     m.add_class::<remesher::PySwapParams>()?;

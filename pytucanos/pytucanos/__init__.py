@@ -1,7 +1,9 @@
 from .pytucanos import PyMesh2d as Mesh2d  # noqa: F401
 from .pytucanos import PyBoundaryMesh2d as BoundaryMesh2d  # noqa: F401
+from .pytucanos import PyQuadraticBoundaryMesh2d as QuadraticBoundaryMesh2d  # noqa: F401
 from .pytucanos import PyMesh3d as Mesh3d  # noqa: F401
 from .pytucanos import PyBoundaryMesh3d as BoundaryMesh3d  # noqa: F401
+from .pytucanos import PyQuadraticBoundaryMesh3d as QuadraticBoundaryMesh3d  # noqa: F401
 from .pytucanos import PyDualType as DualType  # noqa: F401
 from .pytucanos import PyDualMesh2d as DualMesh2d  # noqa: F401
 from .pytucanos import PyDualMesh3d as DualMesh3d  # noqa: F401
@@ -20,7 +22,12 @@ else:
 
 from .cgns_io import load_cgns, write_cgns  # noqa: F401
 from .pytucanos import get_thread_affinity, set_thread_affinity  # noqa: F401
-from .pytucanos import LinearGeometry2d, LinearGeometry3d  # noqa: F401
+from .pytucanos import (
+    LinearGeometry2d,  # noqa: F401
+    LinearGeometry3d,  # noqa: F401
+    QuadraticGeometry2d,  # noqa: F401
+    QuadraticGeometry3d,  # noqa: F401
+)
 from .pytucanos import (
     PySplitParams as SplitParams,  # noqa: F401
     PyCollapseParams as CollapseParams,  # noqa: F401

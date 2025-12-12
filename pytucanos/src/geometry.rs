@@ -1,13 +1,16 @@
 use crate::{
     Idx,
-    mesh::{PyBoundaryMesh2d, PyBoundaryMesh3d, PyMesh2d, PyMesh3d},
+    mesh::{
+        PyBoundaryMesh2d, PyBoundaryMesh3d, PyMesh2d, PyMesh3d, PyQuadraticBoundaryMesh2d,
+        PyQuadraticBoundaryMesh3d,
+    },
     to_numpy_2d,
 };
 use numpy::PyArray2;
 use pyo3::{Bound, PyResult, Python, exceptions::PyRuntimeError, pyclass, pymethods};
-use tmesh::mesh::{Edge, GenericMesh, Mesh, Triangle};
+use tmesh::mesh::{Edge, GenericMesh, Mesh, QuadraticEdge, QuadraticTriangle, Triangle};
 use tucanos::{
-    geometry::{Geometry, MeshedGeometry, orient_geometry},
+    geometry::{Geometry, MeshedGeometry},
     mesh::MeshTopology,
 };
 
@@ -22,20 +25,20 @@ macro_rules! create_geometry {
         #[pymethods]
         impl $name {
             /// Create a new geometry
+            /// For triangle meshes, the edges must be properly tagged (e.g. with `bdy.fix()``)
             #[new]
             #[must_use]
-            #[pyo3(signature = (mesh, geom=None))]
-            pub fn new(mesh: &$mesh, geom: Option<&$geom>) -> Self {
-                let mut gmesh = if let Some(geom) = geom {
-                    geom.0.clone()
-                } else {
-                    mesh.0.boundary::<GenericMesh<$dim, $etype::<Idx>>>().0
-                };
-                orient_geometry(&mesh.0, &mut gmesh);
-                let topo= MeshTopology::new(&mesh.0);
-                let geom = MeshedGeometry::new(&mesh.0, &topo, gmesh).unwrap();
+            pub fn new(geom: &$geom) -> Self {
+
+                let geom = MeshedGeometry::new(&geom.0).unwrap();
 
                 Self { geom }
+            }
+
+            /// Set the edge tag map (only useful for triangle meshes)
+            pub fn set_topo_map(&mut self, mesh: &$mesh) {
+                let topo= MeshTopology::new(&mesh.0);
+                self.geom.set_topo_map(topo.topo());
             }
 
             /// Compute the max distance between the face centers and the geometry normals
@@ -81,3 +84,17 @@ macro_rules! create_geometry {
 
 create_geometry!(LinearGeometry3d, 3, Triangle, PyMesh3d, PyBoundaryMesh3d);
 create_geometry!(LinearGeometry2d, 2, Edge, PyMesh2d, PyBoundaryMesh2d);
+create_geometry!(
+    QuadraticGeometry3d,
+    3,
+    QuadraticTriangle,
+    PyMesh3d,
+    PyQuadraticBoundaryMesh3d
+);
+create_geometry!(
+    QuadraticGeometry2d,
+    2,
+    QuadraticEdge,
+    PyMesh2d,
+    PyQuadraticBoundaryMesh2d
+);

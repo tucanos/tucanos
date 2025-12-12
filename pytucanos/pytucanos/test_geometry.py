@@ -1,6 +1,15 @@
 import numpy as np
 import unittest
-from . import Mesh2d, Mesh3d, BoundaryMesh2d, LinearGeometry2d, LinearGeometry3d, Idx
+from . import (
+    Mesh2d,
+    Mesh3d,
+    BoundaryMesh2d,
+    LinearGeometry2d,
+    LinearGeometry3d,
+    Idx,
+    QuadraticBoundaryMesh3d,
+    QuadraticGeometry3d,
+)
 from .mesh import get_cube, get_square
 
 
@@ -15,19 +24,26 @@ class TestGeometry(unittest.TestCase):
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh2d(coords, elems, etags, faces, ftags)
         msh.fix()
-        _geom = LinearGeometry2d(msh)
+        bdy, _ = msh.boundary()
+        _geom = LinearGeometry2d(bdy)
 
     def test_init_3d(self):
         coords, elems, etags, faces, ftags = get_cube()
         msh = Mesh3d(coords, elems, etags, faces, ftags)
         msh.fix()
-        _geom = LinearGeometry3d(msh)
+        bdy, _ = msh.boundary()
+        bdy.fix()
+        geom = LinearGeometry3d(bdy)
+        geom.set_topo_map(msh)
 
     def test_curvature_3d(self):
         coords, elems, etags, faces, ftags = get_cube()
         msh = Mesh3d(coords, elems, etags, faces, ftags)
         msh.fix()
-        _ = LinearGeometry3d(msh)
+        bdy, _ = msh.boundary()
+        bdy.fix()
+        geom = LinearGeometry3d(bdy)
+        geom.set_topo_map(msh)
 
     def test_project_2d(self):
         coords, elems, etags, faces, ftags = get_square()
@@ -69,7 +85,7 @@ class TestGeometry(unittest.TestCase):
         msh.write_vtk("msh.vtu")
         geom.write_vtk("geom.vtu")
 
-        geom = LinearGeometry2d(msh, geom)
+        geom = LinearGeometry2d(geom)
 
         new_coords = geom.project(msh)
         new_coords -= 0.5
@@ -77,3 +93,19 @@ class TestGeometry(unittest.TestCase):
         flg = np.logical_and(r > 0.5**0.5 - 0.01, r < 0.5**0.5 + 0.01)
         (ok,) = np.nonzero(~flg)
         self.assertEqual(ok.size, 1)
+
+    def test_quadratic_3d(self):
+        msh = Mesh3d.ball_mesh(1.0, 3)
+        n = msh.n_verts()
+        msh = msh.split()
+        bdy = QuadraticBoundaryMesh3d.sphere_mesh(1.0, 3)
+
+        bdy.fix()
+        geom = QuadraticGeometry3d(bdy)
+        geom.set_topo_map(msh)
+
+        coords = msh.get_verts()
+        new_coords = geom.project(msh)
+        d = np.linalg.norm(coords - new_coords, axis=1)
+        self.assertLess(d[:n].max(), 1e-12)
+        self.assertLess(d[n:].max(), 1.5e-2)

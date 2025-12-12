@@ -189,7 +189,8 @@ mod tests {
         });
 
         // build the geometry
-        let (bdy, bdy_ids) = mesh.boundary::<BoundaryMesh3d>();
+        let (mut bdy, bdy_ids) = mesh.boundary::<BoundaryMesh3d>();
+        bdy.fix().unwrap();
 
         // tag vertices on the interior & exterior cylinders
         let mut bdy_flg = vec![0; bdy.n_verts()];
@@ -208,9 +209,9 @@ mod tests {
             }
         });
 
+        let mut geom = MeshedGeometry::new(&bdy)?;
         let topo = MeshTopology::new(&mesh);
-
-        let geom = MeshedGeometry::new(&mesh, &topo, bdy.clone())?;
+        geom.set_topo_map(topo.topo());
 
         // curvature metric (no prescribes normal size)
         let v2v = mesh.vertex_to_vertices();

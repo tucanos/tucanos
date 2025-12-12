@@ -34,14 +34,12 @@ pub struct tucanos_geom2d_t {
 /// @param boundary A mesh representing the boundary faces of `mesh`. This function consume and free the boundary.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tucanos_geom2d_new(
-    mesh: *mut tucanos_mesh22_t,
+    _mesh: *mut tucanos_mesh22_t,
     boundary: *mut tucanos_mesh21_t,
 ) -> *mut tucanos_geom2d_t {
     unsafe {
-        let mesh = &mut (*mesh).implem;
         let boundary = Box::from_raw(boundary).implem;
-        let topo = MeshTopology::new(mesh);
-        MeshedGeometry::new(mesh, &topo, boundary).map_or(std::ptr::null_mut(), |implem| {
+        MeshedGeometry::new(&boundary).map_or(std::ptr::null_mut(), |implem| {
             Box::into_raw(Box::new(tucanos_geom2d_t { implem }))
         })
     }
