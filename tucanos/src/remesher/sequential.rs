@@ -1736,8 +1736,8 @@ mod tests {
                 remesher.check_edge_lengths_analytical(|x| IsoMetric::<3>::from(h_3d(x)));
 
             if iter == 2 {
-                assert_delta!(mini, 0.48, 0.01);
-                assert_delta!(maxi, 1.67, 0.01);
+                assert_delta!(mini, 0.55, 0.01);
+                assert_delta!(maxi, 1.62, 0.01);
             }
         }
 
@@ -2082,11 +2082,11 @@ mod tests {
 
             let x = p[0];
             let y = p[1];
-            let r_xy = x.hypot(y);
+            let r_xy = libm::hypot(x, y);
             if r_xy > f64::EPSILON {
                 let r = p.norm();
                 let z = p[2];
-                let theta = (z / r).acos();
+                let theta = libm::acos(z / r);
 
                 let e_r = p / r;
                 // let phi = y.signum() * (x / r_xy).acos();
@@ -2095,7 +2095,8 @@ mod tests {
                 let e_theta = -e_r.cross(&e_phi);
 
                 let h_r = h_max;
-                let h_theta = h_max - (h_max - h_min) * f64::exp(-((theta - 0.5 * PI) / s).powi(2));
+                let h_theta =
+                    h_max - (h_max - h_min) * libm::exp(-((theta - 0.5 * PI) / s).powi(2));
                 let h_phi = h_max;
 
                 let e_r = h_r * e_r;
@@ -2123,8 +2124,8 @@ mod tests {
         remesher.check()?;
 
         let (mini, maxi, _) = remesher.check_edge_lengths_analytical(m_func);
-        assert_delta!(mini, 0.49, 0.01);
-        assert_delta!(maxi, 1.80, 0.01);
+        assert_delta!(mini, 0.43, 0.01);
+        assert_delta!(maxi, 1.85, 0.01);
 
         let _mesh = remesher.to_mesh(true);
         // mesh.write_vtk("sphere_surf_aniso.vtu")?;

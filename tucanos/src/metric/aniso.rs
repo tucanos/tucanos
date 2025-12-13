@@ -171,13 +171,13 @@ where
             let mut eig = m.as_mat().symmetric_eigen();
             eig.eigenvalues
                 .iter_mut()
-                .for_each(|i| *i = w * (*i).max(S_MIN).ln());
+                .for_each(|i| *i = w * libm::log((*i).max(S_MIN)));
             assert!(eig.eigenvalues.iter().all(|&x| f64::is_finite(x)));
             mat += eig.recompose();
         }
 
         let mut eig = mat.symmetric_eigen();
-        eig.eigenvalues.iter_mut().for_each(|i| *i = (*i).exp());
+        eig.eigenvalues.iter_mut().for_each(|i| *i = libm::exp(*i));
         Self::bound_eigenvalues(&mut eig.eigenvalues);
         assert!(
             eig.eigenvalues.iter().all(|&x| f64::is_finite(x)),
