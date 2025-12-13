@@ -88,7 +88,7 @@ pub trait Metric<const D: usize>:
         let r = l0 / l1;
 
         if f64::abs(r - 1.0) > 0.01 {
-            l0 * (r - 1.0) / r / f64::ln(r)
+            l0 * (r - 1.0) / r / libm::log(r)
         } else {
             l0
         }

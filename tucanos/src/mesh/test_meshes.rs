@@ -368,7 +368,7 @@ impl Geometry<3> for SphereGeometry {
     fn angle(&self, pt: &Vert3d, n: &Vert3d, _tag: &TopoTag) -> f64 {
         let n_ref = pt.normalize();
         let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
-        f64::acos(cos_a).to_degrees()
+        libm::acos(cos_a).to_degrees()
     }
 }
 
