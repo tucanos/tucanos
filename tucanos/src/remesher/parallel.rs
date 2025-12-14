@@ -667,11 +667,13 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(debug_assertions, ignore = "Too long for debug build")]
     fn test_dd_3d_hilbert_2() -> Result<()> {
         test_domain_decomposition_3d::<HilbertPartitioner>(false, 2)
     }
 
     #[test]
+    #[cfg_attr(debug_assertions, ignore = "Too long for debug build")]
     fn test_dd_3d_hilbert_3() -> Result<()> {
         test_domain_decomposition_3d::<HilbertPartitioner>(false, 3)
     }

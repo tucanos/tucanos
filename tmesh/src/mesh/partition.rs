@@ -443,7 +443,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "kmeans is slow"]
+    #[cfg_attr(debug_assertions, ignore = "Kmeans is slow")]
     fn test_coupe_kmeans() {
         let msh: Mesh3d = box_mesh(1.0, 6, 1.0, 5, 1.0, 5);
         let msh = msh.random_shuffle();
