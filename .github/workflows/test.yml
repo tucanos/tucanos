@@ -42,6 +42,8 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-stable-
     - name: Run clippy
       uses: clechasseur/rs-clippy-check@v5
+      with:
+        args: --all-targets --workspace --features=metis
     - name: Run cargo test
       uses: clechasseur/rs-cargo@v4
       with:
@@ -126,17 +128,13 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-stable-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-stable-${{ hashFiles('**/Cargo.toml', '**/rust-toolchain.toml') }}
           restore-keys: ${{ runner.os }}-cargo-stable-
     - name: Run ruff
       run: |
         pip install ruff
         ruff check
         ruff format --check
-    - name: Run clippy (pytucanos)
-      uses: clechasseur/rs-clippy-check@v5
-      with:
-        args: -p pytucanos
     - name: Test pytucanos
       run: |
         cd pytucanos
