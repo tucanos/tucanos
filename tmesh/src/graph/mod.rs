@@ -181,17 +181,13 @@ impl CSRGraph {
             {
                 let start = res.ptr[i_vert];
                 let end = res.ptr[i_vert + 1];
-                let mut ok = false;
-                #[allow(clippy::needless_range_loop)]
-                for j in start..end {
-                    if res.indices[j] == usize::MAX {
-                        res.indices[j] = i;
-                        values[j] = v;
-                        ok = true;
-                        break;
-                    }
-                }
-                assert!(ok);
+                let idx = res.indices[start..end]
+                    .iter()
+                    .position(|&x| x == usize::MAX)
+                    .unwrap()
+                    + start;
+                res.indices[idx] = i;
+                values[idx] = v;
             }
         }
         res.sort();
