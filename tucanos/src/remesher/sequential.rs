@@ -1793,6 +1793,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(debug_assertions, ignore = "Too long for debug build")]
     fn test_adapt_aniso_3d_geom() -> Result<()> {
         let mut mesh: Mesh3d = ball_mesh(1.0, 3);
 
@@ -2072,6 +2073,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(debug_assertions, ignore = "Too long for debug build")]
     fn test_adapt_3d_surf_aniso() -> Result<()> {
         let mesh: BoundaryMesh3d = sphere_mesh(1.0, 3);
 
