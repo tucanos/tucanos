@@ -107,64 +107,64 @@ pub fn pri2tets<T: Idx>(pri: &Prism<T>) -> [Tetrahedron<T>; 3] {
 
 /// Convert a hex into 5 or 6 tetrahedra
 #[must_use]
-#[allow(clippy::too_many_lines)]
 pub fn hex2tets<T: Idx>(hex: &Hexahedron<T>) -> ([Tetrahedron<T>; 5], Option<Tetrahedron<T>>) {
-    let imin = argmin(&hex.0);
+    let idx = INDIRECTION_HEX[argmin(&hex.0)].map(|i| hex.get(i));
+    let i1 = usize::from(compare_edges(idx[1], idx[6], idx[2], idx[5]));
+    let i2 = usize::from(compare_edges(idx[3], idx[6], idx[2], idx[7]));
+    let i3 = usize::from(compare_edges(idx[4], idx[6], idx[5], idx[7]));
 
-    let mut idx = [0; 8];
-    for (i, v) in idx.iter_mut().enumerate() {
-        *v = hex.get(INDIRECTION_HEX[imin][i]);
+    let idx2 = match ROTATION_HEX[i1 + 2 * i2 + 4 * i3] {
+        120 => PERM_120.map(|i| idx[i]),
+        240 => PERM_240.map(|i| idx[i]),
+        _ => idx,
+    };
+
+    let to_tet = |[a, b, c, d]: [usize; 4]| Tetrahedron::new(idx2[a], idx2[b], idx2[c], idx2[d]);
+    match i1 + i2 + i3 {
+        0 => (
+            [
+                [0, 1, 2, 5],
+                [0, 2, 7, 5],
+                [0, 2, 3, 7],
+                [0, 5, 7, 4],
+                [2, 7, 5, 6],
+            ]
+            .map(to_tet),
+            None,
+        ),
+        1 => (
+            [
+                [0, 5, 7, 4],
+                [0, 1, 7, 5],
+                [1, 6, 7, 5],
+                [0, 7, 2, 3],
+                [0, 7, 1, 2],
+            ]
+            .map(to_tet),
+            Some(to_tet([1, 7, 6, 2])),
+        ),
+        2 => (
+            [
+                [0, 4, 5, 6],
+                [0, 3, 7, 6],
+                [0, 7, 4, 6],
+                [0, 1, 2, 5],
+                [0, 3, 6, 2],
+            ]
+            .map(to_tet),
+            Some(to_tet([0, 6, 5, 2])),
+        ),
+        3 => (
+            [
+                [0, 2, 3, 6],
+                [0, 3, 7, 6],
+                [0, 7, 4, 6],
+                [0, 5, 6, 4],
+                [1, 5, 6, 0],
+            ]
+            .map(to_tet),
+            Some(to_tet([1, 6, 2, 0])),
+        ),
+        _ => unreachable!(),
     }
-
-    let i1 = u32::from(compare_edges(idx[1], idx[6], idx[2], idx[5]));
-    let i2 = u32::from(compare_edges(idx[3], idx[6], idx[2], idx[7]));
-    let i3 = u32::from(compare_edges(idx[4], idx[6], idx[5], idx[7]));
-    let flg = i1 + 2 * i2 + 4 * i3;
-    let rot = ROTATION_HEX[flg as usize];
-
-    let mut idx2 = idx;
-    if rot == 120 {
-        for i in 0..8 {
-            idx2[i] = idx[PERM_120[i]];
-        }
-    } else if rot == 240 {
-        for i in 0..8 {
-            idx2[i] = idx[PERM_240[i]];
-        }
-    }
-    let flg2 = i1 + i2 + i3;
-
-    if flg2 == 0 {
-        let tet1 = Tetrahedron::new(idx2[0], idx2[1], idx2[2], idx2[5]);
-        let tet2 = Tetrahedron::new(idx2[0], idx2[2], idx2[7], idx2[5]);
-        let tet3 = Tetrahedron::new(idx2[0], idx2[2], idx2[3], idx2[7]);
-        let tet4 = Tetrahedron::new(idx2[0], idx2[5], idx2[7], idx2[4]);
-        let tet5 = Tetrahedron::new(idx2[2], idx2[7], idx2[5], idx2[6]);
-        return ([tet1, tet2, tet3, tet4, tet5], None);
-    } else if flg2 == 1 {
-        let tet1 = Tetrahedron::new(idx2[0], idx2[5], idx2[7], idx2[4]);
-        let tet2 = Tetrahedron::new(idx2[0], idx2[1], idx2[7], idx2[5]);
-        let tet3 = Tetrahedron::new(idx2[1], idx2[6], idx2[7], idx2[5]);
-        let tet4 = Tetrahedron::new(idx2[0], idx2[7], idx2[2], idx2[3]);
-        let tet5 = Tetrahedron::new(idx2[0], idx2[7], idx2[1], idx2[2]);
-        let tet6 = Tetrahedron::new(idx2[1], idx2[7], idx2[6], idx2[2]);
-        return ([tet1, tet2, tet3, tet4, tet5], Some(tet6));
-    } else if flg2 == 2 {
-        let tet1 = Tetrahedron::new(idx2[0], idx2[4], idx2[5], idx2[6]);
-        let tet2 = Tetrahedron::new(idx2[0], idx2[3], idx2[7], idx2[6]);
-        let tet3 = Tetrahedron::new(idx2[0], idx2[7], idx2[4], idx2[6]);
-        let tet4 = Tetrahedron::new(idx2[0], idx2[1], idx2[2], idx2[5]);
-        let tet5 = Tetrahedron::new(idx2[0], idx2[3], idx2[6], idx2[2]);
-        let tet6 = Tetrahedron::new(idx2[0], idx2[6], idx2[5], idx2[2]);
-        return ([tet1, tet2, tet3, tet4, tet5], Some(tet6));
-    } else if flg2 == 3 {
-        let tet1 = Tetrahedron::new(idx2[0], idx2[2], idx2[3], idx2[6]);
-        let tet2 = Tetrahedron::new(idx2[0], idx2[3], idx2[7], idx2[6]);
-        let tet3 = Tetrahedron::new(idx2[0], idx2[7], idx2[4], idx2[6]);
-        let tet4 = Tetrahedron::new(idx2[0], idx2[5], idx2[6], idx2[4]);
-        let tet5 = Tetrahedron::new(idx2[1], idx2[5], idx2[6], idx2[0]);
-        let tet6 = Tetrahedron::new(idx2[1], idx2[6], idx2[2], idx2[0]);
-        return ([tet1, tet2, tet3, tet4, tet5], Some(tet6));
-    }
-    unreachable!()
 }
