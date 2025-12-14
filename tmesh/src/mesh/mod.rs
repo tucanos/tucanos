@@ -111,6 +111,7 @@ pub enum GradientMethod {
     L2Projection,
 }
 
+pub type FixedTags = (FxHashMap<Tag, Tag>, FxHashMap<[Tag; 2], Tag>);
 /// D-dimensional mesh containing simplices with C nodes
 /// F = C-1 is given explicitely to be usable with rust stable
 pub trait Mesh<const D: usize>: Send + Sync + Sized {
@@ -381,14 +382,11 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         CSRGraph::from_edges(e2e.iter().copied(), Some(self.n_elems()))
     }
 
-    /// Fix the mesh
-    ///   - add missing boundary faces
-    ///   - add missing internal faces
-    ///   - fix orientation
+    /// Fixes the mesh topology and orientation.
     ///
-    /// and check the valitity
-    #[allow(clippy::type_complexity)]
-    fn fix(&mut self) -> Result<(FxHashMap<Tag, Tag>, FxHashMap<[Tag; 2], Tag>)> {
+    /// This adds missing boundary and internal faces, corrects orientation,
+    /// and validates the result.
+    fn fix(&mut self) -> Result<FixedTags> {
         let n = self.fix_elems_orientation();
         assert_eq!(n, 0);
         let all_faces = self.all_faces();
