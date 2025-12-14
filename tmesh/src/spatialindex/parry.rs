@@ -464,8 +464,6 @@ impl<const D: usize> std::fmt::Debug for ObjectIndex<D> {
         f.debug_struct("ObjectIndex").finish()
     }
 }
-
-#[allow(clippy::large_enum_variant)]
 enum ParryImpl<const D: usize> {
     Tria3D(parry3d_f64::shape::TriMesh),
     Tria2D(parry2d_f64::shape::TriMesh),
