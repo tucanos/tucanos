@@ -1736,7 +1736,7 @@ mod tests {
                 remesher.check_edge_lengths_analytical(|x| IsoMetric::<3>::from(h_3d(x)));
 
             if iter == 2 {
-                assert_delta!(mini, 0.55, 0.01);
+                assert_delta!(mini, 0.52, 0.01);
                 assert_delta!(maxi, 1.62, 0.01);
             }
         }
@@ -1829,8 +1829,8 @@ mod tests {
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
 
             if iter == 1 {
-                assert_delta!(mini, 0.44, 0.01);
-                assert_delta!(maxi, 1.65, 0.01);
+                assert_delta!(mini, 0.46, 0.01);
+                assert_delta!(maxi, 1.59, 0.01);
             }
 
             // let fname = format!("sphere_{}.vtu", iter + 1);

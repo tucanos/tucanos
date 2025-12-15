@@ -254,7 +254,7 @@ pub fn h_3d(p: &Vert3d) -> f64 {
     let hmax = 0.3;
     let sigma: f64 = 0.25;
     let var = -((x - 0.5).powi(2) + (y - 0.35).powi(2) + (z - 0.35).powi(2)) / sigma.powi(2);
-    hmin + (hmax - hmin) * (1.0 - f64::exp(var))
+    hmin + (hmax - hmin) * (1.0 - libm::exp(var))
 }
 
 /// Write a sample .stl file for a cube
