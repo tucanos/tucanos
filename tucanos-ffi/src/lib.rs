@@ -61,9 +61,11 @@ pub unsafe extern "C" fn tucanos_geom3d_new(
 ) -> *mut tucanos_geom3d_t {
     unsafe {
         let mesh = &mut (*mesh).implem;
-        let boundary = Box::from_raw(boundary).implem;
+        let mut boundary = Box::from_raw(boundary).implem;
+        boundary.fix().unwrap();
         let topo = MeshTopology::new(mesh);
-        MeshedGeometry::new(mesh, &topo, boundary).map_or(std::ptr::null_mut(), |implem| {
+        MeshedGeometry::new(&boundary).map_or(std::ptr::null_mut(), |mut implem| {
+            implem.set_topo_map(topo.topo());
             Box::into_raw(Box::new(tucanos_geom3d_t { implem }))
         })
     }

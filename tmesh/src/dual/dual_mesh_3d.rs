@@ -253,7 +253,7 @@ impl<T: Idx> DualMesh<3> for DualMesh3d<T> {
                             &verts[face.get(1)],
                             &verts[face.get(2)],
                         );
-                        edge_normals[i_edge] += sgn * gf.normal();
+                        edge_normals[i_edge] += sgn * gf.normal(None);
 
                         let sorted_face = face.sorted();
                         let is_sorted = face.is_same(&sorted_face);
@@ -335,7 +335,7 @@ impl<T: Idx> DualMesh<3> for DualMesh3d<T> {
                         &verts[face.get(1)],
                         &verts[face.get(2)],
                     );
-                    bdy_faces.push((edg.get(0), tag, gf.normal()));
+                    bdy_faces.push((edg.get(0), tag, gf.normal(None)));
 
                     let sorted_face = face.sorted();
                     let is_sorted = face.is_same(&sorted_face);
@@ -378,7 +378,7 @@ impl<T: Idx> DualMesh<3> for DualMesh3d<T> {
                         &verts[face.get(1)],
                         &verts[face.get(2)],
                     );
-                    bdy_faces.push((edg.get(0), tag, gf.normal()));
+                    bdy_faces.push((edg.get(0), tag, gf.normal(None)));
 
                     let sorted_face = face.sorted();
                     let is_sorted = face.is_same(&sorted_face);

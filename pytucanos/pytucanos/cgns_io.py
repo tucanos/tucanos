@@ -1,5 +1,13 @@
 import numpy as np
-from . import Mesh2d, BoundaryMesh2d, Mesh3d, BoundaryMesh3d, Idx
+from . import (
+    Mesh2d,
+    BoundaryMesh2d,
+    QuadraticBoundaryMesh2d,
+    Mesh3d,
+    BoundaryMesh3d,
+    QuadraticBoundaryMesh3d,
+    Idx,
+)
 import logging
 
 try:
@@ -14,14 +22,23 @@ except ImportError:
     HAVE_CGNS = False
 
 
-def get_empty_mesh(phys_dim, cell_dim):
+def get_empty_mesh(phys_dim, cell_dim, order):
+    assert order in [1, 2]
     if phys_dim == 2 and cell_dim == 1:
-        return BoundaryMesh2d.empty()
+        if order == 1:
+            return BoundaryMesh2d.empty()
+        elif order == 2:
+            return QuadraticBoundaryMesh2d.empty()
     elif phys_dim == 2 and cell_dim == 2:
+        assert order == 1
         return Mesh2d.empty()
     elif phys_dim == 3 and cell_dim == 2:
-        return BoundaryMesh3d.empty()
+        if order == 1:
+            return BoundaryMesh3d.empty()
+        elif order == 2:
+            return QuadraticBoundaryMesh3d.empty()
     elif phys_dim == 3 and cell_dim == 3:
+        assert order == 1
         return Mesh3d.empty()
     else:
         raise NotImplementedError(f"Unknown dimensions {phys_dim} / {cell_dim}")
@@ -51,13 +68,10 @@ def load_cgns(fname, cls=None, xy=True):
     next_tag = 1
     tags_to_be_removed = []
 
+    multizone = False
+
     for base in CGU.hasChildType(tree, CGK.CGNSBase_ts):
-        if cls is not None:
-            tmp = cls.empty()
-            cell_dim = tmp.get_elems().shape[1] - 1
-            phys_dim = tmp.get_verts().shape[1]
-        else:
-            cell_dim, phys_dim = CGU.getValue(base)
+        cell_dim, phys_dim = CGU.getValue(base)
         for zone in CGU.hasChildType(base, CGK.Zone_ts):
             logging.info(f"Reading {base[0]}/{zone[0]}")
             cg = CGU.hasChildName(zone, CGK.GridCoordinates_s)
@@ -74,8 +88,40 @@ def load_cgns(fname, cls=None, xy=True):
                     z = CGU.getValue(n)
                     coords = np.stack([x, z], axis=-1, dtype=np.float64)
 
+            etypes = np.unique(
+                [
+                    CGU.getValue(els)[0]
+                    for els in CGU.hasChildType(zone, CGK.Elements_ts)
+                ]
+            )
+            order = None
+            for etype in etypes:
+                if etype not in [
+                    CGK.BAR_2,
+                    CGK.BAR_3,
+                    CGK.TRI_3,
+                    CGK.TRI_6,
+                    CGK.QUAD_4,
+                    CGK.TETRA_4,
+                    CGK.PYRA_5,
+                    CGK.PENTA_6,
+                    CGK.HEXA_8,
+                ]:
+                    raise NotImplementedError(
+                        f"Element type {cgns_elem_name(etype)} not implemented"
+                    )
+                if etype in [
+                    CGK.BAR_3,
+                    CGK.TRI_6,
+                ]:
+                    assert order is None or order == 2
+                    order = 2
+                else:
+                    order = 1
+            logging.info(f"order = {order}")
+
             if cls is None:
-                msh = get_empty_mesh(phys_dim, cell_dim)
+                msh = get_empty_mesh(phys_dim, cell_dim, order)
             else:
                 msh = cls.empty()
 
@@ -107,7 +153,9 @@ def load_cgns(fname, cls=None, xy=True):
                 etype, _ = CGU.getValue(els)
                 if etype not in [
                     CGK.BAR_2,
+                    CGK.BAR_3,
                     CGK.TRI_3,
+                    CGK.TRI_6,
                     CGK.QUAD_4,
                     CGK.TETRA_4,
                     CGK.PYRA_5,
@@ -151,15 +199,45 @@ def load_cgns(fname, cls=None, xy=True):
                             f"Unknown element type {cgns_elem_name(etype)} / {etype}"
                         )
                 elif cell_dim == 2:
-                    if etype == CGK.BAR_2:
-                        msh.add_faces(econn, tags)
-                    elif etype == CGK.TRI_3:
-                        msh.add_elems(econn, tags)
-                    elif etype == CGK.QUAD_4:
-                        msh.add_quadrangles(econn, tags)
+                    if order == 1:
+                        if etype == CGK.BAR_2:
+                            msh.add_faces(econn, tags)
+                        elif etype == CGK.TRI_3:
+                            msh.add_elems(econn, tags)
+                        elif etype == CGK.QUAD_4:
+                            msh.add_quadrangles(econn, tags)
+                        else:
+                            raise NotImplementedError(
+                                f"Unknown element type {cgns_elem_name(etype)} / {etype}"
+                            )
+                    elif order == 2:
+                        if etype == CGK.BAR_3:
+                            msh.add_faces(econn, tags)
+                        elif etype == CGK.TRI_6:
+                            msh.add_elems(econn, tags)
+                        else:
+                            raise NotImplementedError(
+                                f"Unknown element type {cgns_elem_name(etype)} / {etype}"
+                            )
+                    else:
+                        raise NotImplementedError(f"Unknown order {order}")
                 elif cell_dim == 1:
-                    if etype == CGK.BAR_2:
-                        msh.add_elems(econn, tags)
+                    if order == 1:
+                        if etype == CGK.BAR_2:
+                            msh.add_elems(econn, tags)
+                        else:
+                            raise NotImplementedError(
+                                f"Unknown element type {cgns_elem_name(etype)} / {etype}"
+                            )
+                    elif order == 2:
+                        if etype == CGK.BAR_3:
+                            msh.add_elems(econn, tags)
+                        else:
+                            raise NotImplementedError(
+                                f"Unknown element type {cgns_elem_name(etype)} / {etype}"
+                            )
+                    else:
+                        raise NotImplementedError(f"Unknown order {order}")
                 else:
                     raise NotImplementedError()
 
@@ -177,24 +255,26 @@ def load_cgns(fname, cls=None, xy=True):
             if res is None:
                 res = msh
             else:
+                multizone = True
                 n = res.n_verts() + msh.n_verts()
                 res.add(msh, tol=1e-6)
                 logging.info(f"Merge zone: {n - res.n_verts()} vertices merged")
 
-    # Remove internal faces
-    faces = res.get_faces()
-    ftags = res.get_ftags()
-    flg = np.ones(ftags.size, dtype=bool)
-    for t in tags_to_be_removed:
-        flg[ftags == t] = False
-    faces = np.ascontiguousarray(faces[flg, :])
-    ftags = np.ascontiguousarray(ftags[flg])
-    res.clear_faces()
-    res.add_faces(faces, np.abs(ftags))
+    if multizone:
+        # Remove internal faces
+        faces = res.get_faces()
+        ftags = res.get_ftags()
+        flg = np.ones(ftags.size, dtype=bool)
+        for t in tags_to_be_removed:
+            flg[ftags == t] = False
+        faces = np.ascontiguousarray(faces[flg, :])
+        ftags = np.ascontiguousarray(ftags[flg])
+        res.clear_faces()
+        res.add_faces(faces, np.abs(ftags))
 
-    bdy, ifc = res.fix()
-    assert len(bdy) == 0
-    assert len(ifc) == 0
+        bdy, ifc = res.fix()
+        assert len(bdy) == 0
+        assert len(ifc) == 0
 
     return res, names
 
@@ -203,8 +283,8 @@ def write_cgns(
     mesh,
     fname,
     tags,
-    elem_data,
-    vert_data,
+    elem_data=None,
+    vert_data=None,
 ):
     """
     Write a mesh to a .cgns file.
@@ -217,20 +297,29 @@ def write_cgns(
     elems = mesh.get_elems()
 
     phy_dim = coords.shape[1]
-    cell_dim = elems.shape[1] - 1
+    if isinstance(mesh, Mesh3d):
+        cell_dim = 3
+    elif isinstance(mesh, (Mesh2d, BoundaryMesh3d, QuadraticBoundaryMesh3d)):
+        cell_dim = 2
+    elif isinstance(mesh, BoundaryMesh2d):
+        cell_dim = 1
+    else:
+        raise NotImplementedError(f"not implemented for {type(mesh)}")
 
     tree = CGL.newCGNSTree()
     base = CGL.newBase(tree, "Base", cell_dim, phy_dim)
     s = np.array([[mesh.n_verts(), mesh.n_elems(), 0]], dtype=np.int32)
     zone = CGL.newZone(base, "Zone", s, CGK.Unstructured_s)
 
+    logging.info(f"Adding {base[0]}/{zone[0]}/{CGK.GridCoordinates_s}")
     gc = CGL.newGridCoordinates(zone, CGK.GridCoordinates_s)
     CGL.newDataArray(gc, CGK.CoordinateX_s, coords[:, 0].copy())
     CGL.newDataArray(gc, CGK.CoordinateY_s, coords[:, 1].copy())
     if coords.shape[1] == 3:
         CGL.newDataArray(gc, CGK.CoordinateZ_s, coords[:, 2].copy())
 
-    if cell_dim == 3:
+    if isinstance(mesh, Mesh3d):
+        logging.info(f"Adding {base[0]}/{zone[0]}/Elems")
         CGL.newElements(
             zone,
             "Elems",
@@ -238,6 +327,7 @@ def write_cgns(
             np.array([1, mesh.n_elems()]),
             elems.astype(np.int32).ravel() + 1,
         )
+        logging.info(f"Adding {base[0]}/{zone[0]}/Faces")
         CGL.newElements(
             zone,
             "Faces",
@@ -245,7 +335,8 @@ def write_cgns(
             np.array([mesh.n_elems() + 1, mesh.n_faces()]),
             mesh.get_faces().astype(np.int32).ravel() + 1,
         )
-    elif cell_dim == 2:
+    elif isinstance(mesh, (Mesh2d, BoundaryMesh3d)):
+        logging.info(f"Adding {base[0]}/{zone[0]}/Elems")
         CGL.newElements(
             zone,
             "Elems",
@@ -253,14 +344,26 @@ def write_cgns(
             np.array([1, mesh.n_elems()]),
             elems.astype(np.int32).ravel() + 1,
         )
+        if mesh.n_faces() > 0:
+            logging.info(f"Adding {base[0]}/{zone[0]}/Faces")
+            CGL.newElements(
+                zone,
+                "Faces",
+                CGK.BAR_2,
+                np.array([mesh.n_elems() + 1, mesh.n_faces()]),
+                mesh.get_faces().astype(np.int32).ravel() + 1,
+            )
+    elif isinstance(mesh, QuadraticBoundaryMesh3d):
+        logging.info(f"Adding {base[0]}/{zone[0]}/Elems")
         CGL.newElements(
             zone,
-            "Faces",
-            CGK.BAR_2,
-            np.array([mesh.n_elems() + 1, mesh.n_faces()]),
-            mesh.get_faces().astype(np.int32).ravel() + 1,
+            "Elems",
+            CGK.TRI_6,
+            np.array([1, mesh.n_elems()]),
+            elems.astype(np.int32).ravel() + 1,
         )
-    elif cell_dim == 1:
+    elif isinstance(mesh, BoundaryMesh2d):
+        logging.info(f"Adding {base[0]}/{zone[0]}/Elems")
         CGL.newElements(
             zone,
             "Elems",
@@ -272,9 +375,16 @@ def write_cgns(
         raise NotImplementedError(f"not implemented for {type(mesh)}")
 
     zbc = CGL.newZoneBC(zone)
-    ftags = mesh.get_ftags()
+    if isinstance(mesh, (Mesh2d, Mesh3d)):
+        ftags = mesh.get_ftags()
+    elif isinstance(mesh, (BoundaryMesh2d, BoundaryMesh3d, QuadraticBoundaryMesh3d)):
+        ftags = mesh.get_etags()
+    else:
+        raise NotImplementedError(f"not implemented for {type(mesh)}")
+
     for name, tag in tags.items():
         (ids,) = np.nonzero(ftags == tag)
+        logging.info(f"Adding {base[0]}/{zone[0]}/{zbc[0]}/{name}")
         CGL.newBC(zbc, name, ids + 1, pttype=CGK.PointList_s)
 
     if vert_data is not None:
@@ -296,4 +406,5 @@ def write_cgns(
             print(pth, msg)
 
     if is_ok:
+        logging.info(f"Writing {fname}")
         CGM.save(fname, tree)

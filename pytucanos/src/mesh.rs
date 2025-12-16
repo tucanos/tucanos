@@ -19,12 +19,14 @@ use tmesh::{
     Tag, Vertex,
     interpolate::{InterpolationMethod, Interpolator},
     mesh::{
-        Edge, GenericMesh, GradientMethod, Hexahedron, Mesh, Prism, Pyramid, Quadrangle, Simplex,
-        Tetrahedron, Triangle, nonuniform_box_mesh, nonuniform_rectangle_mesh,
+        Edge, GenericMesh, GradientMethod, Hexahedron, Mesh, Prism, Pyramid, Quadrangle,
+        QuadraticEdge, QuadraticTriangle, Simplex, Tetrahedron, Triangle, ball_mesh, circle_mesh,
+        nonuniform_box_mesh, nonuniform_rectangle_mesh,
         partition::{HilbertPartitioner, KMeansPartitioner2d, KMeansPartitioner3d, RCMPartitioner},
-        read_stl,
+        quadratic_circle_mesh, quadratic_sphere_mesh, read_stl, sphere_mesh,
     },
 };
+use tucanos::geometry::orient_geometry;
 /// Partitionner type
 #[pyclass(eq, eq_int)]
 #[derive(Clone, PartialEq, Eq)]
@@ -816,10 +818,17 @@ create_mesh!(PyMesh2d, 2, Triangle);
 impl_mesh!(PyMesh2d, 2, Triangle);
 create_mesh!(PyBoundaryMesh2d, 2, Edge);
 impl_mesh!(PyBoundaryMesh2d, 2, Edge);
+
+create_mesh!(PyQuadraticBoundaryMesh2d, 2, QuadraticEdge);
+impl_mesh!(PyQuadraticBoundaryMesh2d, 2, QuadraticEdge);
+
 create_mesh!(PyMesh3d, 3, Tetrahedron);
 impl_mesh!(PyMesh3d, 3, Tetrahedron);
 create_mesh!(PyBoundaryMesh3d, 3, Triangle);
 impl_mesh!(PyBoundaryMesh3d, 3, Triangle);
+
+create_mesh!(PyQuadraticBoundaryMesh3d, 3, QuadraticTriangle);
+impl_mesh!(PyQuadraticBoundaryMesh3d, 3, QuadraticTriangle);
 
 #[pymethods]
 impl PyMesh2d {
@@ -845,12 +854,61 @@ impl PyMesh2d {
 }
 
 #[pymethods]
+impl PyBoundaryMesh2d {
+    /// Create a circle_mesh
+    #[classmethod]
+    fn circle_mesh(_cls: &Bound<'_, PyType>, r: f64, n: usize) -> Self {
+        Self(circle_mesh(r, n))
+    }
+
+    fn fix_orientation(&mut self, mesh: &PyMesh2d) -> (usize, f64) {
+        orient_geometry(&mesh.0, &mut self.0)
+    }
+}
+
+#[pymethods]
+impl PyQuadraticBoundaryMesh2d {
+    /// Create a circle_mesh
+    #[classmethod]
+    fn circle_mesh(_cls: &Bound<'_, PyType>, r: f64, n: usize) -> Self {
+        Self(quadratic_circle_mesh(r, n))
+    }
+
+    fn fix_orientation(&mut self, mesh: &PyMesh2d) -> (usize, f64) {
+        orient_geometry(&mesh.0, &mut self.0)
+    }
+}
+
+#[pymethods]
 impl PyBoundaryMesh3d {
     /// Read a stl file
     #[classmethod]
     fn read_stl(_cls: &Bound<'_, PyType>, file_name: &str) -> PyResult<Self> {
         let msh = read_stl(file_name).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
         Ok(Self(msh))
+    }
+
+    /// Create a sphere
+    #[classmethod]
+    fn sphere_mesh(_cls: &Bound<'_, PyType>, r: f64, n: usize) -> Self {
+        Self(sphere_mesh(r, n))
+    }
+
+    fn fix_orientation(&mut self, mesh: &PyMesh3d) -> (usize, f64) {
+        orient_geometry(&mesh.0, &mut self.0)
+    }
+}
+
+#[pymethods]
+impl PyQuadraticBoundaryMesh3d {
+    /// Create a sphere
+    #[classmethod]
+    fn sphere_mesh(_cls: &Bound<'_, PyType>, r: f64, n: usize) -> Self {
+        Self(quadratic_sphere_mesh(r, n))
+    }
+
+    fn fix_orientation(&mut self, mesh: &PyMesh3d) -> (usize, f64) {
+        orient_geometry(&mesh.0, &mut self.0)
     }
 }
 
@@ -870,6 +928,13 @@ impl PyMesh3d {
         let y = y.as_slice()?;
         let z = z.as_slice()?;
         Ok(Self(nonuniform_box_mesh(x, y, z)))
+    }
+
+    /// Build a ball mesh
+    #[classmethod]
+    #[allow(clippy::needless_pass_by_value)]
+    fn ball_mesh(_cls: &Bound<'_, PyType>, r: f64, n: usize) -> Self {
+        Self(ball_mesh(r, n))
     }
 
     /// Get the mesh boundary

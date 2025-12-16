@@ -1,7 +1,9 @@
 from .pytucanos import PyMesh2d as Mesh2d  # noqa: F401
 from .pytucanos import PyBoundaryMesh2d as BoundaryMesh2d  # noqa: F401
+from .pytucanos import PyQuadraticBoundaryMesh2d as QuadraticBoundaryMesh2d  # noqa: F401
 from .pytucanos import PyMesh3d as Mesh3d  # noqa: F401
 from .pytucanos import PyBoundaryMesh3d as BoundaryMesh3d  # noqa: F401
+from .pytucanos import PyQuadraticBoundaryMesh3d as QuadraticBoundaryMesh3d  # noqa: F401
 from .pytucanos import PyDualType as DualType  # noqa: F401
 from .pytucanos import PyDualMesh2d as DualMesh2d  # noqa: F401
 from .pytucanos import PyDualMesh3d as DualMesh3d  # noqa: F401
@@ -20,7 +22,12 @@ else:
 
 from .cgns_io import load_cgns, write_cgns  # noqa: F401
 from .pytucanos import get_thread_affinity, set_thread_affinity  # noqa: F401
-from .pytucanos import LinearGeometry2d, LinearGeometry3d  # noqa: F401
+from .pytucanos import (
+    LinearGeometry2d,  # noqa: F401
+    LinearGeometry3d,  # noqa: F401
+    QuadraticGeometry2d,  # noqa: F401
+    QuadraticGeometry3d,  # noqa: F401
+)
 from .pytucanos import (
     PySplitParams as SplitParams,  # noqa: F401
     PyCollapseParams as CollapseParams,  # noqa: F401
@@ -37,15 +44,25 @@ from .pytucanos import (
     ParallelRemesher2dAniso,  # noqa: F401
     ParallelRemesher3dIso,  # noqa: F401
     ParallelRemesher3dAniso,  # noqa: F401
+    Remesher2dIsoQuadratic,  # noqa: F401
+    Remesher2dAnisoQuadratic,  # noqa: F401
+    Remesher3dIsoQuadratic,  # noqa: F401
+    Remesher3dAnisoQuadratic,  # noqa: F401
+    ParallelRemesher2dIsoQuadratic,  # noqa: F401
+    ParallelRemesher2dAnisoQuadratic,  # noqa: F401
+    ParallelRemesher3dIsoQuadratic,  # noqa: F401
+    ParallelRemesher3dAnisoQuadratic,  # noqa: F401
     PyParallelRemesherParams as ParallelRemesherParams,  # noqa: F401
     implied_metric_3d,  # noqa: F401
     autotag_3d,  # noqa: F401
     curvature_metric_3d,  # noqa: F401
+    curvature_metric_3d_quadratic,  # noqa: F401
     transfer_tags_face_3d,  # noqa: F401
     transfer_tags_elem_3d,  # noqa: F401
     autotag_2d,  # noqa: F401
     implied_metric_2d,  # noqa: F401
     curvature_metric_2d,  # noqa: F401
+    curvature_metric_2d_quadratic,  # noqa: F401
     transfer_tags_face_2d,  # noqa: F401
     transfer_tags_elem_2d,  # noqa: F401
 )
@@ -69,11 +86,21 @@ def implied_metric(msh):
         raise ValueError()
 
 
-def curvature_metric(msh, *args, **kwargs):
+def curvature_metric(msh, geom, *args, **kwargs):
     if isinstance(msh, Mesh2d):
-        return curvature_metric_2d(msh, *args, **kwargs)
+        if isinstance(geom, LinearGeometry2d):
+            return curvature_metric_2d(msh, geom, *args, **kwargs)
+        elif isinstance(geom, QuadraticGeometry2d):
+            return curvature_metric_2d_quadratic(msh, geom, *args, **kwargs)
+        else:
+            raise ValueError()
     elif isinstance(msh, Mesh3d):
-        return curvature_metric_3d(msh, *args, **kwargs)
+        if isinstance(geom, LinearGeometry3d):
+            return curvature_metric_3d(msh, geom, *args, **kwargs)
+        elif isinstance(geom, QuadraticGeometry3d):
+            return curvature_metric_3d_quadratic(msh, geom, *args, **kwargs)
+        else:
+            raise ValueError()
     else:
         raise ValueError()
 

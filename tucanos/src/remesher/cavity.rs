@@ -665,7 +665,7 @@ impl<'a, const D: usize, C: Simplex, M: Metric<D>> FilledCavity<'a, D, C, M> {
                 let gf = self.cavity.gface(&f);
                 let ge = C::GEOM::from_vert_and_face(&p0, &gf);
                 let center = ge.center();
-                let normal = ge.normal().normalize();
+                let normal = ge.normal(None).normalize();
                 let a = geom.angle(&center, &normal, &(C::DIM as Dim, tag));
                 if a > max_angle {
                     return false;
@@ -690,7 +690,7 @@ impl<'a, const D: usize, C: Simplex, M: Metric<D>> FilledCavity<'a, D, C, M> {
             );
             let gf = <C::FACE as Simplex>::GEOM::from_vert_and_face(&p0, &gb);
             let center = gf.center();
-            let mut normal = gf.normal().normalize();
+            let mut normal = gf.normal(None).normalize();
             if s {
                 normal = -normal;
             }

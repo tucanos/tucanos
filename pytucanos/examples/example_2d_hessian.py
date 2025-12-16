@@ -30,7 +30,8 @@ if __name__ == "__main__":
 
     msh.fix()
 
-    geom = LinearGeometry2d(msh)
+    bdy = msh.boundary()[0]
+    geom = LinearGeometry2d(bdy)
     for _ in range(6):
         f = get_f(msh)
         hessian = msh.hessian(f)
