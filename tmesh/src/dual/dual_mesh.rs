@@ -157,7 +157,7 @@ pub trait DualMesh<const D: usize>: PolyMesh<D> {
                 }
                 self.gface(&f)
             })
-            .map(|gf| gf.center().dot(&gf.normal()))
+            .map(|gf| gf.center().dot(&gf.normal(None)))
             .sum::<f64>()
             / D as f64
     }
@@ -184,7 +184,7 @@ pub trait DualMesh<const D: usize>: PolyMesh<D> {
             self.gface(&f)
         })
         .for_each(|gf| {
-            let n = gf.normal();
+            let n = gf.normal(None);
             res.iter_mut().zip(n.iter()).for_each(|(x, y)| *x += y);
         });
         res.iter().map(|x| x.abs()).sum::<f64>() < 1e-10

@@ -178,6 +178,8 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         metric: impl ExactSizeIterator<Item = M>,
         geom: &impl Geometry<D>,
     ) -> Result<Self> {
+        assert_eq!(C::order(), 1);
+
         debug!(
             "Initialize the remesher with {} {D}D vertices / {} cells",
             mesh.n_verts(),
@@ -984,8 +986,8 @@ mod tests {
     use tmesh::{
         Vert2d, Vert3d, assert_delta,
         mesh::{
-            BoundaryMesh3d, Edge, GSimplex, GenericMesh, Mesh, Mesh3d, Simplex, Tetrahedron,
-            Triangle, ball_mesh, sphere_mesh,
+            BoundaryMesh3d, Edge, GSimplex, GenericMesh, Mesh, Mesh3d, QuadraticBoundaryMesh3d,
+            Simplex, Tetrahedron, Triangle, ball_mesh, quadratic_sphere_mesh, sphere_mesh,
         },
     };
 
@@ -1841,6 +1843,110 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(debug_assertions, ignore = "Too long for debug build")]
+    fn test_adapt_aniso_3d_linear_geom() -> Result<()> {
+        let mut mesh: Mesh3d = ball_mesh(1.0, 3);
+
+        let mfunc = |_p| {
+            let v0 = Vert3d::new(0.5, 0., 0.);
+            let v1 = Vert3d::new(0.0, 0.5, 0.);
+            let v2 = Vert3d::new(0., 0.0, 0.1);
+            AnisoMetric3d::from_sizes(&v0, &v1, &v2)
+        };
+
+        let mut bdy: BoundaryMesh3d = sphere_mesh(1.0, 4);
+        bdy.fix()?;
+        let mut geom = MeshedGeometry::new(&bdy)?;
+        let topo = MeshTopology::new(&mesh);
+        geom.set_topo_map(topo.topo());
+
+        // let fname = format!("sphere_{}.vtu", 0);
+        // mesh.write_vtk(&fname, None, None)?;
+
+        for iter in 0..2 {
+            let h: Vec<_> = mesh.verts().map(mfunc).collect();
+
+            let topo = MeshTopology::new(&mesh);
+            let mut remesher = Remesher::new(&mesh, &topo, &h, &geom)?;
+
+            let mut params = RemesherParams::default();
+            for step in &mut params.steps {
+                if let RemeshingStep::Split(p) = step {
+                    p.min_q_abs = 0.25;
+                }
+            }
+            remesher.remesh(&params, &geom)?;
+            remesher.check()?;
+
+            mesh = remesher.to_mesh(true);
+
+            let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
+
+            if iter == 1 {
+                assert_delta!(mini, 0.46, 0.01);
+                assert_delta!(maxi, 1.50, 0.01);
+            }
+
+            // let fname = format!("sphere_{}.vtu", iter + 1);
+            // mesh.write_vtk(&fname, None, None)?;
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    #[cfg_attr(debug_assertions, ignore = "Too long for debug build")]
+    fn test_adapt_aniso_3d_quadratic_geom() -> Result<()> {
+        let mut mesh: Mesh3d = ball_mesh(1.0, 3);
+
+        let mfunc = |_p| {
+            let v0 = Vert3d::new(0.5, 0., 0.);
+            let v1 = Vert3d::new(0.0, 0.5, 0.);
+            let v2 = Vert3d::new(0., 0.0, 0.1);
+            AnisoMetric3d::from_sizes(&v0, &v1, &v2)
+        };
+
+        let mut bdy: QuadraticBoundaryMesh3d = quadratic_sphere_mesh(1.0, 3);
+        bdy.fix()?;
+        let mut geom = MeshedGeometry::new(&bdy)?;
+        let topo = MeshTopology::new(&mesh);
+        geom.set_topo_map(topo.topo());
+
+        // let fname = format!("sphere_{}.vtu", 0);
+        // mesh.write_vtk(&fname, None, None)?;
+
+        for iter in 0..2 {
+            let h: Vec<_> = mesh.verts().map(mfunc).collect();
+
+            let topo = MeshTopology::new(&mesh);
+            let mut remesher = Remesher::new(&mesh, &topo, &h, &geom)?;
+
+            let mut params = RemesherParams::default();
+            for step in &mut params.steps {
+                if let RemeshingStep::Split(p) = step {
+                    p.min_q_abs = 0.25;
+                }
+            }
+            remesher.remesh(&params, &geom)?;
+            remesher.check()?;
+
+            mesh = remesher.to_mesh(true);
+
+            let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
+
+            if iter == 1 {
+                assert_delta!(mini, 0.43, 0.01);
+                assert_delta!(maxi, 1.59, 0.01);
+            }
+
+            // let fname = format!("sphere_{}.vtu", iter + 1);
+            // mesh.write_vtk(&fname, None, None)?;
+        }
+
+        Ok(())
+    }
+
+    #[test]
     fn test_complexity_2d() -> Result<()> {
         let mut mesh = test_mesh_2d().split().split();
         mesh.fix().unwrap();
@@ -1923,9 +2029,12 @@ mod tests {
             .map(|&x| IsoMetric::<3>::from(x))
             .collect::<Vec<_>>();
         let mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
-        let bdy: BoundaryMesh3d = mesh.boundary().0;
+        let mut bdy: BoundaryMesh3d = mesh.boundary().0;
+        bdy.fix().unwrap();
+
         let topo = MeshTopology::new(&mesh);
-        let geom = MeshedGeometry::new(&mesh, &topo, bdy)?;
+        let mut geom = MeshedGeometry::new(&bdy)?;
+        geom.set_topo_map(topo.topo());
         let mut remesher = Remesher::new(&mesh, &topo, &metric, &geom)?;
         remesher.remesh(&RemesherParams::default(), &geom)?;
         let mesh = remesher.to_mesh(false);
@@ -1963,9 +2072,12 @@ mod tests {
             .collect::<Vec<_>>();
 
         let mesh = Mesh3d::from_vecs(verts, elems, etags, faces, ftags);
-        let bdy: BoundaryMesh3d = mesh.boundary().0;
+        let mut bdy: BoundaryMesh3d = mesh.boundary().0;
+        bdy.fix().unwrap();
+
         let topo = MeshTopology::new(&mesh);
-        let geom = MeshedGeometry::new(&mesh, &topo, bdy)?;
+        let mut geom = MeshedGeometry::new(&bdy)?;
+        geom.set_topo_map(topo.topo());
         let mut remesher = Remesher::new(&mesh, &topo, &metric, &geom)?;
         remesher.remesh(&RemesherParams::default(), &geom)?;
         let mesh = remesher.to_mesh(false);
@@ -2143,11 +2255,12 @@ mod tests {
 
         let m = mesh.verts().map(|p| m_func(&p)).collect::<Vec<_>>();
 
+        let mut bdy = cylinder(0.1, 128);
+        bdy.fix().unwrap();
+
         let topo = MeshTopology::new(&mesh);
-        let bdy = cylinder(0.1, 128);
-
-        let geom = MeshedGeometry::new(&mesh, &topo, bdy).unwrap();
-
+        let mut geom = MeshedGeometry::new(&bdy).unwrap();
+        geom.set_topo_map(topo.topo());
         let mut remesher = Remesher::new(&mesh, &topo, &m, &geom)?;
 
         let mut params = RemesherParams::new(20.0, 4);
@@ -2165,8 +2278,8 @@ mod tests {
         remesher.remesh(&params, &geom)?;
         remesher.check()?;
         let (mini, maxi, _) = remesher.check_edge_lengths_analytical(m_func);
-        assert_delta!(mini, 0.40, 0.01);
-        assert_delta!(maxi, 1.47, 0.01);
+        assert_delta!(mini, 0.41, 0.01);
+        assert_delta!(maxi, 1.66, 0.01);
         Ok(())
     }
 }

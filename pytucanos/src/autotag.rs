@@ -30,14 +30,14 @@ pub fn autotag_3d<'py>(
 /// Reset the face tags of other to match those in self
 #[pyfunction]
 pub fn transfer_tags_face_3d(msh: &PyBoundaryMesh3d, other: &mut PyMesh3d) {
-    let tree = ObjectIndex::new(&msh.0);
+    let tree = ObjectIndex::new(msh.0.clone());
     transfer_tags(&msh.0, &tree, &mut other.0);
 }
 
 /// Reset the element tags of other to match those in self
 #[pyfunction]
 pub fn transfer_tags_elem_3d(msh: &PyBoundaryMesh3d, other: &mut PyMesh3d) {
-    let tree = ObjectIndex::new(&msh.0);
+    let tree = ObjectIndex::new(msh.0.clone());
     transfer_tags(&msh.0, &tree, &mut other.0);
 }
 
@@ -60,13 +60,13 @@ pub fn autotag_2d<'py>(
 /// Reset the face tags of other to match those in self
 #[pyfunction]
 pub fn transfer_tags_face_2d(msh: &PyBoundaryMesh2d, other: &mut PyMesh2d) {
-    let tree = ObjectIndex::new(&msh.0);
+    let tree = ObjectIndex::new(msh.0.clone());
     transfer_tags(&msh.0, &tree, &mut other.0);
 }
 
 /// Reset the element tags of other to match those in self
 #[pyfunction]
 pub fn transfer_tags_elem_2d(msh: &PyBoundaryMesh2d, other: &mut PyBoundaryMesh2d) {
-    let tree = ObjectIndex::new(&msh.0);
+    let tree = ObjectIndex::new(msh.0.clone());
     transfer_tags(&msh.0, &tree, &mut other.0);
 }

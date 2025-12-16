@@ -35,8 +35,8 @@ if __name__ == "__main__":
 
     # Hilbert renumbering
     msh.reorder_hilbert()
-
-    geom = LinearGeometry2d(msh)
+    bdy = msh.boundary()[0]
+    geom = LinearGeometry2d(bdy)
     for _ in range(5):
         m = get_m(msh)
         remesher = Remesher2dAniso(msh, geom, m)

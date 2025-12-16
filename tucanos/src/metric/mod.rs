@@ -137,7 +137,7 @@ pub trait Metric<const D: usize>:
         let l = l / G::TOPO::N_EDGES as f64;
 
         let fac = if G::has_normal() {
-            let n = ge.normal().normalize();
+            let n = ge.normal(None).normalize();
             m.length(&n)
         } else {
             assert_eq!(D, G::TOPO::DIM);

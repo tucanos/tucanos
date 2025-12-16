@@ -65,8 +65,10 @@ pub fn pytucanos(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     pyo3_log::init();
     m.add_class::<mesh::PyMesh2d>()?;
     m.add_class::<mesh::PyBoundaryMesh2d>()?;
+    m.add_class::<mesh::PyQuadraticBoundaryMesh2d>()?;
     m.add_class::<mesh::PyMesh3d>()?;
     m.add_class::<mesh::PyBoundaryMesh3d>()?;
+    m.add_class::<mesh::PyQuadraticBoundaryMesh3d>()?;
     m.add_class::<mesh::PyPartitionerType>()?;
     m.add_class::<dual::PyDualType>()?;
     m.add_class::<dual::PyDualMesh2d>()?;
@@ -93,10 +95,14 @@ pub fn pytucanos(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(autotag::transfer_tags_elem_2d, m)?)?;
     m.add_function(wrap_pyfunction!(metric::implied_metric_3d, m)?)?;
     m.add_function(wrap_pyfunction!(metric::curvature_metric_3d, m)?)?;
+    m.add_function(wrap_pyfunction!(metric::curvature_metric_3d_quadratic, m)?)?;
     m.add_function(wrap_pyfunction!(metric::implied_metric_2d, m)?)?;
     m.add_function(wrap_pyfunction!(metric::curvature_metric_2d, m)?)?;
+    m.add_function(wrap_pyfunction!(metric::curvature_metric_2d_quadratic, m)?)?;
     m.add_class::<geometry::LinearGeometry2d>()?;
+    m.add_class::<geometry::QuadraticGeometry2d>()?;
     m.add_class::<geometry::LinearGeometry3d>()?;
+    m.add_class::<geometry::QuadraticGeometry3d>()?;
     m.add_class::<remesher::PyCollapseParams>()?;
     m.add_class::<remesher::PySplitParams>()?;
     m.add_class::<remesher::PySwapParams>()?;
@@ -113,5 +119,13 @@ pub fn pytucanos(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<parallel::ParallelRemesher2dAniso>()?;
     m.add_class::<parallel::ParallelRemesher3dIso>()?;
     m.add_class::<parallel::ParallelRemesher3dAniso>()?;
+    m.add_class::<remesher::Remesher2dIsoQuadratic>()?;
+    m.add_class::<remesher::Remesher2dAnisoQuadratic>()?;
+    m.add_class::<remesher::Remesher3dIsoQuadratic>()?;
+    m.add_class::<remesher::Remesher3dAnisoQuadratic>()?;
+    m.add_class::<parallel::ParallelRemesher2dIsoQuadratic>()?;
+    m.add_class::<parallel::ParallelRemesher2dAnisoQuadratic>()?;
+    m.add_class::<parallel::ParallelRemesher3dIsoQuadratic>()?;
+    m.add_class::<parallel::ParallelRemesher3dAnisoQuadratic>()?;
     Ok(())
 }

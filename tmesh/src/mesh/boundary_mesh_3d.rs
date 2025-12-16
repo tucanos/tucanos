@@ -1,14 +1,15 @@
 //! Boundary of `Mesh3d`
 use crate::{
-    Result, Vert3d,
-    mesh::{GenericMesh, Mesh, Simplex, Triangle, elements::Idx},
+    Result, Vert3d, Vertex,
+    mesh::{GenericMesh, Mesh, QuadraticEdge, QuadraticTriangle, Simplex, Triangle, elements::Idx},
 };
-use std::fs::OpenOptions;
+use std::{fs::OpenOptions, iter::once};
 
 /// Triangle mesh in 3d
 pub type BoundaryMesh3d = GenericMesh<3, Triangle<usize>>;
+pub type QuadraticBoundaryMesh3d = GenericMesh<3, QuadraticTriangle<usize>>;
 
-/// Create a `Mesh<3, Triangle<_>>` of a sphere
+/// Create a `Mesh<3, C=Triangle<_>>` of a sphere
 #[must_use]
 pub fn sphere_mesh<M: Mesh<3, C = Triangle<impl Idx>>>(r: f64, n: usize) -> M {
     let mut res = M::empty();
@@ -48,6 +49,62 @@ pub fn sphere_mesh<M: Mesh<3, C = Triangle<impl Idx>>>(r: f64, n: usize) -> M {
     res
 }
 
+/// Create a `Mesh<3, C=QuadraticTriangle<_>>` of a sphere
+#[must_use]
+pub fn quadratic_sphere_mesh<M: Mesh<3, C = QuadraticTriangle<impl Idx>>>(r: f64, n: usize) -> M {
+    let mut res: M = to_quadratic_triangle_mesh(&sphere_mesh::<BoundaryMesh3d>(r, n));
+    res.verts_mut().for_each(|x| *x *= r / x.norm());
+
+    res
+}
+
+#[must_use]
+pub fn to_quadratic_triangle_mesh<
+    const D: usize,
+    T: Idx,
+    M: Mesh<D, C = QuadraticTriangle<T>>,
+    T2: Idx,
+>(
+    msh: &impl Mesh<D, C = Triangle<T2>>,
+) -> M {
+    let edges = msh.edges();
+
+    let mut res = M::empty();
+    res.add_verts(msh.verts());
+    let mut new_verts = vec![Vertex::zeros(); edges.len()];
+    for (&e, &i) in &edges {
+        new_verts[i] = 0.5 * (msh.vert(e.get(0)) + msh.vert(e.get(1)));
+    }
+    res.add_verts(new_verts.iter().copied());
+
+    for (t, tag) in msh.elems().zip(msh.etags()) {
+        res.add_elems(
+            once(QuadraticTriangle::new(
+                t.get(0),
+                t.get(1),
+                t.get(2),
+                edges.get(&t.face(2).sorted()).unwrap() + msh.n_verts(),
+                edges.get(&t.face(0).sorted()).unwrap() + msh.n_verts(),
+                edges.get(&t.face(1).sorted()).unwrap() + msh.n_verts(),
+            )),
+            once(tag),
+        );
+    }
+
+    for (e, tag) in msh.faces().zip(msh.ftags()) {
+        res.add_faces(
+            once(QuadraticEdge::new(
+                e.get(0),
+                e.get(1),
+                edges.get(&e.sorted()).unwrap() + msh.n_verts(),
+            )),
+            once(tag),
+        );
+    }
+
+    res
+}
+
 /// Read a stl file
 pub fn read_stl<M: Mesh<3, C = Triangle<impl Idx>>>(file_name: &str) -> Result<M> {
     let mut file = OpenOptions::new().read(true).open(file_name).unwrap();
@@ -71,9 +128,14 @@ pub fn read_stl<M: Mesh<3, C = Triangle<impl Idx>>>(file_name: &str) -> Result<M
 
 #[cfg(test)]
 mod tests {
+    use std::f64::consts::PI;
+
     use crate::{
         assert_delta,
-        mesh::{BoundaryMesh3d, GSimplex, Mesh, Mesh3d, box_mesh},
+        mesh::{
+            BoundaryMesh3d, GSimplex, Mesh, Mesh3d, QuadraticBoundaryMesh3d, box_mesh,
+            quadratic_sphere_mesh, sphere_mesh,
+        },
     };
     use rayon::iter::ParallelIterator;
 
@@ -110,5 +172,33 @@ mod tests {
 
         let nrm = bdy.norm(&f_bdy);
         assert_delta!(nrm, 1.0 / 3.0_f64.sqrt(), 1e-12);
+    }
+
+    #[test]
+    fn test_sphere() {
+        let n = 4;
+
+        let msh: BoundaryMesh3d = sphere_mesh(1.0, n + 1);
+
+        let qmsh: QuadraticBoundaryMesh3d = quadratic_sphere_mesh(1.0, n);
+
+        assert_delta!(msh.vol(), 4.0 * PI, 0.02);
+        assert_delta!(qmsh.vol(), 4.0 * PI, 0.00004);
+
+        let d = msh
+            .gelems()
+            .map(|ge| (ge.center().norm() - 1.0).abs())
+            .fold(0.0, f64::max);
+        let qd = qmsh
+            .gelems()
+            .map(|ge| (ge.center().norm() - 1.0).abs())
+            .fold(0.0, f64::max);
+
+        assert_delta!(d, 0.0, 0.02);
+        assert_delta!(qd, 0.0, 0.000006);
+
+        let qmsh: QuadraticBoundaryMesh3d = quadratic_sphere_mesh(1.0, 1);
+
+        qmsh.write_meshb("qsphere.meshb").unwrap();
     }
 }

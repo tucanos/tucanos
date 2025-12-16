@@ -3,7 +3,7 @@
 #![allow(clippy::ref_as_ptr)]
 use crate::{
     Idx,
-    geometry::{LinearGeometry2d, LinearGeometry3d},
+    geometry::{LinearGeometry2d, LinearGeometry3d, QuadraticGeometry2d, QuadraticGeometry3d},
     mesh::{PyMesh2d, PyMesh3d},
     remesher::PyRemesherParams,
     to_numpy_1d, to_numpy_2d,
@@ -203,4 +203,36 @@ create_parallel_remesher!(
     AnisoMetric3d,
     PyMesh3d,
     LinearGeometry3d
+);
+create_parallel_remesher!(
+    ParallelRemesher2dIsoQuadratic,
+    2,
+    Triangle,
+    IsoMetric2d,
+    PyMesh2d,
+    QuadraticGeometry2d
+);
+create_parallel_remesher!(
+    ParallelRemesher2dAnisoQuadratic,
+    2,
+    Triangle,
+    AnisoMetric2d,
+    PyMesh2d,
+    QuadraticGeometry2d
+);
+create_parallel_remesher!(
+    ParallelRemesher3dIsoQuadratic,
+    3,
+    Tetrahedron,
+    IsoMetric3d,
+    PyMesh3d,
+    QuadraticGeometry3d
+);
+create_parallel_remesher!(
+    ParallelRemesher3dAnisoQuadratic,
+    3,
+    Tetrahedron,
+    AnisoMetric3d,
+    PyMesh3d,
+    QuadraticGeometry3d
 );

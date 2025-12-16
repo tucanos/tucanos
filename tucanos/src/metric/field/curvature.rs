@@ -19,10 +19,10 @@ impl<'a, T: Idx, M: Mesh<3, C = Tetrahedron<T>>> MetricField<'a, 3, M, AnisoMetr
     /// - h_n: the normal size, defined at the boundary vertices
     ///   if <0, the min of the tangential sizes is used
     #[allow(clippy::too_many_arguments)]
-    pub fn curvature_metric_3d<T2: Idx>(
+    pub fn curvature_metric_3d(
         msh: &'a M,
         v2v: &'a CSRGraph,
-        geom: &MeshedGeometry<3, impl Mesh<3, C = Triangle<T2>>>,
+        geom: &MeshedGeometry<3, impl Mesh<3>>,
         r_h: f64,
         beta: f64,
         t: f64,
@@ -95,10 +95,10 @@ impl<'a, T: Idx, M: Mesh<2, C = Triangle<T>>> MetricField<'a, 2, M, AnisoMetric2
     /// - h_n: the normal size, defined at the boundary vertices
     ///   if <0, the min of the tangential sizes is used
     #[allow(clippy::too_many_arguments)]
-    pub fn curvature_metric_2d<T2: Idx>(
+    pub fn curvature_metric_2d(
         msh: &'a M,
         v2v: &'a CSRGraph,
-        geom: &MeshedGeometry<2, impl Mesh<2, C = Edge<T2>>>,
+        geom: &MeshedGeometry<2, impl Mesh<2>>,
         r_h: f64,
         beta: f64,
         t: f64,
@@ -189,7 +189,8 @@ mod tests {
         });
 
         // build the geometry
-        let (bdy, bdy_ids) = mesh.boundary::<BoundaryMesh3d>();
+        let (mut bdy, bdy_ids) = mesh.boundary::<BoundaryMesh3d>();
+        bdy.fix().unwrap();
 
         // tag vertices on the interior & exterior cylinders
         let mut bdy_flg = vec![0; bdy.n_verts()];
@@ -208,9 +209,9 @@ mod tests {
             }
         });
 
+        let mut geom = MeshedGeometry::new(&bdy)?;
         let topo = MeshTopology::new(&mesh);
-
-        let geom = MeshedGeometry::new(&mesh, &topo, bdy.clone())?;
+        geom.set_topo_map(topo.topo());
 
         // curvature metric (no prescribes normal size)
         let v2v = mesh.vertex_to_vertices();

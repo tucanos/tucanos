@@ -62,7 +62,8 @@ if __name__ == "__main__":
 
     for _ in range(3):
         h = get_h(msh)
-        geom = LinearGeometry2d(msh)
+        bdy = msh.boundary()[0]
+        geom = LinearGeometry2d(bdy)
         remesher = Remesher2dIso(msh, geom, h.reshape((-1, 1)))
         remesher.remesh(geom, params=RemesherParams.default())
 
