@@ -211,12 +211,10 @@ impl<const D: usize> SimplePolyMesh<D> {
         self.etags.push(t);
         self.etags.len() - 1
     }
-
-    /// Simplify a `PolyMesh<D>` by merging its faces connecting the same two elements
-    #[allow(clippy::too_many_lines)]
-    pub fn simplify<T: PolyMesh<D>>(mesh: &T, simplify: bool) -> Self {
-        let poly_type = mesh.poly_type();
-
+    /// Helper: Analyze mesh to group faces based on which elements they connect.
+    fn group_connected_faces<T: PolyMesh<D>>(
+        mesh: &T,
+    ) -> FxHashMap<[usize; 2], Vec<(usize, bool)>> {
         // simplify faces
         let mut face2elems = vec![[usize::MAX, usize::MAX]; mesh.n_faces()];
         for (i_elem, elem) in mesh.elems().enumerate() {
@@ -242,7 +240,62 @@ impl<const D: usize> SimplePolyMesh<D> {
                 face_groups.insert(*elems, vec![(i_face, true)]);
             }
         }
+        face_groups
+    }
 
+    /// Helper: Reconstruct the element connectivity pointers.
+    fn build_element_connectivity(
+        n_elems: usize,
+        new_faces_elems: &[[usize; 2]],
+    ) -> (Vec<usize>, Vec<(usize, bool)>) {
+        let mut new_elems_ptr = vec![0; n_elems + 1];
+        for &[i0, i1] in new_faces_elems {
+            new_elems_ptr[i0 + 1] += 1;
+            if i1 != usize::MAX {
+                new_elems_ptr[i1 + 1] += 1;
+            }
+        }
+        for i in 0..n_elems {
+            new_elems_ptr[i + 1] += new_elems_ptr[i];
+        }
+        let mut new_elems = vec![(usize::MAX, false); *new_elems_ptr.last().unwrap()];
+        for (i_face, &[i0, i1]) in new_faces_elems.iter().enumerate() {
+            let mut ok = false;
+            for v in new_elems
+                .iter_mut()
+                .take(new_elems_ptr[i0 + 1])
+                .skip(new_elems_ptr[i0])
+            {
+                if v.0 == usize::MAX {
+                    *v = (i_face, true);
+                    ok = true;
+                    break;
+                }
+            }
+            assert!(ok);
+            if i1 != usize::MAX {
+                let mut ok = false;
+                for v in new_elems
+                    .iter_mut()
+                    .take(new_elems_ptr[i1 + 1])
+                    .skip(new_elems_ptr[i1])
+                {
+                    if v.0 == usize::MAX {
+                        *v = (i_face, false);
+                        ok = true;
+                        break;
+                    }
+                }
+                assert!(ok);
+            }
+        }
+        (new_elems_ptr, new_elems)
+    }
+
+    /// Simplify a `PolyMesh<D>` by merging its faces connecting the same two elements
+    pub fn simplify<T: PolyMesh<D>>(mesh: &T, simplify: bool) -> Self {
+        let poly_type = mesh.poly_type();
+        let face_groups = Self::group_connected_faces(mesh);
         let mut new_faces = Vec::new();
         let mut new_faces_ptr = Vec::new();
         new_faces_ptr.push(0);
@@ -301,49 +354,8 @@ impl<const D: usize> SimplePolyMesh<D> {
                 }
             }
         }
-
-        let mut new_elems_ptr = vec![0; mesh.n_elems() + 1];
-        for &[i0, i1] in &new_faces_elems {
-            new_elems_ptr[i0 + 1] += 1;
-            if i1 != usize::MAX {
-                new_elems_ptr[i1 + 1] += 1;
-            }
-        }
-        for i in 0..mesh.n_elems() {
-            new_elems_ptr[i + 1] += new_elems_ptr[i];
-        }
-        let mut new_elems = vec![(usize::MAX, false); *new_elems_ptr.last().unwrap()];
-        for (i_face, &[i0, i1]) in new_faces_elems.iter().enumerate() {
-            let mut ok = false;
-            for v in new_elems
-                .iter_mut()
-                .take(new_elems_ptr[i0 + 1])
-                .skip(new_elems_ptr[i0])
-            {
-                if v.0 == usize::MAX {
-                    *v = (i_face, true);
-                    ok = true;
-                    break;
-                }
-            }
-            assert!(ok);
-            if i1 != usize::MAX {
-                let mut ok = false;
-                for v in new_elems
-                    .iter_mut()
-                    .take(new_elems_ptr[i1 + 1])
-                    .skip(new_elems_ptr[i1])
-                {
-                    if v.0 == usize::MAX {
-                        *v = (i_face, false);
-                        ok = true;
-                        break;
-                    }
-                }
-                assert!(ok);
-            }
-        }
-
+        let (new_elems_ptr, new_elems) =
+            Self::build_element_connectivity(mesh.n_elems(), &new_faces_elems);
         let mut res = Self {
             poly_type: mesh.poly_type(),
             verts: mesh.verts().collect(),
