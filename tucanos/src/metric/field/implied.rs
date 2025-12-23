@@ -67,6 +67,15 @@ impl ImpliedMetric<AnisoMetric2d> for GTriangle<2> {
     }
 }
 
+impl ImpliedMetric<AnisoMetric3d> for GTriangle<3> {
+    /// Compute an implied metric by giving each triangle a thickness so it's like a tetrahedron
+    fn implied_metric(&self) -> AnisoMetric3d {
+        let normal = (self[1] - self[0]).cross(&(self[2] - self[0]));
+        let normal = normal / normal.norm().sqrt();
+        GTetrahedron::new(&self[0], &self[1], &self[2], &(self[0] + normal)).implied_metric()
+    }
+}
+
 impl ImpliedMetric<AnisoMetric3d> for GTetrahedron<3> {
     /// Compute the implied metric
     /// It can be computed using the Jacobian $`J`$ of the transformation from the
