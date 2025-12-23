@@ -281,7 +281,7 @@ fn main() -> Result<()> {
     geom.project_vertices(&mut mesh, &topo);
 
     // Compute the implied metric
-    let implied_metric = MetricField::implied_metric_3d(&mesh);
+    let implied_metric = MetricField::implied_metric(&mesh);
 
     // Compute the boundary layer metric
     let h_min = 5e-3;

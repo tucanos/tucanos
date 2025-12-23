@@ -1007,8 +1007,8 @@ mod tests {
             },
         },
         metric::{
-            AnisoMetric, AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric, MetricField,
-            tetrahedron_implied_metric,
+            AnisoMetric, AnisoMetric2d, AnisoMetric3d, ImpliedMetric, IsoMetric, Metric,
+            MetricField,
         },
         remesher::{
             Remesher,
@@ -1707,7 +1707,7 @@ mod tests {
         for ge in mesh.gelems() {
             let bcoords = ge.bcoords(&pt);
             if bcoords.into_iter().all(|x| x > -1e-12) {
-                return Some(tetrahedron_implied_metric(&ge));
+                return Some(ge.implied_metric());
             }
         }
         None
