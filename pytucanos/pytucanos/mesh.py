@@ -50,7 +50,7 @@ def __plot_boundary(ax, bdy, normals):
     tags = np.unique(etags)
     labels = {}
     for e, t in zip(edgs, etags):
-        (i,) = np.nonzero(tags == t)
+        i = np.nonzero(tags == t)[0][0]
         X, Y = xy[e, 0], xy[e, 1]
         if t not in labels:
             ax.plot(X, Y, c="C%d" % i, label=repr(t))
