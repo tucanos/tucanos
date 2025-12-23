@@ -5,10 +5,7 @@ mod reduction;
 
 use crate::Result;
 pub use aniso::{AnisoMetric, AnisoMetric2d, AnisoMetric3d};
-pub use field::{
-    MetricField,
-    implied::{tetrahedron_implied_metric, triangle_implied_metric},
-};
+pub use field::{MetricField, implied::ImpliedMetric};
 pub use iso::IsoMetric;
 use tmesh::mesh::{GSimplex, Simplex};
 

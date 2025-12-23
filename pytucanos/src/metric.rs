@@ -12,7 +12,7 @@ use tucanos::{Tag, metric::MetricField};
 /// Get the element-implied metric
 #[pyfunction]
 pub fn implied_metric_3d<'py>(py: Python<'py>, msh: &PyMesh3d) -> Bound<'py, PyArray2<f64>> {
-    let res = MetricField::implied_metric_3d(&msh.0);
+    let res = MetricField::implied_metric(&msh.0);
 
     let m: Vec<f64> = res.metric().iter().flat_map(|m| m.into_iter()).collect();
     to_numpy_2d(py, m, 6)
@@ -139,7 +139,7 @@ pub fn curvature_metric_3d_quadratic<'py>(
 /// Get the element-implied metric
 #[pyfunction]
 pub fn implied_metric_2d<'py>(py: Python<'py>, msh: &PyMesh2d) -> Bound<'py, PyArray2<f64>> {
-    let res = MetricField::implied_metric_2d(&msh.0);
+    let res = MetricField::implied_metric(&msh.0);
 
     let m: Vec<f64> = res.metric().iter().flat_map(|m| m.into_iter()).collect();
     to_numpy_2d(py, m, 3)
