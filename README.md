@@ -40,7 +40,7 @@ METISDIR="/path/to/metis_prefix"
 ### Render doc
 
 ```
-RUSTDOCFLAGS="--html-in-header katex.html" cargo doc --no-deps --document-private-items
+RUSTDOCFLAGS="--html-in-header katex.html" cargo doc --no-deps --document-private-items --workspace
 ```
 
 ## Using from python
