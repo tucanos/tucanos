@@ -15,7 +15,6 @@ rand = "0.9.1"
 rayon = "1.11.0"
 typenum = { version ="1.19.0", features = ["const-generics"] }
 num = "0.4.3"
-tempfile = "3.22.0"
 tmesh = {path = "../tmesh"}
 libm = "0.2.15"
 
