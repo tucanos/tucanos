@@ -45,6 +45,42 @@ impl Default for CollapseParams {
 }
 
 impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
+    fn perform_collapse(
+        &mut self,
+        cavity: &Cavity<D, C, M>,
+        filled_cavity: &FilledCavity<D, C, M>,
+        i0: usize,
+        i1: usize,
+    ) -> Result<()> {
+        for i in &cavity.global_elem_ids {
+            self.remove_elem(*i)?;
+        }
+
+        self.remove_vertex(i0)?;
+
+        for (f, t) in filled_cavity.faces() {
+            let f = cavity.global_elem(&f);
+            assert!(!f.contains(i1));
+            self.insert_elem(C::from_vertex_and_face(i1, &f), t)?;
+        }
+        for (f, _) in cavity.global_tagged_faces() {
+            self.remove_tagged_face(f)?;
+        }
+        for (b, t) in filled_cavity.tagged_faces_boundary_global() {
+            assert!(!b.contains(i1));
+            // self.add_tagged_face(C::FACE::from_vertex_and_face(i1, &b), t)?;
+            if self
+                .add_tagged_face(C::FACE::from_vertex_and_face(i1, &b), t)
+                .is_err()
+            {
+                panic!(
+                    "error with face {:?}",
+                    C::FACE::from_vertex_and_face(i1, &b)
+                );
+            }
+        }
+        Ok(())
+    }
     /// Loop over the edges and collapse them if
     /// - their length is smaller that 1/sqrt(2)
     /// - no edge larger than
@@ -55,7 +91,6 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
     ///   max(params.collapse_min_q_abs, params.collapse_min_q_rel * min(q))
     ///
     /// where max(l) and min(q) as the max edge length and min quality over the entire mesh
-    #[allow(clippy::too_many_lines)]
     pub fn collapse<G: Geometry<D>>(
         &mut self,
         params: &CollapseParams,
@@ -148,34 +183,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                     let l_max = l_max.max(params.max_l_rel * cavity.l_max);
                     if let CavityCheckStatus::Ok(_) = filled_cavity.check(0.0, l_max, q_min) {
                         trace_if!(dbg, "Collapse edge");
-                        for i in &cavity.global_elem_ids {
-                            self.remove_elem(*i)?;
-                        }
-
-                        self.remove_vertex(i0)?;
-
-                        for (f, t) in filled_cavity.faces() {
-                            let f = cavity.global_elem(&f);
-                            assert!(!f.contains(i1));
-                            self.insert_elem(C::from_vertex_and_face(i1, &f), t)?;
-                        }
-                        for (f, _) in cavity.global_tagged_faces() {
-                            self.remove_tagged_face(f)?;
-                        }
-                        for (b, t) in filled_cavity.tagged_faces_boundary_global() {
-                            assert!(!b.contains(i1));
-                            // self.add_tagged_face(C::FACE::from_vertex_and_face(i1, &b), t)?;
-                            if self
-                                .add_tagged_face(C::FACE::from_vertex_and_face(i1, &b), t)
-                                .is_err()
-                            {
-                                panic!(
-                                    "error with face {:?}",
-                                    C::FACE::from_vertex_and_face(i1, &b)
-                                );
-                            }
-                        }
-
+                        self.perform_collapse(&cavity, &filled_cavity, i0, i1)?;
                         n_collapses += 1;
                     } else {
                         n_fails += 1;
