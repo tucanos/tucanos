@@ -4,7 +4,7 @@
 //!    the edge
 //!  - boundary faces
 //!
-//! and an explicit polygonal meshes (`PolyMesh<D>, where all the faces are of type `Face<F>`)
+//! and an explicit polygonal meshes (`PolyMesh<D>`, where all the faces are of type `Face<F>`)
 //! are built
 use super::PolyMesh;
 use crate::{

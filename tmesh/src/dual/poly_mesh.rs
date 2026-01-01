@@ -137,7 +137,7 @@ pub trait PolyMesh<const D: usize>: Sync + Sized {
     }
 }
 
-/// General PolyMesh<D>
+/// General `PolyMesh<D>`
 pub struct SimplePolyMesh<const D: usize> {
     poly_type: PolyMeshType,
     verts: Vec<Vertex<D>>,
