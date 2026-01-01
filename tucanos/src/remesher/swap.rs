@@ -54,11 +54,37 @@ impl Default for SwapParams {
 }
 
 impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
+    fn perform_swap(
+        &mut self,
+        cavity: &Cavity<D, C, M>,
+        vx: usize,
+        edg: &Edge<usize>,
+    ) -> Result<()> {
+        let ftype = FilledCavityType::ExistingVertex(vx);
+        let filled_cavity = FilledCavity::new(cavity, ftype);
+        for e in &cavity.global_elem_ids {
+            self.remove_elem(*e)?;
+        }
+        let global_vx = cavity.local2global[vx];
+        for (f, t) in filled_cavity.faces() {
+            let f = cavity.global_elem(&f);
+            assert!(!f.contains(global_vx));
+            assert!(!f.contains_edge(edg));
+            let e = C::from_vertex_and_face(global_vx, &f);
+            self.insert_elem(e, t)?;
+        }
+        for (f, _) in cavity.global_tagged_faces() {
+            self.remove_tagged_face(f)?;
+        }
+        for (b, t) in filled_cavity.tagged_faces_boundary_global() {
+            self.add_tagged_face(C::FACE::from_vertex_and_face(global_vx, &b), t)?;
+        }
+        Ok(())
+    }
+
     /// Try to swap an edge if
     ///   - one of the elements in its cavity has a quality < qmin
     ///   - no edge smaller that `l_min` or longer that `l_max` is created
-    #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_lines)]
     fn try_swap<G: Geometry<D>>(
         &mut self,
         edg: Edge<usize>,
@@ -111,8 +137,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         let local_i1 = local_edg.get(1);
         let mut q_ref = cavity.q_min;
 
-        let mut vx = 0;
-        let mut succeed = false;
+        let mut vx = None;
 
         let etag = self
             .topo
@@ -173,34 +198,14 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             );
             if let CavityCheckStatus::Ok(min_quality) = status {
                 trace_if!(dbg, "Can swap  from {n} : ({min_quality} > {q_ref})");
-                succeed = true;
                 q_ref = min_quality;
-                vx = n;
+                vx = Some(n);
             }
         }
 
-        if succeed {
+        if let Some(vx) = vx {
             trace_if!(dbg, "Swap from {vx}");
-            let ftype = FilledCavityType::ExistingVertex(vx);
-            let filled_cavity = FilledCavity::new(cavity, ftype);
-            for e in &cavity.global_elem_ids {
-                self.remove_elem(*e)?;
-            }
-            let global_vx = cavity.local2global[vx];
-            for (f, t) in filled_cavity.faces() {
-                let f = cavity.global_elem(&f);
-                assert!(!f.contains(global_vx));
-                assert!(!f.contains_edge(&edg));
-                let e = C::from_vertex_and_face(global_vx, &f);
-                self.insert_elem(e, t)?;
-            }
-            for (f, _) in cavity.global_tagged_faces() {
-                self.remove_tagged_face(f)?;
-            }
-            for (b, t) in filled_cavity.tagged_faces_boundary_global() {
-                self.add_tagged_face(C::FACE::from_vertex_and_face(global_vx, &b), t)?;
-            }
-
+            self.perform_swap(cavity, vx, &edg)?;
             return Ok(TrySwapResult::CouldSwap);
         }
 
