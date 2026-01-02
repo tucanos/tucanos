@@ -32,8 +32,6 @@ cast_sign_loss = "allow"
 cast_possible_wrap = "allow"
 should_panic_without_expect = "allow"
 unreadable_literal = "allow"
-# TODO: to remove
-too_long_first_doc_paragraph = "allow"
 
 [profile.release]
 debug = 1
