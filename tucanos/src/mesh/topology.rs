@@ -321,31 +321,32 @@ impl Topology {
 
         for (e, e2f) in &edg2face {
             let ftags = e2f.iter().map(|&i| ftags[i]).collect::<FxHashSet<_>>();
-            let should_be_tagged = e2f.len() != 2 || ftags.len() != 1;
-            if should_be_tagged {
-                #[allow(clippy::option_if_let_else)]
-                let t = if let Some(node) = self.get_from_parents_iter(dim, ftags.iter().copied()) {
-                    node.tag.1
-                } else {
-                    next_tag += 1;
-                    let flg = if ftags.iter().copied().any(|t| t < 0) {
-                        -1
-                    } else {
-                        1
-                    };
-                    self.insert_iter((dim, flg * next_tag), ftags.iter().copied());
-                    flg * next_tag
-                };
-                e.into_iter().for_each(|i| {
-                    if vtags[i].0 == dim && (vtags[i].1 == 0 || vtags[i].1 != t) {
-                        vtags[i] = (dim, 0);
-                    } else {
-                        vtags[i] = (dim, t);
-                    }
-                });
-                edgs.push(*e);
-                etags.push(t);
+            if e2f.len() == 2 && ftags.len() == 1 {
+                continue; // should not be tagged
             }
+
+            let existing_tag = self
+                .get_from_parents_iter(dim, ftags.iter().copied())
+                .map(|node| node.tag.1);
+            let t = existing_tag.unwrap_or_else(|| {
+                next_tag += 1;
+                let flg_tag = if ftags.iter().copied().any(|t| t < 0) {
+                    -next_tag
+                } else {
+                    next_tag
+                };
+                self.insert_iter((dim, flg_tag), ftags.iter().copied());
+                flg_tag
+            });
+            e.into_iter().for_each(|i| {
+                vtags[i] = if vtags[i].0 == dim && (vtags[i].1 == 0 || vtags[i].1 != t) {
+                    (dim, 0)
+                } else {
+                    (dim, t)
+                }
+            });
+            edgs.push(*e);
+            etags.push(t);
         }
         (edgs, etags, next_tag)
     }
