@@ -15,7 +15,8 @@ use tmesh::{
     mesh::{GSimplex, Simplex},
 };
 
-/// Smoothing methods
+/// Defines available smoothing algorithms for mesh vertices.
+///
 /// A set of valid neighbors $`N(i)`$ is built as a subset
 /// if the neighbors of vertex $`i`$ that are tagged on the same entity of one of its children
 /// The new vertex location $`\tilde v_i`$ is then computed as (where $`||v_j - v_i||_M`$ is the
