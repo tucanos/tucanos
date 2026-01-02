@@ -74,17 +74,25 @@ pub fn autotag_bdy<const D: usize, M: Mesh<D>>(
     Ok(new_tags)
 }
 
-/// Transfer the tag information to another mesh.
-/// For each element or face in `mesh` (depending on the dimension), its tag is updated
-/// to the tag of the element of `self` onto which the element center is projected.
+/// Transfers tags from the source mesh to the target mesh based on spatial projection.
+///
+/// For each element in the target `mesh`, its center is projected onto `src_mesh`.
+/// The element's tag is then updated to match the tag of the corresponding element in the
+/// source mesh.
+///
+/// # Arguments
+///
+/// * `src_mesh` - The source mesh containing the original tags.
+/// * `tree` - A spatial object index for `msh` used to accelerate the projection.
+/// * `mesh` - The target mesh whose tags will be updated.
 pub fn transfer_tags<const D: usize, M: Mesh<D>, M2: Mesh<D>>(
-    msh: &M,
+    src_mesh: &M,
     tree: &ObjectIndex<D, M>,
     mesh: &mut M2,
 ) {
     let get_tag = |pt: &Vertex<D>| {
         let idx = tree.nearest_elem(pt);
-        msh.etag(idx)
+        src_mesh.etag(idx)
     };
 
     if <M2::C as Simplex>::DIM == <M::C as Simplex>::DIM {
