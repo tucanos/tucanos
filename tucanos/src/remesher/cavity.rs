@@ -375,11 +375,10 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Cavity<D, C, M> {
 
     /// Get the i-th geometrical element
     pub fn gelem(&self, i: usize) -> MetricElem<D, C, M> {
-        MetricElem::from_iter(
-            self.elems[i]
-                .into_iter()
-                .map(|j| (self.points[j], self.metrics[j])),
-        )
+        self.elems[i]
+            .into_iter()
+            .map(|j| (self.points[j], self.metrics[j]))
+            .collect()
     }
 
     /// Get the i-th geometrical face

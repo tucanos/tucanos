@@ -593,10 +593,12 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
 
     /// Get the geometrical element corresponding to elem
     pub(super) fn gelem(&self, elem: &C) -> MetricElem<D, C, M> {
-        MetricElem::from_iter(elem.into_iter().map(|j| {
-            let pt = self.verts.get(&j).unwrap();
-            (pt.vx, pt.m)
-        }))
+        elem.into_iter()
+            .map(|j| {
+                let pt = self.verts.get(&j).unwrap();
+                (pt.vx, pt.m)
+            })
+            .collect()
     }
 
     /// Get the geometrical face corresponding to face
