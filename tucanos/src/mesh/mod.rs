@@ -1,6 +1,4 @@
 mod autotag;
-#[allow(dead_code)]
-#[allow(clippy::enum_variant_names)]
 pub mod test_meshes;
 mod topology;
 
