@@ -134,6 +134,8 @@ pub struct ParallelRemesher<const D: usize, M: Mesh<D>, P: Partitioner> {
     _p: PhantomData<P>,
 }
 
+type MeshAndMetric<T, const D: usize, C> = (GenericMesh<D, C>, Vec<T>);
+
 impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
     /// Create a new parallel remesher based on domain decomposition.
     /// If part is `PartitionType::Scotch(n)` or `PartitionType::Metis(n)` the mesh is partitionned into n subdomains using
@@ -268,42 +270,31 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
         (local_remesher.to_mesh(true), local_remesher.metrics())
     }
 
-    /// Remesh using domain decomposition
-    #[allow(clippy::too_many_lines)]
-    pub fn remesh<T: Metric<D>, G: Geometry<D>>(
+    /// Remeshes all partitions in parallel.
+    ///
+    /// This method processes each partition independently, updating the provided `info`
+    /// with execution statistics. It separates the result into the internal volume of
+    /// the partitions and the interface boundaries.
+    ///
+    /// # Returns
+    ///
+    /// A tuple `(interior, interface)` where:
+    /// * `interior`: The combined mesh and metrics for the partition interiors.
+    /// * `interface`: The combined mesh and metrics for the partition boundaries.
+    fn remesh_partitions<T: Metric<D>, G: Geometry<D>>(
         &self,
-        m: &[T],
+        metric: &[T],
         geom: &G,
-        params: RemesherParams,
+        params: &RemesherParams,
         dd_params: &ParallelRemesherParams,
-    ) -> Result<(GenericMesh<D, M::C>, ParallelRemeshingInfo, Vec<T>)> {
+        info: &Mutex<ParallelRemeshingInfo>,
+    ) -> (MeshAndMetric<T, D, M::C>, MeshAndMetric<T, D, M::C>) {
         let res = Mutex::new(GenericMesh::empty());
         let res_m = Mutex::new(Vec::new());
         let ifc = Mutex::new(GenericMesh::empty());
         let ifc_m = Mutex::new(Vec::new());
 
         let level = dd_params.level();
-
-        let info = ParallelRemeshingInfo {
-            info: RemeshingInfo {
-                n_verts_init: self.mesh.n_verts(),
-                ..Default::default()
-            },
-            partition_time: self.partition_time,
-            partition_quality: self.partition_quality,
-            partition_imbalance: self.partition_imbalance,
-            partitions: vec![RemeshingInfo::default(); self.partition_tags.len()],
-            ..Default::default()
-        };
-        let info = Mutex::new(info);
-
-        if self.debug {
-            let fname = format!("level_{level}_init.vtu");
-            self.mesh.write_vtk(&fname)?;
-        }
-
-        let now = Instant::now();
-
         self.par_partitions()
             .enumerate()
             .for_each(|(i_part, submesh)| {
@@ -316,8 +307,7 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
                 debug!("Remeshing level {level} / partition {i_part}");
                 let n_verts_init = submesh.mesh.n_verts();
                 let now = Instant::now();
-                let (mut local_mesh, local_m) =
-                    self.remesh_submesh(m, geom, &params.clone(), submesh);
+                let (mut local_mesh, local_m) = self.remesh_submesh(metric, geom, params, submesh);
 
                 // Get the info
                 let mut info = info.lock().unwrap();
@@ -384,8 +374,44 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
                 let mut ifc_m = ifc_m.lock().unwrap();
                 ifc_m.extend(ids.iter().map(|&i| local_m[i]));
             });
+        (
+            (res.into_inner().unwrap(), res_m.into_inner().unwrap()),
+            (ifc.into_inner().unwrap(), ifc_m.into_inner().unwrap()),
+        )
+    }
 
-        let mut ifc = ifc.into_inner().unwrap();
+    /// Remesh using domain decomposition
+    pub fn remesh<T: Metric<D>, G: Geometry<D>>(
+        &self,
+        m: &[T],
+        geom: &G,
+        params: RemesherParams,
+        dd_params: &ParallelRemesherParams,
+    ) -> Result<(GenericMesh<D, M::C>, ParallelRemeshingInfo, Vec<T>)> {
+        let level = dd_params.level();
+
+        let info = ParallelRemeshingInfo {
+            info: RemeshingInfo {
+                n_verts_init: self.mesh.n_verts(),
+                ..Default::default()
+            },
+            partition_time: self.partition_time,
+            partition_quality: self.partition_quality,
+            partition_imbalance: self.partition_imbalance,
+            partitions: vec![RemeshingInfo::default(); self.partition_tags.len()],
+            ..Default::default()
+        };
+        let info = Mutex::new(info);
+
+        if self.debug {
+            let fname = format!("level_{level}_init.vtu");
+            self.mesh.write_vtk(&fname)?;
+        }
+
+        let now = Instant::now();
+        let ((mut res, mut res_m), (mut ifc, ifc_m)) =
+            self.remesh_partitions(m, geom, &params, dd_params, &info);
+
         if self.debug {
             let fname = format!("level_{level}_ifc.vtu");
             ifc.write_vtk(&fname).unwrap();
@@ -412,7 +438,6 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
         let mut info = info.into_inner().unwrap();
 
         let ifc_topo = MeshTopology::new_from(&ifc, self.topo.topo().clone());
-        let ifc_m = ifc_m.into_inner().unwrap();
 
         let (mut ifc, ifc_m) = if let Some(dd_params) = dd_params.next(ifc.n_verts()) {
             debug!("Remeshing level {level} / interface (parallel)");
@@ -453,7 +478,6 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
         }
 
         // Merge res and ifc
-        let mut res = res.into_inner().unwrap();
         if self.debug {
             res.check(&res.all_faces()).unwrap();
         }
@@ -462,7 +486,6 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
         if self.debug {
             res.check(&res.all_faces()).unwrap();
         }
-        let mut res_m = res_m.into_inner().unwrap();
         res_m.extend(ids.iter().map(|&i| ifc_m[i]));
 
         res.remove_faces(|t| self.is_interface_bdy(t));
