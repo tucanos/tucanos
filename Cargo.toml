@@ -33,7 +33,6 @@ cast_possible_wrap = "allow"
 should_panic_without_expect = "allow"
 unreadable_literal = "allow"
 # TODO: to remove
-cognitive_complexity = "allow"
 too_long_first_doc_paragraph = "allow"
 
 [profile.release]
