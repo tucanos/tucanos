@@ -162,13 +162,10 @@ pub struct MetricElem<const D: usize, C: Simplex, M: Metric<D>>(
     <C::GEOM<D> as GSimplex<D>>::ARRAY<M>,
 );
 
-impl<const D: usize, C: Simplex, M: Metric<D>> MetricElem<D, C, M> {
-    pub const fn new(ge: C::GEOM<D>, metrics: <C::GEOM<D> as GSimplex<D>>::ARRAY<M>) -> Self {
-        Self(ge, metrics)
-    }
-
-    #[allow(clippy::should_implement_trait)]
-    pub fn from_iter(iter: impl IntoIterator<Item = (Vertex<D>, M)>) -> Self {
+impl<const D: usize, C: Simplex, M: Metric<D>> FromIterator<(Vertex<D>, M)>
+    for MetricElem<D, C, M>
+{
+    fn from_iter<I: IntoIterator<Item = (Vertex<D>, M)>>(iter: I) -> Self {
         let mut ge = C::GEOM::<D>::default();
         let mut metrics = <C::GEOM<D> as GSimplex<D>>::ARRAY::default();
         let mut count = 0;
@@ -179,6 +176,12 @@ impl<const D: usize, C: Simplex, M: Metric<D>> MetricElem<D, C, M> {
         }
         assert_eq!(count, C::N_VERTS);
 
+        Self(ge, metrics)
+    }
+}
+
+impl<const D: usize, C: Simplex, M: Metric<D>> MetricElem<D, C, M> {
+    pub const fn new(ge: C::GEOM<D>, metrics: <C::GEOM<D> as GSimplex<D>>::ARRAY<M>) -> Self {
         Self(ge, metrics)
     }
 
