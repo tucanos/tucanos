@@ -2,7 +2,7 @@
 use crate::{
     Result, Tag, Vert2d, Vert3d,
     dual::{DualMesh2d, PolyMesh, PolyMeshType, SimplePolyMesh, merge_polylines},
-    io::{VTUEncoding, VTUFile},
+    io::VTUFile,
     mesh::{Edge, GenericMesh, Idx, Mesh, Prism, Quadrangle, Simplex, Triangle},
 };
 use std::iter;
@@ -197,11 +197,7 @@ impl<T: Idx> ExtrudedMesh2d<T> {
 
     /// Write the mesh in a `.vtu` file
     pub fn write_vtk(&self, file_name: &str) -> Result<()> {
-        let vtu = VTUFile::from_extruded_mesh(self, VTUEncoding::Binary);
-
-        vtu.export(file_name)?;
-
-        Ok(())
+        VTUFile::from_extruded_mesh(self).export(file_name)
     }
 }
 

@@ -10,7 +10,7 @@ use tmesh::mesh::partition::HilbertPartitioner;
 use tmesh::mesh::partition::{MetisPartitioner, MetisRecursive};
 use tmesh::{
     Vert3d, init_log,
-    io::{VTUEncoding, VTUFile},
+    io::VTUFile,
     mesh::{BoundaryMesh3d, GSimplex, Mesh, Mesh3d, Simplex},
 };
 use tucanos::{
@@ -256,7 +256,7 @@ fn main() -> Result<()> {
     mesh.check(&mesh.all_faces())?;
 
     // Save the input mesh in .vtu format
-    let mut writer = VTUFile::from_mesh(&mesh, VTUEncoding::Binary);
+    let mut writer = VTUFile::from_mesh(&mesh);
     writer.add_cell_data("edge_ratio", 1, mesh.edge_length_ratios());
     writer.add_cell_data("gamma", 1, mesh.elem_gammas());
     let mut skewness = vec![0.0_f64; mesh.n_elems()];
@@ -268,7 +268,7 @@ fn main() -> Result<()> {
 
     writer.export("ellipse.vtu")?;
     let bdy = mesh.boundary::<BoundaryMesh3d>().0;
-    VTUFile::from_mesh(&bdy, VTUEncoding::Binary).export("ellipse_bdy.vtu")?;
+    VTUFile::from_mesh(&bdy).export("ellipse_bdy.vtu")?;
 
     // Analytical geometry
     let topo = MeshTopology::new(&mesh);
