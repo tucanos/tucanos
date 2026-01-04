@@ -128,7 +128,7 @@ pub trait PolyMesh<const D: usize>: Sync + Sized {
     }
 
     /// Export the mesh to a `.vtu` file
-    fn write_vtk(&self, file_name: &str) -> Result<()> {
+    fn write_vtk(&self, file_name: &str) -> std::io::Result<()> {
         VTUFile::from_poly_mesh(self).export(file_name)
     }
 }
