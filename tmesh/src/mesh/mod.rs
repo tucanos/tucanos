@@ -1125,7 +1125,7 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     }
 
     /// Export the mesh to a `.vtu` file
-    fn write_vtk(&self, file_name: &str) -> Result<()> {
+    fn write_vtk(&self, file_name: &str) -> std::io::Result<()> {
         VTUFile::from_mesh(self).export(file_name)
     }
 

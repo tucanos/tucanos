@@ -1,6 +1,6 @@
 //! Extrude 2d triangle meshes to 3d as 1 layer of prisms
 use crate::{
-    Result, Tag, Vert2d, Vert3d,
+    Tag, Vert2d, Vert3d,
     dual::{DualMesh2d, PolyMesh, PolyMeshType, SimplePolyMesh, merge_polylines},
     io::VTUFile,
     mesh::{Edge, GenericMesh, Idx, Mesh, Prism, Quadrangle, Simplex, Triangle},
@@ -196,7 +196,7 @@ impl<T: Idx> ExtrudedMesh2d<T> {
     }
 
     /// Write the mesh in a `.vtu` file
-    pub fn write_vtk(&self, file_name: &str) -> Result<()> {
+    pub fn write_vtk(&self, file_name: &str) -> std::io::Result<()> {
         VTUFile::from_extruded_mesh(self).export(file_name)
     }
 }

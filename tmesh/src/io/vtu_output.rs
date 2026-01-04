@@ -1,11 +1,11 @@
 use crate::{
-    Result, Tag, Vertex,
+    Tag, Vertex,
     dual::{PolyMesh, PolyMeshType, merge_polylines},
     extruded::ExtrudedMesh2d,
     mesh::{Idx, Mesh, Prism, Simplex},
 };
 use rustc_hash::{FxBuildHasher, FxHashSet};
-use std::io::{BufWriter, Write};
+use std::io::{BufWriter, Result, Write};
 
 /// VTU file writer
 pub struct VTUFile {
@@ -110,8 +110,7 @@ impl VTUFile {
                 writeln!(writer, "        {}", a.to_xml_tag(offset))?;
                 offset += size_of::<u64>() + a.data.len();
             }
-            writeln!(writer, "      </{name}>")?;
-            Ok(())
+            writeln!(writer, "      </{name}>")
         };
 
         write_section("Points", std::slice::from_ref(&self.points))?;
@@ -281,8 +280,7 @@ impl DataArray {
 
     pub fn write<W: Write>(&self, writer: &mut W) -> Result<()> {
         writer.write_all(&self.data.len().to_le_bytes())?;
-        writer.write_all(&self.data)?;
-        Ok(())
+        writer.write_all(&self.data)
     }
 
     fn poly_connectivity<const D: usize, M: PolyMesh<D>>(mesh: &M) -> (Self, Self) {
