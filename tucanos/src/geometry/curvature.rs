@@ -332,7 +332,7 @@ pub fn compute_curvature<const D: usize, M: Mesh<D>>(
 pub fn write_curvature<const D: usize, M: Mesh<D>>(mesh: &M, fname: &str) -> Result<()> {
     let (u, v) = compute_curvature(mesh);
 
-    let mut writer = VTUFile::from_mesh(mesh, tmesh::io::VTUEncoding::Binary);
+    let mut writer = VTUFile::from_mesh(mesh);
     writer.add_point_data("u", D, u.iter().flatten().copied());
     writer.add_point_data("v", D, v.as_ref().unwrap().iter().flatten().copied());
     writer.export(fname)?;

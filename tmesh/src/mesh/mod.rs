@@ -31,7 +31,7 @@ use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 use crate::{
     Error, Result, Tag, Vertex,
     graph::CSRGraph,
-    io::{VTUEncoding, VTUFile},
+    io::VTUFile,
     mesh::gradient::{l2proj, least_squares},
     spatialindex::PointIndex,
 };
@@ -1126,11 +1126,7 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
 
     /// Export the mesh to a `.vtu` file
     fn write_vtk(&self, file_name: &str) -> Result<()> {
-        let vtu = VTUFile::from_mesh(self, VTUEncoding::Binary);
-
-        vtu.export(file_name)?;
-
-        Ok(())
+        VTUFile::from_mesh(self).export(file_name)
     }
 
     /// Build a `Mesh<D, C::FACE>` mesh containing faces such that `filter(tag)` is true

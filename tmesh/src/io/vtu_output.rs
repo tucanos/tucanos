@@ -7,15 +7,6 @@ use crate::{
 use rustc_hash::{FxBuildHasher, FxHashSet};
 use std::io::{BufWriter, Write};
 
-/// Encoding for vtk files
-#[derive(Clone, Copy)]
-pub enum VTUEncoding {
-    /// Ascii
-    Ascii,
-    /// Binary
-    Binary,
-}
-
 /// VTU file writer
 pub struct VTUFile {
     number_of_points: usize,
@@ -37,7 +28,7 @@ enum Version {
 
 impl VTUFile {
     /// Create a vtu Mesh writer
-    pub fn from_mesh<const D: usize, M: Mesh<D>>(mesh: &M, _encoding: VTUEncoding) -> Self {
+    pub fn from_mesh<const D: usize, M: Mesh<D>>(mesh: &M) -> Self {
         Self {
             number_of_points: mesh.n_verts(),
             number_of_cells: mesh.n_elems(),
@@ -50,7 +41,7 @@ impl VTUFile {
 
     /// Create a vtu ExtrudedMesh2d writer
     #[must_use]
-    pub fn from_extruded_mesh(mesh: &ExtrudedMesh2d<impl Idx>, _encoding: VTUEncoding) -> Self {
+    pub fn from_extruded_mesh(mesh: &ExtrudedMesh2d<impl Idx>) -> Self {
         Self {
             number_of_points: mesh.n_verts(),
             number_of_cells: mesh.n_prisms(),
@@ -62,10 +53,7 @@ impl VTUFile {
     }
 
     /// Create a vtu PolyMesh writer
-    pub fn from_poly_mesh<const D: usize, M: PolyMesh<D>>(
-        mesh: &M,
-        _encoding: VTUEncoding,
-    ) -> Self {
+    pub fn from_poly_mesh<const D: usize, M: PolyMesh<D>>(mesh: &M) -> Self {
         Self {
             number_of_points: mesh.n_verts(),
             number_of_cells: mesh.n_elems(),
@@ -419,14 +407,12 @@ impl DataArray {
 
 #[cfg(test)]
 mod tests {
-    use super::{VTUEncoding, VTUFile};
+    use super::VTUFile;
     use crate::mesh::{Mesh2d, rectangle_mesh};
 
     #[test]
     fn test_write_triangles() {
         let msh: Mesh2d = rectangle_mesh(1.0, 10, 2.0, 15);
-        let writer = VTUFile::from_mesh(&msh, VTUEncoding::Binary);
-
-        writer.export("toto.vtu").unwrap();
+        VTUFile::from_mesh(&msh).export("toto.vtu").unwrap();
     }
 }

@@ -2,4 +2,4 @@
 
 mod vtu_output;
 
-pub use vtu_output::{VTUEncoding, VTUFile};
+pub use vtu_output::VTUFile;

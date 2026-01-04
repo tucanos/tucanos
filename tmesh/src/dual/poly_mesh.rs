@@ -1,7 +1,7 @@
 //! General polyline, polygon and polyhedral meshes
 use crate::{
     Error, Result, Tag, Vertex,
-    io::{VTUEncoding, VTUFile},
+    io::VTUFile,
     mesh::{Mesh, Simplex},
 };
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
@@ -129,11 +129,7 @@ pub trait PolyMesh<const D: usize>: Sync + Sized {
 
     /// Export the mesh to a `.vtu` file
     fn write_vtk(&self, file_name: &str) -> Result<()> {
-        let vtu = VTUFile::from_poly_mesh(self, VTUEncoding::Ascii);
-
-        vtu.export(file_name)?;
-
-        Ok(())
+        VTUFile::from_poly_mesh(self).export(file_name)
     }
 }
 
