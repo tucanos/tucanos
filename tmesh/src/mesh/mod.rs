@@ -120,6 +120,7 @@ pub enum GradientMethod {
 }
 
 pub type FixedTags = (FxHashMap<Tag, Tag>, FxHashMap<[Tag; 2], Tag>);
+pub type FaceConnectivity<S> = FxHashMap<S, (usize, Option<usize>, Option<usize>)>;
 /// D-dimensional simplex mesh
 pub trait Mesh<const D: usize>: Send + Sync + Sized {
     type C: Simplex;
@@ -317,61 +318,44 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         <Self::C as Simplex>::DIM == D
     }
 
-    /// Compute all the mesh faces (boundary & internal)
-    /// a map from sorted face `[i0, i1, ...]` (`i0 < i1 < ...`) to the face index and face elements
-    /// (`e0` and `e1`) is returned.
-    /// If the faces can be oriented, it is oriented outwards for `e0` and inwards for `e1`
-    /// If the faces only belongs to one element, `i1 = usize::MAX`
-    fn all_faces(&self) -> FxHashMap<<Self::C as Simplex>::FACE, [usize; 3]> {
-        let mut res: FxHashMap<<Self::C as Simplex>::FACE, [usize; 3]> =
-            FxHashMap::with_hasher(FxBuildHasher);
-        let mut idx = 0;
+    /// Computes the connectivity graph of the mesh faces.
+    ///
+    /// Returns a map where the keys are the sorted faces, and the values are a tuple:
+    /// `(face_index, element_out, element_in)`.
+    ///
+    /// * `face_index`: A unique, sequential index for the face.
+    /// * `element_out`: The index of the element where the face orientation matches the canonical sort.
+    /// * `element_in`: The index of the element where the face orientation is flipped.
+    fn all_faces(&self) -> FaceConnectivity<<Self::C as Simplex>::FACE> {
+        let approx_n_faces = self.n_elems() + self.n_verts();
+        let mut res = FxHashMap::with_capacity_and_hasher(approx_n_faces, FxBuildHasher);
 
-        for (i_elem, e) in self.elems().enumerate() {
-            for f in e.faces() {
-                let tmp = f.sorted();
-                if <Self::C as Simplex>::FACE::N_VERTS > 1 {
-                    let i = if f.is_same(&tmp) { 1 } else { 2 };
-                    match res.entry(tmp) {
-                        std::collections::hash_map::Entry::Occupied(occupied_entry) => {
-                            let arr = occupied_entry.into_mut();
-                            assert_eq!(
-                                arr[i],
-                                usize::MAX,
-                                "face {} ({:?}) belongs to {} ({:?}) and {} ({:?}) with orientation {i}",
-                                arr[0],
-                                tmp,
-                                arr[i],
-                                self.elem(arr[i]),
-                                i_elem,
-                                e
-                            );
-                            arr[i] = i_elem;
-                        }
-                        std::collections::hash_map::Entry::Vacant(vacant_entry) => {
-                            let mut arr = [idx, usize::MAX, usize::MAX];
-                            arr[i] = i_elem;
-                            idx += 1;
-                            vacant_entry.insert(arr);
-                        }
+        for (i_elem, elem) in self.elems().enumerate() {
+            for f in elem.faces() {
+                let key = f.sorted();
+                let new_id = res.len();
+                let entry = res.entry(key).or_insert((new_id, None, None));
+                let slot = if <Self::C as Simplex>::FACE::N_VERTS > 1 {
+                    // Determine which slot to fill based on orientation
+                    if f.is_same(&key) {
+                        &mut entry.1
+                    } else {
+                        &mut entry.2
                     }
                 } else {
-                    match res.entry(tmp) {
-                        std::collections::hash_map::Entry::Occupied(occupied_entry) => {
-                            let arr = occupied_entry.into_mut();
-                            if arr[1] == usize::MAX {
-                                arr[1] = i_elem;
-                            } else {
-                                assert_eq!(arr[2], usize::MAX);
-                                arr[2] = i_elem;
-                            }
-                        }
-                        std::collections::hash_map::Entry::Vacant(vacant_entry) => {
-                            let arr = [idx, i_elem, usize::MAX];
-                            idx += 1;
-                            vacant_entry.insert(arr);
-                        }
+                    // For lower dimensions (1D/0D), fill first available slot
+                    if entry.1.is_none() {
+                        &mut entry.1
+                    } else {
+                        &mut entry.2
                     }
+                };
+
+                if let Some(existing) = slot.replace(i_elem) {
+                    panic!(
+                        "Non-manifold mesh: Face {:?} shared by >2 elements ({}, {}, {})",
+                        key, existing, i_elem, entry.0
+                    );
                 }
             }
         }
@@ -379,14 +363,13 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     }
 
     /// Compute element pairs corresponding to all the internal faces (for partitioning)
-    fn element_pairs(&self, faces: &FxHashMap<<Self::C as Simplex>::FACE, [usize; 3]>) -> CSRGraph {
-        let e2e = faces
-            .iter()
-            .map(|(_, &[_, i0, i1])| [i0, i1])
-            .filter(|&[i0, i1]| i0 != usize::MAX && i1 != usize::MAX)
-            .collect::<Vec<_>>();
-
-        CSRGraph::from_edges(e2e.iter().copied(), Some(self.n_elems()))
+    fn element_pairs(&self, faces: &FaceConnectivity<<Self::C as Simplex>::FACE>) -> CSRGraph {
+        let e2e: Vec<_> = faces
+            .values()
+            .filter_map(|&(_, i0, i1)| i0.zip(i1))
+            .map(Into::into)
+            .collect();
+        CSRGraph::from_edges(e2e.into_iter(), Some(self.n_elems()))
     }
 
     /// Fixes the mesh topology and orientation.
@@ -426,29 +409,27 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     /// - of internal faces to be oriented from the lower to the higher element tag
     fn fix_faces_orientation(
         &mut self,
-        all_faces: &FxHashMap<<Self::C as Simplex>::FACE, [usize; 3]>,
+        all_faces: &FaceConnectivity<<Self::C as Simplex>::FACE>,
     ) -> usize {
-        let flg = self
+        let flg: Vec<_> = self
             .faces()
-            .map(|f| {
-                let [_, i0, i1] = all_faces.get(&f.sorted()).unwrap();
-                if *i0 == usize::MAX || *i1 == usize::MAX {
-                    let i = if *i1 == usize::MAX { *i0 } else { *i1 };
-                    let e = self.elem(i);
-                    if e.faces().all(|f2| !f.is_same(&f2)) {
-                        return true;
-                    }
-                }
-                false
-            })
-            .collect::<Vec<_>>();
-
-        let n = flg
-            .iter()
             .enumerate()
-            .filter(|(_, f)| **f)
-            .map(|(i, _)| self.invert_face(i))
-            .count();
+            .filter_map(|(f_id, f)| {
+                let &(_, i0, i1) = all_faces.get(&f.sorted()).unwrap();
+                let e_id = match (i0, i1) {
+                    (Some(i), None) => i,
+                    (None, Some(i)) => i,
+                    _ => return None,
+                };
+                let to_inv = self.elem(e_id).faces().all(|f2| !f.is_same(&f2));
+                if to_inv { Some(f_id) } else { None }
+            })
+            .collect();
+
+        let n = flg.len();
+        for i in flg {
+            self.invert_face(i);
+        }
         debug!("{n} faces reoriented");
         n
     }
@@ -466,7 +447,7 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     /// Compute the faces that are connected to only one element and that are not already tagged
     fn tag_boundary_faces(
         &mut self,
-        all_faces: &FxHashMap<<Self::C as Simplex>::FACE, [usize; 3]>,
+        all_faces: &FaceConnectivity<<Self::C as Simplex>::FACE>,
     ) -> FxHashMap<Tag, Tag> {
         let mut res = FxHashMap::with_hasher(FxBuildHasher);
 
@@ -479,28 +460,34 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         let mut tags = self.ftags().collect();
 
         // add untagged boundary faces
-        for (f, &[_, i0, i1]) in all_faces {
-            if (i0 == usize::MAX || i1 == usize::MAX) && !tagged_faces.contains_key(f) {
-                let i = if i1 == usize::MAX { i0 } else { i1 };
-                let e = self.elem(i);
-                let mut f = *f;
-                let mut ok = false;
-                for f2 in e.faces() {
-                    if f2.sorted().is_same(&f) {
-                        f = f2;
-                        ok = true;
-                        break;
-                    }
+        for (f, &(_, i0, i1)) in all_faces {
+            let i = match (i0, i1) {
+                (Some(i), None) => i,
+                (None, Some(i)) => i,
+                _ => continue,
+            };
+            if tagged_faces.contains_key(f) {
+                continue;
+            }
+
+            let e = self.elem(i);
+            let mut f = *f;
+            let mut ok = false;
+            for f2 in e.faces() {
+                if f2.sorted().is_same(&f) {
+                    f = f2;
+                    ok = true;
+                    break;
                 }
-                assert!(ok);
-                let etag = self.etag(i);
-                if let Some(&tmp) = res.get(&etag) {
-                    self.add_faces(std::iter::once(f), std::iter::once(tmp));
-                } else {
-                    let tag = Self::find_tag(&mut tags);
-                    res.insert(etag, tag);
-                    self.add_faces(std::iter::once(f), std::iter::once(tag));
-                }
+            }
+            assert!(ok);
+            let etag = self.etag(i);
+            if let Some(&tmp) = res.get(&etag) {
+                self.add_faces(std::iter::once(f), std::iter::once(tmp));
+            } else {
+                let tag = Self::find_tag(&mut tags);
+                res.insert(etag, tag);
+                self.add_faces(std::iter::once(f), std::iter::once(tag));
             }
         }
 
@@ -510,7 +497,7 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     /// Compute the faces that are connected to elements with different tags and that are not already tagged
     fn tag_internal_faces(
         &mut self,
-        all_faces: &FxHashMap<<Self::C as Simplex>::FACE, [usize; 3]>,
+        all_faces: &FaceConnectivity<<Self::C as Simplex>::FACE>,
     ) -> FxHashMap<[Tag; 2], Tag> {
         let mut res = FxHashMap::with_hasher(FxBuildHasher);
 
@@ -523,8 +510,8 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         let mut used_tags = self.ftags().collect();
 
         // check tagged internal faces
-        for (f, &[_, i0, i1]) in all_faces {
-            if i0 != usize::MAX && i1 != usize::MAX {
+        for (f, &(_, i0, i1)) in all_faces {
+            if let (Some(i0), Some(i1)) = (i0, i1) {
                 let t0 = self.etag(i0);
                 let t1 = self.etag(i1);
                 if t0 != t1
@@ -539,8 +526,8 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         }
 
         // add untagged internal faces
-        for (f, &[_, i0, i1]) in all_faces {
-            if i0 != usize::MAX && i1 != usize::MAX {
+        for (f, &(_, i0, i1)) in all_faces {
+            if let (Some(i0), Some(i1)) = (i0, i1) {
                 let t0 = self.etag(i0);
                 let t1 = self.etag(i1);
                 if t0 != t1 && !tagged_faces.contains_key(f) {
@@ -577,7 +564,7 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     ///   - element to vertex connectivities
     ///   - element orientations
     ///   - boundary faces and faces connecting elements with different tags are present
-    fn check(&self, all_faces: &FxHashMap<<Self::C as Simplex>::FACE, [usize; 3]>) -> Result<()> {
+    fn check(&self, all_faces: &FaceConnectivity<<Self::C as Simplex>::FACE>) -> Result<()> {
         // lengths
         if self.par_elems().len() != self.par_etags().len() {
             return Err(Error::from("Inconsistent sizes (elems)"));
@@ -611,12 +598,8 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
             .map(|f| f.sorted())
             .collect::<FxHashSet<_>>();
 
-        for (f, [_, i0, i1]) in all_faces {
-            if *i0 == usize::MAX || *i1 == usize::MAX {
-                if !tagged_faces.contains(f) {
-                    return Err(Error::from(&format!("Boundary face {f:?} not tagged")));
-                }
-            } else {
+        for (f, (_, i0, i1)) in all_faces {
+            if let (Some(i0), Some(i1)) = (i0, i1) {
                 let t0 = self.etag(*i0);
                 let t1 = self.etag(*i1);
                 if t0 != t1 && !tagged_faces.contains(f) {
@@ -624,30 +607,37 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                         "Internal boundary face {f:?} not tagged ({t0} / {t1})"
                     )));
                 }
+            } else if !tagged_faces.contains(f) {
+                return Err(Error::from(&format!("Boundary face {f:?} not tagged")));
             }
         }
 
         for (f, t) in self.faces().zip(self.ftags()) {
-            let gf = self.gface(&f);
-            let fc = gf.center();
-            let tmp = f.sorted();
-            let [_, i0, i1] = all_faces.get(&tmp).unwrap();
-            if *i0 != usize::MAX && *i1 != usize::MAX && self.etag(*i0) == self.etag(*i1) {
-                return Err(Error::from(&format!(
-                    "Tagged face inside the domain: center = {fc:?}",
-                )));
-            } else if *i0 == usize::MAX || *i1 == usize::MAX {
-                let i = if *i1 == usize::MAX { *i0 } else { *i1 };
-                let ge = self.gelem(&self.elem(i));
-                let ec = ge.center();
-                if Self::faces_are_oriented() {
-                    let n = gf.normal(None);
-                    if n.dot(&(fc - ec)) < 0.0 {
-                        return Err(Error::from(&format!(
-                            "Invalid face orientation: center = {fc:?}, normal = {n:?}, face = {f:?}, tag = {t}"
-                        )));
+            let (_, i0, i1) = all_faces.get(&f.sorted()).unwrap();
+            match (i0, i1) {
+                (Some(i0), Some(i1)) => {
+                    if self.etag(*i0) == self.etag(*i1) {
+                        let fc = self.gface(&f).center();
+                        let msg = format!("Tagged face inside the domain: center = {fc:?}");
+                        return Err(Error::from(&msg));
                     }
                 }
+                (Some(i), None) | (None, Some(i)) => {
+                    if Self::faces_are_oriented() {
+                        let gf = self.gface(&f);
+                        let fc = gf.center();
+                        let ec = self.gelem(&self.elem(*i)).center();
+                        let n = gf.normal(None);
+                        if n.dot(&(fc - ec)) < 0.0 {
+                            let m = format!(
+                                "Invalid face orientation: center = {fc:?}, normal = {n:?}, \
+                                face = {f:?}, tag = {t}"
+                            );
+                            return Err(Error::from(&m));
+                        }
+                    }
+                }
+                _ => {}
             }
         }
 
@@ -658,8 +648,8 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                 .par_faces()
                 .filter(|f| {
                     let f = f.sorted();
-                    let [_, i0, i1] = all_faces.get(&f).unwrap();
-                    *i0 == usize::MAX || *i1 == usize::MAX
+                    let (_, i0, i1) = all_faces.get(&f).unwrap();
+                    i0.is_none() || i1.is_none()
                 })
                 .map(|f| {
                     let gf = self.gface(&f);
@@ -1396,24 +1386,24 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     /// face’s center.
     fn face_skewnesses(
         &self,
-        all_faces: &FxHashMap<<Self::C as Simplex>::FACE, [usize; 3]>,
+        all_faces: &FaceConnectivity<<Self::C as Simplex>::FACE>,
     ) -> impl Iterator<Item = (usize, usize, f64)> {
-        all_faces
-            .iter()
-            .filter(|&(_, [_, i0, i1])| *i0 != usize::MAX && *i1 != usize::MAX)
-            .map(|(f, &[_, i0, i1])| {
-                let fc = self.gface(f).center();
-                let ec0 = self.gelem(&self.elem(i0)).center();
-                let ec1 = self.gelem(&self.elem(i1)).center();
-                let e2f = fc - ec0;
-                let l_e2f = e2f.norm();
-                let e2e = ec1 - ec0;
-                let l_e2e = e2e.norm();
-                let tmp = e2e.dot(&e2f) / (l_e2e * l_e2f);
-                let ang = f64::acos(tmp.clamp(-1., 1.));
-                let s = l_e2f * ang.sin();
-                (i0, i1, s / l_e2e)
-            })
+        all_faces.iter().filter_map(|(f, &(_, i0, i1))| {
+            let (Some(i0), Some(i1)) = (i0, i1) else {
+                return None;
+            };
+            let fc = self.gface(f).center();
+            let ec0 = self.gelem(&self.elem(i0)).center();
+            let ec1 = self.gelem(&self.elem(i1)).center();
+            let e2f = fc - ec0;
+            let l_e2f = e2f.norm();
+            let e2e = ec1 - ec0;
+            let l_e2e = e2e.norm();
+            let tmp = e2e.dot(&e2f) / (l_e2e * l_e2f);
+            let ang = f64::acos(tmp.clamp(-1., 1.));
+            let s = l_e2f * ang.sin();
+            Some((i0, i1, s / l_e2e))
+        })
     }
 
     /// Compute the edge ratio for all the elements in the mesh

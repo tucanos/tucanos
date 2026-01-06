@@ -25,12 +25,12 @@ pub fn autotag<const D: usize, M: Mesh<D>>(
     let threshold = angle_deg.to_radians().cos();
 
     let mut e2e = Vec::with_capacity(faces.len());
-    for elems in faces.values() {
-        if elems[1] != usize::MAX && elems[2] != usize::MAX {
-            let n0 = msh.gelem(&msh.elem(elems[1])).normal(None).normalize();
-            let n1 = msh.gelem(&msh.elem(elems[2])).normal(None).normalize();
+    for (_, e1, e2) in faces.values() {
+        if let (Some(e1), Some(e2)) = (e1, e2) {
+            let n0 = msh.gelem(&msh.elem(*e1)).normal(None).normalize();
+            let n1 = msh.gelem(&msh.elem(*e2)).normal(None).normalize();
             if n0.dot(&n1) > threshold {
-                e2e.push([elems[1], elems[2]]);
+                e2e.push([*e1, *e2]);
             }
         }
     }
