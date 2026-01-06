@@ -65,22 +65,22 @@ impl VTUFile {
     }
 
     /// Add cell data
-    pub fn add_cell_data(
+    pub fn add_cell_data<T: ScalarData>(
         &mut self,
         name: &str,
         number_of_components: usize,
-        data: impl Iterator<Item = f64>,
+        data: impl Iterator<Item = T>,
     ) {
         self.cell_data
             .push(DataArray::new(name, number_of_components, data));
     }
 
     /// Add point data
-    pub fn add_point_data(
+    pub fn add_point_data<T: ScalarData>(
         &mut self,
         name: &str,
         number_of_components: usize,
-        data: impl Iterator<Item = f64>,
+        data: impl Iterator<Item = T>,
     ) {
         self.point_data
             .push(DataArray::new(name, number_of_components, data));
@@ -139,7 +139,7 @@ struct DataArray {
     data: Vec<u8>,
 }
 
-trait ScalarData: Sized {
+pub trait ScalarData: Sized {
     const TYPE_NAME: &'static str;
     type Bytes: IntoIterator<Item = u8>;
     fn to_le_bytes(self) -> Self::Bytes;
