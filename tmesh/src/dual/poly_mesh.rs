@@ -407,12 +407,12 @@ impl<const D: usize> SimplePolyMesh<D> {
         for i_elem in 0..mesh.n_elems() {
             elem_to_face_ptr[i_elem + 1] = <M::C as Simplex>::N_VERTS * (i_elem + 1);
         }
-        for (f, &[i_face, i0, i1]) in &all_faces {
+        for (f, &(i_face, i0, i1)) in &all_faces {
             face_to_node_ptr[i_face + 1] = <M::C as Simplex>::FACE::N_VERTS * (i_face + 1);
             for k in 0..<M::C as Simplex>::FACE::N_VERTS {
                 face_to_node[<M::C as Simplex>::FACE::N_VERTS * i_face + k] = f.get(k);
             }
-            if i0 != usize::MAX {
+            if let Some(i0) = i0 {
                 let mut ok = false;
                 for v in elem_to_face
                     .iter_mut()
@@ -427,7 +427,7 @@ impl<const D: usize> SimplePolyMesh<D> {
                 }
                 assert!(ok);
             }
-            if i1 != usize::MAX {
+            if let Some(i1) = i1 {
                 let mut ok = false;
                 for v in elem_to_face
                     .iter_mut()
@@ -442,7 +442,7 @@ impl<const D: usize> SimplePolyMesh<D> {
                 }
                 assert!(ok);
             }
-            if i0 == usize::MAX && i1 == usize::MAX {
+            if i0.is_none() && i1.is_none() {
                 let f = f.sorted();
                 ftags[i_face] = *tagged_faces.get(&f).unwrap();
             } else {

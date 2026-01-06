@@ -155,7 +155,7 @@ impl<T: Idx> DualMesh<3> for DualMesh3d<T> {
 
         // vertices: triangle centers
         let mut vert_idx_face = vec![usize::MAX; n_faces];
-        for (f, &[i_face, _, _]) in &all_faces {
+        for (f, &(i_face, _, _)) in &all_faces {
             let gf = msh.gface(f);
             let center = Self::get_tri_center(&gf, t);
             match center {
@@ -184,7 +184,7 @@ impl<T: Idx> DualMesh<3> for DualMesh3d<T> {
                 DualCellCenter::Face(f) => {
                     let face =
                         Triangle::new(e.get(f.get(0)), e.get(f.get(1)), e.get(f.get(2))).sorted();
-                    let i_face = all_faces.get(&face).unwrap()[0];
+                    let i_face = all_faces.get(&face).unwrap().0;
                     vert_idx_elem[i_elem] = vert_idx_face[i_face];
                 }
             }
@@ -227,7 +227,7 @@ impl<T: Idx> DualMesh<3> for DualMesh3d<T> {
         for (i_elem, e) in msh.elems().enumerate() {
             for f in e.faces() {
                 let tmp = f.sorted();
-                let i_face = all_faces.get(&tmp).unwrap()[0];
+                let i_face = all_faces.get(&tmp).unwrap().0;
                 for edg in f.edges() {
                     let (i_edge, sgn) = if edg.get(0) < edg.get(1) {
                         let tmp = Edge::new(edg.get(0), edg.get(1));
@@ -314,7 +314,7 @@ impl<T: Idx> DualMesh<3> for DualMesh3d<T> {
 
         for (f, tag) in msh.faces().zip(msh.ftags()) {
             let tmp = f.sorted();
-            let i_face = all_faces.get(&tmp).unwrap()[0];
+            let i_face = all_faces.get(&tmp).unwrap().0;
             for edg in f.edges() {
                 let tmp = Edge::from_iter(edg.sorted());
                 let i_edge = *all_edges.get(&tmp).unwrap();
