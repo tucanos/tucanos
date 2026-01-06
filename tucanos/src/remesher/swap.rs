@@ -139,17 +139,17 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
 
         let mut vx = None;
 
-        let etag = self
+        let edge_tag = self
             .topo
             .parent(cavity.tags[local_i0], cavity.tags[local_i1])
             .unwrap();
         // tag < 0 on fixed boundaries
-        if etag.1 < 0 {
+        if edge_tag.1 < 0 {
             trace_if!(dbg, "Cannot swap: fixed edge");
             return Ok(TrySwapResult::FixedEdge);
         }
 
-        if etag.0 == 1 {
+        if edge_tag.0 == 1 {
             trace_if!(dbg, "Cannot swap: tag");
             return Ok(TrySwapResult::CouldNotSwap);
         }
@@ -160,28 +160,30 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             }
 
             // check topo
-            let ptag = self.topo.parent(etag, cavity.tags[n]);
+            let ptag = self.topo.parent(edge_tag, cavity.tags[n]);
             if ptag.is_none() {
                 trace_if!(dbg, "Cannot swap, incompatible geometry");
                 continue;
             }
             let ptag = ptag.unwrap();
-            if ptag.0 != etag.0 || ptag.1 != etag.1 {
+            if ptag.0 != edge_tag.0 || ptag.1 != edge_tag.1 {
                 trace_if!(dbg, "Cannot swap, incompatible geometry");
                 continue;
             }
 
             // too difficult otherwise!
             if !cavity.tagged_faces.is_empty() {
-                assert!(cavity.tagged_faces.len() == 2);
+                assert_eq!(
+                    cavity.tagged_faces.len(),
+                    2,
+                    "{cavity:#?}, etag={edge_tag:?}"
+                );
                 if !cavity.tagged_faces().any(|(f, _)| f.contains(n)) {
                     continue;
                 }
             }
 
-            let ftype = FilledCavityType::ExistingVertex(n);
-            let filled_cavity = FilledCavity::new(cavity, ftype);
-
+            let filled_cavity = FilledCavity::new(cavity, FilledCavityType::ExistingVertex(n));
             if filled_cavity.is_same() {
                 continue;
             }
