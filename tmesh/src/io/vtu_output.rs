@@ -166,7 +166,6 @@ impl ScalarData for usize {
     }
 }
 
-#[cfg(feature = "64bit-tags")]
 impl ScalarData for i64 {
     const TYPE_NAME: &'static str = "Int64";
     type Bytes = [u8; 8];
@@ -175,7 +174,6 @@ impl ScalarData for i64 {
     }
 }
 
-#[cfg(feature = "32bit-tags")]
 impl ScalarData for i32 {
     const TYPE_NAME: &'static str = "Int32";
     type Bytes = [u8; 4];
@@ -184,7 +182,6 @@ impl ScalarData for i32 {
     }
 }
 
-#[cfg(not(any(feature = "32bit-tags", feature = "64bit-tags")))]
 impl ScalarData for i16 {
     const TYPE_NAME: &'static str = "Int16";
     type Bytes = [u8; 2];
@@ -196,6 +193,14 @@ impl ScalarData for i16 {
 impl ScalarData for u8 {
     const TYPE_NAME: &'static str = "UInt8";
     type Bytes = [Self; 1];
+    fn to_le_bytes(self) -> Self::Bytes {
+        self.to_le_bytes()
+    }
+}
+
+impl ScalarData for i8 {
+    const TYPE_NAME: &'static str = "Int8";
+    type Bytes = [u8; 1];
     fn to_le_bytes(self) -> Self::Bytes {
         self.to_le_bytes()
     }
