@@ -218,12 +218,12 @@ impl Topology {
 
     fn update_from_elems<C: Simplex>(
         &mut self,
-        elems: impl ExactSizeIterator<Item = C> + Clone,
-        etags: impl ExactSizeIterator<Item = Tag> + Clone,
+        elems: impl IntoIterator<Item = C>,
+        etags: impl IntoIterator<Item = Tag>,
         vtags: &mut [TopoTag],
     ) {
-        elems.into_iter().zip(etags).for_each(|(e, t)| {
-            e.into_iter().for_each(|i| {
+        for (e, t) in elems.into_iter().zip(etags) {
+            for i in e {
                 if vtags[i].1 != 0 && vtags[i].1 != t {
                     vtags[i] = (C::DIM as Dim, 0);
                 } else {
@@ -233,22 +233,20 @@ impl Topology {
                     }
                     vtags[i] = tag;
                 }
-            });
-        });
+            }
+        }
     }
 
     fn update_from_faces<C: Simplex>(
         &mut self,
-        elems: impl ExactSizeIterator<Item = C> + Clone,
-        etags: impl ExactSizeIterator<Item = Tag> + Clone,
-        faces: impl ExactSizeIterator<Item = C::FACE> + Clone,
-        ftags: impl ExactSizeIterator<Item = Tag> + Clone,
+        elems: impl ExactSizeIterator<Item = C>,
+        etags: &[Tag],
+        faces: impl IntoIterator<Item = C::FACE>,
+        ftags: impl IntoIterator<Item = Tag>,
         vtags: &mut [TopoTag],
     ) {
         let face2elem = get_face_to_elem(elems);
-        let etags = etags.collect::<Vec<_>>();
-
-        faces.into_iter().zip(ftags).for_each(|(f, t)| {
+        for (f, t) in faces.into_iter().zip(ftags) {
             let tag = (C::FACE::DIM as Dim, t);
             let parents = face2elem
                 .get(&f.sorted())
@@ -265,14 +263,14 @@ impl Topology {
             } else {
                 self.insert(tag, &parents);
             }
-            f.into_iter().for_each(|i| {
+            for i in f {
                 if vtags[i].0 == C::FACE::DIM as Dim && (vtags[i].1 == 0 || vtags[i].1 != t) {
                     vtags[i] = (C::FACE::DIM as Dim, 0);
                 } else {
                     vtags[i] = (C::FACE::DIM as Dim, t);
                 }
-            });
-        });
+            }
+        }
     }
 
     fn max_tag(&self, dim: Dim) -> Tag {
@@ -449,7 +447,7 @@ impl Topology {
         // (will not be valid if the vertex belongs to faces with different tags)
         self.update_from_faces(
             elems.clone(),
-            etags.clone(),
+            &etags.clone().collect::<Vec<_>>(),
             faces.clone(),
             ftags.clone(),
             &mut vtags,
