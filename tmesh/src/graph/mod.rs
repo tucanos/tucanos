@@ -49,7 +49,7 @@ pub struct CSRGraph {
 
 impl CSRGraph {
     fn set_ptr<T: TryInto<usize> + Ord + Debug>(
-        elems: impl ExactSizeIterator<Item = impl IntoIterator<Item = T> + Copy> + Clone,
+        elems: impl Iterator<Item = impl IntoIterator<Item = T> + Copy> + Clone,
         n_verts: Option<usize>,
     ) -> Self
     where
@@ -123,7 +123,7 @@ impl CSRGraph {
 
     /// Create a graph from edges
     pub fn from_edges<T: TryInto<usize> + Ord + Debug + Copy>(
-        edgs: impl ExactSizeIterator<Item = [T; 2]> + Clone,
+        edgs: impl Iterator<Item = [T; 2]> + Clone,
         n_verts: Option<usize>,
     ) -> Self
     where
