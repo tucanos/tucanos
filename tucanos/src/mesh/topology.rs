@@ -223,16 +223,22 @@ impl Topology {
         vtags: &mut [TopoTag],
     ) {
         for (e, t) in elems.into_iter().zip(etags) {
+            let mut inserted = false;
+            let tag = (C::DIM as Dim, t);
             for i in e {
                 if vtags[i].1 != 0 && vtags[i].1 != t {
                     vtags[i] = (C::DIM as Dim, 0);
                 } else {
-                    let tag = (C::DIM as Dim, t);
                     if self.get(tag).is_none() {
                         self.insert(tag, &[]);
+                        inserted = true;
                     }
                     vtags[i] = tag;
                 }
+            }
+            if !inserted && self.get(tag).is_none() {
+                // The triangle have no neighbour with the same tag so the tag was not inserted
+                self.insert(tag, &[]);
             }
         }
     }
