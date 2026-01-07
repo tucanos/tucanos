@@ -19,6 +19,8 @@ pub mod gradient;
 
 mod vector;
 
+use std::path::Path;
+
 use log::{debug, warn};
 use minimeshb::{reader::MeshbReader, writer::MeshbWriter};
 use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
@@ -1115,7 +1117,7 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     }
 
     /// Export the mesh to a `.vtu` file
-    fn write_vtk(&self, file_name: &str) -> std::io::Result<()> {
+    fn write_vtk<P: AsRef<Path>>(&self, file_name: P) -> std::io::Result<()> {
         VTUFile::from_mesh(self).export(file_name)
     }
 
