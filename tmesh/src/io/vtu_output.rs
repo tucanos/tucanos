@@ -5,7 +5,10 @@ use crate::{
     mesh::{Idx, Mesh, Prism, Simplex},
 };
 use rustc_hash::{FxBuildHasher, FxHashSet};
-use std::io::{BufWriter, Result, Write};
+use std::{
+    io::{BufWriter, Result, Write},
+    path::Path,
+};
 
 /// VTU file writer
 pub struct VTUFile {
@@ -87,7 +90,7 @@ impl VTUFile {
     }
 
     /// Write the file
-    pub fn export(&self, file_name: &str) -> Result<()> {
+    pub fn export<P: AsRef<Path>>(&self, file_name: P) -> Result<()> {
         let f = std::fs::File::create(file_name)?;
         let mut writer = BufWriter::new(f);
         writeln!(
