@@ -21,6 +21,12 @@ impl<T: Idx> Triangle<T> {
     }
 }
 
+impl<T: Idx> From<[T; 3]> for Triangle<T> {
+    fn from(array: [T; 3]) -> Self {
+        Self(array)
+    }
+}
+
 impl<T: Idx> IntoIterator for Triangle<T> {
     type Item = usize;
     type IntoIter = std::iter::Map<std::array::IntoIter<T, 3>, fn(T) -> usize>;
