@@ -398,6 +398,8 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         }
 
         GenericMesh::from_vecs(verts, elems, etags, faces, ftags)
+            .reorder_hilbert()
+            .0
     }
 
     /// Insert a new vertex, and get its index
