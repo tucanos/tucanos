@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use super::Remesher;
 use crate::{
     Result,
@@ -5,12 +7,14 @@ use crate::{
     metric::Metric,
     remesher::{
         cavity::{Cavity, CavityCheckStatus, FilledCavity, FilledCavityType},
-        sequential::argsort_edges_increasing_length,
         stats::{CollapseStats, StepStats},
     },
 };
 use log::{debug, info, trace};
-use tmesh::{mesh::Simplex, trace_if};
+use tmesh::{
+    mesh::{Edge, Simplex},
+    trace_if,
+};
 
 #[derive(Clone, Debug)]
 pub struct CollapseParams {
@@ -45,6 +49,32 @@ impl Default for CollapseParams {
 }
 
 impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
+    fn sort_edges_collapse(&self) -> Vec<Edge<usize>> {
+        let mut edges: Vec<_> = self.edges.keys().copied().collect();
+
+        let func = |e: &Edge<usize>| {
+            let p0 = self.verts.get(&e.get(0)).unwrap();
+            let p1 = self.verts.get(&e.get(1)).unwrap();
+
+            (
+                self.topo.parent(p0.tag, p1.tag).unwrap().0,
+                M::edge_length(&p0.vx, &p0.m, &p1.vx, &p1.m),
+            )
+        };
+
+        edges.sort_by(|e0, e1| {
+            let (d0, l0) = func(e0);
+            let (d1, l1) = func(e1);
+
+            match d0.cmp(&d1) {
+                Ordering::Less => Ordering::Less,
+                Ordering::Equal => l0.partial_cmp(&l1).unwrap(),
+                Ordering::Greater => Ordering::Greater,
+            }
+        });
+        edges
+    }
+
     fn perform_collapse(
         &mut self,
         cavity: &Cavity<D, C, M>,
@@ -109,27 +139,26 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         loop {
             n_iter += 1;
 
-            let edges: Vec<_> = self.edges.keys().copied().collect();
-            let dims_and_lengths: Vec<_> = self.dims_and_lengths_iter().collect();
-            let indices = argsort_edges_increasing_length(&dims_and_lengths);
+            let edges = self.sort_edges_collapse();
 
             let mut n_collapses = 0;
             let mut n_fails = 0;
-            for i_edge in indices {
-                let edg = edges[i_edge];
-                let dbg = self.debug_edge(&edg);
-                if dims_and_lengths[i_edge].1 < params.l {
+            for edg in edges {
+                let dbg = self.debug_edge(edg);
+
+                let mut i0 = edg.get(0);
+                let mut i1 = edg.get(1);
+                if !self.verts.contains_key(&i0) {
+                    trace_if!(dbg, "Cannot collapse: vertex deleted");
+                    continue;
+                }
+                if !self.verts.contains_key(&i1) {
+                    trace_if!(dbg, "Cannot collapse: vertex deleted");
+                    continue;
+                }
+                let length = self.scaled_edge_length(edg);
+                if length < params.l {
                     trace_if!(dbg, "Try to collapse edgs {edg:?}");
-                    let mut i0 = edg.get(0);
-                    let mut i1 = edg.get(1);
-                    if !self.verts.contains_key(&i0) {
-                        trace_if!(dbg, "Cannot collapse: vertex deleted");
-                        continue;
-                    }
-                    if !self.verts.contains_key(&i1) {
-                        trace_if!(dbg, "Cannot collapse: vertex deleted");
-                        continue;
-                    }
 
                     let mut topo_0 = self.verts.get(&i0).unwrap().tag;
                     let mut topo_1 = self.verts.get(&i1).unwrap().tag;
