@@ -93,7 +93,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         cavity: &mut Cavity<D, C, M>,
         geom: &G,
     ) -> Result<TrySwapResult> {
-        let dbg = self.debug_edge(&edg);
+        let dbg = self.debug_edge(edg);
 
         trace_if!(dbg, "Try to swap edge {edg:?}");
 
