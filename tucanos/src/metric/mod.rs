@@ -142,7 +142,12 @@ pub trait Metric<const D: usize>:
         };
 
         let vol = vol / (fac * m.vol() * G::ideal_vol());
-        let q = libm::pow(vol, 2. / G::TOPO::DIM as f64) / l;
+        let q = match G::TOPO::DIM {
+            0 => panic!("Dimension 0 elements are not supported"),
+            1 => vol * vol,
+            2 => vol,
+            d => libm::pow(vol, 2. / d as f64),
+        } / l;
         assert!(q >= 0.0, "q = {q:.2e}, ge = {ge:?}, vol = {:.2e}", ge.vol());
         assert!(
             q < 1.0 + 1e-8,
