@@ -93,7 +93,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         cavity: &mut Cavity<D, C, M>,
         geom: &G,
     ) -> Result<TrySwapResult> {
-        let dbg = self.debug_edge(&edg);
+        let dbg = self.debug_edge(edg);
 
         trace_if!(dbg, "Try to swap edge {edg:?}");
 
@@ -214,6 +214,10 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         Ok(TrySwapResult::CouldNotSwap)
     }
 
+    fn sort_edges_swap(&self) -> Vec<Edge<usize>> {
+        self.edges.keys().copied().collect()
+    }
+
     /// Loop over the edges and perform edge swaps if
     /// - the quality of an adjacent element is < `q_target`
     /// - no edge smaller than
@@ -237,8 +241,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         let mut cavity = Cavity::new();
         loop {
             n_iter += 1;
-            let mut edges = Vec::with_capacity(self.edges.len());
-            edges.extend(self.edges.keys().copied());
+            let edges = self.sort_edges_swap();
 
             let mut n_swaps = 0;
             let mut n_fails = 0;

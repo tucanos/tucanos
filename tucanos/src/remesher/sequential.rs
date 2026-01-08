@@ -5,39 +5,13 @@ use super::stats::{InitStats, Stats, StepStats};
 use super::swap::SwapParams;
 use crate::mesh::MeshTopology;
 use crate::metric::MetricElem;
-use crate::{Dim, Error, Result, Tag, TopoTag, geometry::Geometry, mesh::Topology, metric::Metric};
+use crate::{Error, Result, Tag, TopoTag, geometry::Geometry, mesh::Topology, metric::Metric};
 use log::{debug, info};
 use rustc_hash::FxHashMap;
 use sorted_vec::SortedVec;
-use std::{cmp::Ordering, fs::File, io::Write, time::Instant};
+use std::{fs::File, io::Write, time::Instant};
 use tmesh::Vertex;
 use tmesh::mesh::{Edge, GSimplex, GenericMesh, Mesh, Simplex, get_face_to_elem};
-
-// /// Get edged indices such that they are sorted by increasing tag dimension and then by
-// /// increasing edge length
-#[must_use]
-pub(super) fn argsort_edges_increasing_length(f: &[(Dim, f64)]) -> Vec<usize> {
-    let mut indices = Vec::with_capacity(f.len());
-    indices.extend(0..f.len());
-    indices.sort_by(|i, j| match f[*i].0.cmp(&f[*j].0) {
-        Ordering::Less => Ordering::Less,
-        Ordering::Equal => f[*i].1.partial_cmp(&f[*j].1).unwrap(),
-        Ordering::Greater => Ordering::Greater,
-    });
-    indices
-}
-
-#[must_use]
-pub(super) fn argsort_edges_decreasing_length(f: &[(Dim, f64)]) -> Vec<usize> {
-    let mut indices = Vec::with_capacity(f.len());
-    indices.extend(0..f.len());
-    indices.sort_by(|i, j| match f[*i].0.cmp(&f[*j].0) {
-        Ordering::Less => Ordering::Less,
-        Ordering::Equal => f[*j].1.partial_cmp(&f[*i].1).unwrap(),
-        Ordering::Greater => Ordering::Greater,
-    });
-    indices
-}
 
 /// Vertex information
 #[derive(Debug)]
@@ -506,7 +480,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             if let Some(e) = e {
                 *e += 1;
             } else {
-                if self.debug_edge(&edg) {
+                if self.debug_edge(edg) {
                     info!("Insert edge {edg:?}");
                 }
                 self.edges.insert(edg, 1);
@@ -587,7 +561,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
     /// Select edges for which trace is enabled.
     #[must_use]
     #[cfg(not(feature = "trace_edges"))]
-    pub const fn debug_edge(&self, _edg: &Edge<usize>) -> bool {
+    pub const fn debug_edge(&self, _edg: Edge<usize>) -> bool {
         false
     }
 
@@ -656,22 +630,12 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
     }
 
     /// Compute the length of an edge in metric space
-    fn scaled_edge_length(&self, edg: Edge<usize>) -> f64 {
+    #[must_use]
+    pub fn scaled_edge_length(&self, edg: Edge<usize>) -> f64 {
         let p0 = self.verts.get(&edg.get(0)).unwrap();
         let p1 = self.verts.get(&edg.get(1)).unwrap();
 
         M::edge_length(&p0.vx, &p0.m, &p1.vx, &p1.m)
-    }
-
-    /// Compute the length of an edge in metric space and the dimension of its topo entity
-    fn dim_and_scaled_edge_length(&self, edg: Edge<usize>) -> (Dim, f64) {
-        let p0 = self.verts.get(&edg.get(0)).unwrap();
-        let p1 = self.verts.get(&edg.get(1)).unwrap();
-
-        (
-            self.topo.parent(p0.tag, p1.tag).unwrap().0,
-            M::edge_length(&p0.vx, &p0.m, &p1.vx, &p1.m),
-        )
     }
 
     /// Get the metric at every vertex
@@ -683,13 +647,6 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
     /// Get an iterator over edge length
     pub fn lengths_iter(&self) -> impl Iterator<Item = f64> + '_ {
         self.edges.keys().map(|k| self.scaled_edge_length(*k))
-    }
-
-    /// Get an iterator over edge topo dimension and length
-    pub(super) fn dims_and_lengths_iter(&self) -> impl Iterator<Item = (Dim, f64)> + '_ {
-        self.edges
-            .keys()
-            .map(|k| self.dim_and_scaled_edge_length(*k))
     }
 
     /// Get the edge lengths

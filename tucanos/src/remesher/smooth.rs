@@ -284,6 +284,11 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
 
         (n_fails, n_min, n_smooth)
     }
+
+    fn sort_verts_smooth(&self) -> Vec<usize> {
+        self.verts.keys().copied().collect()
+    }
+
     /// Perform mesh smoothing
     pub fn smooth<G: Geometry<D>>(
         &mut self,
@@ -296,7 +301,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         // We modify the vertices while iterating over them so we must copy
         // the keys. Apart from going unsafe the only way to avoid this would be
         // to have one RefCell for each VtxInfo but copying self.verts is cheaper.
-        let verts = self.verts.keys().copied().collect::<Vec<_>>();
+        let verts = self.sort_verts_smooth();
 
         let mut cavity = Cavity::new();
         for iter in 0..params.n_iter {
