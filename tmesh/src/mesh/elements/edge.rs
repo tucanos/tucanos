@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use std::ops::Index;
 
 /// Edge
-#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug, Ord, PartialOrd)]
 pub struct Edge<T: Idx>(pub(crate) [T; 2]);
 
 impl<T: Idx> Edge<T> {

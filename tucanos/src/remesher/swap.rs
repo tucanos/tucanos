@@ -18,7 +18,7 @@ enum TrySwapResult {
     QualitySufficient,
     FixedEdge,
     CouldNotSwap,
-    CouldSwap(usize),
+    CouldSwap(usize, f64),
 }
 
 #[derive(Clone, Debug)]
@@ -37,6 +37,12 @@ pub struct SwapParams {
     pub min_l_abs: f64,
     /// Max angle between the normals of the new faces and the geometry (in degrees)
     pub max_angle: f64,
+    /// Use an alternative algorithm where edges are ordered
+    ///
+    /// In this case `q` and `max_iter` are ignored
+    pub ordered: bool,
+    /// Stops the `ordered` algorithm once this improvement factor is reached.
+    pub min_improvement_factor: f64,
 }
 
 impl Default for SwapParams {
@@ -49,6 +55,8 @@ impl Default for SwapParams {
             min_l_rel: 0.75,
             min_l_abs: 0.75 / f64::sqrt(2.0),
             max_angle: 25.0,
+            ordered: false,
+            min_improvement_factor: 1.05, // Default to 5%
         }
     }
 }
@@ -206,7 +214,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             }
         }
         vx.map_or(TrySwapResult::CouldNotSwap, |vx| {
-            TrySwapResult::CouldSwap(vx)
+            TrySwapResult::CouldSwap(vx, q_ref)
         })
     }
 
@@ -227,6 +235,13 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         geom: &G,
         debug: bool,
     ) -> Result<u32> {
+        if params.ordered {
+            ordered::Swapper::default().swap(self, params, geom)?;
+            if debug {
+                self.check().unwrap();
+            }
+            return Ok(1);
+        }
         debug!("Swap edges: target quality = {}", params.q);
 
         let mut n_iter = 0;
@@ -243,7 +258,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                 cavity.init_from_edge(edg, self);
                 match self.find_swap_vertex(edg, params, &cavity, geom) {
                     TrySwapResult::CouldNotSwap => n_fails += 1,
-                    TrySwapResult::CouldSwap(vx) => {
+                    TrySwapResult::CouldSwap(vx, _) => {
                         trace_if!(self.debug_edge(edg), "Swap from {vx}");
                         self.perform_swap(&cavity, vx, &edg)?;
                         n_swaps += 1;
@@ -261,6 +276,195 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                 }
                 return Ok(n_iter);
             }
+        }
+    }
+}
+
+mod ordered {
+    use std::{
+        cmp::Ordering,
+        collections::{BTreeSet, hash_map::Entry},
+    };
+
+    use rustc_hash::FxHashMap;
+    use tmesh::mesh::{Edge, Simplex};
+
+    use crate::{
+        geometry::Geometry,
+        metric::Metric,
+        remesher::{
+            Remesher, SwapParams,
+            cavity::Cavity,
+            stats::{StepStats, SwapStats},
+            swap::TrySwapResult,
+        },
+    };
+
+    /// Represents a proposed swap
+    #[derive(Clone, Copy)]
+    struct SwapProposal {
+        /// The index of the target vertex for the swap.
+        vertex: usize,
+        /// Improvement factor of the quality when the edge is swapped
+        improvement_factor: f64,
+    }
+
+    impl From<&f64> for SwapProposal {
+        fn from(value: &f64) -> Self {
+            Self {
+                vertex: 0,
+                improvement_factor: *value,
+            }
+        }
+    }
+
+    struct PrioritizedSwap {
+        proposal: SwapProposal,
+        edge: Edge<usize>,
+    }
+
+    impl Ord for PrioritizedSwap {
+        fn cmp(&self, other: &Self) -> Ordering {
+            self.proposal
+                .improvement_factor
+                .total_cmp(&other.proposal.improvement_factor)
+                .then_with(|| self.edge.sorted().cmp(&other.edge.sorted()))
+        }
+    }
+
+    impl PartialOrd for PrioritizedSwap {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    impl PartialEq for PrioritizedSwap {
+        fn eq(&self, other: &Self) -> bool {
+            self.cmp(other) == Ordering::Equal
+        }
+    }
+
+    impl Eq for PrioritizedSwap {}
+    #[derive(Default)]
+    pub struct Swapper<const D: usize, C: Simplex, M: Metric<D>> {
+        /// Sorted swap proposals
+        tree: BTreeSet<PrioritizedSwap>,
+        /// Edge to `improvement_factor` map to allow `tree` indexation
+        map: FxHashMap<Edge<usize>, f64>,
+        cavity: Cavity<D, C, M>,
+        cavity_edges: Vec<Edge<usize>>,
+        num_swaps: usize,
+        num_fails: usize,
+    }
+
+    impl<const D: usize, C: Simplex, M: Metric<D>> Swapper<D, C, M> {
+        /// Collect the cavity edges (excluding the seed edge)
+        fn collect_cavity_edges(&mut self) {
+            self.cavity_edges.clear();
+            for f in &self.cavity.faces {
+                for edge in f.0.edges() {
+                    self.cavity_edges.push(edge.sorted());
+                }
+            }
+            self.cavity_edges.sort_unstable();
+            self.cavity_edges.dedup();
+            for e in &mut self.cavity_edges {
+                *e = self.cavity.global_elem(e);
+            }
+        }
+
+        fn new_proposal<G: Geometry<D>>(
+            &mut self,
+            edge: Edge<usize>,
+            remesher: &Remesher<D, C, M>,
+            params: &SwapParams,
+            geom: &G,
+        ) -> Option<SwapProposal> {
+            self.cavity.init_from_edge(edge, remesher);
+            let quality_before = self.cavity.q_min;
+            match remesher.find_swap_vertex(edge, params, &self.cavity, geom) {
+                TrySwapResult::CouldNotSwap => {
+                    self.num_fails += 1;
+                    None
+                }
+                TrySwapResult::CouldSwap(vertex, quality_after) => {
+                    self.num_swaps += 1;
+                    Some(SwapProposal {
+                        vertex,
+                        improvement_factor: quality_after / quality_before,
+                    })
+                }
+                _ => None,
+            }
+        }
+
+        pub fn swap<G: Geometry<D>>(
+            mut self,
+            remesher: &mut Remesher<D, C, M>,
+            params: &SwapParams,
+            geom: &G,
+        ) -> crate::Result<()> {
+            for &edge in remesher.edges.keys() {
+                if let Some(candidate) = self.new_proposal(edge, remesher, params, geom) {
+                    self.tree.insert(PrioritizedSwap {
+                        proposal: candidate,
+                        edge,
+                    });
+                    self.map.insert(edge.sorted(), candidate.improvement_factor);
+                }
+            }
+            while let Some(edge) = self.tree.pop_last() {
+                if edge.proposal.improvement_factor < params.min_improvement_factor {
+                    break;
+                }
+                self.cavity.init_from_edge(edge.edge, remesher);
+                remesher.perform_swap(&self.cavity, edge.proposal.vertex, &edge.edge)?;
+                self.map.remove(&edge.edge.sorted());
+                self.collect_cavity_edges();
+                let cavity_edges = std::mem::take(&mut self.cavity_edges);
+                for &edge in &cavity_edges {
+                    let sw = self.new_proposal(edge, remesher, params, geom);
+                    match (self.map.entry(edge.sorted()), sw) {
+                        (Entry::Occupied(mut ve), Some(spec)) => {
+                            // replace
+                            self.tree.remove(&PrioritizedSwap {
+                                proposal: ve.get().into(),
+                                edge,
+                            });
+                            ve.insert(spec.improvement_factor);
+                            self.tree.insert(PrioritizedSwap {
+                                proposal: spec,
+                                edge,
+                            });
+                        }
+                        (Entry::Occupied(ve), None) => {
+                            // remove
+                            self.tree.remove(&PrioritizedSwap {
+                                proposal: ve.get().into(),
+                                edge,
+                            });
+                            ve.remove();
+                        }
+                        (Entry::Vacant(ve), Some(spec)) => {
+                            // insert
+                            ve.insert(spec.improvement_factor);
+                            self.tree.insert(PrioritizedSwap {
+                                proposal: spec,
+                                edge,
+                            });
+                        }
+                        (Entry::Vacant(_), None) => {}
+                    }
+                }
+                self.cavity_edges = cavity_edges;
+                assert_eq!(self.tree.len(), self.map.len());
+            }
+            remesher.stats.push(StepStats::Swap(SwapStats::new(
+                self.num_swaps,
+                self.num_fails,
+                remesher,
+            )));
+            Ok(())
         }
     }
 }

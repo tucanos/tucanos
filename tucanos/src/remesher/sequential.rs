@@ -114,6 +114,31 @@ impl RemesherParams {
             debug: false,
         }
     }
+
+    #[must_use]
+    pub fn new_ordered(max_angle: f64, n_steps: usize) -> Self {
+        let pattern = [
+            RemeshingStep::Collapse(CollapseParams {
+                max_angle,
+                ..CollapseParams::default()
+            }),
+            RemeshingStep::Split(SplitParams::default()),
+            RemeshingStep::Swap(SwapParams {
+                max_angle,
+                ordered: true,
+                ..SwapParams::default()
+            }),
+            RemeshingStep::Smooth(SmoothParams {
+                max_angle,
+                ..SmoothParams::default()
+            }),
+        ];
+        let steps = (0..n_steps).flat_map(|_| pattern.clone()).collect();
+        Self {
+            steps,
+            debug: false,
+        }
+    }
 }
 
 impl Default for RemesherParams {
@@ -1611,6 +1636,26 @@ mod tests {
 
         remesher.check()?;
 
+        Ok(())
+    }
+    #[test]
+    fn test_ordered_swap_3d() -> Result<()> {
+        let mesh = test_mesh_3d();
+        let topo = MeshTopology::new(&mesh);
+        let geom = NoGeometry();
+        let h = vec![AnisoMetric3d::from_diagonal(&[10., 80., 10.]); mesh.n_verts()];
+        let params = RemesherParams::new_ordered(25., 4);
+        let mut remesher = Remesher::new(&mesh, &topo, &h, &geom)?;
+        remesher.remesh(&params, &geom)?;
+        let s = &remesher.stats().last().unwrap().remesher_stats();
+        println!("{} {}", s.stats_l.mean, s.stats_q.mean);
+        remesher.to_mesh(false).write_vtk("debug.vtu")?;
+        assert_delta!(s.stats_l.mean, 1.0, 0.04);
+        assert!(s.stats_q.mean > 0.78);
+        let m = remesher.to_mesh(false);
+        println!("{}", m.n_elems());
+        assert!(m.n_elems() > 1000);
+        assert!(m.n_elems() < 1100);
         Ok(())
     }
 
