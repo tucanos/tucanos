@@ -18,7 +18,7 @@ enum TrySwapResult {
     QualitySufficient,
     FixedEdge,
     CouldNotSwap,
-    CouldSwap(usize),
+    CouldSwap(usize, f64),
 }
 
 #[derive(Clone, Debug)]
@@ -37,6 +37,10 @@ pub struct SwapParams {
     pub min_l_abs: f64,
     /// Max angle between the normals of the new faces and the geometry (in degrees)
     pub max_angle: f64,
+    /// Use an alternative algorithm where edges are kept sorted
+    ///
+    /// In this case `q` and `max_iter` are ignored
+    pub sorted: bool,
 }
 
 impl Default for SwapParams {
@@ -49,6 +53,7 @@ impl Default for SwapParams {
             min_l_rel: 0.75,
             min_l_abs: 0.75 / f64::sqrt(2.0),
             max_angle: 25.0,
+            sorted: false,
         }
     }
 }
@@ -206,7 +211,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             }
         }
         vx.map_or(TrySwapResult::CouldNotSwap, |vx| {
-            TrySwapResult::CouldSwap(vx)
+            TrySwapResult::CouldSwap(vx, q_ref)
         })
     }
 
@@ -227,6 +232,10 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         geom: &G,
         debug: bool,
     ) -> Result<u32> {
+        if params.sorted {
+            sorted::swap(self, params, geom)?;
+            return Ok(1);
+        }
         debug!("Swap edges: target quality = {}", params.q);
 
         let mut n_iter = 0;
@@ -243,7 +252,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                 cavity.init_from_edge(edg, self);
                 match self.find_swap_vertex(edg, params, &cavity, geom) {
                     TrySwapResult::CouldNotSwap => n_fails += 1,
-                    TrySwapResult::CouldSwap(vx) => {
+                    TrySwapResult::CouldSwap(vx, _) => {
                         trace_if!(self.debug_edge(edg), "Swap from {vx}");
                         self.perform_swap(&cavity, vx, &edg)?;
                         n_swaps += 1;
@@ -262,5 +271,161 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                 return Ok(n_iter);
             }
         }
+    }
+}
+
+mod sorted {
+    use std::{
+        cmp::Ordering,
+        collections::{BTreeSet, hash_map::Entry},
+    };
+
+    use rustc_hash::FxHashMap;
+    use tmesh::mesh::{Edge, Simplex};
+
+    use crate::{
+        geometry::Geometry,
+        metric::Metric,
+        remesher::{Remesher, SwapParams, cavity::Cavity, swap::TrySwapResult},
+    };
+
+    #[derive(Clone, Copy)]
+    struct CavitySpec {
+        vertex: usize,
+        // TODO: merge both fields ?
+        quality_before: f64,
+        quality_after: f64,
+    }
+
+    impl CavitySpec {
+        fn quality_ratio(&self) -> f64 {
+            self.quality_before / self.quality_after
+        }
+    }
+
+    struct ComparableCavity {
+        spec: CavitySpec,
+        edge: Edge<usize>,
+    }
+
+    fn edge_to_key(e: &Edge<usize>) -> [usize; 2] {
+        let s = e.sorted();
+        [s.get(0), s.get(1)]
+    }
+    impl Ord for ComparableCavity {
+        fn cmp(&self, other: &Self) -> Ordering {
+            match self
+                .spec
+                .quality_ratio()
+                .total_cmp(&other.spec.quality_ratio())
+            {
+                Ordering::Less => Ordering::Less,
+                Ordering::Equal => edge_to_key(&self.edge).cmp(&edge_to_key(&other.edge)),
+                Ordering::Greater => Ordering::Greater,
+            }
+        }
+    }
+
+    impl PartialOrd for ComparableCavity {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    impl PartialEq for ComparableCavity {
+        fn eq(&self, other: &Self) -> bool {
+            self.cmp(other) == Ordering::Equal
+        }
+    }
+
+    impl Eq for ComparableCavity {}
+
+    fn get_cavity_edges<const D: usize, C: Simplex, M: Metric<D>>(
+        cavity: &Cavity<D, C, M>,
+        cavity_edges: &mut Vec<Edge<usize>>,
+    ) {
+        cavity_edges.clear();
+        for f in &cavity.faces {
+            for edge in f.0.edges() {
+                cavity_edges.push(edge.sorted());
+            }
+        }
+        cavity_edges.sort_unstable();
+        cavity_edges.dedup();
+        for e in cavity_edges {
+            *e = cavity.global_elem(e);
+        }
+    }
+    pub fn swap<const D: usize, C: Simplex, M: Metric<D>, G: Geometry<D>>(
+        remesher: &mut Remesher<D, C, M>,
+        params: &SwapParams,
+        geom: &G,
+    ) -> crate::Result<()> {
+        let mut tree = BTreeSet::default();
+        let mut map = FxHashMap::default();
+        let mut cavity = Cavity::new();
+        for &edge in remesher.edges.keys() {
+            cavity.init_from_edge(edge, remesher);
+            let quality_before = cavity.q_min;
+            if let TrySwapResult::CouldSwap(vertex, quality_after) =
+                remesher.find_swap_vertex(edge, params, &cavity, geom)
+            {
+                let spec = CavitySpec {
+                    vertex,
+                    quality_before,
+                    quality_after,
+                };
+                tree.insert(ComparableCavity { spec, edge });
+                map.insert(edge.sorted(), spec);
+            }
+        }
+        let mut cavity_edges = Vec::default();
+        while let Some(edge) = tree.pop_first() {
+            cavity.init_from_edge(edge.edge, remesher);
+            remesher.perform_swap(&cavity, edge.spec.vertex, &edge.edge)?;
+            map.remove(&edge.edge.sorted());
+            get_cavity_edges(&cavity, &mut cavity_edges);
+            for &edge in &cavity_edges {
+                cavity.init_from_edge(edge, remesher);
+                let quality_before = cavity.q_min;
+                let sw = remesher.find_swap_vertex(edge, params, &cavity, geom);
+                match (map.entry(edge.sorted()), sw) {
+                    (Entry::Occupied(mut ve), TrySwapResult::CouldSwap(vertex, quality_after)) => {
+                        // replace
+                        tree.remove(&ComparableCavity {
+                            spec: *ve.get(),
+                            edge,
+                        });
+                        let spec = CavitySpec {
+                            vertex,
+                            quality_before,
+                            quality_after,
+                        };
+                        ve.insert(spec);
+                        tree.insert(ComparableCavity { spec, edge });
+                    }
+                    (Entry::Occupied(ve), _) => {
+                        // remove
+                        tree.remove(&ComparableCavity {
+                            spec: *ve.get(),
+                            edge,
+                        });
+                        ve.remove();
+                    }
+                    (Entry::Vacant(ve), TrySwapResult::CouldSwap(vertex, quality_after)) => {
+                        // insert
+                        let spec = CavitySpec {
+                            vertex,
+                            quality_before,
+                            quality_after,
+                        };
+                        ve.insert(spec);
+                        tree.insert(ComparableCavity { spec, edge });
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Ok(())
     }
 }

@@ -186,7 +186,7 @@ impl PySwapParams {
             max_angle: other.max_angle,
         }
     }
-    const fn to(&self) -> SwapParams {
+    fn to(&self) -> SwapParams {
         SwapParams {
             q: self.q,
             max_iter: self.max_iter,
@@ -195,6 +195,7 @@ impl PySwapParams {
             min_l_rel: self.min_l_rel,
             min_l_abs: self.min_l_abs,
             max_angle: self.max_angle,
+            ..Default::default()
         }
     }
 }
