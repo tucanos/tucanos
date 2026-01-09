@@ -292,15 +292,7 @@ mod sorted {
     #[derive(Clone, Copy)]
     struct CavitySpec {
         vertex: usize,
-        // TODO: merge both fields ?
-        quality_before: f64,
-        quality_after: f64,
-    }
-
-    impl CavitySpec {
-        fn quality_ratio(&self) -> f64 {
-            self.quality_before / self.quality_after
-        }
+        quality_ratio: f64,
     }
 
     struct ComparableCavity {
@@ -308,19 +300,11 @@ mod sorted {
         edge: Edge<usize>,
     }
 
-    fn edge_to_key(e: &Edge<usize>) -> [usize; 2] {
-        let s = e.sorted();
-        [s.get(0), s.get(1)]
-    }
     impl Ord for ComparableCavity {
         fn cmp(&self, other: &Self) -> Ordering {
-            match self
-                .spec
-                .quality_ratio()
-                .total_cmp(&other.spec.quality_ratio())
-            {
+            match self.spec.quality_ratio.total_cmp(&other.spec.quality_ratio) {
                 Ordering::Less => Ordering::Less,
-                Ordering::Equal => edge_to_key(&self.edge).cmp(&edge_to_key(&other.edge)),
+                Ordering::Equal => self.edge.sorted().cmp(&other.edge.sorted()),
                 Ordering::Greater => Ordering::Greater,
             }
         }
@@ -372,8 +356,7 @@ mod sorted {
             {
                 let spec = CavitySpec {
                     vertex,
-                    quality_before,
-                    quality_after,
+                    quality_ratio: quality_before / quality_after,
                 };
                 tree.insert(ComparableCavity { spec, edge });
                 map.insert(edge.sorted(), spec);
@@ -398,8 +381,7 @@ mod sorted {
                         });
                         let spec = CavitySpec {
                             vertex,
-                            quality_before,
-                            quality_after,
+                            quality_ratio: quality_before / quality_after,
                         };
                         ve.insert(spec);
                         tree.insert(ComparableCavity { spec, edge });
@@ -416,8 +398,7 @@ mod sorted {
                         // insert
                         let spec = CavitySpec {
                             vertex,
-                            quality_before,
-                            quality_after,
+                            quality_ratio: quality_before / quality_after,
                         };
                         ve.insert(spec);
                         tree.insert(ComparableCavity { spec, edge });
@@ -425,6 +406,7 @@ mod sorted {
                     _ => {}
                 }
             }
+            assert_eq!(tree.len(), map.len());
         }
         Ok(())
     }
