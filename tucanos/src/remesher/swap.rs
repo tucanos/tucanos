@@ -233,7 +233,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         debug: bool,
     ) -> Result<u32> {
         if params.sorted {
-            sorted::swap(self, params, geom)?;
+            sorted::Swapper::default().swap(self, params, geom)?;
             return Ok(1);
         }
         debug!("Swap edges: target quality = {}", params.q);
@@ -311,15 +311,10 @@ mod sorted {
 
     impl Ord for ComparableCandidate {
         fn cmp(&self, other: &Self) -> Ordering {
-            match self
-                .candidate
+            self.candidate
                 .quality_ratio
                 .total_cmp(&other.candidate.quality_ratio)
-            {
-                Ordering::Less => Ordering::Less,
-                Ordering::Equal => self.edge.sorted().cmp(&other.edge.sorted()),
-                Ordering::Greater => Ordering::Greater,
-            }
+                .then_with(|| self.edge.sorted().cmp(&other.edge.sorted()))
         }
     }
 
@@ -336,111 +331,107 @@ mod sorted {
     }
 
     impl Eq for ComparableCandidate {}
-
-    fn collect_cavity_edges<const D: usize, C: Simplex, M: Metric<D>>(
-        cavity: &Cavity<D, C, M>,
-        result: &mut Vec<Edge<usize>>,
-    ) {
-        result.clear();
-        for f in &cavity.faces {
-            for edge in f.0.edges() {
-                result.push(edge.sorted());
-            }
-        }
-        result.sort_unstable();
-        result.dedup();
-        for e in result {
-            *e = cavity.global_elem(e);
-        }
-    }
-
-    fn new_candidate<const D: usize, C: Simplex, M: Metric<D>, G: Geometry<D>>(
-        edge: Edge<usize>,
-        remesher: &Remesher<D, C, M>,
-        cavity: &mut Cavity<D, C, M>,
-        params: &SwapParams,
-        geom: &G,
-    ) -> Option<Candidate> {
-        cavity.init_from_edge(edge, remesher);
-        let quality_before = cavity.q_min;
-
-        if let TrySwapResult::CouldSwap(vertex, quality_after) =
-            remesher.find_swap_vertex(edge, params, cavity, geom)
-        {
-            Some(Candidate {
-                vertex,
-                quality_ratio: quality_before / quality_after,
-            })
-        } else {
-            None
-        }
-    }
-
     #[derive(Default)]
-    struct OrderedSwapper<const D: usize, C: Simplex, M: Metric<D>> {
+    pub struct Swapper<const D: usize, C: Simplex, M: Metric<D>> {
         tree: BTreeSet<ComparableCandidate>,
         map: FxHashMap<Edge<usize>, f64>,
         cavity: Cavity<D, C, M>,
         cavity_edges: Vec<Edge<usize>>,
     }
 
-    impl<const D: usize, C: Simplex, M: Metric<D>> OrderedSwapper<D, C, M> {}
-    pub fn swap<const D: usize, C: Simplex, M: Metric<D>, G: Geometry<D>>(
-        remesher: &mut Remesher<D, C, M>,
-        params: &SwapParams,
-        geom: &G,
-    ) -> crate::Result<()> {
-        let mut tree = BTreeSet::default();
-        let mut map = FxHashMap::default();
-        let mut cavity = Cavity::new();
-        for &edge in remesher.edges.keys() {
-            if let Some(candidate) = new_candidate(edge, remesher, &mut cavity, params, geom) {
-                tree.insert(ComparableCandidate { candidate, edge });
-                map.insert(edge.sorted(), candidate.quality_ratio);
-            }
-        }
-        let mut cavity_edges = Vec::default();
-        while let Some(edge) = tree.pop_first() {
-            cavity.init_from_edge(edge.edge, remesher);
-            remesher.perform_swap(&cavity, edge.candidate.vertex, &edge.edge)?;
-            map.remove(&edge.edge.sorted());
-            collect_cavity_edges(&cavity, &mut cavity_edges);
-            for &edge in &cavity_edges {
-                let sw = new_candidate(edge, remesher, &mut cavity, params, geom);
-                match (map.entry(edge.sorted()), sw) {
-                    (Entry::Occupied(mut ve), Some(spec)) => {
-                        // replace
-                        tree.remove(&ComparableCandidate {
-                            candidate: ve.get().into(),
-                            edge,
-                        });
-                        ve.insert(spec.quality_ratio);
-                        tree.insert(ComparableCandidate {
-                            candidate: spec,
-                            edge,
-                        });
-                    }
-                    (Entry::Occupied(ve), None) => {
-                        // remove
-                        tree.remove(&ComparableCandidate {
-                            candidate: ve.get().into(),
-                            edge,
-                        });
-                        ve.remove();
-                    }
-                    (Entry::Vacant(ve), Some(spec)) => {
-                        // insert
-                        ve.insert(spec.quality_ratio);
-                        tree.insert(ComparableCandidate {
-                            candidate: spec,
-                            edge,
-                        });
-                    }
-                    (Entry::Vacant(_), None) => {}
+    impl<const D: usize, C: Simplex, M: Metric<D>> Swapper<D, C, M> {
+        /// Collect the cavity edges (excluding the seed edge)
+        fn collect_cavity_edges(&mut self) {
+            self.cavity_edges.clear();
+            for f in &self.cavity.faces {
+                for edge in f.0.edges() {
+                    self.cavity_edges.push(edge.sorted());
                 }
             }
-            assert_eq!(tree.len(), map.len());
+            self.cavity_edges.sort_unstable();
+            self.cavity_edges.dedup();
+            for e in &mut self.cavity_edges {
+                *e = self.cavity.global_elem(e);
+            }
         }
-        Ok(())
+
+        fn new_candidate<G: Geometry<D>>(
+            &mut self,
+            edge: Edge<usize>,
+            remesher: &Remesher<D, C, M>,
+            params: &SwapParams,
+            geom: &G,
+        ) -> Option<Candidate> {
+            self.cavity.init_from_edge(edge, remesher);
+            let quality_before = self.cavity.q_min;
+
+            if let TrySwapResult::CouldSwap(vertex, quality_after) =
+                remesher.find_swap_vertex(edge, params, &self.cavity, geom)
+            {
+                Some(Candidate {
+                    vertex,
+                    quality_ratio: quality_before / quality_after,
+                })
+            } else {
+                None
+            }
+        }
+        pub fn swap<G: Geometry<D>>(
+            mut self,
+            remesher: &mut Remesher<D, C, M>,
+            params: &SwapParams,
+            geom: &G,
+        ) -> crate::Result<()> {
+            for &edge in remesher.edges.keys() {
+                if let Some(candidate) = self.new_candidate(edge, remesher, params, geom) {
+                    self.tree.insert(ComparableCandidate { candidate, edge });
+                    self.map.insert(edge.sorted(), candidate.quality_ratio);
+                }
+            }
+            while let Some(edge) = self.tree.pop_first() {
+                self.cavity.init_from_edge(edge.edge, remesher);
+                remesher.perform_swap(&self.cavity, edge.candidate.vertex, &edge.edge)?;
+                self.map.remove(&edge.edge.sorted());
+                self.collect_cavity_edges();
+                let cavity_edges = std::mem::take(&mut self.cavity_edges);
+                for &edge in &cavity_edges {
+                    let sw = self.new_candidate(edge, remesher, params, geom);
+                    match (self.map.entry(edge.sorted()), sw) {
+                        (Entry::Occupied(mut ve), Some(spec)) => {
+                            // replace
+                            self.tree.remove(&ComparableCandidate {
+                                candidate: ve.get().into(),
+                                edge,
+                            });
+                            ve.insert(spec.quality_ratio);
+                            self.tree.insert(ComparableCandidate {
+                                candidate: spec,
+                                edge,
+                            });
+                        }
+                        (Entry::Occupied(ve), None) => {
+                            // remove
+                            self.tree.remove(&ComparableCandidate {
+                                candidate: ve.get().into(),
+                                edge,
+                            });
+                            ve.remove();
+                        }
+                        (Entry::Vacant(ve), Some(spec)) => {
+                            // insert
+                            ve.insert(spec.quality_ratio);
+                            self.tree.insert(ComparableCandidate {
+                                candidate: spec,
+                                edge,
+                            });
+                        }
+                        (Entry::Vacant(_), None) => {}
+                    }
+                }
+                self.cavity_edges = cavity_edges;
+                assert_eq!(self.tree.len(), self.map.len());
+            }
+            Ok(())
+        }
     }
 }
