@@ -129,7 +129,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         debug!("min. allowed quality: {q_min:.2e}");
 
         let mut n_iter = 0;
-        let mut cavity = Cavity::new();
+        let mut cavity = Cavity::default();
         loop {
             n_iter += 1;
 

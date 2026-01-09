@@ -298,7 +298,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         // to have one RefCell for each VtxInfo but copying self.verts is cheaper.
         let verts = self.verts.keys().copied().collect::<Vec<_>>();
 
-        let mut cavity = Cavity::new();
+        let mut cavity = Cavity::default();
         for iter in 0..params.n_iter {
             let (n_fails, n_min, n_smooth) = self.smooth_iter(params, geom, &mut cavity, &verts);
             debug!(
