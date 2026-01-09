@@ -18,7 +18,7 @@ enum TrySwapResult {
     QualitySufficient,
     FixedEdge,
     CouldNotSwap,
-    CouldSwap,
+    CouldSwap(usize),
 }
 
 #[derive(Clone, Debug)]
@@ -82,29 +82,30 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         Ok(())
     }
 
-    /// Try to swap an edge if
-    ///   - one of the elements in its cavity has a quality < qmin
-    ///   - no edge smaller that `l_min` or longer that `l_max` is created
-    fn try_swap<G: Geometry<D>>(
-        &mut self,
+    /// Identifies the optimal vertex to use for an edge swap operation.
+    ///
+    /// A vertex is selected if swapping to it improves element quality and satisfies
+    /// geometric constraints. Specifically:
+    /// * The current cavity quality must be below `params.q`.
+    /// * The new edge length must be within [`l_min`, `l_max`].
+    /// * Topology and boundary constraints must be respected.
+    fn find_swap_vertex<G: Geometry<D>>(
+        &self,
         edg: Edge<usize>,
         params: &SwapParams,
-        max_angle: f64,
-        cavity: &mut Cavity<D, C, M>,
+        cavity: &Cavity<D, C, M>,
         geom: &G,
-    ) -> Result<TrySwapResult> {
+    ) -> TrySwapResult {
         let dbg = self.debug_edge(edg);
 
         trace_if!(dbg, "Try to swap edge {edg:?}");
-
-        cavity.init_from_edge(edg, self);
         if C::DIM == 2 {
             assert!(cavity.n_elems() <= 2);
         }
 
         if cavity.global_elem_ids.len() == 1 {
             trace_if!(dbg, "Cannot swap, only one adjacent cell");
-            return Ok(TrySwapResult::QualitySufficient);
+            return TrySwapResult::QualitySufficient;
         }
 
         if cavity.q_min > params.q {
@@ -113,7 +114,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                 "No need to swap, quality sufficient ({:.2})",
                 cavity.q_min
             );
-            return Ok(TrySwapResult::QualitySufficient);
+            return TrySwapResult::QualitySufficient;
         }
 
         let l_min = params.min_l_abs.min(params.min_l_rel * cavity.l_min);
@@ -146,12 +147,12 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         // tag < 0 on fixed boundaries
         if edge_tag.1 < 0 {
             trace_if!(dbg, "Cannot swap: fixed edge");
-            return Ok(TrySwapResult::FixedEdge);
+            return TrySwapResult::FixedEdge;
         }
 
         if edge_tag.0 == 1 {
             trace_if!(dbg, "Cannot swap: tag");
-            return Ok(TrySwapResult::CouldNotSwap);
+            return TrySwapResult::CouldNotSwap;
         }
 
         for n in 0..cavity.n_verts() {
@@ -188,7 +189,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                 continue;
             }
 
-            if !filled_cavity.check_normals(&self.topo, geom, max_angle) {
+            if !filled_cavity.check_normals(&self.topo, geom, params.max_angle) {
                 trace_if!(dbg, "Cannot swap, would create a non smooth surface");
                 continue;
             }
@@ -199,19 +200,14 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                 "status = {status:?}, l_min = {l_min:.2e}, l_max = {l_max:.2e}, q_min = {q_ref:.2e}"
             );
             if let CavityCheckStatus::Ok(min_quality) = status {
-                trace_if!(dbg, "Can swap  from {n} : ({min_quality} > {q_ref})");
+                trace_if!(dbg, "Can swap from {n}: {min_quality} > {q_ref}");
                 q_ref = min_quality;
                 vx = Some(n);
             }
         }
-
-        if let Some(vx) = vx {
-            trace_if!(dbg, "Swap from {vx}");
-            self.perform_swap(cavity, vx, &edg)?;
-            return Ok(TrySwapResult::CouldSwap);
-        }
-
-        Ok(TrySwapResult::CouldNotSwap)
+        vx.map_or(TrySwapResult::CouldNotSwap, |vx| {
+            TrySwapResult::CouldSwap(vx)
+        })
     }
 
     /// Loop over the edges and perform edge swaps if
@@ -244,10 +240,14 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             let mut n_fails = 0;
             let mut n_ok = 0;
             for edg in edges {
-                let res = self.try_swap(edg, params, params.max_angle, &mut cavity, geom)?;
-                match res {
+                cavity.init_from_edge(edg, self);
+                match self.find_swap_vertex(edg, params, &cavity, geom) {
                     TrySwapResult::CouldNotSwap => n_fails += 1,
-                    TrySwapResult::CouldSwap => n_swaps += 1,
+                    TrySwapResult::CouldSwap(vx) => {
+                        trace_if!(self.debug_edge(edg), "Swap from {vx}");
+                        self.perform_swap(&cavity, vx, &edg)?;
+                        n_swaps += 1;
+                    }
                     _ => n_ok += 1,
                 }
             }
