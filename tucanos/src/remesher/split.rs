@@ -287,28 +287,22 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         Ok(())
     }
 
-    fn sort_edges_split(&self) -> Vec<Edge<usize>> {
-        let mut edges: Vec<_> = self.edges.keys().copied().collect();
-
-        let func = |e: &Edge<usize>| {
+    fn sort_edges_split(&self) -> Vec<(Edge<usize>, Dim, f64)> {
+        let func = |e: Edge<usize>| {
             let p0 = self.verts.get(&e.get(0)).unwrap();
             let p1 = self.verts.get(&e.get(1)).unwrap();
 
             (
+                e,
                 self.topo.parent(p0.tag, p1.tag).unwrap().0,
                 M::edge_length(&p0.vx, &p0.m, &p1.vx, &p1.m),
             )
         };
-
-        edges.sort_by(|e0, e1| {
-            let (d0, l0) = func(e0);
-            let (d1, l1) = func(e1);
-
-            match d0.cmp(&d1) {
-                Ordering::Less => Ordering::Less,
-                Ordering::Equal => l1.partial_cmp(&l0).unwrap(),
-                Ordering::Greater => Ordering::Greater,
-            }
+        let mut edges: Vec<_> = self.edges.keys().copied().map(func).collect();
+        edges.sort_by(|(_, d0, l0), (_, d1, l1)| match d0.cmp(d1) {
+            Ordering::Less => Ordering::Less,
+            Ordering::Equal => l1.partial_cmp(l0).unwrap(),
+            Ordering::Greater => Ordering::Greater,
         });
         edges
     }
@@ -342,9 +336,8 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             let edges = self.sort_edges_split();
 
             let mut num_ops = NumSplitOps::default();
-            for edg in edges {
+            for (edg, _, length) in edges {
                 let dbg = self.debug_edge(edg);
-                let length = self.scaled_edge_length(edg);
                 if length > params.l {
                     trace_if!(dbg, "Try to split edge {edg:?}, l = {length}");
                     self.try_split(dbg, edg, params, geom, &mut cavity, &mut num_ops)?;

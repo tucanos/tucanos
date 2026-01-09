@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 
 use super::Remesher;
 use crate::{
-    Result,
+    Result, TopoTag,
     geometry::Geometry,
     metric::Metric,
     remesher::{
@@ -49,28 +49,22 @@ impl Default for CollapseParams {
 }
 
 impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
-    fn sort_edges_collapse(&self) -> Vec<Edge<usize>> {
-        let mut edges: Vec<_> = self.edges.keys().copied().collect();
-
-        let func = |e: &Edge<usize>| {
+    fn sort_edges_collapse(&self) -> Vec<(Edge<usize>, TopoTag, f64)> {
+        let func = |e: Edge<usize>| {
             let p0 = self.verts.get(&e.get(0)).unwrap();
             let p1 = self.verts.get(&e.get(1)).unwrap();
-
             (
-                self.topo.parent(p0.tag, p1.tag).unwrap().0,
+                e,
+                self.topo.parent(p0.tag, p1.tag).unwrap(),
                 M::edge_length(&p0.vx, &p0.m, &p1.vx, &p1.m),
             )
         };
+        let mut edges: Vec<_> = self.edges.keys().copied().map(func).collect();
 
-        edges.sort_by(|e0, e1| {
-            let (d0, l0) = func(e0);
-            let (d1, l1) = func(e1);
-
-            match d0.cmp(&d1) {
-                Ordering::Less => Ordering::Less,
-                Ordering::Equal => l0.partial_cmp(&l1).unwrap(),
-                Ordering::Greater => Ordering::Greater,
-            }
+        edges.sort_by(|(_, t0, l0), (_, t1, l1)| match t0.0.cmp(&t1.0) {
+            Ordering::Less => Ordering::Less,
+            Ordering::Equal => l0.partial_cmp(l1).unwrap(),
+            Ordering::Greater => Ordering::Greater,
         });
         edges
     }
@@ -143,7 +137,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
 
             let mut n_collapses = 0;
             let mut n_fails = 0;
-            for edg in edges {
+            for (edg, tag, length) in edges {
                 let dbg = self.debug_edge(edg);
 
                 let mut i0 = edg.get(0);
@@ -156,20 +150,13 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                     trace_if!(dbg, "Cannot collapse: vertex deleted");
                     continue;
                 }
-                let length = self.scaled_edge_length(edg);
-                if length < params.l {
+                if length < params.l && tag.1 >= 0 {
                     trace_if!(dbg, "Try to collapse edgs {edg:?}");
 
                     let mut topo_0 = self.verts.get(&i0).unwrap().tag;
                     let mut topo_1 = self.verts.get(&i1).unwrap().tag;
                     // Cannot collapse vertices with entity dim 0
                     if topo_0.0 == 0 && topo_1.0 == 0 {
-                        continue;
-                    }
-
-                    let tag = self.topo.parent(topo_0, topo_1).unwrap();
-                    // tag < 0 on fixed boundaries
-                    if tag.1 < 0 {
                         continue;
                     }
 
