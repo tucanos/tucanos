@@ -70,9 +70,9 @@ pub(super) struct Cavity<const D: usize, C: Simplex, M: Metric<D>> {
     pub(super) l_max: f64,
 }
 
-impl<const D: usize, C: Simplex, M: Metric<D>> Cavity<D, C, M> {
-    /// Create a new (empty) cavity
-    pub const fn new() -> Self {
+impl<const D: usize, C: Simplex, M: Metric<D>> Default for Cavity<D, C, M> {
+    /// Create an empty cavity
+    fn default() -> Self {
         Self {
             local2global: Vec::new(),
             points: Vec::new(),
@@ -91,7 +91,8 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Cavity<D, C, M> {
             l_max: f64::MAX,
         }
     }
-
+}
+impl<const D: usize, C: Simplex, M: Metric<D>> Cavity<D, C, M> {
     /// Clear the cavity data
     pub fn clear(&mut self) {
         self.local2global.clear();

@@ -230,7 +230,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         debug!("Swap edges: target quality = {}", params.q);
 
         let mut n_iter = 0;
-        let mut cavity = Cavity::new();
+        let mut cavity = Cavity::default();
         loop {
             n_iter += 1;
             let mut edges = Vec::with_capacity(self.edges.len());
