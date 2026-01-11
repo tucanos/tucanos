@@ -221,7 +221,7 @@ impl<const D: usize, M: Mesh<D>> TypedCompositeShape for ObjectIndex3d<D, M> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use std::f64::consts::PI;
 
     use rand::{Rng, SeedableRng, rngs::StdRng};
@@ -234,6 +234,7 @@ mod tests {
         },
         spatialindex::parry_3d::ObjectIndex3d,
     };
+    use nalgebra::Point3;
 
     fn nearest_elem_naive<const D: usize>(msh: &impl Mesh<D>, pt: &Vertex<D>) -> usize {
         let mut dst = f64::MAX;
@@ -403,5 +404,40 @@ mod tests {
             }
         }
         // println!("Time by projection: {:?}", start.elapsed() / num_proj);
+    }
+
+    pub fn test_gsimplex<const N: usize, G, P, F>(build_parry_shape: F)
+    where
+        G: GSimplex<3> + From<[Vert3d; N]>,
+        P: parry3d_f64::query::PointQuery,
+        F: Fn([Point3<f64>; N]) -> P,
+    {
+        let mut rng = StdRng::seed_from_u64(1234);
+        for _ in 0..100 {
+            let to_project = Vert3d::from_fn(|_, _| 10.0 * (rng.random::<f64>() - 0.5));
+            let t_v = std::array::from_fn(|_| Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5));
+            let p_v = t_v.map(|x| Point3::from_slice(x.as_slice()));
+            let shape = build_parry_shape(p_v);
+            let p_p = shape.project_local_point(&Point3::from_slice(to_project.as_slice()), true);
+            let (proj, is_inside) = G::from(t_v).project(&to_project);
+            let proj = Point3::from_slice(proj.as_slice());
+            assert_eq!(is_inside, p_p.is_inside);
+            let d = (proj - p_p.point).norm();
+            assert_delta!(d, 0.0, 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_gtetrahedron() {
+        test_gsimplex::<_, crate::mesh::GTetrahedron<3>, _, _>(|p| {
+            parry3d_f64::shape::Tetrahedron::new(p[0], p[1], p[2], p[3])
+        });
+    }
+
+    #[test]
+    fn test_gtriangle() {
+        test_gsimplex::<_, crate::mesh::GTriangle<3>, _, _>(|p| {
+            parry3d_f64::shape::Triangle::new(p[0], p[1], p[2])
+        });
     }
 }
