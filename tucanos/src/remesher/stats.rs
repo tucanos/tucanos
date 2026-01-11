@@ -97,15 +97,15 @@ impl fmt::Display for Stats {
 #[derive(Serialize, Clone)]
 pub struct RemesherStats {
     /// The # of vertices in the mesh
-    n_verts: usize,
+    pub n_verts: usize,
     /// The # of elements in the mesh
-    n_elems: usize,
+    pub n_elems: usize,
     /// The # of edges in the mesh
-    n_edges: usize,
+    pub n_edges: usize,
     /// Edge length stats
-    stats_l: Stats,
+    pub stats_l: Stats,
     /// Element quality stats
-    stats_q: Stats,
+    pub stats_q: Stats,
 }
 
 impl RemesherStats {
@@ -226,6 +226,18 @@ impl SmoothStats {
         Self {
             n_fails,
             r_stats: RemesherStats::new(r),
+        }
+    }
+}
+
+impl StepStats {
+    pub const fn remesher_stats(&self) -> &RemesherStats {
+        match self {
+            Self::Init(init_stats) => &init_stats.r_stats,
+            Self::Split(split_stats) => &split_stats.r_stats,
+            Self::Swap(swap_stats) => &swap_stats.r_stats,
+            Self::Collapse(collapse_stats) => &collapse_stats.r_stats,
+            Self::Smooth(smooth_stats) => &smooth_stats.r_stats,
         }
     }
 }
