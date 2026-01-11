@@ -230,6 +230,7 @@ mod tests {
         },
         spatialindex::{ObjectIndex, parry_2d::ObjectIndex2d},
     };
+    use nalgebra::Point2;
     use rand::{Rng, SeedableRng, rngs::StdRng};
 
     fn nearest_elem_naive<const D: usize>(msh: &impl Mesh<D>, pt: &Vertex<D>) -> usize {
@@ -338,5 +339,23 @@ mod tests {
         let (dist, p) = tree.project(&pt);
         assert!(f64::abs(dist - 0.5) < 1e-12);
         assert!((p - Vert2d::new(1., 0.25)).norm() < 1e-12);
+    }
+
+    #[test]
+    fn test_gtriangle() {
+        use parry2d_f64::query::PointQuery;
+        let mut rng = StdRng::seed_from_u64(1234);
+        for _ in 0..100 {
+            let to_project = Vert2d::from_fn(|_, _| 10.0 * (rng.random::<f64>() - 0.5));
+            let t_v = std::array::from_fn(|_| Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5));
+            let p_v = t_v.map(|x| Point2::from_slice(x.as_slice()));
+            let shape = parry2d_f64::shape::Triangle::new(p_v[0], p_v[1], p_v[2]);
+            let p_p = shape.project_local_point(&Point2::from_slice(to_project.as_slice()), true);
+            let (proj, is_inside) = crate::mesh::GTriangle::from(t_v).project(&to_project);
+            let proj = Point2::from_slice(proj.as_slice());
+            assert_eq!(is_inside, p_p.is_inside);
+            let d = (proj - p_p.point).norm();
+            assert_delta!(d, 0.0, 1e-10);
+        }
     }
 }
