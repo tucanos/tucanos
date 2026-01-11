@@ -7,7 +7,7 @@ links = "tucanos"
 [dependencies]
 nalgebra = { version = "0.34.1", features = ["rand"] }
 log = "0.4.22"
-serde_json = "1.0.148"
+serde_json = "1.0.149"
 serde = { version = "1.0.225", features = ["derive"] }
 rustc-hash = "2.0.0"
 sorted-vec = "0.8.6"
