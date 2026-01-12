@@ -264,7 +264,6 @@ mod tests {
         Vert2d, Vert3d, assert_delta,
         mesh::{GSimplex, Simplex},
     };
-    use nalgebra::Point2;
     use rand::{Rng, SeedableRng, rngs::StdRng, seq::SliceRandom};
 
     #[test]
