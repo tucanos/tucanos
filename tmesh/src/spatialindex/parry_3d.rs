@@ -4,7 +4,7 @@ use crate::{
 };
 use parry3d_f64::{
     bounding_volume::Aabb,
-    math::{Isometry, Point},
+    math::{Pose, Vector},
     partitioning::{Bvh, BvhBuildStrategy},
     query::{
         PointProjection, PointQuery, PointQueryWithLocation, RayCast, details::NormalConstraints,
@@ -21,13 +21,13 @@ impl<const D: usize, C: GSimplex<D>> SimplexShape<D, C> {
 }
 
 impl<const D: usize, C: GSimplex<D>> PointQuery for SimplexShape<D, C> {
-    fn project_local_point(&self, _pt: &Point<f64>, _solid: bool) -> PointProjection {
+    fn project_local_point(&self, _pt: Vector, _solid: bool) -> PointProjection {
         todo!()
     }
 
     fn project_local_point_and_get_feature(
         &self,
-        _pt: &Point<f64>,
+        _pt: Vector,
     ) -> (PointProjection, parry3d_f64::shape::FeatureId) {
         todo!()
     }
@@ -38,7 +38,7 @@ impl<const D: usize, C: GSimplex<D>> PointQueryWithLocation for SimplexShape<D, 
 
     fn project_local_point_and_get_location(
         &self,
-        pt: &Point<f64>,
+        pt: Vector,
         _solid: bool,
     ) -> (PointProjection, Self::Location) {
         let pt = Vertex::from_fn(|i, _| pt[i]);
@@ -46,7 +46,7 @@ impl<const D: usize, C: GSimplex<D>> PointQueryWithLocation for SimplexShape<D, 
         (
             PointProjection {
                 is_inside,
-                point: Point::from_slice(proj.as_slice()),
+                point: Vector::from_slice(proj.as_slice()),
             },
             (),
         )
@@ -77,11 +77,7 @@ impl<const D: usize, C: GSimplex<D>> Shape for SimplexShape<D, C> {
         todo!()
     }
 
-    fn scale_dyn(
-        &self,
-        _scale: &parry3d_f64::math::Vector<f64>,
-        _num_subdivisions: u32,
-    ) -> Option<Box<dyn Shape>> {
+    fn scale_dyn(&self, _scale: Vector, _num_subdivisions: u32) -> Option<Box<dyn Shape>> {
         todo!()
     }
 
@@ -119,8 +115,8 @@ impl<const D: usize, M: Mesh<D>> ObjectIndex3d<D, M> {
             (
                 i,
                 Aabb::new(
-                    Point::from_slice(min.as_slice()),
-                    Point::from_slice(max.as_slice()),
+                    Vector::from_slice(min.as_slice()),
+                    Vector::from_slice(max.as_slice()),
                 ),
             )
         });
@@ -138,7 +134,7 @@ impl<const D: usize, M: Mesh<D>> ObjectIndex3d<D, M> {
     #[must_use]
     pub fn nearest_elem(&self, pt: &Vertex<D>) -> usize {
         let (_, (id, ())) =
-            self.project_local_point_and_get_location(&Point::new(pt[0], pt[1], pt[2]), true);
+            self.project_local_point_and_get_location(Vector::new(pt[0], pt[1], pt[2]), true);
         id as usize
     }
 
@@ -146,7 +142,7 @@ impl<const D: usize, M: Mesh<D>> ObjectIndex3d<D, M> {
     #[must_use]
     pub fn project(&self, pt: &Vertex<D>) -> (f64, Vertex<D>) {
         let (p, _) =
-            self.project_local_point_and_get_location(&Point::new(pt[0], pt[1], pt[2]), true);
+            self.project_local_point_and_get_location(Vector::new(pt[0], pt[1], pt[2]), true);
         let p = p.point;
         let res = Vertex::from_fn(|i, _j| p[i]);
         ((pt - res).norm(), res)
@@ -158,7 +154,7 @@ impl<const D: usize, M: Mesh<D>> PointQueryWithLocation for ObjectIndex3d<D, M> 
 
     fn project_local_point_and_get_location(
         &self,
-        point: &Point<f64>,
+        point: Vector,
         solid: bool,
     ) -> (PointProjection, Self::Location) {
         let (seg_id, (proj, loc)) = CompositeShapeRef(self)
@@ -172,7 +168,7 @@ impl<const D: usize, M: Mesh<D>> CompositeShape for ObjectIndex3d<D, M> {
     fn map_part_at(
         &self,
         shape_id: u32,
-        f: &mut dyn FnMut(Option<&Isometry<f64>>, &dyn Shape, Option<&dyn NormalConstraints>),
+        f: &mut dyn FnMut(Option<&Pose>, &dyn Shape, Option<&dyn NormalConstraints>),
     ) {
         f(
             None,
@@ -194,11 +190,7 @@ impl<const D: usize, M: Mesh<D>> TypedCompositeShape for ObjectIndex3d<D, M> {
     fn map_typed_part_at<T>(
         &self,
         shape_id: u32,
-        mut f: impl FnMut(
-            Option<&Isometry<f64>>,
-            &Self::PartShape,
-            Option<&Self::PartNormalConstraints>,
-        ) -> T,
+        mut f: impl FnMut(Option<&Pose>, &Self::PartShape, Option<&Self::PartNormalConstraints>) -> T,
     ) -> Option<T> {
         Some(f(
             None,
@@ -210,7 +202,7 @@ impl<const D: usize, M: Mesh<D>> TypedCompositeShape for ObjectIndex3d<D, M> {
     fn map_untyped_part_at<T>(
         &self,
         shape_id: u32,
-        mut f: impl FnMut(Option<&Isometry<f64>>, &dyn Shape, Option<&dyn NormalConstraints>) -> T,
+        mut f: impl FnMut(Option<&Pose>, &dyn Shape, Option<&dyn NormalConstraints>) -> T,
     ) -> Option<T> {
         Some(f(
             None,
@@ -224,6 +216,7 @@ impl<const D: usize, M: Mesh<D>> TypedCompositeShape for ObjectIndex3d<D, M> {
 pub mod tests {
     use std::f64::consts::PI;
 
+    use parry3d_f64::math::Vector;
     use rand::{Rng, SeedableRng, rngs::StdRng};
 
     use crate::{
@@ -234,7 +227,6 @@ pub mod tests {
         },
         spatialindex::parry_3d::ObjectIndex3d,
     };
-    use nalgebra::Point3;
 
     fn nearest_elem_naive<const D: usize>(msh: &impl Mesh<D>, pt: &Vertex<D>) -> usize {
         let mut dst = f64::MAX;
@@ -410,19 +402,19 @@ pub mod tests {
     where
         G: GSimplex<3> + From<[Vert3d; N]>,
         P: parry3d_f64::query::PointQuery,
-        F: Fn([Point3<f64>; N]) -> P,
+        F: Fn([Vector; N]) -> P,
     {
         let mut rng = StdRng::seed_from_u64(1234);
         for _ in 0..100 {
             let to_project = Vert3d::from_fn(|_, _| 10.0 * (rng.random::<f64>() - 0.5));
             let t_v = std::array::from_fn(|_| Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5));
-            let p_v = t_v.map(|x| Point3::from_slice(x.as_slice()));
+            let p_v = t_v.map(|x| Vector::from_slice(x.as_slice()));
             let shape = build_parry_shape(p_v);
-            let p_p = shape.project_local_point(&Point3::from_slice(to_project.as_slice()), true);
+            let p_p = shape.project_local_point(Vector::from_slice(to_project.as_slice()), true);
             let (proj, is_inside) = G::from(t_v).project(&to_project);
-            let proj = Point3::from_slice(proj.as_slice());
+            let proj = Vector::from_slice(proj.as_slice());
             assert_eq!(is_inside, p_p.is_inside);
-            let d = (proj - p_p.point).norm();
+            let d = (proj - p_p.point).length();
             assert_delta!(d, 0.0, 1e-10);
         }
     }

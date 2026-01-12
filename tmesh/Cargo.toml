@@ -11,8 +11,8 @@ rand = "0.9.0"
 rayon = "1.10.0"
 rustc-hash = "2.1.1"
 kdtree = { version = "0.8" }
-parry3d-f64 = { version = "0.25.3" }
-parry2d-f64 = { version = "0.25.3" }
+parry3d-f64 = { version = "0.26.0" }
+parry2d-f64 = { version = "0.26.0" }
 coupe = { git = "https://github.com/LIHPC-Computational-Geometry/coupe.git", rev = "20f0de6" }
 metis = { git = "https://github.com/tucanos/metis-rs.git", rev = "d31aa3e", optional=true}
 lindel = "0.1.1"
