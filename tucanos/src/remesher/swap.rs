@@ -207,6 +207,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                 dbg,
                 "status = {status:?}, l_min = {l_min:.2e}, l_max = {l_max:.2e}, q_min = {q_ref:.2e}"
             );
+            // TODO: concider also the LowQuality case because it may improve valencve
             if let CavityCheckStatus::Ok(min_quality) = status {
                 trace_if!(dbg, "Can swap from {n}: {min_quality} > {q_ref}");
                 q_ref = min_quality;
@@ -282,7 +283,6 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
 
 mod ordered {
     use tmesh::mesh::{Edge, Simplex};
-
     use crate::{
         geometry::Geometry,
         metric::Metric,
@@ -294,6 +294,24 @@ mod ordered {
             swap::TrySwapResult,
         },
     };
+
+    trait IdealValence {
+        /// The ideal number of incident edges around a vertex
+        fn ideal_valence() -> f64;
+    }
+
+    impl<T: Idx> IdealValence for tmesh::mesh::Tetrahedron<T> {
+        fn ideal_valence() -> f64 {
+            let solid_angle = (23. / 27_f64).acos();
+            (4. * std::f64::consts::PI) / solid_angle / 2. + 2.
+        }
+    }
+
+    impl<T: Idx> IdealValence for tmesh::mesh::Triangle<T> {
+        fn ideal_valence() -> f64 {
+            6.
+        }
+    }
 
     #[derive(Default)]
     pub struct Swapper<const D: usize, C: Simplex, M: Metric<D>> {
@@ -332,6 +350,9 @@ mod ordered {
         ) -> Option<(f64, usize)> {
             self.cavity.init_from_edge(edge, remesher);
             let quality_before = self.cavity.q_min;
+            // TODO: add valence check. -1 for edge.get(0) and 1
+            // +1 for all other vertice so of the cavity
+            // alpha * q_after / q_before + beta * sum(abs(vi_after-vopt)) / sum(abs(vi_before-vopt))
             match remesher.find_swap_vertex(edge, params, &self.cavity, geom) {
                 TrySwapResult::CouldNotSwap => {
                     self.num_fails += 1;
