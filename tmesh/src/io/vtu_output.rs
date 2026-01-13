@@ -72,7 +72,7 @@ impl VTUFile {
         &mut self,
         name: &str,
         number_of_components: usize,
-        data: impl Iterator<Item = T>,
+        data: impl IntoIterator<Item = T>,
     ) {
         self.cell_data
             .push(DataArray::new(name, number_of_components, data));
@@ -83,7 +83,7 @@ impl VTUFile {
         &mut self,
         name: &str,
         number_of_components: usize,
-        data: impl Iterator<Item = T>,
+        data: impl IntoIterator<Item = T>,
     ) {
         self.point_data
             .push(DataArray::new(name, number_of_components, data));
