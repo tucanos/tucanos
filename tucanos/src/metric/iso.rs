@@ -13,16 +13,17 @@ use tmesh::Vertex;
 pub struct IsoMetric<const D: usize>(pub f64);
 
 impl<const D: usize> IsoMetric<D> {
-    /// Create an `IsoMetric` from size h
-    #[must_use]
-    pub const fn from(h: f64) -> Self {
-        Self(h)
-    }
-
     /// Get the size h from a metric
     #[must_use]
     pub const fn h(&self) -> f64 {
         self.0
+    }
+}
+
+impl<const D: usize> From<f64> for IsoMetric<D> {
+    /// Create an `IsoMetric` from size h
+    fn from(h: f64) -> Self {
+        Self(h)
     }
 }
 
