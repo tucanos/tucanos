@@ -27,5 +27,8 @@ trace_edges = []
 [[example]]
 name = "adapt_ellipse"
 
+[[example]]
+name = "cube_cylinder"
+
 [lints]
 workspace = true
