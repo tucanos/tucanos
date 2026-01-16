@@ -281,12 +281,6 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
 }
 
 mod ordered {
-    use std::{
-        cmp::Ordering,
-        collections::{BTreeSet, hash_map::Entry},
-    };
-
-    use rustc_hash::FxHashMap;
     use tmesh::mesh::{Edge, Simplex};
 
     use crate::{
@@ -295,62 +289,17 @@ mod ordered {
         remesher::{
             Remesher, SwapParams,
             cavity::Cavity,
+            orderedhashmap,
             stats::{StepStats, SwapStats},
             swap::TrySwapResult,
         },
     };
 
-    /// Represents a proposed swap
-    #[derive(Clone, Copy)]
-    struct SwapProposal {
-        /// The index of the target vertex for the swap.
-        vertex: usize,
-        /// Improvement factor of the quality when the edge is swapped
-        improvement_factor: f64,
-    }
-
-    impl From<&f64> for SwapProposal {
-        fn from(value: &f64) -> Self {
-            Self {
-                vertex: 0,
-                improvement_factor: *value,
-            }
-        }
-    }
-
-    struct PrioritizedSwap {
-        proposal: SwapProposal,
-        edge: Edge<usize>,
-    }
-
-    impl Ord for PrioritizedSwap {
-        fn cmp(&self, other: &Self) -> Ordering {
-            self.proposal
-                .improvement_factor
-                .total_cmp(&other.proposal.improvement_factor)
-                .then_with(|| self.edge.sorted().cmp(&other.edge.sorted()))
-        }
-    }
-
-    impl PartialOrd for PrioritizedSwap {
-        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-            Some(self.cmp(other))
-        }
-    }
-
-    impl PartialEq for PrioritizedSwap {
-        fn eq(&self, other: &Self) -> bool {
-            self.cmp(other) == Ordering::Equal
-        }
-    }
-
-    impl Eq for PrioritizedSwap {}
     #[derive(Default)]
     pub struct Swapper<const D: usize, C: Simplex, M: Metric<D>> {
-        /// Sorted swap proposals
-        tree: BTreeSet<PrioritizedSwap>,
-        /// Edge to `improvement_factor` map to allow `tree` indexation
-        map: FxHashMap<Edge<usize>, f64>,
+        /// An OrderedHashMap where the ordered keys are the improvement factor of the quality
+        /// when swapping, the hash keys are edges, and the values are the vertices to swap to.
+        map: orderedhashmap::OrderedHashMap<orderedhashmap::OrdF64, Edge<usize>, usize>,
         cavity: Cavity<D, C, M>,
         cavity_edges: Vec<Edge<usize>>,
         num_swaps: usize,
@@ -373,13 +322,14 @@ mod ordered {
             }
         }
 
+        /// Returns the target vertex and quality improvement ratio if the edge can be swapped.
         fn new_proposal<G: Geometry<D>>(
             &mut self,
             edge: Edge<usize>,
             remesher: &Remesher<D, C, M>,
             params: &SwapParams,
             geom: &G,
-        ) -> Option<SwapProposal> {
+        ) -> Option<(f64, usize)> {
             self.cavity.init_from_edge(edge, remesher);
             let quality_before = self.cavity.q_min;
             match remesher.find_swap_vertex(edge, params, &self.cavity, geom) {
@@ -389,10 +339,7 @@ mod ordered {
                 }
                 TrySwapResult::CouldSwap(vertex, quality_after) => {
                     self.num_swaps += 1;
-                    Some(SwapProposal {
-                        vertex,
-                        improvement_factor: quality_after / quality_before,
-                    })
+                    Some((quality_after / quality_before, vertex))
                 }
                 _ => None,
             }
@@ -405,59 +352,25 @@ mod ordered {
             geom: &G,
         ) -> crate::Result<()> {
             for &edge in remesher.edges.keys() {
-                if let Some(candidate) = self.new_proposal(edge, remesher, params, geom) {
-                    self.tree.insert(PrioritizedSwap {
-                        proposal: candidate,
-                        edge,
-                    });
-                    self.map.insert(edge.sorted(), candidate.improvement_factor);
+                if let Some((improvement_factor, vertex)) =
+                    self.new_proposal(edge, remesher, params, geom)
+                {
+                    self.map.insert(edge.sorted(), improvement_factor, vertex);
                 }
             }
-            while let Some(edge) = self.tree.pop_last() {
-                if edge.proposal.improvement_factor < params.min_improvement_factor {
+            while let Some((edge, vertex, improvement_factor)) = self.map.pop_last::<f64>() {
+                if improvement_factor < params.min_improvement_factor {
                     break;
                 }
-                self.cavity.init_from_edge(edge.edge, remesher);
-                remesher.perform_swap(&self.cavity, edge.proposal.vertex, &edge.edge)?;
-                self.map.remove(&edge.edge.sorted());
+                self.cavity.init_from_edge(edge, remesher);
+                remesher.perform_swap(&self.cavity, vertex, &edge)?;
                 self.collect_cavity_edges();
                 let cavity_edges = std::mem::take(&mut self.cavity_edges);
                 for &edge in &cavity_edges {
                     let sw = self.new_proposal(edge, remesher, params, geom);
-                    match (self.map.entry(edge.sorted()), sw) {
-                        (Entry::Occupied(mut ve), Some(spec)) => {
-                            // replace
-                            self.tree.remove(&PrioritizedSwap {
-                                proposal: ve.get().into(),
-                                edge,
-                            });
-                            ve.insert(spec.improvement_factor);
-                            self.tree.insert(PrioritizedSwap {
-                                proposal: spec,
-                                edge,
-                            });
-                        }
-                        (Entry::Occupied(ve), None) => {
-                            // remove
-                            self.tree.remove(&PrioritizedSwap {
-                                proposal: ve.get().into(),
-                                edge,
-                            });
-                            ve.remove();
-                        }
-                        (Entry::Vacant(ve), Some(spec)) => {
-                            // insert
-                            ve.insert(spec.improvement_factor);
-                            self.tree.insert(PrioritizedSwap {
-                                proposal: spec,
-                                edge,
-                            });
-                        }
-                        (Entry::Vacant(_), None) => {}
-                    }
+                    self.map.update(edge.sorted(), sw);
                 }
                 self.cavity_edges = cavity_edges;
-                assert_eq!(self.tree.len(), self.map.len());
             }
             remesher.stats.push(StepStats::Swap(SwapStats::new(
                 self.num_swaps,
