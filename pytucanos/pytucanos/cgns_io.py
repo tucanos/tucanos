@@ -135,6 +135,8 @@ def load_cgns(fname, cls=None, xy=True):
                     ids = (
                         CGU.getValue(CGU.getChildByName(bc, "PointList")).squeeze() - 1
                     )
+                    if isinstance(ids, np.int64):
+                        ids = np.array([ids])
                 else:
                     range = CGU.getValue(CGU.getChildByName(bc, "PointRange")).squeeze()
                     ids = np.arange(range[0] - 1, range[1])
