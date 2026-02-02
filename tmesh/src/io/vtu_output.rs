@@ -253,6 +253,7 @@ impl DataArray {
                 _ => unimplemented!(),
             },
             2 => match <M::C as Simplex>::N_VERTS {
+                10 => 24,
                 6 => 22,
                 3 => 21,
                 _ => unimplemented!(),

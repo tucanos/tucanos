@@ -1,7 +1,10 @@
 //! Triangle meshes in 2d
 use crate::{
     Vert2d,
-    mesh::{Edge, GenericMesh, Mesh, Quadrangle, Triangle, elements::Idx},
+    mesh::{
+        Edge, GenericMesh, Mesh, Quadrangle, QuadraticTriangle, Triangle, elements::Idx,
+        to_quadratic::to_quadratic_triangle_mesh,
+    },
 };
 
 /// Create a `Mesh<2, C=Triangle<_>>` of a `lx` by `ly` rectangle by splitting a `nx` by `ny`
@@ -77,15 +80,53 @@ pub fn nonuniform_rectangle_mesh<M: Mesh<2, C = Triangle<impl Idx>>>(x: &[f64], 
     res
 }
 
+/// Create a `Mesh<2, C=Triangle<_>>` of circle by splitting square and projecting the vertices
+#[must_use]
+pub fn disk_mesh<M: Mesh<2, C = Triangle<impl Idx>>>(n: usize) -> M {
+    let mut msh: M = rectangle_mesh(0.5_f64.sqrt(), 2, 0.5_f64.sqrt(), 2);
+    msh.verts_mut().for_each(|v| {
+        *v -= 0.5_f64.sqrt() * Vert2d::new(0.5, 0.5);
+    });
+
+    for _ in 0..n {
+        msh = msh.split();
+        let flg = msh.boundary_flag();
+        for (v, f) in msh.verts_mut().zip(flg) {
+            if f {
+                *v *= 0.5 / v.norm();
+            }
+        }
+    }
+
+    msh
+}
+
+/// Create a `Mesh<2, C=QuadraticTriangle<_>>` of circle by splitting square and projecting the vertices
+#[must_use]
+pub fn quadratic_disk_mesh<M: Mesh<2, C = QuadraticTriangle<impl Idx>>>(n: usize) -> M {
+    let msh = disk_mesh::<GenericMesh<2, Triangle<usize>>>(n);
+    let mut msh: M = to_quadratic_triangle_mesh(&msh);
+    let flg = msh.boundary_flag();
+    for (v, f) in msh.verts_mut().zip(flg) {
+        if f {
+            *v *= 0.5 / v.norm();
+        }
+    }
+
+    msh
+}
 /// Triangle mesh in 2d
 pub type Mesh2d = GenericMesh<2, Triangle<usize>>;
+/// Quadratic triangle mesh in 2d
+pub type QuadraticMesh2d = GenericMesh<2, QuadraticTriangle<usize>>;
 
 #[cfg(test)]
 mod tests {
     use crate::{
         Vert2d, assert_delta,
         mesh::{
-            BoundaryMesh2d, Edge, GSimplex, GradientMethod, Mesh, Mesh2d, bandwidth, rectangle_mesh,
+            AdativeBoundsQuadraticTriangle, BoundaryMesh2d, Edge, GSimplex, GradientMethod, Mesh,
+            Mesh2d, QuadraticMesh2d, bandwidth, disk_mesh, quadratic_disk_mesh, rectangle_mesh,
         },
     };
     use rayon::iter::ParallelIterator;
@@ -442,5 +483,32 @@ mod tests {
             .map(|s| assert!((s - 0.8284).abs() < 1e-4))
             .count();
         assert_eq!(count, 8);
+    }
+
+    #[test]
+    fn test_disk() {
+        let msh = disk_mesh::<Mesh2d>(3);
+
+        let faces = msh.all_faces();
+        msh.check(&faces).unwrap();
+
+        let vol = msh.gelems().map(|ge| ge.vol()).sum::<f64>();
+        assert_delta!(vol, 0.25 * std::f64::consts::PI, 6e-3);
+
+        let msh = quadratic_disk_mesh::<QuadraticMesh2d>(3);
+        // msh.write_meshb("qdisk.mesh").unwrap();
+
+        let faces = msh.all_faces();
+        msh.check(&faces).unwrap();
+        assert_delta!(msh.vol(), 0.25 * std::f64::consts::PI, 3e-6);
+
+        let d = AdativeBoundsQuadraticTriangle::element_distortion(&msh);
+        let dmax = d.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        // Value computed with gmsh
+        assert_delta!(dmax, 1.0 / 0.00122, 0.1);
+
+        // let mut writer = crate::io::VTUFile::from_mesh(&msh);
+        // writer.add_cell_data("distorsion", 1, d.iter().copied());
+        // writer.export("quadratic_disk.vtu").unwrap();
     }
 }

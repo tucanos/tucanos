@@ -1,12 +1,12 @@
 use crate::{
     Vertex,
     mesh::{
-        Edge, GEdge, GSimplex, GTriangle, Idx, QuadraticEdge, QuadraticGEdge, Simplex,
-        elements::ho_simplex::HOType,
+        Edge, GEdge, GSimplex, GTriangle, Idx, Mesh, QuadraticEdge, QuadraticGEdge, Simplex,
+        Triangle, elements::ho_simplex::HOType,
     },
 };
 use argmin::core::{CostFunction, Executor, Gradient, Hessian};
-use nalgebra::SMatrix;
+use nalgebra::{Const, LU, SMatrix, SVector};
 use std::fmt::Debug;
 use std::ops::Index;
 
@@ -25,6 +25,14 @@ impl<T: Idx> QuadraticTriangle<T> {
             i4.try_into().unwrap(),
             i5.try_into().unwrap(),
         ])
+    }
+
+    pub fn linear(&self) -> Triangle<T> {
+        Triangle::new(
+            self.0[0].try_into().unwrap(),
+            self.0[1].try_into().unwrap(),
+            self.0[2].try_into().unwrap(),
+        )
     }
 }
 
@@ -251,7 +259,7 @@ impl<T: Idx> Simplex for QuadraticTriangle<T> {
     }
 
     fn is_same(&self, other: &Self) -> bool {
-        *self == *other
+        self.linear().is_same(&other.linear())
     }
 
     fn invert(&mut self) {
@@ -301,7 +309,11 @@ impl<const D: usize> GSimplex<D> for QuadraticGTriangle<D> {
             let [du, mut dv, mut dw] = self.jac_mapping(&bcoords);
             dv -= du;
             dw -= du;
-            res += weight * f(&bcoords) * dv.cross(&dw).norm();
+            res += if D == 3 {
+                weight * f(&bcoords) * dv.cross(&dw).norm()
+            } else {
+                weight * f(&bcoords) * (dv[0] * dw[1] - dv[1] * dw[0]).abs()
+            };
         }
         0.5 * res
     }
@@ -424,13 +436,212 @@ impl<const D: usize> Hessian for QuadraticTriangleProjection<'_, D> {
     }
 }
 
+/// Adaptive computation of the bounds of the determinant of the jacobian
+/// for quadratic triangles
+pub struct AdativeBoundsQuadraticTriangle<'a> {
+    c0: SVector<f64, 3>,
+    c1: SVector<f64, 3>,
+    c2: SVector<f64, 3>,
+    tri: &'a QuadraticGTriangle<2>,
+    b: SVector<f64, 6>,
+    children: Option<Box<[Self; 4]>>,
+    lu: &'a LU<f64, Const<6>, Const<6>>,
+}
+
+impl<'a> AdativeBoundsQuadraticTriangle<'a> {
+    fn midpoints(
+        c0: &SVector<f64, 3>,
+        c1: &SVector<f64, 3>,
+        c2: &SVector<f64, 3>,
+    ) -> (SVector<f64, 3>, SVector<f64, 3>, SVector<f64, 3>) {
+        (0.5 * (c0 + c1), 0.5 * (c1 + c2), 0.5 * (c2 + c0))
+    }
+
+    #[must_use]
+    pub fn lagrange_to_bezier() -> LU<f64, Const<6>, Const<6>> {
+        let c0 = SVector::<f64, 3>::new(1.0, 0.0, 0.0);
+        let c1 = SVector::<f64, 3>::new(0.0, 1.0, 0.0);
+        let c2 = SVector::<f64, 3>::new(0.0, 0.0, 1.0);
+        let (c4, c5, c6) = Self::midpoints(&c0, &c1, &c2);
+        let pts = [c0, c1, c2, c4, c5, c6];
+
+        let bezier = |(i, u, v, w)| match i {
+            0 => u * u,
+            1 => v * v,
+            2 => w * w,
+            3 => 2.0 * u * v,
+            4 => 2.0 * v * w,
+            5 => 2.0 * w * u,
+            _ => unreachable!(),
+        };
+
+        let mat =
+            SMatrix::<f64, 6, 6>::from_fn(|i, j| bezier((j, pts[i][0], pts[i][1], pts[i][2])));
+        mat.lu()
+    }
+
+    /// Compute the distortion (ratio of the max to min of the determinant of the jacobian)
+    /// for all elements in the mesh
+    #[must_use]
+    pub fn element_distortion<T: Idx>(msh: &impl Mesh<2, C = QuadraticTriangle<T>>) -> Vec<f64> {
+        let lu = Self::lagrange_to_bezier();
+
+        msh.gelems()
+            .map(|ge| {
+                let (_, (min, max)) =
+                    AdativeBoundsQuadraticTriangle::new(&ge, &lu).compute_bounds(None);
+                max / min
+            })
+            .collect()
+    }
+
+    #[must_use]
+    pub fn new(tri: &'a QuadraticGTriangle<2>, lu: &'a LU<f64, Const<6>, Const<6>>) -> Self {
+        Self::new_with_corners(
+            tri,
+            lu,
+            SVector::<f64, 3>::new(1.0, 0.0, 0.0),
+            SVector::<f64, 3>::new(0.0, 1.0, 0.0),
+            SVector::<f64, 3>::new(0.0, 0.0, 1.0),
+        )
+    }
+
+    #[must_use]
+    fn new_with_corners(
+        tri: &'a QuadraticGTriangle<2>,
+        lu: &'a LU<f64, Const<6>, Const<6>>,
+        c0: SVector<f64, 3>,
+        c1: SVector<f64, 3>,
+        c2: SVector<f64, 3>,
+    ) -> Self {
+        let (c4, c5, c6) = Self::midpoints(&c0, &c1, &c2);
+        let pts = [c0, c1, c2, c4, c5, c6];
+
+        let det_jac = |u, v, w| {
+            let [du, dv, dw] = tri.jac_mapping(&[u, v, w]);
+            let mat = SMatrix::<f64, 2, 2>::from_columns(&[dv - du, dw - du]);
+            mat.determinant()
+        };
+        let vals = SVector::<f64, 6>::from_fn(|i, _| det_jac(pts[i][0], pts[i][1], pts[i][2]));
+        let b = lu.solve(&vals).unwrap();
+        Self {
+            c0,
+            c1,
+            c2,
+            tri,
+            b,
+            children: None,
+            lu,
+        }
+    }
+
+    fn subdivide(&mut self) {
+        let (c4, c5, c6) = Self::midpoints(&self.c0, &self.c1, &self.c2);
+        self.children = Some(Box::new([
+            AdativeBoundsQuadraticTriangle::new_with_corners(self.tri, self.lu, self.c0, c4, c6),
+            AdativeBoundsQuadraticTriangle::new_with_corners(self.tri, self.lu, c4, self.c1, c5),
+            AdativeBoundsQuadraticTriangle::new_with_corners(self.tri, self.lu, c6, c5, self.c2),
+            AdativeBoundsQuadraticTriangle::new_with_corners(self.tri, self.lu, c4, c5, c6),
+        ]));
+    }
+
+    fn bounds(&self) -> (f64, f64) {
+        let mut min = f64::MAX;
+        let mut max = f64::MIN;
+        if let Some(children) = &self.children {
+            for child in children.iter() {
+                let (cmin, cmax) = child.bounds();
+                min = min.min(cmin);
+                max = max.max(cmax);
+            }
+        } else {
+            min = self.b.iter().copied().fold(f64::INFINITY, f64::min);
+            max = self.b.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        }
+        (min, max)
+    }
+
+    fn refine_min(&mut self) -> bool {
+        if let Some(children) = &mut self.children {
+            let mut children_bounds = [(0.0, 0.0); 4];
+            for (i, child) in children.iter_mut().enumerate() {
+                children_bounds[i] = child.bounds();
+            }
+            if children_bounds.iter().any(|(_, x)| *x < 0.0) {
+                return true;
+            }
+            let min = children_bounds
+                .iter()
+                .map(|(x, _)| *x)
+                .fold(f64::INFINITY, f64::min);
+            let imin = children_bounds
+                .iter()
+                .position(|(x, _)| (*x - min).abs() < f64::EPSILON)
+                .unwrap();
+            children[imin].refine_min()
+        } else {
+            self.subdivide();
+            false
+        }
+    }
+
+    fn refine_max(&mut self) {
+        if let Some(children) = &mut self.children {
+            let mut children_bounds = [(0.0, 0.0); 4];
+            for (i, child) in children.iter_mut().enumerate() {
+                children_bounds[i] = child.bounds();
+            }
+            let max = children_bounds
+                .iter()
+                .map(|(x, _)| *x)
+                .fold(f64::NEG_INFINITY, f64::max);
+            let imax = children_bounds
+                .iter()
+                .position(|(x, _)| (*x - max).abs() < f64::EPSILON)
+                .unwrap();
+            children[imax].refine_max();
+        } else {
+            self.subdivide();
+        }
+    }
+
+    /// Compute the bounds of the determinant of the jacobian as described in
+    /// https://gmsh.info/doc/preprints/gmsh_curved_preprint.pdf
+    ///   - At most 10 refinements are performed for min and max
+    ///   - Iterations stop if the relative change of the bounds is less than tol
+    ///   - Iterations stop if as invalid element is found when refining the min
+    pub fn compute_bounds(&mut self, tol: Option<f64>) -> (bool, (f64, f64)) {
+        let tol = tol.unwrap_or(1e-1);
+        let (mut min, mut max) = self.bounds();
+        let mut is_invalid = false;
+        for _ in 0..10 {
+            self.refine_max();
+            let (_, new_max) = self.bounds();
+            if (new_max - max).abs() < tol {
+                break;
+            }
+            max = new_max;
+        }
+
+        for _ in 0..10 {
+            is_invalid = is_invalid || self.refine_min();
+            let (new_min, _) = self.bounds();
+            if (new_min - min).abs() < tol {
+                break;
+            }
+            min = new_min;
+        }
+
+        (is_invalid, (min, max))
+    }
+}
 #[cfg(test)]
 mod tests {
     use crate::{
-        Vert3d, assert_delta,
+        Vert2d, Vert3d, assert_delta,
         mesh::{
             BoundaryMesh3d, GSimplex, GTriangle, Mesh, QuadraticGTriangle, Triangle,
-            elements::ho_simplex::HOType,
+            elements::{ho_simplex::HOType, quadratic_triangle::AdativeBoundsQuadraticTriangle},
         },
     };
 
@@ -516,5 +727,25 @@ mod tests {
                 assert!(v[i] < maxi[i] + 1e-12);
             }
         }
+    }
+
+    #[test]
+    fn test_bounds() {
+        let p0 = Vert2d::new(0., 0.);
+        let p1 = Vert2d::new(2., 0.);
+        let p2 = Vert2d::new(1., 1.);
+        let p3 = Vert2d::new(1.8, 0.4);
+        let p4 = Vert2d::new(2.1, 0.41);
+        let p5 = Vert2d::new(0.25, 0.5);
+
+        let tri = QuadraticGTriangle::new(&p0, &p1, &p2, &p3, &p4, &p5, HOType::Lagrange);
+
+        let lu = AdativeBoundsQuadraticTriangle::lagrange_to_bezier();
+        let mut adb = AdativeBoundsQuadraticTriangle::new(&tri, &lu);
+
+        let (is_invalid, (min, max)) = adb.compute_bounds(Some(1e-3));
+        assert!(is_invalid);
+        assert_delta!(min, -0.247, 1e-3);
+        assert_delta!(max, 6.12, 1e-3);
     }
 }

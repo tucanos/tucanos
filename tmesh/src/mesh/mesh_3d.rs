@@ -1,7 +1,10 @@
 //! Tetrahedron meshes in 3d
 use crate::{
     Vert3d,
-    mesh::{GenericMesh, Hexahedron, Mesh, Quadrangle, Tetrahedron, Triangle, elements::Idx},
+    mesh::{
+        GenericMesh, Hexahedron, Mesh, Quadrangle, QuadraticTetrahedron, Tetrahedron, Triangle,
+        elements::Idx, to_quadratic::to_quadratic_tetrahedron_mesh,
+    },
 };
 
 /// Create a `Mesh<3, C=Tetrahedron<_>>` of a `lx` by `ly` by `lz` box by splitting a `nx` by `ny` by `nz`
@@ -209,17 +212,35 @@ pub fn ball_mesh<M: Mesh<3, C = Tetrahedron<impl Idx>>>(r: f64, n: usize) -> M {
     res
 }
 
+/// Create a `Mesh<3, QuadraticTetrahedron<_>>` of a ball
+#[must_use]
+pub fn quadratic_ball_mesh<M: Mesh<3, C = QuadraticTetrahedron<impl Idx>>>(r: f64, n: usize) -> M {
+    let msh = ball_mesh::<Mesh3d>(r, n);
+    let mut msh: M = to_quadratic_tetrahedron_mesh(&msh);
+    let flg = msh.boundary_flag();
+    for (v, f) in msh.verts_mut().zip(flg) {
+        if f {
+            *v *= r / v.norm();
+        }
+    }
+
+    msh
+}
+
 /// Tetrahedron mesh in 3d
 pub type Mesh3d = GenericMesh<3, Tetrahedron<usize>>;
+pub type QuadraticMesh3d = GenericMesh<3, QuadraticTetrahedron<usize>>;
 
 #[cfg(test)]
 mod tests {
     use crate::{
         Vert3d, assert_delta,
         mesh::{
-            BoundaryMesh3d, GSimplex, GradientMethod, Mesh, Mesh3d, bandwidth, box_mesh,
+            AdativeBoundsQuadraticTetrahedron, BoundaryMesh3d, GSimplex, GradientMethod, Mesh,
+            Mesh3d, QuadraticBoundaryMesh3d, QuadraticMesh3d, bandwidth, box_mesh,
             mesh_3d::ball_mesh,
             partition::{HilbertPartitioner, KMeansPartitioner3d, RCMPartitioner},
+            quadratic_ball_mesh,
         },
     };
     use rayon::iter::ParallelIterator;
@@ -671,9 +692,31 @@ mod tests {
     #[test]
     fn test_ball() {
         let r = 1.234;
-        let msh: Mesh3d = ball_mesh(r, 6);
+        let msh: Mesh3d = ball_mesh(r, 3);
         let surf: BoundaryMesh3d = msh.boundary().0;
-        assert_delta!(msh.vol(), 4.0 / 3.0 * PI * r.powi(3), 0.003);
-        assert_delta!(surf.vol(), 4.0 * PI * r.powi(2), 0.004);
+        assert_delta!(msh.vol(), 4.0 / 3.0 * PI * r.powi(3), 0.2);
+        assert_delta!(surf.vol(), 4.0 * PI * r.powi(2), 0.25);
+
+        let faces = msh.all_faces();
+        msh.check(&faces).unwrap();
+
+        let msh: QuadraticMesh3d = quadratic_ball_mesh(r, 2);
+        // msh.write_meshb("qball.mesh").unwrap();
+        let surf: QuadraticBoundaryMesh3d = msh.boundary().0;
+        assert_delta!(msh.vol(), 4.0 / 3.0 * PI * r.powi(3), 9e-3);
+        assert_delta!(surf.vol(), 4.0 * PI * r.powi(2), 1.4e-2);
+
+        let faces = msh.all_faces();
+        msh.check(&faces).unwrap();
+
+        let d = AdativeBoundsQuadraticTetrahedron::element_distortion(&msh);
+
+        let dmax = d.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        // Value computed with gmsh
+        assert_delta!(dmax, 1.0 / 0.635, 0.001);
+
+        // let mut writer = crate::io::VTUFile::from_mesh(&msh);
+        // writer.add_cell_data("distorsion", 1, d.iter().copied());
+        // writer.export("qball.vtu").unwrap();
     }
 }

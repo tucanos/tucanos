@@ -1,9 +1,9 @@
 //! Boundary of `Mesh2d`
-use std::{f64::consts::PI, iter::once};
+use std::f64::consts::PI;
 
 use crate::{
-    Vert2d, Vertex,
-    mesh::{Edge, GenericMesh, Idx, Mesh, QuadraticEdge, Simplex},
+    Vert2d,
+    mesh::{Edge, GenericMesh, Idx, Mesh, QuadraticEdge, to_quadratic::to_quadratic_edge_mesh},
 };
 
 /// Edge mesh in 2d
@@ -30,33 +30,6 @@ pub fn quadratic_circle_mesh<M: Mesh<2, C = QuadraticEdge<impl Idx>>>(r: f64, n:
     let mut res: M = to_quadratic_edge_mesh(&circle_mesh::<BoundaryMesh2d>(r, n));
     res.verts_mut().for_each(|x| *x *= r / x.norm());
 
-    res
-}
-
-#[must_use]
-pub fn to_quadratic_edge_mesh<const D: usize, T: Idx, M: Mesh<D, C = QuadraticEdge<T>>, T2: Idx>(
-    msh: &impl Mesh<D, C = Edge<T2>>,
-) -> M {
-    let edges = msh.edges();
-
-    let mut res = M::empty();
-    res.add_verts(msh.verts());
-    let mut new_verts = vec![Vertex::zeros(); edges.len()];
-    for (&e, &i) in &edges {
-        new_verts[i] = 0.5 * (msh.vert(e.get(0)) + msh.vert(e.get(1)));
-    }
-    res.add_verts(new_verts.iter().copied());
-
-    for (e, t) in msh.elems().zip(msh.etags()) {
-        res.add_elems(
-            once(QuadraticEdge::new(
-                e.get(0),
-                e.get(1),
-                edges.get(&e.sorted()).unwrap() + msh.n_verts(),
-            )),
-            once(t),
-        );
-    }
     res
 }
 
