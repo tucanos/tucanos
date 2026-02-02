@@ -12,7 +12,8 @@ use tmesh::{
     Vertex,
     mesh::{
         Edge, GSimplex, GenericMesh, Idx, Mesh, QuadraticEdge, QuadraticTriangle, Simplex, SubMesh,
-        Triangle, to_quadratic_edge_mesh, to_quadratic_triangle_mesh,
+        Triangle,
+        to_quadratic::{to_quadratic_edge_mesh, to_quadratic_triangle_mesh},
     },
     spatialindex::ObjectIndex,
 };

@@ -17,6 +17,8 @@ pub mod partition;
 
 pub mod gradient;
 
+pub mod to_quadratic;
+
 mod vector;
 
 use std::path::Path;
@@ -39,26 +41,32 @@ use crate::{
 };
 pub use boundary_mesh_2d::{
     BoundaryMesh2d, QuadraticBoundaryMesh2d, circle_mesh, quadratic_circle_mesh,
-    to_quadratic_edge_mesh,
 };
 pub use boundary_mesh_3d::{
     BoundaryMesh3d, QuadraticBoundaryMesh3d, quadratic_sphere_mesh, read_stl, sphere_mesh,
-    to_quadratic_triangle_mesh,
 };
 pub use elements::{
     Hexahedron, Idx, Prism, Pyramid, Quadrangle,
     edge::{Edge, GEdge},
     node::{GNode, Node},
     quadratic_edge::{QuadraticEdge, QuadraticGEdge},
-    quadratic_triangle::{QuadraticGTriangle, QuadraticTriangle},
+    quadratic_tetrahedron::{
+        AdativeBoundsQuadraticTetrahedron, QuadraticGTetrahedron, QuadraticTetrahedron,
+    },
+    quadratic_triangle::{AdativeBoundsQuadraticTriangle, QuadraticGTriangle, QuadraticTriangle},
     simplex::{GSimplex, Simplex, get_face_to_elem},
     tetrahedron::{GTetrahedron, Tetrahedron},
     to_simplices::{hex2tets, pri2tets, pyr2tets, qua2tris},
     triangle::{GTriangle, Triangle},
 };
 use hilbert::hilbert_indices;
-pub use mesh_2d::{Mesh2d, nonuniform_rectangle_mesh, rectangle_mesh};
-pub use mesh_3d::{Mesh3d, ball_mesh, box_mesh, nonuniform_box_mesh};
+pub use mesh_2d::{
+    Mesh2d, QuadraticMesh2d, disk_mesh, nonuniform_rectangle_mesh, quadratic_disk_mesh,
+    rectangle_mesh,
+};
+pub use mesh_3d::{
+    Mesh3d, QuadraticMesh3d, ball_mesh, box_mesh, nonuniform_box_mesh, quadratic_ball_mesh,
+};
 use partition::Partitioner;
 use split::{split_edgs, split_tets, split_tris};
 pub use vector::Vector;
@@ -624,7 +632,7 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                     }
                 }
                 (Some(i), None) | (None, Some(i)) => {
-                    if Self::faces_are_oriented() {
+                    if Self::faces_are_oriented() && Self::C::order() == 1 {
                         let gf = self.gface(&f);
                         let fc = gf.center();
                         let ec = self.gelem(&self.elem(*i)).center();
@@ -643,7 +651,7 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         }
 
         // volumes
-        if Self::faces_are_oriented() {
+        if Self::faces_are_oriented() && Self::C::order() == 1 {
             let vol = self.par_gelems().map(|ge| ge.vol()).sum::<f64>();
             let vol2 = self
                 .par_faces()
@@ -1012,6 +1020,10 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
             }
             2 => {
                 match <Self::C as Simplex>::N_VERTS {
+                    10 => writer.write_quadratic_tetrahedra(
+                        self.elems().map(|x| std::array::from_fn(|i| x.get(i))),
+                        self.etags().map(|x| x.try_into().unwrap()),
+                    )?,
                     6 => writer.write_quadratic_triangles(
                         self.elems().map(|x| std::array::from_fn(|i| x.get(i))),
                         self.etags().map(|x| x.try_into().unwrap()),
@@ -1024,6 +1036,10 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                 }
 
                 match <Self::C as Simplex>::FACE::N_VERTS {
+                    6 => writer.write_quadratic_triangles(
+                        self.faces().map(|x| std::array::from_fn(|i| x.get(i))),
+                        self.ftags().map(|x| x.try_into().unwrap()),
+                    )?,
                     3 => writer.write_quadratic_edges(
                         self.faces().map(|x| std::array::from_fn(|i| x.get(i))),
                         self.ftags().map(|x| x.try_into().unwrap()),

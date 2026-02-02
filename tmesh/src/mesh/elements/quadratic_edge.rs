@@ -213,15 +213,12 @@ impl<const D: usize> GSimplex<D> for QuadraticGEdge<D> {
     }
 
     fn normal(&self, bcoords: Option<&Self::BCOORDS>) -> Vertex<D> {
-        if Self::has_normal() {
-            let [du, dv] = self.jac_mapping(bcoords.unwrap());
-            let mut res = Vertex::<D>::zeros();
-            res[0] = dv[1] - du[1];
-            res[1] = du[0] - dv[0];
-            res
-        } else {
-            unreachable!()
-        }
+        let bcoords = bcoords.unwrap_or(&[0.5, 0.5]);
+        let [du, dv] = self.jac_mapping(bcoords);
+        let mut res = Vertex::<D>::zeros();
+        res[0] = dv[1] - du[1];
+        res[1] = du[0] - dv[0];
+        res
     }
 
     fn radius(&self) -> f64 {
