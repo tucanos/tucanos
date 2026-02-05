@@ -13,11 +13,13 @@ use pyo3::{
     pyclass, pymethods,
     types::{PyDict, PyDictMethods, PyType},
 };
+use std::collections::HashMap;
 #[cfg(feature = "metis")]
 use tmesh::mesh::partition::{MetisKWay, MetisPartitioner, MetisRecursive};
 use tmesh::{
     Tag, Vertex,
     interpolate::{InterpolationMethod, Interpolator},
+    io::VTUFile,
     mesh::{
         AdativeBoundsQuadraticTetrahedron, AdativeBoundsQuadraticTriangle, Edge, GenericMesh,
         GradientMethod, Hexahedron, Mesh, Prism, Pyramid, Quadrangle, QuadraticEdge,
@@ -228,9 +230,30 @@ macro_rules! impl_mesh {
             }
 
             /// Export the mesh to a `.vtu` file
-            fn write_vtk(&self, file_name: &str) -> PyResult<()> {
-                self.0
-                    .write_vtk(file_name)
+            #[pyo3(signature = (file_name, vert_data=None, elem_data=None))]
+            fn write_vtk(
+                &self,
+                file_name: &str,
+                vert_data: Option<HashMap<String, PyReadonlyArray2<f64>>>,
+                elem_data: Option<HashMap<String, PyReadonlyArray2<f64>>>,
+            ) -> PyResult<()> {
+                let mut writer = VTUFile::from_mesh(&self.0);
+                if let Some(data) = vert_data.as_ref() {
+                    for (name, arr) in data.iter() {
+                        let n = arr.shape()[1];
+                        let arr = arr.as_slice()?;
+                        writer.add_point_data(name, n, arr.iter().copied())
+                    }
+                }
+                if let Some(data) = elem_data.as_ref() {
+                    for (name, arr) in data.iter() {
+                        let n = arr.shape()[1];
+                        let arr = arr.as_slice()?;
+                        writer.add_cell_data(name, n, arr.iter().copied())
+                    }
+                }
+                writer
+                    .export(file_name)
                     .map_err(|e| PyRuntimeError::new_err(e.to_string()))
             }
 
