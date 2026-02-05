@@ -64,9 +64,11 @@ pub fn set_thread_affinity(cores: PyReadonlyArray1<usize>) -> PyResult<usize> {
 pub fn pytucanos(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     pyo3_log::init();
     m.add_class::<mesh::PyMesh2d>()?;
+    m.add_class::<mesh::PyQuadraticMesh2d>()?;
     m.add_class::<mesh::PyBoundaryMesh2d>()?;
     m.add_class::<mesh::PyQuadraticBoundaryMesh2d>()?;
     m.add_class::<mesh::PyMesh3d>()?;
+    m.add_class::<mesh::PyQuadraticMesh3d>()?;
     m.add_class::<mesh::PyBoundaryMesh3d>()?;
     m.add_class::<mesh::PyQuadraticBoundaryMesh3d>()?;
     m.add_class::<mesh::PyPartitionerType>()?;

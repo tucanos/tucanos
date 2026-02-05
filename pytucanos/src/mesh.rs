@@ -19,11 +19,13 @@ use tmesh::{
     Tag, Vertex,
     interpolate::{InterpolationMethod, Interpolator},
     mesh::{
-        Edge, GenericMesh, GradientMethod, Hexahedron, Mesh, Prism, Pyramid, Quadrangle,
-        QuadraticEdge, QuadraticTriangle, Simplex, Tetrahedron, Triangle, ball_mesh, circle_mesh,
-        nonuniform_box_mesh, nonuniform_rectangle_mesh,
+        AdativeBoundsQuadraticTetrahedron, AdativeBoundsQuadraticTriangle, Edge, GenericMesh,
+        GradientMethod, Hexahedron, Mesh, Prism, Pyramid, Quadrangle, QuadraticEdge,
+        QuadraticTetrahedron, QuadraticTriangle, Simplex, Tetrahedron, Triangle, ball_mesh,
+        circle_mesh, nonuniform_box_mesh, nonuniform_rectangle_mesh,
         partition::{HilbertPartitioner, KMeansPartitioner2d, KMeansPartitioner3d, RCMPartitioner},
         quadratic_circle_mesh, quadratic_sphere_mesh, read_stl, sphere_mesh,
+        to_quadratic::{to_quadratic_tetrahedron_mesh, to_quadratic_triangle_mesh},
     },
 };
 use tucanos::geometry::orient_geometry;
@@ -816,6 +818,10 @@ macro_rules! impl_mesh {
 
 create_mesh!(PyMesh2d, 2, Triangle);
 impl_mesh!(PyMesh2d, 2, Triangle);
+
+create_mesh!(PyQuadraticMesh2d, 2, QuadraticTriangle);
+impl_mesh!(PyQuadraticMesh2d, 2, QuadraticTriangle);
+
 create_mesh!(PyBoundaryMesh2d, 2, Edge);
 impl_mesh!(PyBoundaryMesh2d, 2, Edge);
 
@@ -824,6 +830,10 @@ impl_mesh!(PyQuadraticBoundaryMesh2d, 2, QuadraticEdge);
 
 create_mesh!(PyMesh3d, 3, Tetrahedron);
 impl_mesh!(PyMesh3d, 3, Tetrahedron);
+
+create_mesh!(PyQuadraticMesh3d, 3, QuadraticTetrahedron);
+impl_mesh!(PyQuadraticMesh3d, 3, QuadraticTetrahedron);
+
 create_mesh!(PyBoundaryMesh3d, 3, Triangle);
 impl_mesh!(PyBoundaryMesh3d, 3, Triangle);
 
@@ -850,6 +860,28 @@ impl PyMesh2d {
     fn boundary<'py>(&self, py: Python<'py>) -> (PyBoundaryMesh2d, Bound<'py, PyArray1<usize>>) {
         let (bdy, ids) = self.0.boundary();
         (PyBoundaryMesh2d(bdy), PyArray1::from_vec(py, ids))
+    }
+
+    fn to_quadratic(&self) -> PyQuadraticMesh2d {
+        PyQuadraticMesh2d(to_quadratic_triangle_mesh(&self.0))
+    }
+}
+
+#[pymethods]
+impl PyQuadraticMesh2d {
+    /// Get the mesh boundary
+    fn boundary<'py>(
+        &self,
+        py: Python<'py>,
+    ) -> (PyQuadraticBoundaryMesh2d, Bound<'py, PyArray1<usize>>) {
+        let (bdy, ids) = self.0.boundary();
+        (PyQuadraticBoundaryMesh2d(bdy), PyArray1::from_vec(py, ids))
+    }
+
+    /// Compute the distortion for all the elements in the mesh
+    fn distortion<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
+        let d = AdativeBoundsQuadraticTriangle::element_distortion(&self.0);
+        PyArray1::from_vec(py, d)
     }
 }
 
@@ -941,5 +973,27 @@ impl PyMesh3d {
     fn boundary<'py>(&self, py: Python<'py>) -> (PyBoundaryMesh3d, Bound<'py, PyArray1<usize>>) {
         let (bdy, ids) = self.0.boundary();
         (PyBoundaryMesh3d(bdy), PyArray1::from_vec(py, ids))
+    }
+
+    fn to_quadratic(&self) -> PyQuadraticMesh3d {
+        PyQuadraticMesh3d(to_quadratic_tetrahedron_mesh(&self.0))
+    }
+}
+
+#[pymethods]
+impl PyQuadraticMesh3d {
+    /// Get the mesh boundary
+    fn boundary<'py>(
+        &self,
+        py: Python<'py>,
+    ) -> (PyQuadraticBoundaryMesh3d, Bound<'py, PyArray1<usize>>) {
+        let (bdy, ids) = self.0.boundary();
+        (PyQuadraticBoundaryMesh3d(bdy), PyArray1::from_vec(py, ids))
+    }
+
+    /// Compute the distortion for all the elements in the mesh
+    fn distortion<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
+        let d = AdativeBoundsQuadraticTetrahedron::element_distortion(&self.0);
+        PyArray1::from_vec(py, d)
     }
 }
