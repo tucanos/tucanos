@@ -11,7 +11,7 @@ from pytucanos import (
     RemesherParams,
     curvature_metric,
     implied_metric,
-    INT,
+    Idx,
 )
 from pytucanos.mesh import plot_mesh
 
@@ -112,9 +112,9 @@ def get_meshes():
 
     bmsh = BoundaryMesh2d(
         coords,
-        elems.astype(INT),
+        elems.astype(Idx),
         etags.astype(np.int16),
-        np.empty((0, 1), dtype=INT),
+        np.empty((0, 1), dtype=Idx),
         np.empty(0, dtype=np.int16),
     )
 
@@ -175,10 +175,10 @@ def get_meshes():
             types, tags, conn = gmsh.model.mesh.getElements(dim, tag=ent)
             assert len(types) == 1
             if types[0] == 1:
-                faces.append(conn[0].reshape((-1, 2)).astype(INT))
+                faces.append(conn[0].reshape((-1, 2)).astype(Idx))
                 ftags.append(tag + np.zeros(tags[0].size, dtype=np.int16))
             elif types[0] == 2:
-                elems.append(conn[0].reshape((-1, 3)).astype(INT))
+                elems.append(conn[0].reshape((-1, 3)).astype(Idx))
                 etags.append(tag + np.zeros(tags[0].size, dtype=np.int16))
             else:
                 raise NotImplementedError()
@@ -206,9 +206,9 @@ def get_meshes():
 
     mesh = Mesh2d(
         coords[old_ids, :],
-        elems.astype(INT),
+        elems.astype(Idx),
         etags,
-        faces.astype(INT),
+        faces.astype(Idx),
         ftags,
     )
     # gmsh.fltk.run()
@@ -236,7 +236,6 @@ if __name__ == "__main__":
     msh.write_vtk("naca_0.vtu")
 
     geom = LinearGeometry2d(bmsh)
-    geom.compute_curvature()
 
     for it in range(6):
         bdy, bdy_ids = msh.boundary()
