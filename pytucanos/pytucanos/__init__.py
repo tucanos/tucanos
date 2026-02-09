@@ -1,7 +1,9 @@
 from .pytucanos import PyMesh2d as Mesh2d  # noqa: F401
+from .pytucanos import PyQuadraticMesh2d as QuadraticMesh2d  # noqa: F401
 from .pytucanos import PyBoundaryMesh2d as BoundaryMesh2d  # noqa: F401
 from .pytucanos import PyQuadraticBoundaryMesh2d as QuadraticBoundaryMesh2d  # noqa: F401
 from .pytucanos import PyMesh3d as Mesh3d  # noqa: F401
+from .pytucanos import PyQuadraticMesh3d as QuadraticMesh3d  # noqa: F401
 from .pytucanos import PyBoundaryMesh3d as BoundaryMesh3d  # noqa: F401
 from .pytucanos import PyQuadraticBoundaryMesh3d as QuadraticBoundaryMesh3d  # noqa: F401
 from .pytucanos import PyDualType as DualType  # noqa: F401
