@@ -264,7 +264,7 @@ mod tests {
         Vert2d, Vert3d, assert_delta,
         mesh::{GSimplex, Simplex},
     };
-    use rand::{Rng, SeedableRng, rngs::StdRng, seq::SliceRandom};
+    use rand::{RngExt, SeedableRng, rngs::StdRng, seq::SliceRandom};
 
     #[test]
     fn test_vol() {

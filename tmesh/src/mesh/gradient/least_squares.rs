@@ -368,7 +368,7 @@ where
 mod tests {
     use super::LeastSquaresGradient;
     use nalgebra::SVector;
-    use rand::{Rng, SeedableRng, rngs::StdRng};
+    use rand::{RngExt, SeedableRng, rngs::StdRng};
 
     #[test]
     fn test_ls_2d() {
