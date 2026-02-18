@@ -195,7 +195,7 @@ impl<const D: usize> GSimplex<D> for GEdge<D> {
 
 #[cfg(test)]
 mod tests {
-    use rand::{Rng, SeedableRng, rngs::StdRng};
+    use rand::{RngExt, SeedableRng, rngs::StdRng};
 
     use super::{Edge, GEdge};
     use crate::{

@@ -217,7 +217,7 @@ pub mod tests {
     use std::f64::consts::PI;
 
     use parry3d_f64::math::Vector;
-    use rand::{Rng, SeedableRng, rngs::StdRng};
+    use rand::{RngExt, SeedableRng, rngs::StdRng};
 
     use crate::{
         Vert3d, Vertex, assert_delta,

@@ -318,7 +318,7 @@ impl<const D: usize> Hessian for QuadraticEdgeProjection<'_, D> {
 #[cfg(test)]
 mod tests {
     use argmin::core::{CostFunction, Gradient, Hessian};
-    use rand::{Rng, SeedableRng, rngs::StdRng};
+    use rand::{RngExt, SeedableRng, rngs::StdRng};
 
     use crate::{
         Vert2d, Vert3d, assert_delta,

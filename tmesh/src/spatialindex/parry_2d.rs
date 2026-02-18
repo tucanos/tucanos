@@ -223,7 +223,7 @@ mod tests {
         spatialindex::{ObjectIndex, parry_2d::ObjectIndex2d},
     };
     use parry2d_f64::math::Vector;
-    use rand::{Rng, SeedableRng, rngs::StdRng};
+    use rand::{RngExt, SeedableRng, rngs::StdRng};
 
     fn nearest_elem_naive<const D: usize>(msh: &impl Mesh<D>, pt: &Vertex<D>) -> usize {
         let mut dst = f64::MAX;

@@ -208,7 +208,7 @@ mod tests {
         metric::{AnisoMetric, AnisoMetric3d, IsoMetric, Metric, MetricField},
     };
     use nalgebra::SMatrix;
-    use rand::{Rng, SeedableRng, rngs::StdRng};
+    use rand::{RngExt, SeedableRng, rngs::StdRng};
     use tmesh::{
         Vert3d,
         mesh::{Mesh, Mesh3d, Simplex},
