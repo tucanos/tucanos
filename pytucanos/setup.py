@@ -22,7 +22,7 @@ class BuildRustCommand(build_rust):
 
 setuptools.setup(
     name="pytucanos",
-    version="0.3.0",
+    version="0.4.0",
     packages=["pytucanos"],
     install_requires=["numpy", "matplotlib"],
     rust_extensions=[
