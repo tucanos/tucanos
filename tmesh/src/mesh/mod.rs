@@ -424,7 +424,9 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
             .faces()
             .enumerate()
             .filter_map(|(f_id, f)| {
-                let &(_, i0, i1) = all_faces.get(&f.sorted()).unwrap();
+                let &(_, i0, i1) = all_faces
+                    .get(&f.sorted())
+                    .unwrap_or_else(|| panic!("face {f:?} not found in all_faces"));
                 let e_id = match (i0, i1) {
                     (Some(i), None) => i,
                     (None, Some(i)) => i,
@@ -468,6 +470,7 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
 
         let mut tags = self.ftags().collect();
 
+        let mut n = 0;
         // add untagged boundary faces
         for (f, &(_, i0, i1)) in all_faces {
             let i = match (i0, i1) {
@@ -478,6 +481,7 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
             if tagged_faces.contains_key(f) {
                 continue;
             }
+            n += 1;
 
             let e = self.elem(i);
             let mut f = *f;
@@ -499,7 +503,7 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                 self.add_faces(std::iter::once(f), std::iter::once(tag));
             }
         }
-
+        debug!("tagged {n} boundary faces");
         res
     }
 
@@ -535,11 +539,13 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         }
 
         // add untagged internal faces
+        let mut n = 0;
         for (f, &(_, i0, i1)) in all_faces {
             if let (Some(i0), Some(i1)) = (i0, i1) {
                 let t0 = self.etag(i0);
                 let t1 = self.etag(i1);
                 if t0 != t1 && !tagged_faces.contains_key(f) {
+                    n += 1;
                     let tags = if t0 < t1 { [t0, t1] } else { [t1, t0] };
                     let i = if t0 < t1 { i0 } else { i1 };
                     let e = self.elem(i);
@@ -564,6 +570,7 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                 }
             }
         }
+        debug!("tagged {n} internal faces");
 
         res
     }
