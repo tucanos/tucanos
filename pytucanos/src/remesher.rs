@@ -24,7 +24,7 @@ use tucanos::{
     },
 };
 
-#[pyclass(get_all, set_all)]
+#[pyclass(from_py_object, get_all, set_all)]
 #[derive(Clone)]
 pub struct PyCollapseParams {
     l: f64,
@@ -90,7 +90,7 @@ impl PyCollapseParams {
     }
 }
 
-#[pyclass(get_all, set_all)]
+#[pyclass(from_py_object, get_all, set_all)]
 #[derive(Clone)]
 pub struct PySplitParams {
     l: f64,
@@ -162,7 +162,7 @@ impl PySplitParams {
     }
 }
 
-#[pyclass(get_all, set_all)]
+#[pyclass(from_py_object, get_all, set_all)]
 #[derive(Clone)]
 pub struct PySwapParams {
     q: f64,
@@ -228,7 +228,7 @@ impl PySwapParams {
     }
 }
 
-#[pyclass(eq, eq_int)]
+#[pyclass(from_py_object, eq, eq_int)]
 #[derive(Clone, PartialEq, Eq)]
 pub enum PySmoothingMethod {
     Laplacian,
@@ -236,7 +236,7 @@ pub enum PySmoothingMethod {
     Laplacian2,
 }
 
-#[pyclass(get_all, set_all)]
+#[pyclass(from_py_object, get_all, set_all)]
 #[derive(Clone)]
 pub struct PySmoothParams {
     n_iter: u32,
@@ -301,7 +301,7 @@ impl PySmoothParams {
     }
 }
 
-#[pyclass(get_all, set_all)]
+#[pyclass(from_py_object, get_all, set_all)]
 #[derive(Clone)]
 pub enum PyRemeshingStep {
     Split(PySplitParams),
@@ -310,7 +310,7 @@ pub enum PyRemeshingStep {
     Smooth(PySmoothParams),
 }
 
-#[pyclass(get_all, set_all)]
+#[pyclass(from_py_object, get_all, set_all)]
 #[derive(Clone)]
 pub struct PyRemesherParams {
     steps: Vec<PyRemeshingStep>,

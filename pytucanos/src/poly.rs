@@ -14,7 +14,7 @@ use tmesh::{
 };
 
 /// Type of poly cells (mapping of `tmesh::PolyMeshType`)
-#[pyclass(eq, eq_int)]
+#[pyclass(from_py_object, eq, eq_int)]
 #[derive(Clone, PartialEq, Eq)]
 pub enum PyPolyMeshType {
     /// Polylines

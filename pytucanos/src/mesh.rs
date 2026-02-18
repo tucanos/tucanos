@@ -32,7 +32,7 @@ use tmesh::{
 };
 use tucanos::geometry::orient_geometry;
 /// Partitionner type
-#[pyclass(eq, eq_int)]
+#[pyclass(eq, eq_int, from_py_object)]
 #[derive(Clone, PartialEq, Eq)]
 pub enum PyPartitionerType {
     /// Hilbert

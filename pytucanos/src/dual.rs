@@ -9,7 +9,7 @@ use tmesh::{
 };
 
 /// Type of dual cells (mapping of `tmesh::DualType`)
-#[pyclass(eq, eq_int)]
+#[pyclass(eq, eq_int, from_py_object)]
 #[derive(Clone, PartialEq, Eq)]
 pub enum PyDualType {
     /// Medial cells
