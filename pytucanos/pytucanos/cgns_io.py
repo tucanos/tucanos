@@ -50,6 +50,44 @@ def cgns_elem_name(etype):
             return name
 
 
+def check_etypes(etypes):
+    order = None
+    for etype in etypes:
+        if etype not in [
+            CGK.BAR_2,
+            CGK.BAR_3,
+            CGK.TRI_3,
+            CGK.TRI_6,
+            CGK.QUAD_4,
+            CGK.TETRA_4,
+            CGK.PYRA_5,
+            CGK.PENTA_6,
+            CGK.HEXA_8,
+        ]:
+            raise NotImplementedError(
+                f"Element type {cgns_elem_name(etype)} not implemented"
+            )
+        if etype in [
+            CGK.BAR_3,
+            CGK.TRI_6,
+        ]:
+            assert order is None or order == 2
+            order = 2
+        else:
+            order = 1
+
+    CGK.ElementType
+    cell_dim = 0
+    if any([x in CGK.ElementType1D for x in etypes]):
+        cell_dim = 1
+    if any([x in CGK.ElementType2D for x in etypes]):
+        cell_dim = 2
+    if any([x in CGK.ElementType3D for x in etypes]):
+        cell_dim = 3
+
+    return cell_dim, order
+
+
 def load_cgns(fname, cls=None, xy=True):
     """
     Load a tmesh mesh from a .cgns file
@@ -71,7 +109,7 @@ def load_cgns(fname, cls=None, xy=True):
     multizone = False
 
     for base in CGU.hasChildType(tree, CGK.CGNSBase_ts):
-        cell_dim, phys_dim = CGU.getValue(base)
+        cell_dim_f, phys_dim = CGU.getValue(base)
         for zone in CGU.hasChildType(base, CGK.Zone_ts):
             logging.info(f"Reading {base[0]}/{zone[0]}")
             cg = CGU.hasChildName(zone, CGK.GridCoordinates_s)
@@ -94,36 +132,20 @@ def load_cgns(fname, cls=None, xy=True):
                     for els in CGU.hasChildType(zone, CGK.Elements_ts)
                 ]
             )
-            order = None
-            for etype in etypes:
-                if etype not in [
-                    CGK.BAR_2,
-                    CGK.BAR_3,
-                    CGK.TRI_3,
-                    CGK.TRI_6,
-                    CGK.QUAD_4,
-                    CGK.TETRA_4,
-                    CGK.PYRA_5,
-                    CGK.PENTA_6,
-                    CGK.HEXA_8,
-                ]:
-                    raise NotImplementedError(
-                        f"Element type {cgns_elem_name(etype)} not implemented"
-                    )
-                if etype in [
-                    CGK.BAR_3,
-                    CGK.TRI_6,
-                ]:
-                    assert order is None or order == 2
-                    order = 2
-                else:
-                    order = 1
-            logging.info(f"order = {order}")
+            cell_dim, order = check_etypes(etypes)
+            if cell_dim != cell_dim_f:
+                logging.warning(
+                    f"cell_dim = {cell_dim_f} for the base but using {cell_dim} based on the element types"
+                )
+            logging.debug(f"phys_dim = {phys_dim}")
+            logging.debug(f"cell_dim = {cell_dim}")
+            logging.debug(f"order = {order}")
 
             if cls is None:
                 msh = get_empty_mesh(phys_dim, cell_dim, order)
             else:
                 msh = cls.empty()
+            logging.debug(f"mesh type: {type(msh)}")
 
             logging.debug(f"Read {coords.shape[0]} vertices")
             msh.add_verts(coords)
