@@ -21,8 +21,8 @@ use tmesh::{
     interpolate::{InterpolationMethod, Interpolator},
     io::VTUFile,
     mesh::{
-        AdativeBoundsQuadraticTetrahedron, AdativeBoundsQuadraticTriangle, Edge, GenericMesh,
-        GradientMethod, Hexahedron, Mesh, Prism, Pyramid, Quadrangle, QuadraticEdge,
+        AdativeBoundsQuadraticTetrahedron, AdativeBoundsQuadraticTriangle, Edge, GSimplex,
+        GenericMesh, GradientMethod, Hexahedron, Mesh, Prism, Pyramid, Quadrangle, QuadraticEdge,
         QuadraticTetrahedron, QuadraticTriangle, Simplex, Tetrahedron, Triangle, ball_mesh,
         circle_mesh, nonuniform_box_mesh, nonuniform_rectangle_mesh,
         partition::{HilbertPartitioner, KMeansPartitioner2d, KMeansPartitioner3d, RCMPartitioner},
@@ -827,6 +827,12 @@ macro_rules! impl_mesh {
             /// Get the mesh volume
             pub fn vol(&self) -> f64 {
                 self.0.vol()
+            }
+
+            /// Get the volume of all the mesh elements
+            pub fn vols<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<f64>>> {
+                let vols = self.0.gelems().map(|ge| ge.vol()).collect();
+                Ok(PyArray::from_vec(py, vols))
             }
 
             /// Check that the mesh is valid
