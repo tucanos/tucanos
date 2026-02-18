@@ -25,7 +25,7 @@ use tucanos::{
     metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric, MetricField},
     remesher::{ParallelRemesher, ParallelRemesherParams},
 };
-#[pyclass(get_all, set_all)]
+#[pyclass(get_all, set_all, from_py_object)]
 #[derive(Clone)]
 pub struct PyParallelRemesherParams {
     n_layers: u32,
