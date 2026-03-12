@@ -5,7 +5,7 @@ use crate::{
     metric::Metric,
     remesher::{Remesher, RemesherParams},
 };
-use log::{debug, warn};
+use log::{debug, info, warn};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rustc_hash::FxHashSet;
 use serde::Serialize;
@@ -408,6 +408,9 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
             self.mesh.write_vtk(&fname)?;
         }
 
+        let n_parts = self.partition_tags.len();
+        info!("Remeshing subdomains at level {level} with {n_parts} partitions");
+
         let now = Instant::now();
         let ((mut res, mut res_m), (mut ifc, ifc_m)) =
             self.remesh_partitions(m, geom, &params, dd_params, &info);
@@ -440,7 +443,7 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
         let ifc_topo = MeshTopology::new_from(&ifc, self.topo.topo().clone());
 
         let (mut ifc, ifc_m) = if let Some(dd_params) = dd_params.next(ifc.n_verts()) {
-            debug!("Remeshing level {level} / interface (parallel)");
+            info!("Remeshing interface at level {level} (parallel)");
             let mesh = ifc;
             let mut dd = ParallelRemesher::<_, _, P>::new(mesh, ifc_topo, self.n_parts)?;
             dd.set_debug(self.debug);
@@ -449,7 +452,7 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
             info.interface = Some(Box::new(interface_info));
             (ifc, ifc_m)
         } else {
-            debug!("Remeshing level {level} / interface (seq)");
+            info!("Remeshing interface at level {level} (seq)");
             let mut ifc_remesher = Remesher::new(&ifc, &ifc_topo, &ifc_m, geom)?;
             if self.debug {
                 ifc_remesher.check().unwrap();
