@@ -563,7 +563,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
     /// Select edges for which trace is enabled.
     #[must_use]
     #[cfg(feature = "trace_edges")]
-    pub fn debug_edge(&self, edg: &Edge<usize>) -> bool {
+    pub fn debug_edge(&self, edg: Edge<usize>) -> bool {
         let i0 = edg.get(0);
         let i1 = edg.get(1);
         if !self.verts.contains_key(&i0) || !self.verts.contains_key(&i1) {
