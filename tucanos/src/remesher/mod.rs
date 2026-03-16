@@ -13,4 +13,5 @@ pub use parallel::{ParallelRemesher, ParallelRemesherParams, ParallelRemeshingIn
 pub use sequential::{Remesher, RemesherParams, RemeshingStep};
 pub use smooth::{SmoothParams, SmoothingMethod};
 pub use split::SplitParams;
+pub use stats::Stats;
 pub use swap::SwapParams;
