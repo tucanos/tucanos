@@ -221,8 +221,14 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         }
 
         // projection if needed
+        if self.debug_edge(edg) {
+            info!("edge center : {edge_center:?}");
+        }
         if tag.0 < D as Dim {
             geom.project(&mut edge_center, &tag);
+            if self.debug_edge(edg) {
+                info!("projected edge center : {edge_center:?}");
+            }
         }
 
         let ftype = FilledCavityType::EdgeCenter((local_edg, edge_center, new_metric));
