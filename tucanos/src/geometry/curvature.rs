@@ -7,27 +7,42 @@ use tmesh::{
     mesh::{GSimplex, GenericMesh, Mesh, QuadraticGEdge, QuadraticGTriangle, Simplex},
 };
 
+#[derive(Debug, Clone, Copy)]
+pub enum VertexNormalWeight {
+    Volume,
+    #[allow(dead_code)] // Only used in the tests
+    // MAX, N. 1999. Weights for Computing Vertex Normals from Facet Normals.
+    //  Journal of Graphics Tools
+    VolumeOverEdgeLengthSquared,
+}
+
 /// Compute the surface normals at the mesh vertices
 /// NB: it should not be used across non smooth patches
-/// TODO: use a different weighting:
-/// "This contrasts with the weights used for
-/// estimating normals, for which we take wf,p to be the area of
-/// f divided by the squares of the lengths of the two edges that
-/// touch vertex p. As shown by Max (1999), this produces more
-/// accurate normal estimates than other weighting approaches,
-/// and is exact for vertices that lie on a sphere."
 #[must_use]
-pub fn compute_vertex_normals<const D: usize, M: Mesh<D>>(mesh: &M) -> Vec<Vertex<D>> {
+pub fn compute_vertex_normals<const D: usize, M: Mesh<D>>(
+    mesh: &M,
+    weight: VertexNormalWeight,
+) -> Vec<Vertex<D>> {
     assert_eq!(<M::C as Simplex>::order(), 1);
     debug!("Compute the surface normals at the vertices");
 
     let mut normals = vec![Vertex::<D>::zeros(); mesh.n_verts()];
 
+    let mut weights = vec![1.0; M::C::N_VERTS];
     for e in mesh.elems() {
         let ge = mesh.gelem(&e);
         let n = ge.normal(None);
-        for i_vert in e {
-            normals[i_vert] += n;
+        if M::C::N_VERTS == 3 && matches!(weight, VertexNormalWeight::VolumeOverEdgeLengthSquared) {
+            // for triangles only
+            let l0_squared = ge.edge(0).as_vec().norm_squared();
+            let l1_squared = ge.edge(1).as_vec().norm_squared();
+            let l2_squared = ge.edge(2).as_vec().norm_squared();
+            weights[0] = 1.0 / (l0_squared * l2_squared);
+            weights[1] = 1.0 / (l0_squared * l1_squared);
+            weights[2] = 1.0 / (l1_squared * l2_squared);
+        }
+        for (i_vert, &w) in e.into_iter().zip(weights.iter()) {
+            normals[i_vert] += w * n;
         }
     }
 
@@ -57,9 +72,12 @@ fn bound_curvature(x: f64) -> f64 {
 /// NB: curvature should not be computed across non smooth patches
 /// NB: curvature estimation is not accurate near the boundaires
 #[must_use]
-pub fn compute_curvature_tensor_2d<const D: usize>(smesh: &impl Mesh<D>) -> Vec<Vertex<D>> {
+pub fn compute_curvature_tensor_2d<const D: usize>(
+    smesh: &impl Mesh<D>,
+    weight: VertexNormalWeight,
+) -> Vec<Vertex<D>> {
     debug!("Compute curvature tensors (2d)");
-    let vertex_normals = compute_vertex_normals(smesh);
+    let vertex_normals = compute_vertex_normals(smesh, weight);
 
     let mut elem_u = Vec::with_capacity(smesh.n_elems());
 
@@ -93,9 +111,10 @@ pub fn compute_curvature_tensor_2d<const D: usize>(smesh: &impl Mesh<D>) -> Vec<
 #[must_use]
 pub fn compute_curvature_tensor_3d<const D: usize>(
     smesh: &impl Mesh<D>,
+    weight: VertexNormalWeight,
 ) -> (Vec<Vertex<D>>, Vec<Vertex<D>>) {
     debug!("Compute curvature tensors");
-    let vertex_normals = compute_vertex_normals(smesh);
+    let vertex_normals = compute_vertex_normals(smesh, weight);
 
     let mut elem_u = Vec::with_capacity(smesh.n_elems());
     let mut elem_v = Vec::with_capacity(smesh.n_elems());
@@ -297,7 +316,7 @@ pub fn compute_curvature<const D: usize, M: Mesh<D>>(
 ) -> (Vec<Vertex<D>>, Option<Vec<Vertex<D>>>) {
     if D == 2 {
         if M::C::order() == 1 && M::C::N_VERTS == 2 {
-            let mut u = compute_curvature_tensor_2d(mesh);
+            let mut u = compute_curvature_tensor_2d(mesh, VertexNormalWeight::Volume);
             fix_curvature(mesh, &mut u, None);
 
             return (u, None);
@@ -312,7 +331,7 @@ pub fn compute_curvature<const D: usize, M: Mesh<D>>(
 
     if D == 3 {
         if M::C::order() == 1 && M::C::N_VERTS == 3 {
-            let (mut u, mut v) = compute_curvature_tensor_3d(mesh);
+            let (mut u, mut v) = compute_curvature_tensor_3d(mesh, VertexNormalWeight::Volume);
             fix_curvature(mesh, &mut u, Some(&mut v));
 
             return (u, Some(v));
@@ -336,7 +355,7 @@ pub fn write_curvature<const D: usize, M: Mesh<D>>(mesh: &M, fname: &str) -> Res
     writer.add_cell_data("u", D, u.iter().flatten().copied());
     writer.add_cell_data("v", D, v.as_ref().unwrap().iter().flatten().copied());
 
-    let n = compute_vertex_normals(mesh);
+    let n = compute_vertex_normals(mesh, VertexNormalWeight::Volume);
     writer.add_point_data("n", D, n.iter().flatten().copied());
 
     writer.export(fname)?;
@@ -355,7 +374,10 @@ mod tests {
 
     use crate::{
         H_MAX,
-        geometry::{Geometry, MeshedGeometry, curvature::compute_curvature},
+        geometry::{
+            Geometry, MeshedGeometry,
+            curvature::{VertexNormalWeight, compute_curvature},
+        },
         mesh::{
             MeshTopology,
             test_meshes::{CylinderGeometry, cylinder, test_mesh_2d},
@@ -380,38 +402,43 @@ mod tests {
             *p = Vertex::<2>::new(x, y);
         });
 
-        let u = compute_curvature_tensor_2d(&mesh);
+        for weight in [
+            VertexNormalWeight::Volume,
+            VertexNormalWeight::VolumeOverEdgeLengthSquared,
+        ] {
+            let u = compute_curvature_tensor_2d(&mesh, weight);
 
-        // Get the indices of corner vertices
-        mesh.fix().unwrap();
+            // Get the indices of corner vertices
+            mesh.fix().unwrap();
 
-        let mut bdy_flag = vec![false; mesh.n_verts()];
-        for i in mesh.boundary::<GenericMesh<2, Node<usize>>>().1 {
-            bdy_flag[i] = true;
-        }
+            let mut bdy_flag = vec![false; mesh.n_verts()];
+            for i in mesh.boundary::<GenericMesh<2, Node<usize>>>().1 {
+                bdy_flag[i] = true;
+            }
 
-        for (i_elem, (e, t)) in mesh.elems().zip(mesh.etags()).enumerate() {
-            let u = u[i_elem];
-            let ge = mesh.gelem(&e);
-            let c = ge.center();
+            for (i_elem, (e, t)) in mesh.elems().zip(mesh.etags()).enumerate() {
+                let u = u[i_elem];
+                let ge = mesh.gelem(&e);
+                let c = ge.center();
 
-            let is_boundary = e.into_iter().any(|i| bdy_flag[i]);
-            if !is_boundary {
-                match t {
-                    1 | 3 => {
-                        assert!(u.norm() < 1.1 / H_MAX);
-                        assert!(u.norm() > 1e-17);
-                    }
-                    2 => {
-                        assert!(f64::abs(u.norm() - 1. / r_out) < 1e-6 / r_out);
-                        assert!(f64::abs(c.dot(&u)) < 1e-2);
-                    }
-                    4 => {
-                        assert!(f64::abs(u.norm() - 1. / r_in) < 1e-6 / r_in);
-                        assert!(f64::abs(c.dot(&u)) < 1e-2);
-                    }
-                    _ => {
-                        unreachable!();
+                let is_boundary = e.into_iter().any(|i| bdy_flag[i]);
+                if !is_boundary {
+                    match t {
+                        1 | 3 => {
+                            assert!(u.norm() < 1.1 / H_MAX);
+                            assert!(u.norm() > 1e-17);
+                        }
+                        2 => {
+                            assert!(f64::abs(u.norm() - 1. / r_out) < 1e-6 / r_out);
+                            assert!(f64::abs(c.dot(&u)) < 1e-2);
+                        }
+                        4 => {
+                            assert!(f64::abs(u.norm() - 1. / r_in) < 1e-6 / r_in);
+                            assert!(f64::abs(c.dot(&u)) < 1e-2);
+                        }
+                        _ => {
+                            unreachable!();
+                        }
                     }
                 }
             }
@@ -436,29 +463,34 @@ mod tests {
 
         mesh.fix().unwrap();
 
-        let mut u = compute_curvature_tensor_2d(&mesh);
-        fix_curvature(&mesh, &mut u, None);
+        for weight in [
+            VertexNormalWeight::Volume,
+            VertexNormalWeight::VolumeOverEdgeLengthSquared,
+        ] {
+            let mut u = compute_curvature_tensor_2d(&mesh, weight);
+            fix_curvature(&mesh, &mut u, None);
 
-        for (i_elem, (e, t)) in mesh.elems().zip(mesh.etags()).enumerate() {
-            let u = u[i_elem];
-            let ge = mesh.gelem(&e);
-            let c = ge.center();
+            for (i_elem, (e, t)) in mesh.elems().zip(mesh.etags()).enumerate() {
+                let u = u[i_elem];
+                let ge = mesh.gelem(&e);
+                let c = ge.center();
 
-            match t {
-                1 | 3 => {
-                    assert!(u.norm() < 1.1 / H_MAX);
-                    assert!(u.norm() > 1e-17);
-                }
-                2 => {
-                    assert!(f64::abs(u.norm() - 1. / r_out) < 1e-6 / r_out);
-                    assert!(f64::abs(c.dot(&u)) < 1e-2);
-                }
-                4 => {
-                    assert!(f64::abs(u.norm() - 1. / r_in) < 1e-6 / r_in);
-                    assert!(f64::abs(c.dot(&u)) < 1e-2);
-                }
-                _ => {
-                    unreachable!();
+                match t {
+                    1 | 3 => {
+                        assert!(u.norm() < 1.1 / H_MAX);
+                        assert!(u.norm() > 1e-17);
+                    }
+                    2 => {
+                        assert!(f64::abs(u.norm() - 1. / r_out) < 1e-6 / r_out);
+                        assert!(f64::abs(c.dot(&u)) < 1e-2);
+                    }
+                    4 => {
+                        assert!(f64::abs(u.norm() - 1. / r_in) < 1e-6 / r_in);
+                        assert!(f64::abs(c.dot(&u)) < 1e-2);
+                    }
+                    _ => {
+                        unreachable!();
+                    }
                 }
             }
         }
@@ -495,29 +527,34 @@ mod tests {
             bdy_flag[i] = true;
         }
 
-        let (u, v) = compute_curvature_tensor_3d(&surf);
+        for weight in [
+            VertexNormalWeight::Volume,
+            VertexNormalWeight::VolumeOverEdgeLengthSquared,
+        ] {
+            let (u, v) = compute_curvature_tensor_3d(&surf, weight);
 
-        for (i_elem, e) in surf.elems().enumerate() {
-            let mut u = u[i_elem];
-            let mut v = v[i_elem];
-            let ge = surf.gelem(&e);
-            let c = ge.center();
+            for (i_elem, e) in surf.elems().enumerate() {
+                let mut u = u[i_elem];
+                let mut v = v[i_elem];
+                let ge = surf.gelem(&e);
+                let c = ge.center();
 
-            let is_boundary = e.into_iter().any(|i| bdy_flag[i]);
-            if !is_boundary {
-                assert!(u.norm() < 1.1 / H_MAX);
-                assert!(u.norm() > 1e-17);
-                let u_ref = Vertex::<3>::new(0.0, 0.0, 1.0);
-                u.normalize_mut();
-                let cos_a = u.dot(&u_ref);
-                assert!(f64::abs(cos_a) > 0.98);
+                let is_boundary = e.into_iter().any(|i| bdy_flag[i]);
+                if !is_boundary {
+                    assert!(u.norm() < 1.1 / H_MAX);
+                    assert!(u.norm() > 1e-17);
+                    let u_ref = Vertex::<3>::new(0.0, 0.0, 1.0);
+                    u.normalize_mut();
+                    let cos_a = u.dot(&u_ref);
+                    assert!(f64::abs(cos_a) > 0.98);
 
-                assert!(f64::abs(v.norm() - 1. / radius) < 1e-6 / radius);
-                let mut v_ref = Vertex::<3>::new(-c[1], c[0], 0.0);
-                v_ref.normalize_mut();
-                v.normalize_mut();
-                let cos_a = v.dot(&v_ref);
-                assert!(f64::abs(cos_a) > 0.98);
+                    assert!(f64::abs(v.norm() - 1. / radius) < 1e-6 / radius);
+                    let mut v_ref = Vertex::<3>::new(-c[1], c[0], 0.0);
+                    v_ref.normalize_mut();
+                    v.normalize_mut();
+                    let cos_a = v.dot(&v_ref);
+                    assert!(f64::abs(cos_a) > 0.98);
+                }
             }
         }
     }
@@ -548,28 +585,33 @@ mod tests {
         );
         surf.fix().unwrap();
 
-        let (mut u, mut v) = compute_curvature_tensor_3d(&surf);
-        fix_curvature(&surf, &mut u, Some(&mut v));
+        for weight in [
+            VertexNormalWeight::Volume,
+            VertexNormalWeight::VolumeOverEdgeLengthSquared,
+        ] {
+            let (mut u, mut v) = compute_curvature_tensor_3d(&surf, weight);
+            fix_curvature(&surf, &mut u, Some(&mut v));
 
-        for (i_elem, e) in surf.elems().enumerate() {
-            let mut u = u[i_elem];
-            let mut v = v[i_elem];
-            let ge = surf.gelem(&e);
-            let c = ge.center();
+            for (i_elem, e) in surf.elems().enumerate() {
+                let mut u = u[i_elem];
+                let mut v = v[i_elem];
+                let ge = surf.gelem(&e);
+                let c = ge.center();
 
-            assert!(u.norm() < 1.1 / H_MAX);
-            assert!(u.norm() > 1e-17);
-            let u_ref = Vertex::<3>::new(0.0, 0.0, 1.0);
-            u.normalize_mut();
-            let cos_a = u.dot(&u_ref);
-            assert!(f64::abs(cos_a) > 0.98);
+                assert!(u.norm() < 1.1 / H_MAX);
+                assert!(u.norm() > 1e-17);
+                let u_ref = Vertex::<3>::new(0.0, 0.0, 1.0);
+                u.normalize_mut();
+                let cos_a = u.dot(&u_ref);
+                assert!(f64::abs(cos_a) > 0.98);
 
-            assert!(f64::abs(v.norm() - 1. / radius) < 1e-3 / radius);
-            let mut v_ref = Vertex::<3>::new(-c[1], c[0], 0.0);
-            v_ref.normalize_mut();
-            v.normalize_mut();
-            let cos_a = v.dot(&v_ref);
-            assert!(f64::abs(cos_a) > 0.98);
+                assert!(f64::abs(v.norm() - 1. / radius) < 1e-3 / radius);
+                let mut v_ref = Vertex::<3>::new(-c[1], c[0], 0.0);
+                v_ref.normalize_mut();
+                v.normalize_mut();
+                let cos_a = v.dot(&v_ref);
+                assert!(f64::abs(cos_a) > 0.98);
+            }
         }
     }
 
