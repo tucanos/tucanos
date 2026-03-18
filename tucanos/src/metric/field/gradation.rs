@@ -128,12 +128,16 @@ impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
         flg: &mut [bool],
         beta: f64,
         t: f64,
+        h_max: Option<f64>,
     ) -> Result<()>
     where
         Const<D>: nalgebra::ToTypenum + nalgebra::DimSub<nalgebra::U1>,
         DefaultAllocator: Allocator<<Const<D> as nalgebra::DimSub<nalgebra::U1>>::Output>,
     {
-        info!("Extend the metric into the domain using gradation = {beta} and t = {t}");
+        info!("Extend the metric into the domain");
+        info!("  gradation = {beta}");
+        info!("  t = {t}");
+        info!("  h_max = {h_max:?}");
 
         let n_verts = self.msh.n_verts();
 
@@ -166,6 +170,9 @@ impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
                             let e = pt - pt_i;
                             let m_i_spanned = m_i.span(&e, beta, t);
                             *m_new = m_new.intersect(&m_i_spanned);
+                        }
+                        if let Some(h_max) = h_max {
+                            m_new.scale_with_bounds(1.0, 0.0, h_max);
                         }
                         *is_fixed = true;
                     }
@@ -340,7 +347,7 @@ mod tests {
         }
 
         let mut m = MetricField::new(&mesh, m);
-        m.extend_from_boundary(&mesh.vertex_to_vertices(), &mut flg, 1.0, 1.0)?;
+        m.extend_from_boundary(&mesh.vertex_to_vertices(), &mut flg, 1.0, 1.0, None)?;
 
         for x in m.metric() {
             assert!(f64::abs(x.h() - 0.01) < 1e-6);
