@@ -3,7 +3,7 @@ use crate::{
     geometry::MeshedGeometry,
     metric::{AnisoMetric2d, AnisoMetric3d, MetricField},
 };
-use log::debug;
+use log::info;
 use rustc_hash::FxHashSet;
 use tmesh::{
     Vert2d,
@@ -31,7 +31,11 @@ impl<'a, T: Idx, M: Mesh<3, C = Tetrahedron<T>>> MetricField<'a, 3, M, AnisoMetr
         h_n: Option<&[f64]>,
         h_n_tags: Option<&[Tag]>,
     ) -> Result<Self> {
-        debug!("Compute the curvature metric with r/h = {r_h} and gradation = {beta}");
+        info!("Compute the curvature metric (3d)");
+        info!("  r/h = {r_h}");
+        info!("  h_min = {h_min:?}");
+        info!("  h_max = {h_max:?}");
+        info!("  h_n imposed on tags = {h_n_tags:?}");
 
         let (bdy, boundary_vertex_ids) = msh.boundary::<GenericMesh<3, Triangle<T>>>();
         let bdy_tags: FxHashSet<Tag> = bdy.etags().collect();
@@ -107,7 +111,11 @@ impl<'a, T: Idx, M: Mesh<2, C = Triangle<T>>> MetricField<'a, 2, M, AnisoMetric2
         h_n: Option<&[f64]>,
         h_n_tags: Option<&[Tag]>,
     ) -> Result<Self> {
-        debug!("Compute the curvature metric with r/h = {r_h} and gradation = {beta}");
+        info!("Compute the curvature metric (3d)");
+        info!("  r/h = {r_h}");
+        info!("  h_min = {h_min:?}");
+        info!("  h_max = {h_max:?}");
+        info!("  h_n imposed on tags = {h_n_tags:?}");
 
         let (bdy, boundary_vertex_ids) = msh.boundary::<GenericMesh<2, Edge<T>>>();
         let bdy_tags: FxHashSet<Tag> = bdy.etags().collect();

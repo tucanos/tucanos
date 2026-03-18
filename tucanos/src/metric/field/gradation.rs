@@ -2,7 +2,7 @@ use crate::{
     Result,
     metric::{Metric, MetricField},
 };
-use log::{debug, warn};
+use log::{debug, info, warn};
 use nalgebra::{Const, DefaultAllocator, allocator::Allocator};
 use rayon::prelude::{
     IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator,
@@ -133,7 +133,7 @@ impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
         Const<D>: nalgebra::ToTypenum + nalgebra::DimSub<nalgebra::U1>,
         DefaultAllocator: Allocator<<Const<D> as nalgebra::DimSub<nalgebra::U1>>::Output>,
     {
-        debug!("Extend the metric into the domain using gradation = {beta}");
+        info!("Extend the metric into the domain using gradation = {beta} and t = {t}");
 
         let n_verts = self.msh.n_verts();
 

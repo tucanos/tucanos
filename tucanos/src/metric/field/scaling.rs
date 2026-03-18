@@ -2,7 +2,7 @@ use crate::{
     Error, Result,
     metric::{Metric, MetricField},
 };
-use log::{debug, warn};
+use log::{debug, info, warn};
 use rayon::prelude::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
     IntoParallelRefMutIterator, ParallelIterator,
@@ -226,21 +226,21 @@ impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
         let fixed_m = fixed_m.map(MetricField::metric);
         let implied_m = implied_m.map(MetricField::metric);
 
-        debug!(
+        info!(
             "Scaling the metric (h_min = {h_min}, h_max = {h_max}, n_elems = {n_elems}, max_iter = {max_iter})"
         );
         if let Some(fixed_m) = fixed_m {
-            debug!("Using a fixed metric");
+            info!("Using a fixed metric");
             let c = self.complexity_iter(fixed_m.par_iter().cloned(), h_min, h_max);
-            debug!("Complexity of the fixed metric: {c}");
+            info!("Complexity of the fixed metric: {c}");
         }
         if let Some(implied_m) = implied_m {
-            debug!(
+            info!(
                 "Using the implied metric with step = {}",
                 step.unwrap_or(4.0)
             );
             let c = self.complexity_iter(implied_m.par_iter().cloned(), h_min, h_max);
-            debug!("Complexity of the implied metric: {c}");
+            info!("Complexity of the implied metric: {c}");
         }
 
         let mut scale = if max_iter > 0 {
