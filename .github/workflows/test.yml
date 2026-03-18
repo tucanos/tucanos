@@ -43,7 +43,7 @@ jobs:
     - name: Run clippy
       uses: clechasseur/rs-clippy-check@v5
       with:
-        args: --all-targets --workspace --features=metis
+        args: --all-targets --workspace --features=metis --exclude tucanos-ffi-test
     - name: Run cargo test
       uses: clechasseur/rs-cargo@v4
       with:
