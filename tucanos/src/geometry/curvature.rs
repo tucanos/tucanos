@@ -61,7 +61,7 @@ pub fn compute_curvature_tensor_2d<const D: usize>(smesh: &impl Mesh<D>) -> Vec<
     debug!("Compute curvature tensors (2d)");
     let vertex_normals = compute_vertex_normals(smesh);
 
-    let mut elem_u = Vec::with_capacity(smesh.n_verts());
+    let mut elem_u = Vec::with_capacity(smesh.n_elems());
 
     for e in smesh.elems() {
         // Compute the element-based curvature
@@ -97,8 +97,8 @@ pub fn compute_curvature_tensor_3d<const D: usize>(
     debug!("Compute curvature tensors");
     let vertex_normals = compute_vertex_normals(smesh);
 
-    let mut elem_u = Vec::with_capacity(smesh.n_verts());
-    let mut elem_v = Vec::with_capacity(smesh.n_verts());
+    let mut elem_u = Vec::with_capacity(smesh.n_elems());
+    let mut elem_v = Vec::with_capacity(smesh.n_elems());
 
     for e in smesh.elems() {
         // Compute the element-based curvature
@@ -333,10 +333,13 @@ pub fn write_curvature<const D: usize, M: Mesh<D>>(mesh: &M, fname: &str) -> Res
     let (u, v) = compute_curvature(mesh);
 
     let mut writer = VTUFile::from_mesh(mesh);
-    writer.add_point_data("u", D, u.iter().flatten().copied());
-    writer.add_point_data("v", D, v.as_ref().unwrap().iter().flatten().copied());
-    writer.export(fname)?;
+    writer.add_cell_data("u", D, u.iter().flatten().copied());
+    writer.add_cell_data("v", D, v.as_ref().unwrap().iter().flatten().copied());
 
+    let n = compute_vertex_normals(mesh);
+    writer.add_point_data("n", D, n.iter().flatten().copied());
+
+    writer.export(fname)?;
     Ok(())
 }
 
@@ -656,15 +659,15 @@ mod tests {
         let geom = CylinderGeometry(r);
         let mut mesh = cylinder(r, 10);
         mesh.fix().unwrap();
-        mesh.write_meshb("cylinder-lin0.meshb").unwrap();
+        // mesh.write_meshb("cylinder-lin0.meshb").unwrap();
 
         let topo = MeshTopology::new(&mesh);
         let d = geom.project_vertices(&mut mesh, &topo);
         assert_delta!(d, 0.0, 1e-12);
-        mesh.write_meshb("cylinder-lin.meshb").unwrap();
+        // mesh.write_meshb("cylinder-lin.meshb").unwrap();
 
         let mesh: QuadraticBoundaryMesh3d = geom.to_quadratic_triangle_mesh(&mesh);
-        mesh.write_meshb("cylinder.meshb").unwrap();
+        // mesh.write_meshb("cylinder.meshb").unwrap();
 
         let (u, v) = compute_curvature(&mesh);
         let v = v.unwrap();
