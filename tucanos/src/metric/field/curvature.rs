@@ -85,7 +85,7 @@ impl<'a, T: Idx, M: Mesh<3, C = Tetrahedron<T>>> MetricField<'a, 3, M, AnisoMetr
         }
 
         let mut res = Self::new(msh, curvature_metric);
-        res.extend_from_boundary(v2v, &mut flg, beta, t)?;
+        res.extend_from_boundary(v2v, &mut flg, beta, t, h_max)?;
 
         Ok(res)
     }
@@ -160,7 +160,7 @@ impl<'a, T: Idx, M: Mesh<2, C = Triangle<T>>> MetricField<'a, 2, M, AnisoMetric2
         }
 
         let mut res = Self::new(msh, curvature_metric);
-        res.extend_from_boundary(v2v, &mut flg, beta, t)?;
+        res.extend_from_boundary(v2v, &mut flg, beta, t, h_max)?;
 
         Ok(res)
     }
