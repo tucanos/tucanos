@@ -261,10 +261,11 @@ impl<const D: usize, M: Mesh<D>> MeshedGeometry<D, M> {
         self.edge_map.clear();
         for &tag in self.edges.keys() {
             let parents = self.edge2faces.get(&tag).unwrap();
-            let mesh_topo_node = mesh_topo
+            if let Some(mesh_topo_node) = mesh_topo
                 .get_from_parents_iter(<M::C as Simplex>::FACE::DIM as Dim, parents.iter().copied())
-                .unwrap();
+            {
             self.edge_map.insert(mesh_topo_node.tag.1, tag);
+            }
         }
     }
 
