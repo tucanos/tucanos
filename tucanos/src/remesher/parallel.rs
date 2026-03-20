@@ -431,7 +431,7 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
         ifc.etags_mut().for_each(|t| *t = 1);
         ifc.remove_faces(|t| self.is_partition_bdy(t));
         for i in 0..ifc.n_faces() {
-            if ifc.ftag(i) == Tag::MIN {
+            if ifc.ftag(i) == self.interface_bdy_tag {
                 ifc.invert_face(i);
             }
         }
