@@ -140,17 +140,21 @@ impl Topology {
             );
         }
 
-        self.entities[tag.0 as usize].push(TopoNode {
-            tag,
-            children: HashSet::new(),
-            parents: parents.clone().collect(),
-        });
+        let parents = parents.collect::<HashSet<_>>();
+        if tag.0 != 0 {
+            assert!(parents.len() < 3, "parents = {parents:?} for tag {tag:?}");
+        }
 
-        for ptag in parents {
+        for &ptag in &parents {
             let e = self.get_mut((tag.0 + 1, ptag));
             assert!(e.is_some(), "TopoTag {:?} not present", (tag.0 + 1, ptag));
             e.unwrap().children.insert(tag.1);
         }
+        self.entities[tag.0 as usize].push(TopoNode {
+            tag,
+            children: HashSet::new(),
+            parents,
+        });
     }
 
     #[must_use]
@@ -347,7 +351,7 @@ impl Topology {
                     (dim, 0)
                 } else {
                     (dim, t)
-                }
+                };
             });
             edgs.push(*e);
             etags.push(t);
@@ -410,8 +414,51 @@ impl Topology {
                         } else {
                             1
                         };
-                        self.insert_iter((dim, flg * tag), tags.iter().copied());
-                        *vtag = (dim, flg * tag);
+                        if tags.len() == 2 {
+                            self.insert_iter((dim, flg * tag), tags.iter().copied());
+                            *vtag = (dim, flg * tag);
+                        } else {
+                            // If there are more that two parent tags for an edge, tag the vertex with dim=0
+                            // This happens if the vertex appears on multiple tagged faces, but not on multiple
+                            // tagged edges
+                            assert_eq!(dim, 1);
+                            let tmp = tags.iter().copied().collect::<Vec<_>>();
+                            let n = tmp.len();
+                            let mut etags = Vec::new();
+                            for i in 0..n {
+                                for j in i + 1..n {
+                                    if let Some(node) =
+                                        self.get_from_parents(dim, &[tmp[i], tmp[j]])
+                                    {
+                                        etags.push(node.tag.1);
+                                        println!(
+                                            "{} {} -> tag exists {}",
+                                            tmp[i], tmp[j], node.tag.1
+                                        );
+                                    } else {
+                                        let tag = self.max_tag(dim) + 1;
+                                        let flg = if tmp[i] > 0 && tmp[j] > 0 { 1 } else { -1 };
+                                        self.insert((dim, flg * tag), &[tmp[i], tmp[j]]);
+                                        etags.push(flg * tag);
+                                        println!(
+                                            "{} {} -> tag created {}",
+                                            tmp[i],
+                                            tmp[j],
+                                            flg * tag
+                                        );
+                                    }
+                                }
+                            }
+                            if let Some(node) = self.get_from_parents(0, &etags) {
+                                println!("using existing tag {:?}", node.tag);
+                                *vtag = node.tag;
+                            } else {
+                                let tag = self.max_tag(0) + 1;
+                                println!("using nex tag {:?}", flg * tag);
+                                self.insert((0, flg * tag), &etags);
+                                *vtag = (0, flg * tag);
+                            }
+                        }
                     }
                 }
 
