@@ -380,6 +380,72 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
         )
     }
 
+    fn remesh_interface<T: Metric<D>, G: Geometry<D>>(
+        &self,
+        ifc_data: MeshAndMetric<T, D, M::C>,
+        geom: &G,
+        params: RemesherParams,
+        dd_params: &ParallelRemesherParams,
+    ) -> Result<(MeshAndMetric<T, D, M::C>, ParallelRemeshingInfo)> {
+        let (mut ifc, ifc_m) = ifc_data;
+        let level = dd_params.level();
+        if self.debug {
+            let fname = format!("level_{level}_ifc.vtu");
+            ifc.write_vtk(&fname).unwrap();
+            let fname = format!("level_{level}_ifc_bdy.vtu");
+            ifc.boundary::<GenericMesh<D, <M::C as Simplex>::FACE>>()
+                .0
+                .write_vtk(&fname)
+                .unwrap();
+        }
+
+        // to be consistent with the base topology
+        ifc.etags_mut().for_each(|t| *t = 1);
+        ifc.remove_faces(|t| self.is_partition_bdy(t));
+        for i in 0..ifc.n_faces() {
+            if ifc.ftag(i) == self.interface_bdy_tag {
+                ifc.invert_face(i);
+            }
+        }
+
+        if self.debug {
+            ifc.check(&ifc.all_faces()).unwrap();
+        }
+        let ifc_topo = MeshTopology::new_from(&ifc, self.topo.topo().clone());
+
+        let (mesh, info, metric) = if let Some(dd_params) = dd_params.next(ifc.n_verts()) {
+            info!("Remeshing interface at level {level} (parallel)");
+            let mesh = ifc;
+            let mut dd = ParallelRemesher::<_, _, P>::new(mesh, ifc_topo, self.n_parts)?;
+            dd.set_debug(self.debug);
+            dd.interface_bdy_tag = self.interface_bdy_tag + 1;
+            dd.remesh(&ifc_m, geom, params, &dd_params)?
+        } else {
+            info!("Remeshing interface at level {level} (seq)");
+            let mut ifc_remesher = Remesher::new(&ifc, &ifc_topo, &ifc_m, geom)?;
+            if self.debug {
+                ifc_remesher.check().unwrap();
+            }
+            let n_verts_init = ifc.n_verts();
+            let now = Instant::now();
+            ifc_remesher.remesh(&params, geom)?;
+            let info = ParallelRemeshingInfo {
+                info: RemeshingInfo {
+                    n_verts_init,
+                    n_verts_final: ifc_remesher.n_verts(),
+                    time: now.elapsed().as_secs_f64(),
+                },
+                partition_time: 0.0,
+                partition_quality: 0.0,
+                partition_imbalance: 0.0,
+                partitions: Vec::new(),
+                interface: None,
+            };
+            (ifc_remesher.to_mesh(true), info, ifc_remesher.metrics())
+        };
+        Ok(((mesh, metric), info))
+    }
+
     /// Remesh using domain decomposition
     pub fn remesh<T: Metric<D>, G: Geometry<D>>(
         &self,
@@ -412,69 +478,12 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
         info!("Remeshing subdomains at level {level} with {n_parts} partitions");
 
         let now = Instant::now();
-        let ((mut res, mut res_m), (mut ifc, ifc_m)) =
+        let ((mut res, mut res_m), (ifc, ifc_m)) =
             self.remesh_partitions(m, geom, &params, dd_params, &info);
-
-        if self.debug {
-            let fname = format!("level_{level}_ifc.vtu");
-            ifc.write_vtk(&fname).unwrap();
-            let fname = format!("level_{level}_ifc_bdy.vtu");
-            ifc.boundary::<GenericMesh<D, <M::C as Simplex>::FACE>>()
-                .0
-                .write_vtk(&fname)
-                .unwrap();
-        }
-
-        // to be consistent with the base topology
-        ifc.etags_mut().for_each(|t| *t = 1);
-        ifc.remove_faces(|t| self.is_partition_bdy(t));
-        for i in 0..ifc.n_faces() {
-            if ifc.ftag(i) == self.interface_bdy_tag {
-                ifc.invert_face(i);
-            }
-        }
-
-        if self.debug {
-            ifc.check(&ifc.all_faces()).unwrap();
-        }
-
+        let ((mut ifc, ifc_m), interface_info) =
+            self.remesh_interface((ifc, ifc_m), geom, params, dd_params)?;
         let mut info = info.into_inner().unwrap();
-
-        let ifc_topo = MeshTopology::new_from(&ifc, self.topo.topo().clone());
-
-        let (mut ifc, ifc_m) = if let Some(dd_params) = dd_params.next(ifc.n_verts()) {
-            info!("Remeshing interface at level {level} (parallel)");
-            let mesh = ifc;
-            let mut dd = ParallelRemesher::<_, _, P>::new(mesh, ifc_topo, self.n_parts)?;
-            dd.set_debug(self.debug);
-            dd.interface_bdy_tag = self.interface_bdy_tag + 1;
-            let (ifc, interface_info, ifc_m) = dd.remesh(&ifc_m, geom, params, &dd_params)?;
-            info.interface = Some(Box::new(interface_info));
-            (ifc, ifc_m)
-        } else {
-            info!("Remeshing interface at level {level} (seq)");
-            let mut ifc_remesher = Remesher::new(&ifc, &ifc_topo, &ifc_m, geom)?;
-            if self.debug {
-                ifc_remesher.check().unwrap();
-            }
-            let n_verts_init = ifc.n_verts();
-            let now = Instant::now();
-            ifc_remesher.remesh(&params, geom)?;
-            info.interface = Some(Box::new(ParallelRemeshingInfo {
-                info: RemeshingInfo {
-                    n_verts_init,
-                    n_verts_final: ifc_remesher.n_verts(),
-                    time: now.elapsed().as_secs_f64(),
-                },
-                partition_time: 0.0,
-                partition_quality: 0.0,
-                partition_imbalance: 0.0,
-                partitions: Vec::new(),
-                interface: None,
-            }));
-            (ifc_remesher.to_mesh(true), ifc_remesher.metrics())
-        };
-
+        info.interface = Some(Box::new(interface_info));
         if self.debug {
             let fname = format!("level_{level}_ifc_remeshed.vtu");
             ifc.write_vtk(&fname).unwrap();
