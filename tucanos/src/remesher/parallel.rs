@@ -308,13 +308,14 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
                 let n_verts_init = submesh.mesh.n_verts();
                 let now = Instant::now();
                 let (mut local_mesh, local_m) = self.remesh_submesh(metric, geom, params, submesh);
+                let time = now.elapsed().as_secs_f64();
 
                 // Get the info
                 let mut info = info.lock().unwrap();
                 info.partitions[i_part] = RemeshingInfo {
                     n_verts_init,
                     n_verts_final: local_mesh.n_verts(),
-                    time: now.elapsed().as_secs_f64(),
+                    time,
                 };
                 drop(info);
 
@@ -347,6 +348,7 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
 
                 // Update res
                 let mut res = res.lock().unwrap();
+                info!("  partition {i_part} completed in {time:.2e}s");
                 let (ids, _, _) = res.add(&local_mesh, |t| t == 1, |_| true, Some(1e-12));
                 if self.debug {
                     let fname = format!("level_{level}_part_{i_part}_res.vtu");
@@ -429,11 +431,14 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
             let n_verts_init = ifc.n_verts();
             let now = Instant::now();
             ifc_remesher.remesh(&params, geom)?;
+            let time = now.elapsed().as_secs_f64();
+            info!("  interface completed in {time:.2e}s");
+
             let info = ParallelRemeshingInfo {
                 info: RemeshingInfo {
                     n_verts_init,
                     n_verts_final: ifc_remesher.n_verts(),
-                    time: now.elapsed().as_secs_f64(),
+                    time,
                 },
                 partition_time: 0.0,
                 partition_quality: 0.0,
