@@ -260,11 +260,17 @@ impl<const D: usize, M: Mesh<D>> MeshedGeometry<D, M> {
     pub fn set_topo_map(&mut self, mesh_topo: &Topology) {
         self.edge_map.clear();
         for &tag in self.edges.keys() {
-            let parents = self.edge2faces.get(&tag).unwrap();
-            if let Some(mesh_topo_node) = mesh_topo
-                .get_from_parents_iter(<M::C as Simplex>::FACE::DIM as Dim, parents.iter().copied())
-            {
-            self.edge_map.insert(mesh_topo_node.tag.1, tag);
+            let parent_tags = self.edge2faces.get(&tag).unwrap();
+            let parent_tags = parent_tags.iter().copied().collect();
+            let parents =
+                mesh_topo.get_from_parents(<M::C as Simplex>::FACE::DIM as Dim, &parent_tags);
+            assert!(
+                parents.len() < 2,
+                "Multiple edge tags with parents {parents:?}"
+            );
+
+            if !parents.is_empty() {
+                self.edge_map.insert(parents[0].tag.1, tag);
             }
         }
     }
@@ -458,7 +464,11 @@ mod tests {
 
         let topo = MeshTopology::new(&mesh);
 
-        let topo_node = topo.topo().get_from_parents(1, &[6, 3]).unwrap();
+        let topo_node = topo
+            .topo()
+            .get_from_parents(1, &([6, 3].into_iter().collect()));
+        assert_eq!(topo_node.len(), 1);
+        let topo_node = topo_node[0];
         let mut pt = Vertex::<3>::new(0.75, 0.5, 0.25);
         let _ = geom.project(&mut pt, &(1, topo_node.tag.1));
         assert!(f64::abs(pt[0] - 0.0) < 1e-12);
