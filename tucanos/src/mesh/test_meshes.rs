@@ -582,7 +582,7 @@ impl Geometry<3> for CylinderGeometry {
                     }
                     (r_xy - self.0).abs()
                 }
-                _ => unreachable!(),
+                _ => panic!("Unknown tag {tag:?}"),
             },
             1 => match tag.1 {
                 2 => {
@@ -597,9 +597,9 @@ impl Geometry<3> for CylinderGeometry {
                     pt[1] *= self.0 / r_xy;
                     (r_xy - self.0).hypot(z - 1.0)
                 }
-                _ => unreachable!(),
+                _ => panic!("Unknown tag {tag:?}"),
             },
-            _ => unreachable!(),
+            _ => panic!("Unknown tag {tag:?}"),
         }
     }
 
