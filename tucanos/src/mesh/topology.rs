@@ -1,3 +1,21 @@
+/// Topology management for meshes.
+///
+/// The topology represents the hierarchy of element tags in a mesh.
+/// - All mesh elements (dimension d) must have a tag
+/// - Elements of dimension d' < d are tagged iif
+///     - they belong to only one tagged parent element
+///     - they belong to 2 tagged parents with different tags
+///     - they belong to 3 or more tagged parents
+///
+/// This is consistent with the mesh tags for elements and faces, but also introduces edge tags
+/// (for tetrahedron meshes) and node tags.
+///
+/// For meshes containing triangles (as faces or elements) in 3D, surfaces may be in contact (locally)
+/// at a vertex without sharing an edge. In order to represent this, we introduct fictitious tags to represent
+/// the element / face and edge tags at the vertex.
+///
+/// Vertices are then tagged with tuples (dim, tag) that represent the dimension of the lowest entity that
+/// includes the vertex and the tag of that entity.
 use crate::{Dim, Error, Result, Tag, TopoTag};
 use core::result;
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
