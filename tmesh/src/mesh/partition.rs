@@ -356,6 +356,10 @@ impl<T: MetisPartMethod> Partitioner for MetisPartitioner<T> {
         })
     }
     fn compute(&self) -> Result<Vec<usize>> {
+        if self.n_parts == 1 {
+            return Ok(vec![0; self.graph.n()]);
+        }
+
         let mut xadj = Vec::<metis::Idx>::with_capacity(self.graph.n() + 1);
         let mut adjncy = Vec::<metis::Idx>::with_capacity(self.graph.n_edges());
 
