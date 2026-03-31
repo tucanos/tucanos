@@ -58,6 +58,7 @@ pub use elements::{
     tetrahedron::{GTetrahedron, Tetrahedron},
     to_simplices::{hex2tets, pri2tets, pyr2tets, qua2tris},
     triangle::{GTriangle, Triangle},
+    twovec,
 };
 use hilbert::hilbert_indices;
 pub use mesh_2d::{
