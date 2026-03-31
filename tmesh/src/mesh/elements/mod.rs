@@ -14,7 +14,7 @@ pub(super) mod simplex;
 pub(super) mod tetrahedron;
 pub(super) mod to_simplices;
 pub(super) mod triangle;
-mod twovec;
+pub mod twovec;
 
 pub trait Idx:
     TryInto<usize, Error = Self::ConvertError>
