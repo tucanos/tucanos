@@ -593,9 +593,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn test_dd_2d_hilbert_1() {
-        test_domain_decomposition_2d::<HilbertPartitioner>(false, 1).unwrap();
+    fn test_dd_2d_hilbert_1() -> Result<()> {
+        test_domain_decomposition_2d::<HilbertPartitioner>(false, 1)
     }
 
     #[test]
@@ -620,11 +619,10 @@ mod tests {
 
     #[cfg(feature = "metis")]
     #[test]
-    #[should_panic]
-    fn test_dd_2d_metis_1() {
+    fn test_dd_2d_metis_1() -> Result<()> {
         use tmesh::mesh::partition::{MetisPartitioner, MetisRecursive};
 
-        test_domain_decomposition_2d::<MetisPartitioner<MetisRecursive>>(false, 1).unwrap();
+        test_domain_decomposition_2d::<MetisPartitioner<MetisRecursive>>(false, 1)
     }
 
     #[cfg(feature = "metis")]
@@ -701,9 +699,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn test_dd_3d_hilbert_1() {
-        test_domain_decomposition_3d::<HilbertPartitioner>(false, 1).unwrap();
+    fn test_dd_3d_hilbert_1() -> Result<()> {
+        test_domain_decomposition_3d::<HilbertPartitioner>(false, 1)
     }
 
     #[test]
@@ -730,9 +727,8 @@ mod tests {
 
     #[cfg(feature = "metis")]
     #[test]
-    #[should_panic]
-    fn test_dd_3d_metis_1() {
-        test_domain_decomposition_3d::<MetisPartitioner<MetisRecursive>>(false, 1).unwrap();
+    fn test_dd_3d_metis_1() -> Result<()> {
+        test_domain_decomposition_3d::<MetisPartitioner<MetisRecursive>>(false, 1)
     }
 
     #[cfg(feature = "metis")]
