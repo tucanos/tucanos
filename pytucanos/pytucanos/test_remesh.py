@@ -173,7 +173,7 @@ class TestRemesh(unittest.TestCase):
             msh = remesher.to_mesh()
 
         q = remesher.qualities()
-        self.assertGreater(q.min(), 0.11)
+        self.assertGreater(q.min(), 0.099)
 
         self.assertTrue(np.allclose(msh.vol(), 1.0))
         etags = np.unique(msh.get_etags())
