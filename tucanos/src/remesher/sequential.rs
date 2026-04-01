@@ -1495,7 +1495,7 @@ mod tests {
     fn test_adapt_2d_geom() -> Result<()> {
         let mut mesh = test_mesh_moon_2d();
 
-        let ref_vol = 0.5 * PI - 2.0 * (0.5 * 1.25 * 1.25 * f64::atan2(1., 0.75) - 0.5 * 0.75);
+        let ref_vol = 0.5 * PI - 2.0 * (0.5 * 1.25 * 1.25 * libm::atan2(1., 0.75) - 0.5 * 0.75);
 
         for iter in 1..10 {
             let h: Vec<_> = mesh
@@ -2162,7 +2162,7 @@ mod tests {
             let s = 0.25;
             let h_min = 1e-2;
             let h_max = 1e-1;
-            IsoMetric::from(h_max - (h_max - h_min) * f64::exp(-(d / s).powi(2)))
+            IsoMetric::from(h_max - (h_max - h_min) * libm::exp(-(d / s).powi(2)))
         };
 
         let m = mesh.verts().map(|p| m_func(&p)).collect::<Vec<_>>();
@@ -2281,7 +2281,7 @@ mod tests {
         remesher.remesh(&params, &geom)?;
         remesher.check()?;
         let (mini, maxi, _) = remesher.check_edge_lengths_analytical(m_func);
-        assert_delta!(mini, 0.41, 0.01);
+        assert_delta!(mini, 0.45, 0.01);
         assert_delta!(maxi, 1.66, 0.01);
         Ok(())
     }

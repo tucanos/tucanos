@@ -347,7 +347,7 @@ impl<const D: usize, M: Mesh<D>> Geometry<D> for MeshedGeometry<D, M> {
             .normal(None)
             .normalize();
         let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
-        f64::acos(cos_a).to_degrees()
+        libm::acos(cos_a).to_degrees()
     }
 }
 
