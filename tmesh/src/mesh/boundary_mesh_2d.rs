@@ -17,7 +17,7 @@ pub fn circle_mesh<M: Mesh<2, C = Edge<impl Idx>>>(r: f64, n: usize) -> M {
 
     let mut res = M::empty();
     res.add_verts(
-        (0..n).map(|i| r * Vert2d::new((i as f64 * dtheta).cos(), (i as f64 * dtheta).sin())),
+        (0..n).map(|i| r * Vert2d::new(libm::cos(i as f64 * dtheta), libm::sin(i as f64 * dtheta))),
     );
     res.add_elems((0..n).map(|i| Edge::new(i, (i + 1) % n)), (0..n).map(|_| 1));
 

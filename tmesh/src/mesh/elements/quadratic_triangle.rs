@@ -188,6 +188,12 @@ impl<const D: usize> Default for QuadraticGTriangle<D> {
     }
 }
 
+const QUADRATICTRIANGLE2EDGE: [Edge<usize>; 3] = [
+    Edge([0, 1]),
+    Edge([1, 2]),
+    Edge([2, 0]),
+];
+
 const QUADRATICTRIANGLE2FACE: [QuadraticEdge<usize>; 3] = [
     QuadraticEdge([0, 1, 3]),
     QuadraticEdge([1, 2, 4]),
@@ -207,8 +213,8 @@ impl<T: Idx> Simplex for QuadraticTriangle<T> {
         self.0[index].try_into().unwrap()
     }
 
-    fn edge(&self, _i: usize) -> Edge<usize> {
-        unreachable!()
+    fn edge(&self, i: usize) -> Edge<usize> {
+        Edge::from_iter(QUADRATICTRIANGLE2EDGE[i].into_iter().map(|j| self.get(j)))
     }
 
     fn face(&self, i: usize) -> Self::FACE {

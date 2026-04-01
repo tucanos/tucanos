@@ -97,7 +97,7 @@ impl<const D: usize> Metric<D> for IsoMetric<D> {
 
     // assumption: linear variation of h along e (see "Size gradation control of anisotropic meshes", F. Alauzet, 2010)
     fn span(&self, e: &Vertex<D>, beta: f64, _t: f64) -> Self {
-        let f = 1. + self.length(e) * f64::ln(beta);
+        let f = 1. + self.length(e) * libm::log(beta);
         Self::from(self.0 * f)
     }
 

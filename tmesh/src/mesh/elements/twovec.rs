@@ -10,6 +10,7 @@ pub struct Vec<T> {
 
 #[derive(Debug, Clone)]
 enum Data<T> {
+    Empty(),
     One(T),
     Two([T; 2]),
     // Box indirection to make Data smaller. Because of alignment
@@ -20,8 +21,25 @@ enum Data<T> {
 }
 
 impl<T: Copy> Vec<T> {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            data: Data::Empty(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        match &self.data {
+            Data::Empty() => true,
+            Data::One(_) => false,
+            Data::Two(_) => false,
+            Data::Many(v) => v.is_empty(),
+        }
+    }
+
     pub fn len(&self) -> usize {
         match &self.data {
+            Data::Empty() => 0,
             Data::One(_) => 1,
             Data::Two(_) => 2,
             Data::Many(v) => v.len(),
@@ -34,6 +52,7 @@ impl<T: Copy> Vec<T> {
 
     pub fn push(&mut self, v: T) {
         match &mut self.data {
+            Data::Empty() => self.data = Data::One(v),
             Data::One(o) => self.data = Data::Two([*o, v]),
             Data::Two(pair) => self.data = Data::Many(Box::new(vec![pair[0], pair[1], v])),
             Data::Many(vc) => vc.push(v),
@@ -48,11 +67,18 @@ impl<T: Copy> Vec<T> {
     }
 }
 
+impl<T: Copy> Default for Vec<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T> Index<usize> for Vec<T> {
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
         match &self.data {
+            Data::Empty() => panic!("Index out of bounds"),
             Data::One(v) => {
                 debug_assert!(index == 0);
                 v

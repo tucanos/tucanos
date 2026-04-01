@@ -87,7 +87,7 @@ pub fn h_2d(p: &Vert2d) -> f64 {
     let hmax = 0.3;
     let sigma: f64 = 0.25;
     hmin + (hmax - hmin)
-        * (1.0 - f64::exp(-((x - 0.5).powi(2) + (y - 0.35).powi(2)) / sigma.powi(2)))
+        * (1.0 - libm::exp(-((x - 0.5).powi(2) + (y - 0.35).powi(2)) / sigma.powi(2)))
 }
 
 /// Build a 2d mesh with 2 triangles corresponding to the geometry `GeomHalfCircle2d`
@@ -409,7 +409,7 @@ impl Geometry<2> for ConcentricCircles {
             _ => unreachable!(),
         }
         let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
-        f64::acos(cos_a).to_degrees()
+        libm::acos(cos_a).to_degrees()
     }
 }
 
@@ -482,7 +482,7 @@ impl Geometry<3> for ConcentricSpheres {
             _ => unreachable!(),
         }
         let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
-        f64::acos(cos_a).to_degrees()
+        libm::acos(cos_a).to_degrees()
     }
 }
 
@@ -547,7 +547,7 @@ impl Geometry<3> for CylinderGeometry {
     }
 
     fn project(&self, pt: &mut Vert3d, tag: &TopoTag) -> f64 {
-        let r_xy = pt[0].hypot(pt[1]);
+        let r_xy = libm::hypot(pt[0], pt[1]);
         let z = pt[2];
         match tag.0 {
             2 => match tag.1 {
@@ -556,7 +556,7 @@ impl Geometry<3> for CylinderGeometry {
                     if r_xy > self.0 {
                         pt[0] *= self.0 / r_xy;
                         pt[1] *= self.0 / r_xy;
-                        return (r_xy - self.0).hypot(z);
+                        return libm::hypot(r_xy - self.0, z);
                     }
                     z.abs()
                 }
@@ -565,7 +565,7 @@ impl Geometry<3> for CylinderGeometry {
                     if r_xy > self.0 {
                         pt[0] *= self.0 / r_xy;
                         pt[1] *= self.0 / r_xy;
-                        return (r_xy - self.0).hypot(z - 1.0);
+                        return libm::hypot(r_xy - self.0, z - 1.0);
                     }
                     (z - 1.0).abs()
                 }
@@ -574,32 +574,32 @@ impl Geometry<3> for CylinderGeometry {
                     pt[1] *= self.0 / r_xy;
                     if z < 0.0 {
                         pt[2] = 0.0;
-                        return (r_xy - self.0).hypot(z);
+                        return libm::hypot(r_xy - self.0, z);
                     }
                     if z > 1.0 {
                         pt[2] = 1.0;
-                        return (r_xy - self.0).hypot(z - 1.0);
+                        return libm::hypot(r_xy - self.0, z - 1.0);
                     }
                     (r_xy - self.0).abs()
                 }
-                _ => unreachable!(),
+                _ => panic!("Unknown tag {tag:?}"),
             },
             1 => match tag.1 {
                 2 => {
                     pt[2] = 0.0;
                     pt[0] *= self.0 / r_xy;
                     pt[1] *= self.0 / r_xy;
-                    (r_xy - self.0).hypot(z)
+                    libm::hypot(r_xy - self.0, z)
                 }
                 1 => {
                     pt[2] = 1.0;
                     pt[0] *= self.0 / r_xy;
                     pt[1] *= self.0 / r_xy;
-                    (r_xy - self.0).hypot(z - 1.0)
+                    libm::hypot(r_xy - self.0, z - 1.0)
                 }
-                _ => unreachable!(),
+                _ => panic!("Unknown tag {tag:?}"),
             },
-            _ => unreachable!(),
+            _ => panic!("Unknown tag {tag:?}"),
         }
     }
 
@@ -619,7 +619,7 @@ impl Geometry<3> for CylinderGeometry {
             _ => unreachable!(),
         };
         let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
-        f64::acos(cos_a).to_degrees()
+        libm::acos(cos_a).to_degrees()
     }
 }
 
@@ -630,13 +630,13 @@ pub fn cylinder(r: f64, n: usize) -> BoundaryMesh3d {
     res.add_verts(once(Vert3d::new(0.0, 0.0, 0.0)));
     res.add_verts((0..n).map(|i| {
         let theta = i as f64 * dtheta;
-        Vert3d::new(r * theta.cos(), r * theta.sin(), 0.0)
+        Vert3d::new(r * libm::cos(theta), r * libm::sin(theta), 0.0)
     }));
 
     res.add_verts(once(Vert3d::new(0.0, 0.0, 1.0)));
     res.add_verts((0..n).map(|i| {
         let theta = i as f64 * dtheta;
-        Vert3d::new(r * theta.cos(), r * theta.sin(), 1.0)
+        Vert3d::new(r * libm::cos(theta), r * libm::sin(theta), 1.0)
     }));
 
     let i_theta = |i| i % n;

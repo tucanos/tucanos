@@ -58,7 +58,7 @@ pub fn orient_geometry<const D: usize, M: Mesh<D>, M2: Mesh<D>>(
     if n_inverted > 0 {
         warn!("{n_inverted} / {} faces reoriented", stl_mesh.n_elems());
     }
-    (n_inverted, f64::acos(dmin) * 180. / PI)
+    (n_inverted, libm::acos(dmin) * 180. / PI)
 }
 
 #[cfg(test)]
