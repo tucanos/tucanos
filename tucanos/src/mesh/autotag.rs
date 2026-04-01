@@ -22,7 +22,7 @@ pub fn autotag<const D: usize, M: Mesh<D>>(
     assert_eq!(D - 1, <M::C as Simplex>::DIM);
 
     let faces = msh.all_faces();
-    let threshold = angle_deg.to_radians().cos();
+    let threshold = libm::cos(angle_deg.to_radians());
 
     let mut e2e = Vec::with_capacity(faces.len());
     for (_, e1, e2) in faces.values() {

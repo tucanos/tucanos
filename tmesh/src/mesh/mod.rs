@@ -1425,8 +1425,8 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
             let e2e = ec1 - ec0;
             let l_e2e = e2e.norm();
             let tmp = e2e.dot(&e2f) / (l_e2e * l_e2f);
-            let ang = f64::acos(tmp.clamp(-1., 1.));
-            let s = l_e2f * ang.sin();
+            let ang = libm::acos(tmp.clamp(-1., 1.));
+            let s = l_e2f * libm::sin(ang);
             Some((i0, i1, s / l_e2e))
         })
     }

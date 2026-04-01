@@ -319,13 +319,13 @@ pub mod tests {
         for i in 0..n {
             let theta = 2.0 * PI * i as f64 / n as f64;
             coords.push(Vert3d::new(
-                r_in * f64::cos(theta),
-                r_in * f64::sin(theta),
+                r_in * libm::cos(theta),
+                r_in * libm::sin(theta),
                 0.0,
             ));
             coords.push(Vert3d::new(
-                r_out * f64::cos(theta),
-                r_out * f64::sin(theta),
+                r_out * libm::cos(theta),
+                r_out * libm::sin(theta),
                 0.0,
             ));
         }
@@ -379,8 +379,8 @@ pub mod tests {
             let tmp = Vert3d::from_fn(|_, _| rng.random());
             let theta = 2.0 * PI * tmp[0];
             let r = r_in + tmp[1] * (r_out * 0.999 - r_in);
-            let x = r * f64::cos(theta);
-            let y = r * f64::sin(theta);
+            let x = r * libm::cos(theta);
+            let y = r * libm::sin(theta);
             let z = r_out * (tmp[2] - 0.5);
             let pt = Vert3d::new(x, y, z);
             let (d, pt_proj) = tree.project(&pt);

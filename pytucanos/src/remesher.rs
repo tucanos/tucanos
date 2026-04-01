@@ -440,7 +440,7 @@ macro_rules! create_remesher {
                 };
 
                 for m_v in m.iter_mut() {
-                    let scale = f64::powf(m_v.vol(), exponent);
+                    let scale = libm::pow(m_v.vol(), exponent);
                     if !scale.is_nan() {
                         m_v.scale(scale);
                     }

@@ -16,6 +16,7 @@ pyo3-log = "0.13.3"
 rayon = "1.10.0"
 affinity = "0.1.2"
 tmesh = { path = "../tmesh" }
+libm = "0.2.15"
 
 [features]
 32bit-ints = []

@@ -250,11 +250,11 @@ where
         let nrm = e.norm();
         let mat = self.as_mat();
         let mut eig = mat.symmetric_eigen();
-        let eta_0 = 1. + self.length(e) * f64::ln(beta);
-        let eta_0 = eta_0.powf(1.0 - t);
+        let eta_0 = 1. + self.length(e) * libm::log(beta);
+        let eta_0 = libm::pow(eta_0, 1.0 - t);
         eig.eigenvalues.iter_mut().for_each(|s| {
-            let eta_1 = 1.0 + f64::sqrt(*s) * nrm * f64::ln(beta);
-            let eta_1 = eta_1.powf(t);
+            let eta_1 = 1.0 + libm::sqrt(*s) * nrm * libm::log(beta);
+            let eta_1 = libm::pow(eta_1, t);
             let eta = eta_0 * eta_1;
             *s /= eta * eta;
         });
