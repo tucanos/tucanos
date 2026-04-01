@@ -260,10 +260,9 @@ impl<const D: usize, M: Mesh<D>> MeshedGeometry<D, M> {
     pub fn set_topo_map(&mut self, mesh_topo: &Topology) {
         self.edge_map.clear();
         for &tag in self.edges.keys() {
-            let parent_tags = self.edge2faces.get(&tag).unwrap();
-            let parent_tags = parent_tags.iter().copied().collect();
+            let parent_tags = self.edge2faces.get(&tag).unwrap().clone();
             let parents =
-                mesh_topo.get_from_parents(<M::C as Simplex>::FACE::DIM as Dim, &parent_tags);
+                mesh_topo.get_from_parents(<M::C as Simplex>::FACE::DIM as Dim, parent_tags);
             assert!(
                 parents.len() < 2,
                 "Multiple edge tags with parents {parents:?}"
@@ -464,9 +463,7 @@ mod tests {
 
         let topo = MeshTopology::new(&mesh);
 
-        let topo_node = topo
-            .topo()
-            .get_from_parents(1, &([6, 3].into_iter().collect()));
+        let topo_node = topo.topo().get_from_parents(1, [6, 3]);
         assert_eq!(topo_node.len(), 1);
         let topo_node = topo_node[0];
         let mut pt = Vertex::<3>::new(0.75, 0.5, 0.25);
