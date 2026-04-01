@@ -269,7 +269,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Cavity<D, C, M> {
                                         && !self.tagged_bdys.iter().any(|(f, _)| f.sorted() == b)
                                     {
                                         self.tagged_bdys.push((b, face_tag));
-                                        self.tagged_bdys_flg.push(C::N_VERTS == 3 && i_bdy == 0);
+                                        self.tagged_bdys_flg.push(C::N_VERTS == 3 && i_bdy == 1);
                                     }
                                 }
                             }
@@ -290,7 +290,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Cavity<D, C, M> {
                                         && !self.tagged_bdys.iter().any(|(f, _)| f.sorted() == b)
                                     {
                                         self.tagged_bdys.push((b, face_tag));
-                                        self.tagged_bdys_flg.push(C::N_VERTS == 3 && i_bdy == 0);
+                                        self.tagged_bdys_flg.push(C::N_VERTS == 3 && i_bdy == 1);
                                     }
                                 }
                             }
@@ -673,6 +673,7 @@ impl<'a, const D: usize, C: Simplex, M: Metric<D>> FilledCavity<'a, D, C, M> {
             }
             return true;
         }
+
         for (b, tag, s) in self.tagged_faces_boundary() {
             assert!(
                 tag > 0,
