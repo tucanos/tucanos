@@ -970,8 +970,9 @@ mod tests {
     use tmesh::{
         Vert2d, Vert3d, assert_delta,
         mesh::{
-            BoundaryMesh3d, Edge, GSimplex, GenericMesh, Mesh, Mesh3d, QuadraticBoundaryMesh3d,
-            Simplex, Tetrahedron, Triangle, ball_mesh, quadratic_sphere_mesh, sphere_mesh,
+            BoundaryMesh2d, BoundaryMesh3d, Edge, GSimplex, GenericMesh, Mesh, Mesh3d,
+            QuadraticBoundaryMesh3d, Simplex, Tetrahedron, Triangle, ball_mesh,
+            quadratic_sphere_mesh, sphere_mesh,
         },
     };
 
@@ -2002,6 +2003,48 @@ mod tests {
         remesher.check()?;
 
         let _mesh = remesher.to_mesh(true);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_iso2d() -> Result<()> {
+        // test used in tucanos-ffi-test
+        let verts = [0., 0., 1., 0., 0., 1.];
+        let elems = [0, 1, 2];
+        let faces = [0, 1, 1, 2, 2, 0];
+        let metric = [0.1; 3];
+
+        let verts = verts
+            .chunks(2)
+            .map(Vert2d::from_column_slice)
+            .collect::<Vec<_>>();
+        let elems = elems
+            .chunks(Triangle::<u32>::N_VERTS)
+            .map(|x| Triangle::<usize>::from_iter(x.iter().copied()))
+            .collect::<Vec<_>>();
+        let etags = vec![1; elems.len()];
+        let faces = faces
+            .chunks(Edge::<u32>::N_VERTS)
+            .map(|x| Edge::<usize>::from_iter(x.iter().copied()))
+            .collect::<Vec<_>>();
+        let ftags = vec![1, 2, 3];
+        let metric = metric
+            .iter()
+            .map(|&x| IsoMetric::<2>::from(x))
+            .collect::<Vec<_>>();
+        let mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
+        let mut bdy: BoundaryMesh2d = mesh.boundary().0;
+        bdy.fix().unwrap();
+
+        let topo = MeshTopology::new(&mesh);
+        let mut geom = MeshedGeometry::new(&bdy)?;
+        geom.set_topo_map(topo.topo());
+        let mut remesher = Remesher::new(&mesh, &topo, &metric, &geom)?;
+        remesher.remesh(&RemesherParams::default(), &geom)?;
+        let mesh = remesher.to_mesh(false);
+        // mesh.write_meshb("iso3d.meshb")?;
+        assert_eq!(mesh.n_verts(), 81);
 
         Ok(())
     }
