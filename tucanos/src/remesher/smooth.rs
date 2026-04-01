@@ -159,7 +159,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             let omega = 0.2;
             let l = m0.length(&e);
             let l4 = l.powi(4);
-            let fac = omega * (1.0 - l4) * f64::exp(-l4) / l;
+            let fac = omega * (1.0 - l4) * libm::exp(-l4) / l;
             p0_new += fac * e;
         }
         p0_new += p0;

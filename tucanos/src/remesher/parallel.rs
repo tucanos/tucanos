@@ -562,7 +562,7 @@ mod tests {
             let hmax = 0.1;
             let sigma: f64 = 0.25;
             hmin + (hmax - hmin)
-                * (1.0 - f64::exp(-((x - 0.5).powi(2) + (y - 0.35).powi(2)) / sigma.powi(2)))
+                * (1.0 - libm::exp(-((x - 0.5).powi(2) + (y - 0.35).powi(2)) / sigma.powi(2)))
         };
 
         let m: Vec<_> = (0..dd.mesh.n_verts())
@@ -666,7 +666,7 @@ mod tests {
             let sigma: f64 = 0.25;
             hmin + (hmax - hmin)
                 * (1.0
-                    - f64::exp(
+                    - libm::exp(
                         -((x - 0.5).powi(2) + (y - 0.35).powi(2) + (z - 0.65).powi(2))
                             / sigma.powi(2),
                     ))
