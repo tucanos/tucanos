@@ -178,12 +178,21 @@ impl Topology {
 
     /// Return the list of nodes with the given parents. Panics if the dimension of the parents is invalid.
     #[must_use]
-    pub fn get_from_parents(&self, dim: Dim, parents: &FxHashSet<Tag>) -> Vec<&TopoNode> {
+    pub fn get_from_parents(
+        &self,
+        dim: Dim,
+        parents: impl IntoIterator<Item = Tag>,
+    ) -> Vec<&TopoNode> {
         assert!(dim >= 0, "Invalid dimension");
         assert!(dim <= self.dim, "Invalid dimension");
+
+        let parents = parents.into_iter().collect::<Vec<_>>();
+        let parents_match =
+            |p: &FxHashSet<Tag>| p.len() == parents.len() && parents.iter().all(|x| p.contains(x));
+
         self.entities[dim as usize]
             .iter()
-            .filter(|&e| e.parents == *parents)
+            .filter(|&e| parents_match(&e.parents))
             .collect()
     }
 
@@ -192,11 +201,10 @@ impl Topology {
         dim: Dim,
         parents: impl IntoIterator<Item = Tag> + Clone,
     ) -> Result<Tag> {
-        let parents: FxHashSet<_> = parents.into_iter().collect();
-        let nodes = self.get_from_parents(dim, &parents);
+        let nodes = self.get_from_parents(dim, parents.clone());
         if nodes.is_empty() {
             let mut t = self.get_available_tag(dim);
-            if parents.iter().any(|&x| x < 0) {
+            if parents.clone().into_iter().any(|x| x < 0) {
                 t = -t;
             }
             self.insert((dim, t), parents);
@@ -204,7 +212,10 @@ impl Topology {
         } else if nodes.len() == 1 {
             Ok(nodes[0].tag.1)
         } else {
-            let msg = format!("Multiple nodes with parents {parents:?}: {nodes:?}");
+            let msg = format!(
+                "Multiple nodes with parents {:?}: {nodes:?}",
+                parents.into_iter().collect::<Vec<_>>()
+            );
             Err(Error::from(&msg))
         }
     }
@@ -612,17 +623,17 @@ mod tests {
         t.insert((1, 3), [3, 2]);
 
         let p = vec![1 as Tag, 2 as Tag];
-        let c = t.get_from_parents(1, &(p.into_iter().collect()));
+        let c = t.get_from_parents(1, p);
         assert_eq!(c.len(), 1);
         assert_eq!(c[0].tag.1, 1);
 
         let p = vec![1 as Tag, 3 as Tag];
-        let c = t.get_from_parents(1, &(p.into_iter().collect()));
+        let c = t.get_from_parents(1, p);
         assert_eq!(c.len(), 1);
         assert_eq!(c[0].tag.1, 2);
 
         let p = vec![2 as Tag, 3 as Tag];
-        let c = t.get_from_parents(1, &(p.into_iter().collect()));
+        let c = t.get_from_parents(1, p);
         assert_eq!(c.len(), 1);
         assert_eq!(c[0].tag.1, 3);
     }

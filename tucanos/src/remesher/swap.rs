@@ -148,10 +148,15 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
 
         let mut vx = None;
 
-        let edge_tag = self
-            .topo
-            .parent(cavity.tags[local_i0], cavity.tags[local_i1])
-            .unwrap();
+        let edge_tag = match (C::DIM, &cavity.etags[..]) {
+            // For triangle meshes, an edge with two identical tags is never
+            // a boundary edge whatever his vertices tags are if the two
+            // adjacent faces have the same tag.
+            (2, [t1, t2]) if t1 == t2 => (2, *t1),
+            _ => self.edge_tag(&edg),
+        };
+        trace_if!(dbg, "Edge tag: {edge_tag:?}");
+
         // tag < 0 on fixed boundaries
         if edge_tag.1 < 0 {
             trace_if!(dbg, "Cannot swap: fixed edge");

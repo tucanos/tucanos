@@ -3,6 +3,7 @@ use super::smooth::SmoothParams;
 use super::split::SplitParams;
 use super::stats::{InitStats, Stats, StepStats};
 use super::swap::SwapParams;
+use crate::Dim;
 use crate::mesh::MeshTopology;
 use crate::metric::MetricElem;
 use crate::{Error, Result, Tag, TopoTag, geometry::Geometry, mesh::Topology, metric::Metric};
@@ -83,7 +84,10 @@ impl RemesherParams {
                 max_angle,
                 ..CollapseParams::default()
             }));
-            steps.push(RemeshingStep::Split(SplitParams::default()));
+            steps.push(RemeshingStep::Split(SplitParams {
+                max_angle,
+                ..SplitParams::default()
+            }));
             steps.push(RemeshingStep::Swap(SwapParams {
                 max_angle,
                 q: 0.4,
@@ -586,8 +590,8 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
     /// Select edges for which trace is enabled.
     #[must_use]
     #[cfg(not(feature = "trace_edges"))]
-    pub const fn debug_edge(&self, _edg: Edge<usize>) -> bool {
-        false
+    pub fn debug_edge(&self, edg: Edge<usize>) -> bool {
+        edg.get(0) == 80613 && edg.get(1) == 80709
     }
 
     /// Get the geometrical element corresponding to elem
@@ -614,7 +618,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         self.tagged_faces.get(&face).copied()
     }
 
-    /// Return the tag of a face
+    /// Add a tagged face
     pub(super) fn add_tagged_face(&mut self, face: C::FACE, tag: Tag) -> Result<()> {
         let face = face.sorted();
         if self.tagged_faces.contains_key(&face) {
@@ -627,7 +631,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         Ok(())
     }
 
-    /// Return the tag of a face
+    /// Remove a tagged face
     pub(super) fn remove_tagged_face(&mut self, face: C::FACE) -> Result<()> {
         let face = face.sorted();
         if !self.tagged_faces.contains_key(&face) {
@@ -635,6 +639,81 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         }
         self.tagged_faces.remove(&face).unwrap();
         Ok(())
+    }
+
+    /// Get the tags of all the faces containing an edge
+    fn edge_face_tags(&self, v0: &VtxInfo<D, M>, edge: &Edge<usize>) -> SortedVec<Tag> {
+        let mut face_tags = SortedVec::default();
+        for i in &v0.els {
+            let e = self.elems.get(i).unwrap();
+            for f in e.el.faces() {
+                if f.contains_edge(edge)
+                    && let Some(t) = self.face_tag(&f)
+                {
+                    face_tags.find_or_insert(t);
+                }
+            }
+        }
+        face_tags
+    }
+
+    /// Get the tags of all the elements containing an edge
+    fn edge_elem_tags(&self, v0: &VtxInfo<D, M>, edge: &Edge<usize>) -> SortedVec<Tag> {
+        let mut elem_tags = SortedVec::default();
+        for i in &v0.els {
+            let e = self.elems.get(i).unwrap();
+            if e.el.contains_edge(edge) {
+                elem_tags.find_or_insert(e.tag);
+            }
+        }
+        elem_tags
+    }
+
+    /// Return the tag of a face
+    pub(super) fn edge_tag(&self, edge: &Edge<usize>) -> TopoTag {
+        let i0 = edge.get(0);
+        let v0 = self.verts.get(&i0).unwrap();
+        let t0 = v0.tag;
+        if t0.0 == C::DIM as Dim {
+            if self.debug_edge(*edge) {
+                info!("use tag from v0: {t0:?}");
+            }
+            return t0;
+        }
+        let i1 = edge.get(1);
+        let v1 = self.verts.get(&i1).unwrap();
+        let t1 = v1.tag;
+        if t1.0 == C::DIM as Dim {
+            return t1;
+        }
+
+        // In 2D, edges are faces
+        if C::DIM == 2 {
+            let face = C::FACE::from_iter(*edge).sorted();
+            if let Some(t) = self.tagged_faces.get(&face) {
+                return (1, *t);
+            }
+            // Get the element tags
+            let elem_tags = self.edge_elem_tags(v0, edge);
+            assert_eq!(elem_tags.len(), 1);
+            return (2, elem_tags[0]);
+        }
+
+        // 3D case: check if the edge belongs to tagged faces
+        let face_tags = self.edge_face_tags(v0, edge);
+        if face_tags.is_empty() {
+            // The edge belongs to a single element tag
+            let elem_tags = self.edge_elem_tags(v0, edge);
+            assert_eq!(elem_tags.len(), 1);
+            (C::DIM as Dim, elem_tags[0])
+        } else if face_tags.len() == 1 {
+            (C::DIM as Dim - 1, face_tags[0])
+        } else {
+            assert_eq!(C::DIM, 3);
+            let parents = self.topo.get_from_parents(1, face_tags);
+            assert_eq!(parents.len(), 1);
+            parents[0].tag
+        }
     }
 
     /// Estimate the complexity
