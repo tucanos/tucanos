@@ -21,9 +21,9 @@ fn main() -> Result<()> {
     init_log("info");
 
     let extract = false;
-    let n_threads = 64;
+    let n_threads = 1;
 
-    let prefix = "/midterm/FP/garnaud_x/CODA/tucanos/debug_romain/ko2/adapt_in";
+    let prefix = "/midterm/FP/garnaud_x/CODA/tucanos/debug_romain/max_angle/adapt_in";
 
     // Load the mesh
     let mut mesh = Mesh3d::from_meshb(&format!("{prefix}.meshb"))?;
@@ -100,7 +100,7 @@ fn main() -> Result<()> {
 
     let max_angle = geom.max_normal_angle(&mesh);
     info!("max_angle: {max_angle}");
-    let max_angle = max_angle.max(20.0);
+    let max_angle = max_angle.max(25.0);
 
     // remeshing params
     let params = RemesherParams::new(max_angle, 4);
@@ -140,6 +140,8 @@ fn main() -> Result<()> {
     new_mesh.check(&new_mesh.all_faces())?;
 
     info!("Remeshing OK");
+    let max_angle = geom.max_normal_angle(&new_mesh);
+    info!("max_angle: {max_angle}");
 
     Ok(())
 }
