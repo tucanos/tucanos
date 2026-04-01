@@ -970,8 +970,9 @@ mod tests {
     use tmesh::{
         Vert2d, Vert3d, assert_delta,
         mesh::{
-            BoundaryMesh3d, Edge, GSimplex, GenericMesh, Mesh, Mesh3d, QuadraticBoundaryMesh3d,
-            Simplex, Tetrahedron, Triangle, ball_mesh, quadratic_sphere_mesh, sphere_mesh,
+            BoundaryMesh2d, BoundaryMesh3d, Edge, GSimplex, GenericMesh, Mesh, Mesh3d,
+            QuadraticBoundaryMesh3d, Simplex, Tetrahedron, Triangle, ball_mesh,
+            quadratic_sphere_mesh, sphere_mesh,
         },
     };
 
@@ -1495,7 +1496,7 @@ mod tests {
     fn test_adapt_2d_geom() -> Result<()> {
         let mut mesh = test_mesh_moon_2d();
 
-        let ref_vol = 0.5 * PI - 2.0 * (0.5 * 1.25 * 1.25 * f64::atan2(1., 0.75) - 0.5 * 0.75);
+        let ref_vol = 0.5 * PI - 2.0 * (0.5 * 1.25 * 1.25 * libm::atan2(1., 0.75) - 0.5 * 0.75);
 
         for iter in 1..10 {
             let h: Vec<_> = mesh
@@ -1836,7 +1837,7 @@ mod tests {
 
             if iter == 1 {
                 assert_delta!(mini, 0.46, 0.01);
-                assert_delta!(maxi, 1.59, 0.01);
+                assert_delta!(maxi, 1.58, 0.01);
             }
 
             // let fname = format!("sphere_{}.vtu", iter + 1);
@@ -1887,8 +1888,8 @@ mod tests {
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
 
             if iter == 1 {
-                assert_delta!(mini, 0.46, 0.01);
-                assert_delta!(maxi, 1.50, 0.01);
+                assert_delta!(mini, 0.40, 0.01);
+                assert_delta!(maxi, 1.77, 0.01);
             }
 
             // let fname = format!("sphere_{}.vtu", iter + 1);
@@ -1939,8 +1940,8 @@ mod tests {
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
 
             if iter == 1 {
-                assert_delta!(mini, 0.43, 0.01);
-                assert_delta!(maxi, 1.59, 0.01);
+                assert_delta!(mini, 0.47, 0.01);
+                assert_delta!(maxi, 1.67, 0.01);
             }
 
             // let fname = format!("sphere_{}.vtu", iter + 1);
@@ -2002,6 +2003,48 @@ mod tests {
         remesher.check()?;
 
         let _mesh = remesher.to_mesh(true);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_iso2d() -> Result<()> {
+        // test used in tucanos-ffi-test
+        let verts = [0., 0., 1., 0., 0., 1.];
+        let elems = [0, 1, 2];
+        let faces = [0, 1, 1, 2, 2, 0];
+        let metric = [0.1; 3];
+
+        let verts = verts
+            .chunks(2)
+            .map(Vert2d::from_column_slice)
+            .collect::<Vec<_>>();
+        let elems = elems
+            .chunks(Triangle::<u32>::N_VERTS)
+            .map(|x| Triangle::<usize>::from_iter(x.iter().copied()))
+            .collect::<Vec<_>>();
+        let etags = vec![1; elems.len()];
+        let faces = faces
+            .chunks(Edge::<u32>::N_VERTS)
+            .map(|x| Edge::<usize>::from_iter(x.iter().copied()))
+            .collect::<Vec<_>>();
+        let ftags = vec![1, 2, 3];
+        let metric = metric
+            .iter()
+            .map(|&x| IsoMetric::<2>::from(x))
+            .collect::<Vec<_>>();
+        let mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
+        let mut bdy: BoundaryMesh2d = mesh.boundary().0;
+        bdy.fix().unwrap();
+
+        let topo = MeshTopology::new(&mesh);
+        let mut geom = MeshedGeometry::new(&bdy)?;
+        geom.set_topo_map(topo.topo());
+        let mut remesher = Remesher::new(&mesh, &topo, &metric, &geom)?;
+        remesher.remesh(&RemesherParams::default(), &geom)?;
+        let mesh = remesher.to_mesh(false);
+        // mesh.write_meshb("iso3d.meshb")?;
+        assert_eq!(mesh.n_verts(), 81);
 
         Ok(())
     }
@@ -2162,7 +2205,7 @@ mod tests {
             let s = 0.25;
             let h_min = 1e-2;
             let h_max = 1e-1;
-            IsoMetric::from(h_max - (h_max - h_min) * f64::exp(-(d / s).powi(2)))
+            IsoMetric::from(h_max - (h_max - h_min) * libm::exp(-(d / s).powi(2)))
         };
 
         let m = mesh.verts().map(|p| m_func(&p)).collect::<Vec<_>>();
@@ -2207,7 +2250,6 @@ mod tests {
                 let theta = libm::acos(z / r);
 
                 let e_r = p / r;
-                // let phi = y.signum() * (x / r_xy).acos();
 
                 let e_phi = Vert3d::new(y / r_xy, -x / r_xy, 0.0);
                 let e_theta = -e_r.cross(&e_phi);
@@ -2242,8 +2284,8 @@ mod tests {
         remesher.check()?;
 
         let (mini, maxi, _) = remesher.check_edge_lengths_analytical(m_func);
-        assert_delta!(mini, 0.43, 0.01);
-        assert_delta!(maxi, 1.85, 0.01);
+        assert_delta!(mini, 0.49, 0.01);
+        assert_delta!(maxi, 1.84, 0.01);
 
         let _mesh = remesher.to_mesh(true);
         // mesh.write_vtk("sphere_surf_aniso.vtu")?;
@@ -2282,7 +2324,7 @@ mod tests {
         remesher.remesh(&params, &geom)?;
         remesher.check()?;
         let (mini, maxi, _) = remesher.check_edge_lengths_analytical(m_func);
-        assert_delta!(mini, 0.41, 0.01);
+        assert_delta!(mini, 0.45, 0.01);
         assert_delta!(maxi, 1.66, 0.01);
         Ok(())
     }

@@ -562,7 +562,7 @@ mod tests {
             let hmax = 0.1;
             let sigma: f64 = 0.25;
             hmin + (hmax - hmin)
-                * (1.0 - f64::exp(-((x - 0.5).powi(2) + (y - 0.35).powi(2)) / sigma.powi(2)))
+                * (1.0 - libm::exp(-((x - 0.5).powi(2) + (y - 0.35).powi(2)) / sigma.powi(2)))
         };
 
         let m: Vec<_> = (0..dd.mesh.n_verts())
@@ -593,9 +593,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn test_dd_2d_hilbert_1() {
-        test_domain_decomposition_2d::<HilbertPartitioner>(false, 1).unwrap();
+    fn test_dd_2d_hilbert_1() -> Result<()> {
+        test_domain_decomposition_2d::<HilbertPartitioner>(false, 1)
     }
 
     #[test]
@@ -620,11 +619,10 @@ mod tests {
 
     #[cfg(feature = "metis")]
     #[test]
-    #[should_panic]
-    fn test_dd_2d_metis_1() {
+    fn test_dd_2d_metis_1() -> Result<()> {
         use tmesh::mesh::partition::{MetisPartitioner, MetisRecursive};
 
-        test_domain_decomposition_2d::<MetisPartitioner<MetisRecursive>>(false, 1).unwrap();
+        test_domain_decomposition_2d::<MetisPartitioner<MetisRecursive>>(false, 1)
     }
 
     #[cfg(feature = "metis")]
@@ -668,7 +666,7 @@ mod tests {
             let sigma: f64 = 0.25;
             hmin + (hmax - hmin)
                 * (1.0
-                    - f64::exp(
+                    - libm::exp(
                         -((x - 0.5).powi(2) + (y - 0.35).powi(2) + (z - 0.65).powi(2))
                             / sigma.powi(2),
                     ))
@@ -701,9 +699,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn test_dd_3d_hilbert_1() {
-        test_domain_decomposition_3d::<HilbertPartitioner>(false, 1).unwrap();
+    fn test_dd_3d_hilbert_1() -> Result<()> {
+        test_domain_decomposition_3d::<HilbertPartitioner>(false, 1)
     }
 
     #[test]
@@ -730,9 +727,8 @@ mod tests {
 
     #[cfg(feature = "metis")]
     #[test]
-    #[should_panic]
-    fn test_dd_3d_metis_1() {
-        test_domain_decomposition_3d::<MetisPartitioner<MetisRecursive>>(false, 1).unwrap();
+    fn test_dd_3d_metis_1() -> Result<()> {
+        test_domain_decomposition_3d::<MetisPartitioner<MetisRecursive>>(false, 1)
     }
 
     #[cfg(feature = "metis")]

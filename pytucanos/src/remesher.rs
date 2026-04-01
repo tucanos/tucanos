@@ -1,6 +1,7 @@
 #![allow(clippy::ptr_as_ptr)]
 #![allow(clippy::borrow_as_ptr)]
 #![allow(clippy::ref_as_ptr)]
+
 use crate::{
     Idx,
     geometry::{LinearGeometry2d, LinearGeometry3d, QuadraticGeometry2d, QuadraticGeometry3d},
@@ -101,6 +102,7 @@ pub struct PySplitParams {
     min_q_rel_bdy: f64,
     min_q_abs: f64,
     max_extensions: usize,
+    max_angle: f64,
 }
 
 impl PySplitParams {
@@ -114,6 +116,7 @@ impl PySplitParams {
             min_q_rel_bdy: other.min_q_rel_bdy,
             min_q_abs: other.min_q_abs,
             max_extensions: other.max_extensions,
+            max_angle: other.max_angle,
         }
     }
     const fn to(&self) -> SplitParams {
@@ -126,6 +129,7 @@ impl PySplitParams {
             min_q_rel_bdy: self.min_q_rel_bdy,
             min_q_abs: self.min_q_abs,
             max_extensions: self.max_extensions,
+            max_angle: self.max_angle,
         }
     }
 }
@@ -144,6 +148,7 @@ impl PySplitParams {
         min_q_rel_bdy: f64,
         min_q_abs: f64,
         max_extensions: usize,
+        max_angle: f64,
     ) -> Self {
         Self {
             l,
@@ -154,6 +159,7 @@ impl PySplitParams {
             min_q_rel_bdy,
             min_q_abs,
             max_extensions,
+            max_angle,
         }
     }
     #[classmethod]
@@ -440,7 +446,7 @@ macro_rules! create_remesher {
                 };
 
                 for m_v in m.iter_mut() {
-                    let scale = f64::powf(m_v.vol(), exponent);
+                    let scale = libm::pow(m_v.vol(), exponent);
                     if !scale.is_nan() {
                         m_v.scale(scale);
                     }
