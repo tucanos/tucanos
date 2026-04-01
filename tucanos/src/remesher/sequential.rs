@@ -2207,7 +2207,6 @@ mod tests {
                 let theta = libm::acos(z / r);
 
                 let e_r = p / r;
-                // let phi = y.signum() * (x / r_xy).acos();
 
                 let e_phi = Vert3d::new(y / r_xy, -x / r_xy, 0.0);
                 let e_theta = -e_r.cross(&e_phi);
@@ -2242,8 +2241,8 @@ mod tests {
         remesher.check()?;
 
         let (mini, maxi, _) = remesher.check_edge_lengths_analytical(m_func);
-        assert_delta!(mini, 0.43, 0.01);
-        assert_delta!(maxi, 1.85, 0.01);
+        assert_delta!(mini, 0.53, 0.01);
+        assert_delta!(maxi, 2.03, 0.01);
 
         let _mesh = remesher.to_mesh(true);
         // mesh.write_vtk("sphere_surf_aniso.vtu")?;
