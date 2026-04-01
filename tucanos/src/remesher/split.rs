@@ -34,6 +34,8 @@ pub struct SplitParams {
     pub min_q_abs: f64,
     /// Max # of cavity extensions
     pub max_extensions: usize,
+    /// Max angle between the normals of the new faces and the geometry (in degrees)
+    pub max_angle: f64,
 }
 
 impl Default for SplitParams {
@@ -47,6 +49,7 @@ impl Default for SplitParams {
             min_q_rel_bdy: 0.5,
             min_q_abs: 0.3,
             max_extensions: 20,
+            max_angle: 25.0,
         }
     }
 }
@@ -235,21 +238,13 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         let filled_cavity = FilledCavity::new(cavity, ftype);
 
         // lower the min quality threshold if the min quality in the cavity increases
-        let q_min = if tag.0 == C::DIM as Dim {
-            trace_if!(
-                dbg,
-                "cavity q_min {:.2e}, q_min = {q_min:.2e}",
-                cavity.q_min
-            );
-            q_min.min(cavity.q_min * params.min_q_rel)
+        let min_q_rel = if tag.0 == C::DIM as Dim {
+            params.min_q_rel
         } else {
-            trace_if!(
-                dbg,
-                "cavity q_min {:.2e}, q_min = {q_min:.2e} (boundary)",
-                cavity.q_min
-            );
-            q_min.min(cavity.q_min * params.min_q_rel_bdy)
+            params.min_q_rel_bdy
         };
+        let q_min = q_min.min(cavity.q_min * min_q_rel);
+        trace_if!(dbg, "using q_min = {q_min:.2e}");
         let l_min = l_min.min(cavity.l_min * params.min_l_rel);
         let status = filled_cavity.check(l_min, f64::MAX, q_min);
         trace_if!(
@@ -258,9 +253,14 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         );
         match status {
             CavityCheckStatus::Ok(_) => {
-                trace_if!(dbg, "Edge split");
-                self.edge_split(edg, cavity, &filled_cavity, edge_center, new_metric, tag)?;
-                num_ops.splits += 1;
+                if filled_cavity.check_normals(&self.topo, geom, params.max_angle) {
+                    trace_if!(dbg, "Edge split");
+                    self.edge_split(edg, cavity, &filled_cavity, edge_center, new_metric, tag)?;
+                    num_ops.splits += 1;
+                } else {
+                    trace_if!(dbg, "Cannot split: would create a non smooth surface");
+                    num_ops.fails += 1;
+                }
             }
             CavityCheckStatus::Invalid if tag.0 < C::DIM as Dim => {
                 if cavity.elems.len() == 1 && C::DIM == 3 {
@@ -270,15 +270,27 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                     let filled_cavity = FilledCavity::new(cavity, ftype);
                     let status = filled_cavity.check(l_min, f64::MAX, q_min);
                     if let CavityCheckStatus::Ok(_) = status {
-                        trace_if!(dbg, "Edge split");
-                        self.edge_split(edg, cavity, &filled_cavity, edge_center, new_metric, tag)?;
-                        for i in cavity.global_internal_vertices() {
-                            let v = self.verts.get(&i).unwrap();
-                            assert!(v.els.is_empty());
-                            self.verts.remove(&i);
+                        if filled_cavity.check_normals(&self.topo, geom, params.max_angle) {
+                            trace_if!(dbg, "Edge split");
+                            self.edge_split(
+                                edg,
+                                cavity,
+                                &filled_cavity,
+                                edge_center,
+                                new_metric,
+                                tag,
+                            )?;
+                            for i in cavity.global_internal_vertices() {
+                                let v = self.verts.get(&i).unwrap();
+                                assert!(v.els.is_empty());
+                                self.verts.remove(&i);
+                            }
+                            num_ops.splits += 1;
+                            num_ops.extended += 1;
+                        } else {
+                            num_ops.fails += 1;
+                            trace_if!(dbg, "Cannot split: would create a non smooth surface");
                         }
-                        num_ops.splits += 1;
-                        num_ops.extended += 1;
                     } else {
                         trace_if!(dbg, "Cannot split: {status:?}");
                         num_ops.fails += 1;

@@ -472,7 +472,7 @@ impl Geometry<3> for ConcentricSpheres {
     }
 
     fn angle(&self, pt: &Vert3d, n: &Vert3d, tag: &TopoTag) -> f64 {
-        assert_eq!(tag.0, 1);
+        assert_eq!(tag.0, 2);
         let mut n_ref = pt.normalize();
         match tag.1 {
             1 => {
