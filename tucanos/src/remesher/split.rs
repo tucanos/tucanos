@@ -34,6 +34,8 @@ pub struct SplitParams {
     pub min_q_abs: f64,
     /// Max # of cavity extensions
     pub max_extensions: usize,
+    /// Max angle between the normals of the new faces and the geometry (in degrees)
+    pub max_angle: f64,
 }
 
 impl Default for SplitParams {
@@ -47,6 +49,7 @@ impl Default for SplitParams {
             min_q_rel_bdy: 0.5,
             min_q_abs: 0.3,
             max_extensions: 20,
+            max_angle: 25.0,
         }
     }
 }
@@ -200,56 +203,39 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         };
         let (mut edge_center, new_metric) = cavity.seed_barycenter();
 
-        let tag = match (C::N_VERTS, &cavity.etags[..]) {
-            // A 3D boundary edge with two identical tags is never a boundary edge
-            // whatever his vertices tags are
-            (3, [t1, t2]) if t1 == t2 => (2, *t1),
-            _ => {
-                // Compute edge tag from vertex tags
-                let t_start = cavity.tags[local_edg.get(0)];
-                let t_end = cavity.tags[local_edg.get(1)];
-                self.topo
-                    .parent(t_start, t_end)
-                    .expect("Topology error: Parent tag not found for edge")
-            }
+        let edge_tag = match (C::DIM, &cavity.etags[..]) {
+            // For triangle meshes, an edge with two identical tags is never
+            // a boundary edge whatever his vertices tags are if the two
+            // adjacent faces have the same tag.
+            (2, [t1, t2]) if t1 == t2 => (2, *t1),
+            _ => self.edge_tag(&edg),
         };
+        trace_if!(dbg, "Edge tag: {edge_tag:?}");
 
         // tag < 0 on fixed boundaries
-        if tag.1 < 0 {
+        if edge_tag.1 < 0 {
             trace_if!(dbg, "Cannot split: fixed boundary");
             return Ok(());
         }
 
         // projection if needed
-        if self.debug_edge(edg) {
-            info!("edge center : {edge_center:?}");
-        }
-        if tag.0 < D as Dim {
-            geom.project(&mut edge_center, &tag);
-            if self.debug_edge(edg) {
-                info!("projected edge center : {edge_center:?}");
-            }
+        trace_if!(dbg, "edge center : {edge_center:?}");
+        if edge_tag.0 < D as Dim {
+            geom.project(&mut edge_center, &edge_tag);
+            trace_if!(dbg, "projected edge center : {edge_center:?}");
         }
 
         let ftype = FilledCavityType::EdgeCenter((local_edg, edge_center, new_metric));
         let filled_cavity = FilledCavity::new(cavity, ftype);
 
         // lower the min quality threshold if the min quality in the cavity increases
-        let q_min = if tag.0 == C::DIM as Dim {
-            trace_if!(
-                dbg,
-                "cavity q_min {:.2e}, q_min = {q_min:.2e}",
-                cavity.q_min
-            );
-            q_min.min(cavity.q_min * params.min_q_rel)
+        let min_q_rel = if edge_tag.0 == C::DIM as Dim {
+            params.min_q_rel
         } else {
-            trace_if!(
-                dbg,
-                "cavity q_min {:.2e}, q_min = {q_min:.2e} (boundary)",
-                cavity.q_min
-            );
-            q_min.min(cavity.q_min * params.min_q_rel_bdy)
+            params.min_q_rel_bdy
         };
+        let q_min = q_min.min(cavity.q_min * min_q_rel);
+        trace_if!(dbg, "using q_min = {q_min:.2e}");
         let l_min = l_min.min(cavity.l_min * params.min_l_rel);
         let status = filled_cavity.check(l_min, f64::MAX, q_min);
         trace_if!(
@@ -258,11 +244,23 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         );
         match status {
             CavityCheckStatus::Ok(_) => {
-                trace_if!(dbg, "Edge split");
-                self.edge_split(edg, cavity, &filled_cavity, edge_center, new_metric, tag)?;
-                num_ops.splits += 1;
+                if filled_cavity.check_normals(&self.topo, geom, params.max_angle) {
+                    trace_if!(dbg, "Edge split");
+                    self.edge_split(
+                        edg,
+                        cavity,
+                        &filled_cavity,
+                        edge_center,
+                        new_metric,
+                        edge_tag,
+                    )?;
+                    num_ops.splits += 1;
+                } else {
+                    trace_if!(dbg, "Cannot split: would create a non smooth surface");
+                    num_ops.fails += 1;
+                }
             }
-            CavityCheckStatus::Invalid if tag.0 < C::DIM as Dim => {
+            CavityCheckStatus::Invalid if edge_tag.0 < C::DIM as Dim => {
                 if cavity.elems.len() == 1 && C::DIM == 3 {
                     // This is only active in 3D because not robust in 2D.
                     self.remove_element_same_tag(cavity, num_ops)?;
@@ -270,15 +268,27 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                     let filled_cavity = FilledCavity::new(cavity, ftype);
                     let status = filled_cavity.check(l_min, f64::MAX, q_min);
                     if let CavityCheckStatus::Ok(_) = status {
-                        trace_if!(dbg, "Edge split");
-                        self.edge_split(edg, cavity, &filled_cavity, edge_center, new_metric, tag)?;
-                        for i in cavity.global_internal_vertices() {
-                            let v = self.verts.get(&i).unwrap();
-                            assert!(v.els.is_empty());
-                            self.verts.remove(&i);
+                        if filled_cavity.check_normals(&self.topo, geom, params.max_angle) {
+                            trace_if!(dbg, "Edge split");
+                            self.edge_split(
+                                edg,
+                                cavity,
+                                &filled_cavity,
+                                edge_center,
+                                new_metric,
+                                edge_tag,
+                            )?;
+                            for i in cavity.global_internal_vertices() {
+                                let v = self.verts.get(&i).unwrap();
+                                assert!(v.els.is_empty());
+                                self.verts.remove(&i);
+                            }
+                            num_ops.splits += 1;
+                            num_ops.extended += 1;
+                        } else {
+                            num_ops.fails += 1;
+                            trace_if!(dbg, "Cannot split: would create a non smooth surface");
                         }
-                        num_ops.splits += 1;
-                        num_ops.extended += 1;
                     } else {
                         trace_if!(dbg, "Cannot split: {status:?}");
                         num_ops.fails += 1;

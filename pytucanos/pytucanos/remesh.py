@@ -48,6 +48,8 @@ def print_params(params, print_fn=print):
                 "min_q_rel",
                 "min_q_rel_bdy",
                 "min_q_abs",
+                "max_extensions",
+                "max_angle",
             ]
             for attr in attrs:
                 print_fn(f"  {attr} = {getattr(step, attr)}")
@@ -61,6 +63,8 @@ def print_params(params, print_fn=print):
                 "min_l_rel",
                 "min_l_abs",
                 "max_angle",
+                "ordered",
+                "min_improvement_factor",
             ]
             for attr in attrs:
                 print_fn(f"  {attr} = {getattr(step, attr)}")

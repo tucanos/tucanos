@@ -22,9 +22,9 @@ impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
         let l = if f64::abs(a - 1.0) < 1e-3 {
             l0
         } else {
-            l0 * f64::ln(a) / (a - 1.0)
+            l0 * libm::log(a) / (a - 1.0)
         };
-        f64::max(a, 1.0 / a).powf(1. / l)
+        libm::pow(f64::max(a, 1.0 / a), 1. / l)
     }
 
     /// Compute the maximum metric gradation and the fraction of edges with a gradation
@@ -320,11 +320,11 @@ mod tests {
             let e = mesh.vert(i1) - mesh.vert(i0);
 
             let l = m[i0].length(&e);
-            let rmax = 1.0 + l * f64::ln(beta);
+            let rmax = 1.0 + l * libm::log(beta);
             assert!(m[i1].h() < 1.0001 * m[i0].h() * rmax);
 
             let l = m[i1].length(&e);
-            let rmax = 1.0 + l * f64::ln(beta);
+            let rmax = 1.0 + l * libm::log(beta);
             assert!(m[i0].h() < 1.0001 * m[i1].h() * rmax);
         }
     }
