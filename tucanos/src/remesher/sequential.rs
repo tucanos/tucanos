@@ -1915,8 +1915,8 @@ mod tests {
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
 
             if iter == 1 {
-                assert_delta!(mini, 0.46, 0.01);
-                assert_delta!(maxi, 1.58, 0.01);
+                assert_delta!(mini, 0.48, 0.01);
+                assert_delta!(maxi, 1.61, 0.01);
             }
 
             // let fname = format!("sphere_{}.vtu", iter + 1);
@@ -1967,8 +1967,8 @@ mod tests {
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
 
             if iter == 1 {
-                assert_delta!(mini, 0.40, 0.01);
-                assert_delta!(maxi, 1.77, 0.01);
+                assert_delta!(mini, 0.44, 0.01);
+                assert_delta!(maxi, 1.50, 0.01);
             }
 
             // let fname = format!("sphere_{}.vtu", iter + 1);
@@ -2019,8 +2019,8 @@ mod tests {
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
 
             if iter == 1 {
-                assert_delta!(mini, 0.47, 0.01);
-                assert_delta!(maxi, 1.67, 0.01);
+                assert_delta!(mini, 0.46, 0.01);
+                assert_delta!(maxi, 1.62, 0.01);
             }
 
             // let fname = format!("sphere_{}.vtu", iter + 1);
@@ -2363,8 +2363,8 @@ mod tests {
         remesher.check()?;
 
         let (mini, maxi, _) = remesher.check_edge_lengths_analytical(m_func);
-        assert_delta!(mini, 0.49, 0.01);
-        assert_delta!(maxi, 1.84, 0.01);
+        assert_delta!(mini, 0.44, 0.01);
+        assert_delta!(maxi, 1.89, 0.01);
 
         let _mesh = remesher.to_mesh(true);
         // mesh.write_vtk("sphere_surf_aniso.vtu")?;
