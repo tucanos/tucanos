@@ -178,6 +178,8 @@ pub struct PySwapParams {
     min_l_rel: f64,
     min_l_abs: f64,
     max_angle: f64,
+    ordered: bool,
+    min_improvement_factor: f64,
 }
 
 impl PySwapParams {
@@ -190,6 +192,8 @@ impl PySwapParams {
             min_l_rel: other.min_l_rel,
             min_l_abs: other.min_l_abs,
             max_angle: other.max_angle,
+            ordered: other.ordered,
+            min_improvement_factor: other.min_improvement_factor,
         }
     }
     fn to(&self) -> SwapParams {
@@ -209,6 +213,7 @@ impl PySwapParams {
 #[pymethods]
 impl PySwapParams {
     #[new]
+    #[allow(clippy::too_many_arguments)]
     const fn new(
         q: f64,
         max_iter: u32,
@@ -217,6 +222,8 @@ impl PySwapParams {
         min_l_rel: f64,
         min_l_abs: f64,
         max_angle: f64,
+        ordered: bool,
+        min_improvement_factor: f64,
     ) -> Self {
         Self {
             q,
@@ -226,6 +233,8 @@ impl PySwapParams {
             min_l_rel,
             min_l_abs,
             max_angle,
+            ordered,
+            min_improvement_factor,
         }
     }
     #[classmethod]
