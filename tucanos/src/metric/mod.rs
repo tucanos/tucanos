@@ -156,6 +156,10 @@ pub trait Metric<const D: usize>:
         );
         q
     }
+
+    fn density(&self) -> f64{
+       1.0/self.vol()
+    }
 }
 
 #[derive(Debug)]
