@@ -252,7 +252,7 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
         geom: &G,
         params: &RemesherParams,
         submesh: SubMesh<D, M>,
-    ) -> (GenericMesh<D, M::C>, Vec<T>) {
+    ) -> Result<(GenericMesh<D, M::C>, Vec<T>)> {
         let mut local_mesh = submesh.mesh;
 
         // to be consistent with the base topology
@@ -263,11 +263,11 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
         let local_topo = MeshTopology::new_from(&local_mesh, topo);
 
         let local_m: Vec<_> = submesh.parent_vert_ids.iter().map(|&i| m[i]).collect();
-        let mut local_remesher = Remesher::new(&local_mesh, &local_topo, &local_m, geom).unwrap();
+        let mut local_remesher = Remesher::new(&local_mesh, &local_topo, &local_m, geom)?;
 
-        local_remesher.remesh(params, geom).unwrap();
+        local_remesher.remesh(params, geom)?;
 
-        (local_remesher.to_mesh(true), local_remesher.metrics())
+        Ok((local_remesher.to_mesh(true), local_remesher.metrics()))
     }
 
     /// Remeshes all partitions in parallel.
@@ -307,7 +307,11 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
                 debug!("Remeshing level {level} / partition {i_part}");
                 let n_verts_init = submesh.mesh.n_verts();
                 let now = Instant::now();
-                let (mut local_mesh, local_m) = self.remesh_submesh(metric, geom, params, submesh);
+                let (mut local_mesh, local_m) = self
+                    .remesh_submesh(metric, geom, params, submesh)
+                    .unwrap_or_else(|e| {
+                        panic!("Failed to remesh partition {i_part}.\n{e}");
+                    });
                 let time = now.elapsed().as_secs_f64();
 
                 // Get the info
