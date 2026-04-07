@@ -337,7 +337,12 @@ impl<const D: usize, M: Mesh<D>> Geometry<D> for MeshedGeometry<D, M> {
     fn angle(&self, pt: &Vertex<D>, n: &Vertex<D>, tag: &TopoTag) -> f64 {
         assert_eq!(tag.0, D as Dim - 1);
 
-        let patch = self.patches.get(&tag.1).unwrap();
+        let patch = self.patches.get(&tag.1).unwrap_or_else(|| {
+            panic!(
+                "Invalid face tag {tag:?}. Available tags are {:?}",
+                self.patches.keys().collect::<Vec<_>>()
+            )
+        });
         let idx = patch.tree.nearest_elem(pt);
         let n_ref = patch
             .tree
