@@ -7,6 +7,7 @@ mod smooth;
 mod split;
 mod stats;
 mod swap;
+mod cost_estimator;
 
 pub use collapse::CollapseParams;
 pub use parallel::{ParallelRemesher, ParallelRemesherParams, ParallelRemeshingInfo};
