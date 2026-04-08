@@ -30,5 +30,8 @@ name = "adapt_ellipse"
 [[example]]
 name = "cube_cylinder"
 
+[[bin]]
+name = "debug"
+
 [lints]
 workspace = true
