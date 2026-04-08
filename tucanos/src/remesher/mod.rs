@@ -16,3 +16,4 @@ pub use smooth::{SmoothParams, SmoothingMethod};
 pub use split::SplitParams;
 pub use stats::Stats;
 pub use swap::SwapParams;
+pub use cost_estimator::{TotoCostEstimator,ElementCostEstimator,NoCostEstimator};

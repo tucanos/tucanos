@@ -9,33 +9,27 @@ use crate::{
 };
 // const ADD_PERCENTAGE: f64 = 40.0;
 pub trait ElementCostEstimator<const D: usize, M: Mesh<D>, T: Metric<D>>: Send + Sync 
-where
-<<M as Mesh<D>>::C as Simplex>::GEOM<D>: ImpliedMetric<T>{
-    fn new(m: &[T]) -> Self;
-    fn compute(&self, msh: &M, m: &[T]) -> Vec<f64>;
+{
+    fn new() -> Self;
+    fn compute(&self, msh: &M, m: Option<&[T]>) -> Vec<f64>;
 }
 
-pub struct NoCostEstimator<const D: usize, M: Mesh<D>, T: Metric<D>>
-where 
-<<M as Mesh<D>>::C as Simplex>::GEOM<D>: ImpliedMetric<T> {
+pub struct NoCostEstimator<const D: usize, M: Mesh<D>, T: Metric<D>> 
+{
     _e: PhantomData<M>,
     _m: PhantomData<T>,
 }
 
-impl<const D: usize, M, T> ElementCostEstimator<D, M, T> for NoCostEstimator<D, M, T>
-where 
-    M: Mesh<D>,
-    T: Metric<D>,
-    <<M as Mesh<D>>::C as Simplex>::GEOM<D>: ImpliedMetric<T>,
+impl<const D: usize, M : Mesh<D>, T: Metric<D>> ElementCostEstimator<D, M, T> for NoCostEstimator<D, M, T>
     {
-    fn new(_m: &[T]) -> Self {
+    fn new() -> Self {
         Self {
             _e: PhantomData,
             _m: PhantomData,
         }
     }
 
-    fn compute(&self, msh: &M, _m: &[T]) -> Vec<f64> {
+    fn compute(&self, msh: &M, _m: Option<&[T]>) -> Vec<f64> {
         vec![1.0; msh.n_elems() as usize]
     }
 }
@@ -43,9 +37,7 @@ where
 pub struct TotoCostEstimator<
     const D: usize,
     M: Mesh<D>,
-    T: Metric<D>
-> where
-    <<M as Mesh<D>>::C as Simplex>::GEOM<D>: ImpliedMetric<T>
+    T: Metric<D>>
 {
     _e: PhantomData<M::C>,
     _m: PhantomData<T>,
@@ -82,23 +74,7 @@ fn work_eval(initial_density: f64, actual_density: f64, intersected_density: f64
         + (VERIF_COST_SWAP + VERIF_COST_SPLIT * insert_bool + VERIF_COST_COLLAPSE * collapse_bool) // Si collapse ou split, on ne fait pas la vérification correspondante 
 }
 
-#[allow(clippy::new_without_default)]
-impl<
-    const D: usize,
-    M: Mesh<D>,
-    T: Metric<D>
-> TotoCostEstimator<D, M, T>
-where
-   <<M as Mesh<D>>::C as Simplex>::GEOM<D>: ImpliedMetric<T>,
-{
-    #[must_use]
-    pub const fn new(_m: &[T]) -> Self {
-        Self {
-            _e: PhantomData,
-            _m: PhantomData,
-        }
-    }
-}
+
 
 impl<
     const D: usize,
@@ -109,14 +85,15 @@ impl<
 where
 <<M as Mesh<D>>::C as Simplex>::GEOM<D>: ImpliedMetric<T>
 {
-    fn new(_m: &[T]) -> Self {
+    fn new() -> Self {
         Self {
             _e: PhantomData,
             _m: PhantomData,
         }
     }
 
-    fn compute(&self, msh: &M, m: &[T]) -> Vec<f64> {
+    fn compute(&self, msh: &M, m:  Option<&[T]>) -> Vec<f64> {
+        let m_slice = m.expect("Toto requires metrics");
         msh.par_elems()
             .map(|e| {
                 let ge = msh.gelem(&e);
@@ -125,7 +102,7 @@ where
                 let n_verts = <<M as Mesh<D>>::C as Simplex>::GEOM::<D>::N_VERTS;
                 let weight = 1.0 / (n_verts as f64);
                 let mean_target_metric =
-                    T::interpolate(e.into_iter().map(|i| (weight, &m[i as usize])));
+                    T::interpolate(e.into_iter().map(|i| (weight, &m_slice[i as usize])));
                 let intersected_metric = implied_metric.intersect(&mean_target_metric);
                 let d_initial_metric = implied_metric.density();
                 let d_target_metric = mean_target_metric.density();
@@ -133,6 +110,5 @@ where
                 work_eval(d_initial_metric, d_target_metric, d_intersected, vol)
             })
             .collect()
-        
     }
 }
