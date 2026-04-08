@@ -226,7 +226,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
 
     // In 3D, remove tetrahedra with two tagged faces on the same boundary tag if
     // the other two represent the geometry better
-    fn remove_boundary_element<G: Geometry<D>>(
+    pub(super) fn remove_boundary_element<G: Geometry<D>>(
         &mut self,
         cavity: &Cavity<D, C, M>,
         geom: &G,
