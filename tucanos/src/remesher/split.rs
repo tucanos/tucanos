@@ -93,48 +93,6 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         Ok(())
     }
 
-    fn remove_element_same_tag(
-        &mut self,
-        cavity: &Cavity<D, C, M>,
-        num_ops: &mut NumSplitOps,
-    ) -> Result<()> {
-        // If the cavity contains one element with two (1 in 2D) tagged faces with the same tag
-        // then we remove the element from the mesh
-        let e = cavity.global_elem(&cavity.elems[0]);
-        let mut tags = vec![0; C::N_FACES];
-        let mut face_tag = 0;
-        let mut n_tagged = 0;
-        let mut same_tags = true;
-        for (i, f) in e.faces().enumerate() {
-            let f = f.sorted();
-            let tag = self.tagged_faces.get(&f);
-            if let Some(tag) = tag {
-                tags[i] = *tag;
-                n_tagged += 1;
-                if face_tag == 0 {
-                    face_tag = *tag;
-                } else if *tag != face_tag {
-                    same_tags = false;
-                }
-            }
-        }
-
-        if n_tagged == C::FACE::DIM && same_tags {
-            // remove the element
-            self.remove_elem(cavity.global_elem_ids[0])?;
-            for (i, &t) in tags.iter().enumerate() {
-                let f = e.face(i);
-                if t == face_tag {
-                    self.remove_tagged_face(f)?;
-                } else {
-                    self.add_tagged_face(f, face_tag)?;
-                }
-            }
-            num_ops.removed += 1;
-        }
-        Ok(())
-    }
-
     /// Extend the cavity until it can be filled
     fn extend_cavity(
         &self,
@@ -261,9 +219,9 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                 }
             }
             CavityCheckStatus::Invalid if edge_tag.0 < C::DIM as Dim => {
-                if cavity.elems.len() == 1 && C::DIM == 3 {
-                    // This is only active in 3D because not robust in 2D.
-                    self.remove_element_same_tag(cavity, num_ops)?;
+                if cavity.elems.len() == 1 && self.remove_boundary_element(cavity, geom)? {
+                    num_ops.removed += 1;
+                    trace_if!(dbg, "Remove one element");
                 } else if self.extend_cavity(dbg, edg, params, cavity, edge_center) {
                     let filled_cavity = FilledCavity::new(cavity, ftype);
                     let status = filled_cavity.check(l_min, f64::MAX, q_min);
