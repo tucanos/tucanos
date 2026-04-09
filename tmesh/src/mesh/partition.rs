@@ -2,6 +2,7 @@
 use super::{GSimplex, Mesh, hilbert::hilbert_indices};
 use crate::{Error, Result, graph::CSRGraph};
 use coupe::{Partition, nalgebra::SVector};
+use std::collections::VecDeque;
 #[cfg(feature = "metis")]
 use std::marker::PhantomData;
 
@@ -61,6 +62,49 @@ pub trait Partitioner: Sized + Send + Sync {
         }
         f64::from(split) / f64::from(count)
     }
+
+    // fn partition_correction(&self, part: &mut Vec<usize>) {
+    //     let n_elems = self.graph().n();
+    //     let weights = self.weights().collect::<Vec<_>>();
+    //     for i_part in 0..self.n_parts() {
+    //         let elem_ids = (0..n_elems)
+    //             .filter(|&i| part[i] == i_part)
+    //             .collect::<Vec<_>>();
+    //         let sgraph = self.graph().subgraph(elem_ids.iter().copied());
+    //         let cc = sgraph.connected_components().unwrap();
+    //         let n_cc = cc.iter().copied().max().unwrap_or(0) + 1;
+    //         //println!("{i_part} -> {n_cc}");
+    //         if n_cc > 1 {
+    //             let mut cc_weights = vec![0.0; n_cc];
+    //             let mut n_faces = vec![vec![0; self.n_parts()]; n_cc];
+    //             for (i, &j) in elem_ids.iter().enumerate() {
+    //                 let i_cc = cc[i];
+    //                 cc_weights[cc[i]] += weights[j];
+    //                 for &i_neighbor in self.graph().row(j) {
+    //                     let i_part_neighbor = part[i_neighbor];
+    //                     if i_part_neighbor != i_part {
+    //                         n_faces[i_cc][i_part_neighbor] += 1;
+    //                     }
+    //                 }
+    //             }
+    //             let i_max_cc = argmax(&cc_weights).unwrap();
+    //             for (i_cc, n_faces) in n_faces.iter().enumerate() {
+    //                 if i_cc != i_max_cc {
+    //                     //Option 1 : Maximize the quality of partitions
+    //                     let i_new_part = argmax(n_faces).unwrap();
+    //                     //Todo
+    //                     //Option 2 : Maximize the load balancing
+    //                     //Option 3 : Maximize Both
+    //                     for (i, &j) in elem_ids.iter().enumerate() {
+    //                         if cc[i] == i_cc {
+    //                             part[j] = i_new_part;
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
 }
 
 /// Simple geometric partitionner based on the Hilbert indices of the element centers
@@ -105,6 +149,76 @@ impl Partitioner for HilbertPartitioner {
             weight += self.weights[j];
         }
         Ok(res)
+    }
+
+    fn n_parts(&self) -> usize {
+        self.n_parts
+    }
+
+    fn graph(&self) -> &CSRGraph {
+        &self.graph
+    }
+}
+
+pub struct HilbertBallPartitioner {
+    n_parts: usize,
+    graph: CSRGraph,
+    vertex_ids: Vec<usize>,
+    elems_ids: Vec<usize>,
+    weights: Vec<f64>,
+    v2e: CSRGraph,
+}
+impl Partitioner for HilbertBallPartitioner {
+    fn new<const D: usize, M: Mesh<D>>(
+        msh: &M,
+        n_parts: usize,
+        weights: Option<Vec<f64>>,
+    ) -> Result<Self> {
+        let faces = msh.all_faces();
+        let graph = msh.element_pairs(&faces);
+        let (_, vertex_ids, elems_ids, _) = msh.reorder_hilbert();
+
+        //let ids = hilbert_indices(msh.verts());
+        let weights = weights.unwrap_or_else(|| vec![1.0; msh.n_elems()]);
+        Ok(Self {
+            n_parts,
+            graph,
+            vertex_ids,
+            elems_ids,
+            weights,
+            v2e: msh.vertex_to_elems(),
+        })
+    }
+
+    fn compute(&self) -> Result<Vec<usize>> {
+        let target_weight = self.weights.iter().copied().sum::<f64>() / self.n_parts as f64;
+
+        let mut partition = vec![usize::MAX; self.weights.len()];
+        let mut current_partition_idx = 0;
+        let mut current_work_partition = 0.0;
+        assert_eq!(self.elems_ids.len(), self.weights.len());
+        for &i_vert in &self.vertex_ids {
+            let element_in_ball = self.v2e.row(i_vert);
+            for &i_elem in element_in_ball {
+                if partition[i_elem] == usize::MAX {
+                    let elem_work = self.weights[i_elem];
+                    if (current_work_partition + elem_work) > target_weight {
+                        // to do Compute diff between target weight and actual partition weight to balance the best as possible
+                        // let distance = target_weight - current_work_partition
+                        current_work_partition = elem_work; // change
+                        if current_partition_idx < self.n_parts - 1 {
+                            current_partition_idx += 1;
+                        }
+                        // continue;// ??
+                    } else {
+                        current_work_partition += elem_work;
+                    }
+                    partition[i_elem] = current_partition_idx;
+                }
+            }
+        }
+        // Self::partition_correction(self, &mut partition);
+        Ok(partition)
     }
 
     fn n_parts(&self) -> usize {
@@ -277,6 +391,190 @@ impl Partitioner for KMeansPartitioner3d {
         }
         .partition(&mut partition, (self.centers.as_slice(), &self.weights))?;
         Ok(partition)
+    }
+
+    fn n_parts(&self) -> usize {
+        self.n_parts
+    }
+
+    fn graph(&self) -> &CSRGraph {
+        &self.graph
+    }
+}
+
+pub struct BFSWRPartitionner {
+    n_parts: usize,
+    graph: CSRGraph,
+    ids: Vec<usize>,
+    weights: Vec<f64>,
+}
+
+impl Partitioner for BFSWRPartitionner {
+    fn new<const D: usize, M: Mesh<D>>(
+        msh: &M,
+        n_parts: usize,
+        weights: Option<Vec<f64>>,
+    ) -> Result<Self> {
+        let faces = msh.all_faces();
+        let graph = msh.element_pairs(&faces);
+        let centers = msh.gelems().map(|ge| ge.center());
+        let ids = hilbert_indices(centers);
+        let weights = weights.unwrap_or_else(|| vec![1.0; msh.n_elems()]);
+        Ok(Self {
+            n_parts,
+            graph,
+            ids,
+            weights,
+        })
+    }
+
+    fn compute(&self) -> Result<Vec<usize>> {
+        let target_weight = self.weights.iter().copied().sum::<f64>() / self.n_parts() as f64;
+        let mut res = vec![0; self.weights.len()];
+        let n_elems = self.weights.len();
+        let mut assigned_elements = vec![false; n_elems];
+        let mut current_partition_idx = 0;
+        let mut current_work_partition = 0.0;
+        let mut queue = VecDeque::new();
+
+        let mut next_unassigned_elem_root = 0;
+        let mut n_assigned_elements = 0;
+
+        while n_assigned_elements < n_elems {
+            while next_unassigned_elem_root < n_elems
+                && assigned_elements[self.ids[next_unassigned_elem_root]]
+            {
+                next_unassigned_elem_root += 1;
+            }
+
+            let start_elem_id = next_unassigned_elem_root;
+            queue.push_back(self.ids[start_elem_id]);
+            assigned_elements[self.ids[start_elem_id]] = true;
+            n_assigned_elements += 1;
+
+            while let Some(current_elem_id) = queue.pop_front() {
+                let elem_work = self.weights[current_elem_id];
+
+                if current_work_partition + elem_work > target_weight
+                    && current_partition_idx + 1 < self.n_parts()
+                {
+                    current_partition_idx += 1;
+                    current_work_partition = 0.0;
+                    for &elem_id_in_queue in &queue {
+                        assigned_elements[elem_id_in_queue] = false;
+                        n_assigned_elements -= 1;
+                    }
+                    queue.clear();
+                }
+
+                res[current_elem_id] = current_partition_idx;
+                current_work_partition += elem_work;
+
+                for &neighbor_elem_id in self.graph.row(current_elem_id) {
+                    if !assigned_elements[neighbor_elem_id] {
+                        assigned_elements[neighbor_elem_id] = true;
+                        n_assigned_elements += 1;
+                        queue.push_back(neighbor_elem_id);
+                    }
+                }
+            }
+            if queue.is_empty() {
+                next_unassigned_elem_root = 0;
+            }
+        }
+        // Self::partition_correction(self, &mut res);
+        Ok(res)
+    }
+
+    fn n_parts(&self) -> usize {
+        self.n_parts
+    }
+
+    fn graph(&self) -> &CSRGraph {
+        &self.graph
+    }
+}
+
+pub struct BFSPartitionner {
+    n_parts: usize,
+    graph: CSRGraph,
+    ids: Vec<usize>,
+    weights: Vec<f64>,
+}
+
+impl Partitioner for BFSPartitionner {
+    fn new<const D: usize, M: Mesh<D>>(
+        msh: &M,
+        n_parts: usize,
+        weights: Option<Vec<f64>>,
+    ) -> Result<Self> {
+        let faces = msh.all_faces();
+        let graph = msh.element_pairs(&faces);
+
+        let centers = msh.gelems().map(|ge| ge.center());
+        let ids = hilbert_indices(centers);
+        let weights = weights.unwrap_or_else(|| vec![1.0; msh.n_elems()]);
+        Ok(Self {
+            n_parts,
+            graph,
+            ids,
+            weights,
+        })
+    }
+
+    fn compute(&self) -> Result<Vec<usize>> {
+        let target_weight = self.weights.iter().copied().sum::<f64>() / self.n_parts() as f64;
+        let mut res = vec![0; self.weights.len()];
+        let n_elems = self.weights.len();
+        let mut assigned_elements = vec![false; n_elems];
+        let mut current_partition_idx = 0;
+        let mut current_work_partition = 0.0;
+        let mut queue = VecDeque::new();
+
+        let mut next_unassigned_elem_root = 0;
+        let mut n_assigned_elements = 0;
+
+        while n_assigned_elements < n_elems {
+            while next_unassigned_elem_root < n_elems
+                && assigned_elements[self.ids[next_unassigned_elem_root]]
+            {
+                next_unassigned_elem_root += 1;
+            }
+
+            if next_unassigned_elem_root == n_elems {
+                break;
+            }
+
+            let start_elem_id = next_unassigned_elem_root;
+            queue.push_back(self.ids[start_elem_id]);
+            assigned_elements[self.ids[start_elem_id]] = true;
+            n_assigned_elements += 1;
+
+            while let Some(current_elem_id) = queue.pop_front() {
+                let elem_work = self.weights[current_elem_id];
+
+                if current_work_partition + elem_work > target_weight
+                    && current_partition_idx + 1 < self.n_parts()
+                {
+                    current_partition_idx += 1;
+                    current_work_partition = 0.0;
+                }
+
+                res[current_elem_id] = current_partition_idx;
+                current_work_partition += elem_work;
+
+                for &neighbor_elem_id in self.graph.row(current_elem_id) {
+                    if !assigned_elements[neighbor_elem_id] {
+                        queue.push_back(neighbor_elem_id);
+                        assigned_elements[neighbor_elem_id] = true;
+                        n_assigned_elements += 1;
+                    }
+                }
+            }
+        }
+        // Self::partition_correction(self, &mut res);
+
+        Ok(res)
     }
 
     fn n_parts(&self) -> usize {
