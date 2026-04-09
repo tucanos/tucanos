@@ -1,48 +1,42 @@
+use crate::metric::{ImpliedMetric, Metric};
 use core::f64;
 use rayon::iter::ParallelIterator;
 use std::marker::PhantomData;
-use tmesh::{
-    mesh::{Mesh, Simplex, GSimplex},
-};
-use crate::{
-    metric::{ ImpliedMetric, Metric},
-};
+use tmesh::mesh::{GSimplex, Mesh, Simplex};
 // const ADD_PERCENTAGE: f64 = 40.0;
-pub trait ElementCostEstimator<const D: usize, M: Mesh<D>, T: Metric<D>>: Send + Sync 
+pub trait ElementCostEstimator<const D: usize, C: Simplex, T: Metric<D>>:
+    Send + Sync + Clone
 {
     fn new() -> Self;
-    fn compute(&self, msh: &M, m: Option<&[T]>) -> Vec<f64>;
+    fn compute(&self, msh: &impl Mesh<D, C = C>, m: Option<&[T]>) -> Vec<f64>;
 }
 
-pub struct NoCostEstimator<const D: usize, M: Mesh<D>, T: Metric<D>> 
-{
-    _e: PhantomData<M>,
+#[derive(Clone)]
+pub struct NoCostEstimator<const D: usize, C: Simplex, T: Metric<D>> {
+    _c: PhantomData<C>,
     _m: PhantomData<T>,
 }
 
-impl<const D: usize, M : Mesh<D>, T: Metric<D>> ElementCostEstimator<D, M, T> for NoCostEstimator<D, M, T>
-    {
+impl<const D: usize, C: Simplex, T: Metric<D>> ElementCostEstimator<D, C, T>
+    for NoCostEstimator<D, C, T>
+{
     fn new() -> Self {
         Self {
-            _e: PhantomData,
+            _c: PhantomData,
             _m: PhantomData,
         }
     }
 
-    fn compute(&self, msh: &M, _m: Option<&[T]>) -> Vec<f64> {
+    fn compute(&self, msh: &impl Mesh<D, C = C>, _m: Option<&[T]>) -> Vec<f64> {
         vec![1.0; msh.n_elems() as usize]
     }
 }
 
-pub struct TotoCostEstimator<
-    const D: usize,
-    M: Mesh<D>,
-    T: Metric<D>>
-{
-    _e: PhantomData<M::C>,
+#[derive(Clone)]
+pub struct TotoCostEstimator<const D: usize, C: Simplex, T: Metric<D>> {
+    _c: PhantomData<C>,
     _m: PhantomData<T>,
 }
-
 
 const SPLIT_UNIT_COST: f64 = 3.65; // Un split dure en moyenne 3.65 * plus longtemps qu'une vérif
 const COLLAPSE_UNIT_COST: f64 = 8.395; // Un collpase dure en moyenne 2.3 * plus longtemps qu'une vérif 2.3*3.65 = 8.395
@@ -74,32 +68,29 @@ fn work_eval(initial_density: f64, actual_density: f64, intersected_density: f64
         + (VERIF_COST_SWAP + VERIF_COST_SPLIT * insert_bool + VERIF_COST_COLLAPSE * collapse_bool) // Si collapse ou split, on ne fait pas la vérification correspondante 
 }
 
-
-
 impl<
     const D: usize,
-    M: Mesh<D>,
-    T: Metric<D>
-        // + Into<<E::Geom<D, IsoMetric<D>> as ImpliedMetric<D, IsoMetric<D>>>::ImpliedMetricType>,
-> ElementCostEstimator<D, M, T> for TotoCostEstimator<D, M, T>
+    C: Simplex,
+    T: Metric<D>, // + Into<<E::Geom<D, IsoMetric<D>> as ImpliedMetric<D, IsoMetric<D>>>::ImpliedMetricType>,
+> ElementCostEstimator<D, C, T> for TotoCostEstimator<D, C, T>
 where
-<<M as Mesh<D>>::C as Simplex>::GEOM<D>: ImpliedMetric<T>
+    C::GEOM<D>: ImpliedMetric<T>,
 {
     fn new() -> Self {
         Self {
-            _e: PhantomData,
+            _c: PhantomData,
             _m: PhantomData,
         }
     }
 
-    fn compute(&self, msh: &M, m:  Option<&[T]>) -> Vec<f64> {
+    fn compute(&self, msh: &impl Mesh<D, C = C>, m: Option<&[T]>) -> Vec<f64> {
         let m_slice = m.expect("Toto requires metrics");
         msh.par_elems()
             .map(|e| {
                 let ge = msh.gelem(&e);
                 let implied_metric = ge.implied_metric();
                 let vol = ge.vol();
-                let n_verts = <<M as Mesh<D>>::C as Simplex>::GEOM::<D>::N_VERTS;
+                let n_verts = C::GEOM::<D>::N_VERTS;
                 let weight = 1.0 / (n_verts as f64);
                 let mean_target_metric =
                     T::interpolate(e.into_iter().map(|i| (weight, &m_slice[i as usize])));

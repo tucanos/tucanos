@@ -1,3 +1,4 @@
+use crate::metric::ImpliedMetric;
 use crate::{
     Result, Tag,
     geometry::Geometry,
@@ -11,9 +12,6 @@ use rustc_hash::FxHashSet;
 use serde::Serialize;
 use std::{marker::PhantomData, sync::Mutex, time::Instant};
 use tmesh::mesh::{GenericMesh, Mesh, Simplex, SubMesh, partition::Partitioner};
-use crate::{
-    metric::{ ImpliedMetric},
-};
 #[derive(Clone, Debug)]
 pub struct ParallelRemesherParams {
     pub n_layers: u32,
@@ -121,10 +119,16 @@ impl ParallelRemeshingInfo {
     }
 }
 
-
 /// Domain decomposition
-pub struct ParallelRemesher<const D: usize, M: Mesh<D>, P: Partitioner, T : Metric<D>, CE :ElementCostEstimator<D, M, T>> 
-where  <<M as Mesh<D>>::C as Simplex>::GEOM<D>: ImpliedMetric<T>{
+pub struct ParallelRemesher<
+    const D: usize,
+    M: Mesh<D>,
+    P: Partitioner,
+    T: Metric<D>,
+    CE: ElementCostEstimator<D, M::C, T>,
+> where
+    <<M as Mesh<D>>::C as Simplex>::GEOM<D>: ImpliedMetric<T>,
+{
     mesh: M,
     topo: MeshTopology,
     n_parts: usize,
@@ -136,27 +140,34 @@ where  <<M as Mesh<D>>::C as Simplex>::GEOM<D>: ImpliedMetric<T>{
     partition_imbalance: f64,
     debug: bool,
     _p: PhantomData<P>,
-    _m : PhantomData<T>,
-    _s : PhantomData<CE>,
-
+    _m: PhantomData<T>,
+    _s: PhantomData<CE>,
 }
 
 type MeshAndMetric<T, const D: usize, C> = (GenericMesh<D, C>, Vec<T>);
 
-impl<const D: usize, M: Mesh<D>, P: Partitioner,T : Metric<D>, CE : ElementCostEstimator<D, M, T>> ParallelRemesher<D, M, P, T, CE> 
-where  <<M as Mesh<D>>::C as Simplex>::GEOM<D>: ImpliedMetric<T>
+impl<const D: usize, M: Mesh<D>, P: Partitioner, T: Metric<D>, CE: ElementCostEstimator<D, M::C, T>>
+    ParallelRemesher<D, M, P, T, CE>
+where
+    <<M as Mesh<D>>::C as Simplex>::GEOM<D>: ImpliedMetric<T>,
 {
     /// Create a new parallel remesher based on domain decomposition.
     /// If part is `PartitionType::Scotch(n)` or `PartitionType::Metis(n)` the mesh is partitionned into n subdomains using
     /// scotch / metis. If None, the element tag in `mesh` is used as the partition Id
     ///
     /// NB: the mesh element tags will be modified
-    pub fn new(mut mesh: M, topo: MeshTopology, n_parts: usize, cost_estimator : CE, metric : Option<&[T]>) -> Result<Self> 
-    {
+    pub fn new(
+        mut mesh: M,
+        topo: MeshTopology,
+        n_parts: usize,
+        cost_estimator: CE,
+        metric: Option<&[T]>,
+    ) -> Result<Self> {
         // Partition if needed
         let now = Instant::now();
-        let weights  = cost_estimator.compute(&mesh, metric);
-        let (partition_quality, partition_imbalance) = mesh.partition::<P>(n_parts, Some(weights))?;
+        let weights = cost_estimator.compute(&mesh, metric);
+        let (partition_quality, partition_imbalance) =
+            mesh.partition::<P>(n_parts, Some(weights))?;
 
         let partition_time = now.elapsed().as_secs_f64();
 
@@ -188,8 +199,8 @@ where  <<M as Mesh<D>>::C as Simplex>::GEOM<D>: ImpliedMetric<T>
             partition_imbalance,
             debug: false,
             _p: PhantomData,
-            _m : PhantomData,
-            _s : PhantomData,   
+            _m: PhantomData,
+            _s: PhantomData,
         })
     }
 
@@ -294,7 +305,7 @@ where  <<M as Mesh<D>>::C as Simplex>::GEOM<D>: ImpliedMetric<T>
     /// A tuple `(interior, interface)` where:
     /// * `interior`: The combined mesh and metrics for the partition interiors.
     /// * `interface`: The combined mesh and metrics for the partition boundaries.
-    fn remesh_partitions< G: Geometry<D>>(
+    fn remesh_partitions<G: Geometry<D>>(
         &self,
         metric: &[T],
         geom: &G,
@@ -395,15 +406,14 @@ where  <<M as Mesh<D>>::C as Simplex>::GEOM<D>: ImpliedMetric<T>
         )
     }
 
-    fn remesh_interface< G: Geometry<D>>(
+    fn remesh_interface<G: Geometry<D>>(
         &self,
         ifc_data: MeshAndMetric<T, D, M::C>,
         geom: &G,
         params: RemesherParams,
         dd_params: &ParallelRemesherParams,
-        cost_estimator : CE,
-    ) -> Result<(MeshAndMetric<T, D, M::C>, ParallelRemeshingInfo)> 
-     {
+        cost_estimator: CE,
+    ) -> Result<(MeshAndMetric<T, D, M::C>, ParallelRemeshingInfo)> {
         let (mut ifc, ifc_m) = ifc_data;
         let level = dd_params.level();
         if self.debug {
@@ -432,9 +442,13 @@ where  <<M as Mesh<D>>::C as Simplex>::GEOM<D>: ImpliedMetric<T>
 
         let (mesh, info, metric) = if let Some(dd_params) = dd_params.next(ifc.n_verts()) {
             info!("Remeshing interface at level {level} (parallel)");
-            let mesh = ifc;
-            let mut dd =  ParallelRemesher::<D, GenericMesh<D, M::C>, P, _ , CE>::new(
-                ifc, ifc_topo, self.n_parts, cost_estimator, Some(&ifc_m))?;
+            let mut dd = ParallelRemesher::<D, GenericMesh<D, M::C>, P, _, CE>::new(
+                ifc,
+                ifc_topo,
+                self.n_parts,
+                cost_estimator,
+                Some(&ifc_m),
+            )?;
             dd.set_debug(self.debug);
             dd.interface_bdy_tag = self.interface_bdy_tag + 1;
             dd.remesh(&ifc_m, geom, params, &dd_params, cost_estimator)?
@@ -468,7 +482,7 @@ where  <<M as Mesh<D>>::C as Simplex>::GEOM<D>: ImpliedMetric<T>
     }
 
     /// Remesh using domain decomposition
-    pub fn remesh< G: Geometry<D>>(
+    pub fn remesh<G: Geometry<D>>(
         &self,
         m: &[T],
         geom: &G,
@@ -550,7 +564,10 @@ mod tests {
             test_meshes::{test_mesh_2d, test_mesh_3d},
         },
         metric::{AnisoMetric, AnisoMetric2d, AnisoMetric3d, IsoMetric},
-        remesher::{ElementCostEstimator, NoCostEstimator, ParallelRemesher, ParallelRemesherParams, RemesherParams},
+        remesher::{
+            ElementCostEstimator, NoCostEstimator, ParallelRemesher, ParallelRemesherParams,
+            RemesherParams,
+        },
     };
     #[cfg(feature = "metis")]
     use tmesh::mesh::partition::{MetisPartitioner, MetisRecursive};
@@ -569,7 +586,8 @@ mod tests {
         mesh.etags_mut().for_each(|t| *t = 1);
         let topo = MeshTopology::new(&mesh);
         let cost_estimator = NoCostEstimator::new();
-        let mut dd = ParallelRemesher::<_, _, P,_,_>::new(mesh, topo, n_parts,cost_estimator, None)?;
+        let mut dd =
+            ParallelRemesher::<_, _, P, _, _>::new(mesh, topo, n_parts, cost_estimator, None)?;
         dd.set_debug(debug);
 
         let h = |p: Vert2d| {
@@ -582,15 +600,21 @@ mod tests {
                 * (1.0 - libm::exp(-((x - 0.5).powi(2) + (y - 0.35).powi(2)) / sigma.powi(2)))
         };
 
-       let m: Vec<_> = (0..dd.mesh.n_verts())
-        .map(|i| {
-        let h_val = h(dd.mesh.vert(i));
-        AnisoMetric2d::from_iso(&IsoMetric::<2>::from(h_val))
-        })
-        .collect();
+        let m: Vec<_> = (0..dd.mesh.n_verts())
+            .map(|i| {
+                let h_val = h(dd.mesh.vert(i));
+                AnisoMetric2d::from_iso(&IsoMetric::<2>::from(h_val))
+            })
+            .collect();
         let cost_estimator = NoCostEstimator::new();
         let dd_params = ParallelRemesherParams::new(2, 1, 0);
-        let (mesh, _, _) = dd.remesh(&m, &NoGeometry(), RemesherParams::default(), &dd_params, cost_estimator)?;
+        let (mesh, _, _) = dd.remesh(
+            &m,
+            &NoGeometry(),
+            RemesherParams::default(),
+            &dd_params,
+            cost_estimator,
+        )?;
 
         if debug {
             mesh.write_vtk("res.vtu")?;
@@ -676,7 +700,7 @@ mod tests {
         let topo = MeshTopology::new(&mesh);
         let cost_estimator = NoCostEstimator::new();
 
-        let dd = ParallelRemesher::<_, _, P,_,_>::new(mesh, topo, n_parts,cost_estimator,None)?;
+        let dd = ParallelRemesher::<_, _, P, _, _>::new(mesh, topo, n_parts, cost_estimator, None)?;
         // dd.set_debug(true);
 
         let h = |p: Vert3d| {
@@ -694,16 +718,21 @@ mod tests {
                     ))
         };
 
-    
         let m: Vec<_> = (0..dd.mesh.n_verts())
-        .map(|i| {
-        let h_val = h(dd.mesh.vert(i));
-        AnisoMetric3d::from_iso(&IsoMetric::<3>::from(h_val))
-        })
-        .collect();
+            .map(|i| {
+                let h_val = h(dd.mesh.vert(i));
+                AnisoMetric3d::from_iso(&IsoMetric::<3>::from(h_val))
+            })
+            .collect();
         let cost_estimator = NoCostEstimator::new();
         let dd_params = ParallelRemesherParams::new(2, 2, 0);
-        let (mesh, _, _) = dd.remesh(&m, &NoGeometry(), RemesherParams::default(), &dd_params,cost_estimator)?;
+        let (mesh, _, _) = dd.remesh(
+            &m,
+            &NoGeometry(),
+            RemesherParams::default(),
+            &dd_params,
+            cost_estimator,
+        )?;
 
         if debug {
             mesh.write_vtk("res.vtu")?;
