@@ -138,10 +138,10 @@ pub struct ParallelRemesher<
     partition_time: f64,
     partition_quality: f64,
     partition_imbalance: f64,
+    cost_estimator: CE,
     debug: bool,
     _p: PhantomData<P>,
     _m: PhantomData<T>,
-    _s: PhantomData<CE>,
 }
 
 type MeshAndMetric<T, const D: usize, C> = (GenericMesh<D, C>, Vec<T>);
@@ -198,9 +198,9 @@ where
             partition_quality,
             partition_imbalance,
             debug: false,
+            cost_estimator: cost_estimator,
             _p: PhantomData,
             _m: PhantomData,
-            _s: PhantomData,
         })
     }
 
@@ -451,7 +451,7 @@ where
             )?;
             dd.set_debug(self.debug);
             dd.interface_bdy_tag = self.interface_bdy_tag + 1;
-            dd.remesh(&ifc_m, geom, params, &dd_params, cost_estimator)?
+            dd.remesh(&ifc_m, geom, params, &dd_params)?
         } else {
             info!("Remeshing interface at level {level} (seq)");
             let mut ifc_remesher = Remesher::new(&ifc, &ifc_topo, &ifc_m, geom)?;
@@ -488,7 +488,6 @@ where
         geom: &G,
         params: RemesherParams,
         dd_params: &ParallelRemesherParams,
-        cost_estimator: CE,
     ) -> Result<(GenericMesh<D, M::C>, ParallelRemeshingInfo, Vec<T>)> {
         let level = dd_params.level();
 
@@ -517,7 +516,7 @@ where
         let ((mut res, mut res_m), (ifc, ifc_m)) =
             self.remesh_partitions(m, geom, &params, dd_params, &info);
         let ((mut ifc, ifc_m), interface_info) =
-            self.remesh_interface((ifc, ifc_m), geom, params, dd_params, cost_estimator)?;
+            self.remesh_interface((ifc, ifc_m), geom, params, dd_params, self.cost_estimator)?;
         let mut info = info.into_inner().unwrap();
         info.interface = Some(Box::new(interface_info));
         if self.debug {
@@ -606,15 +605,8 @@ mod tests {
                 AnisoMetric2d::from_iso(&IsoMetric::<2>::from(h_val))
             })
             .collect();
-        let cost_estimator = NoCostEstimator::new();
         let dd_params = ParallelRemesherParams::new(2, 1, 0);
-        let (mesh, _, _) = dd.remesh(
-            &m,
-            &NoGeometry(),
-            RemesherParams::default(),
-            &dd_params,
-            cost_estimator,
-        )?;
+        let (mesh, _, _) = dd.remesh(&m, &NoGeometry(), RemesherParams::default(), &dd_params)?;
 
         if debug {
             mesh.write_vtk("res.vtu")?;
@@ -724,15 +716,8 @@ mod tests {
                 AnisoMetric3d::from_iso(&IsoMetric::<3>::from(h_val))
             })
             .collect();
-        let cost_estimator = NoCostEstimator::new();
         let dd_params = ParallelRemesherParams::new(2, 2, 0);
-        let (mesh, _, _) = dd.remesh(
-            &m,
-            &NoGeometry(),
-            RemesherParams::default(),
-            &dd_params,
-            cost_estimator,
-        )?;
+        let (mesh, _, _) = dd.remesh(&m, &NoGeometry(), RemesherParams::default(), &dd_params)?;
 
         if debug {
             mesh.write_vtk("res.vtu")?;

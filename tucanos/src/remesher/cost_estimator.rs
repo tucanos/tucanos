@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 use tmesh::mesh::{GSimplex, Mesh, Simplex};
 // const ADD_PERCENTAGE: f64 = 40.0;
 pub trait ElementCostEstimator<const D: usize, C: Simplex, T: Metric<D>>:
-    Send + Sync + Clone
+    Send + Sync + Clone +Copy
 {
     fn new() -> Self;
     fn compute(&self, msh: &impl Mesh<D, C = C>, m: Option<&[T]>) -> Vec<f64>;
@@ -16,8 +16,9 @@ pub struct NoCostEstimator<const D: usize, C: Simplex, T: Metric<D>> {
     _c: PhantomData<C>,
     _m: PhantomData<T>,
 }
+impl<const D: usize, C: Simplex, T: Metric<D>> Copy for NoCostEstimator<D, C, T> {}
 
-impl<const D: usize, C: Simplex, T: Metric<D>> ElementCostEstimator<D, C, T>
+impl<const D: usize, C: Simplex, T: Metric<D>> ElementCostEstimator<D, C, T> 
     for NoCostEstimator<D, C, T>
 {
     fn new() -> Self {
@@ -67,6 +68,8 @@ fn work_eval(initial_density: f64, actual_density: f64, intersected_density: f64
         + TOTAL_COLLAPSE_COST * collapse_prop)// Un collapse provoque 0.78 split et supprime 6 arrêtes 
         + (VERIF_COST_SWAP + VERIF_COST_SPLIT * insert_bool + VERIF_COST_COLLAPSE * collapse_bool) // Si collapse ou split, on ne fait pas la vérification correspondante 
 }
+
+impl<const D: usize, C: Simplex, T: Metric<D>> Copy for TotoCostEstimator<D, C, T> {}
 
 impl<
     const D: usize,
