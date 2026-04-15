@@ -3,6 +3,7 @@ use super::smooth::SmoothParams;
 use super::split::SplitParams;
 use super::stats::{InitStats, Stats, StepStats};
 use super::swap::SwapParams;
+use crate::Dim;
 use crate::mesh::MeshTopology;
 use crate::metric::MetricElem;
 use crate::{Error, Result, Tag, TopoTag, geometry::Geometry, mesh::Topology, metric::Metric};
@@ -83,7 +84,10 @@ impl RemesherParams {
                 max_angle,
                 ..CollapseParams::default()
             }));
-            steps.push(RemeshingStep::Split(SplitParams::default()));
+            steps.push(RemeshingStep::Split(SplitParams {
+                max_angle,
+                ..SplitParams::default()
+            }));
             steps.push(RemeshingStep::Swap(SwapParams {
                 max_angle,
                 q: 0.4,
@@ -586,7 +590,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
     /// Select edges for which trace is enabled.
     #[must_use]
     #[cfg(not(feature = "trace_edges"))]
-    pub const fn debug_edge(&self, _edg: Edge<usize>) -> bool {
+    pub fn debug_edge(&self, edg: Edge<usize>) -> bool {
         false
     }
 
@@ -614,7 +618,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         self.tagged_faces.get(&face).copied()
     }
 
-    /// Return the tag of a face
+    /// Add a tagged face
     pub(super) fn add_tagged_face(&mut self, face: C::FACE, tag: Tag) -> Result<()> {
         let face = face.sorted();
         if self.tagged_faces.contains_key(&face) {
@@ -627,7 +631,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         Ok(())
     }
 
-    /// Return the tag of a face
+    /// Remove a tagged face
     pub(super) fn remove_tagged_face(&mut self, face: C::FACE) -> Result<()> {
         let face = face.sorted();
         if !self.tagged_faces.contains_key(&face) {
@@ -635,6 +639,81 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         }
         self.tagged_faces.remove(&face).unwrap();
         Ok(())
+    }
+
+    /// Get the tags of all the faces containing an edge
+    fn edge_face_tags(&self, v0: &VtxInfo<D, M>, edge: &Edge<usize>) -> SortedVec<Tag> {
+        let mut face_tags = SortedVec::default();
+        for i in &v0.els {
+            let e = self.elems.get(i).unwrap();
+            for f in e.el.faces() {
+                if f.contains_edge(edge)
+                    && let Some(t) = self.face_tag(&f)
+                {
+                    face_tags.find_or_insert(t);
+                }
+            }
+        }
+        face_tags
+    }
+
+    /// Get the tags of all the elements containing an edge
+    fn edge_elem_tags(&self, v0: &VtxInfo<D, M>, edge: &Edge<usize>) -> SortedVec<Tag> {
+        let mut elem_tags = SortedVec::default();
+        for i in &v0.els {
+            let e = self.elems.get(i).unwrap();
+            if e.el.contains_edge(edge) {
+                elem_tags.find_or_insert(e.tag);
+            }
+        }
+        elem_tags
+    }
+
+    /// Return the tag of a face
+    pub(super) fn edge_tag(&self, edge: &Edge<usize>) -> TopoTag {
+        let i0 = edge.get(0);
+        let v0 = self.verts.get(&i0).unwrap();
+        let t0 = v0.tag;
+        if t0.0 == C::DIM as Dim {
+            if self.debug_edge(*edge) {
+                info!("use tag from v0: {t0:?}");
+            }
+            return t0;
+        }
+        let i1 = edge.get(1);
+        let v1 = self.verts.get(&i1).unwrap();
+        let t1 = v1.tag;
+        if t1.0 == C::DIM as Dim {
+            return t1;
+        }
+
+        // In 2D, edges are faces
+        if C::DIM == 2 {
+            let face = C::FACE::from_iter(*edge).sorted();
+            if let Some(t) = self.tagged_faces.get(&face) {
+                return (1, *t);
+            }
+            // Get the element tags
+            let elem_tags = self.edge_elem_tags(v0, edge);
+            assert_eq!(elem_tags.len(), 1);
+            return (2, elem_tags[0]);
+        }
+
+        // 3D case: check if the edge belongs to tagged faces
+        let face_tags = self.edge_face_tags(v0, edge);
+        if face_tags.is_empty() {
+            // The edge belongs to a single element tag
+            let elem_tags = self.edge_elem_tags(v0, edge);
+            assert_eq!(elem_tags.len(), 1);
+            (C::DIM as Dim, elem_tags[0])
+        } else if face_tags.len() == 1 {
+            (C::DIM as Dim - 1, face_tags[0])
+        } else {
+            assert_eq!(C::DIM, 3);
+            let parents = self.topo.get_from_parents(1, face_tags);
+            assert_eq!(parents.len(), 1);
+            parents[0].tag
+        }
     }
 
     /// Estimate the complexity
@@ -970,8 +1049,9 @@ mod tests {
     use tmesh::{
         Vert2d, Vert3d, assert_delta,
         mesh::{
-            BoundaryMesh3d, Edge, GSimplex, GenericMesh, Mesh, Mesh3d, QuadraticBoundaryMesh3d,
-            Simplex, Tetrahedron, Triangle, ball_mesh, quadratic_sphere_mesh, sphere_mesh,
+            BoundaryMesh2d, BoundaryMesh3d, Edge, GSimplex, GenericMesh, Mesh, Mesh3d,
+            QuadraticBoundaryMesh3d, Simplex, Tetrahedron, Triangle, ball_mesh,
+            quadratic_sphere_mesh, sphere_mesh,
         },
     };
 
@@ -1495,7 +1575,7 @@ mod tests {
     fn test_adapt_2d_geom() -> Result<()> {
         let mut mesh = test_mesh_moon_2d();
 
-        let ref_vol = 0.5 * PI - 2.0 * (0.5 * 1.25 * 1.25 * f64::atan2(1., 0.75) - 0.5 * 0.75);
+        let ref_vol = 0.5 * PI - 2.0 * (0.5 * 1.25 * 1.25 * libm::atan2(1., 0.75) - 0.5 * 0.75);
 
         for iter in 1..10 {
             let h: Vec<_> = mesh
@@ -1835,8 +1915,8 @@ mod tests {
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
 
             if iter == 1 {
-                assert_delta!(mini, 0.46, 0.01);
-                assert_delta!(maxi, 1.59, 0.01);
+                assert_delta!(mini, 0.48, 0.01);
+                assert_delta!(maxi, 1.61, 0.01);
             }
 
             // let fname = format!("sphere_{}.vtu", iter + 1);
@@ -1887,7 +1967,7 @@ mod tests {
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
 
             if iter == 1 {
-                assert_delta!(mini, 0.46, 0.01);
+                assert_delta!(mini, 0.44, 0.01);
                 assert_delta!(maxi, 1.50, 0.01);
             }
 
@@ -1939,8 +2019,8 @@ mod tests {
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
 
             if iter == 1 {
-                assert_delta!(mini, 0.43, 0.01);
-                assert_delta!(maxi, 1.59, 0.01);
+                assert_delta!(mini, 0.46, 0.01);
+                assert_delta!(maxi, 1.62, 0.01);
             }
 
             // let fname = format!("sphere_{}.vtu", iter + 1);
@@ -2002,6 +2082,48 @@ mod tests {
         remesher.check()?;
 
         let _mesh = remesher.to_mesh(true);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_iso2d() -> Result<()> {
+        // test used in tucanos-ffi-test
+        let verts = [0., 0., 1., 0., 0., 1.];
+        let elems = [0, 1, 2];
+        let faces = [0, 1, 1, 2, 2, 0];
+        let metric = [0.1; 3];
+
+        let verts = verts
+            .chunks(2)
+            .map(Vert2d::from_column_slice)
+            .collect::<Vec<_>>();
+        let elems = elems
+            .chunks(Triangle::<u32>::N_VERTS)
+            .map(|x| Triangle::<usize>::from_iter(x.iter().copied()))
+            .collect::<Vec<_>>();
+        let etags = vec![1; elems.len()];
+        let faces = faces
+            .chunks(Edge::<u32>::N_VERTS)
+            .map(|x| Edge::<usize>::from_iter(x.iter().copied()))
+            .collect::<Vec<_>>();
+        let ftags = vec![1, 2, 3];
+        let metric = metric
+            .iter()
+            .map(|&x| IsoMetric::<2>::from(x))
+            .collect::<Vec<_>>();
+        let mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
+        let mut bdy: BoundaryMesh2d = mesh.boundary().0;
+        bdy.fix().unwrap();
+
+        let topo = MeshTopology::new(&mesh);
+        let mut geom = MeshedGeometry::new(&bdy)?;
+        geom.set_topo_map(topo.topo());
+        let mut remesher = Remesher::new(&mesh, &topo, &metric, &geom)?;
+        remesher.remesh(&RemesherParams::default(), &geom)?;
+        let mesh = remesher.to_mesh(false);
+        // mesh.write_meshb("iso3d.meshb")?;
+        assert_eq!(mesh.n_verts(), 81);
 
         Ok(())
     }
@@ -2162,7 +2284,7 @@ mod tests {
             let s = 0.25;
             let h_min = 1e-2;
             let h_max = 1e-1;
-            IsoMetric::from(h_max - (h_max - h_min) * f64::exp(-(d / s).powi(2)))
+            IsoMetric::from(h_max - (h_max - h_min) * libm::exp(-(d / s).powi(2)))
         };
 
         let m = mesh.verts().map(|p| m_func(&p)).collect::<Vec<_>>();
@@ -2207,7 +2329,6 @@ mod tests {
                 let theta = libm::acos(z / r);
 
                 let e_r = p / r;
-                // let phi = y.signum() * (x / r_xy).acos();
 
                 let e_phi = Vert3d::new(y / r_xy, -x / r_xy, 0.0);
                 let e_theta = -e_r.cross(&e_phi);
@@ -2242,8 +2363,8 @@ mod tests {
         remesher.check()?;
 
         let (mini, maxi, _) = remesher.check_edge_lengths_analytical(m_func);
-        assert_delta!(mini, 0.43, 0.01);
-        assert_delta!(maxi, 1.85, 0.01);
+        assert_delta!(mini, 0.44, 0.01);
+        assert_delta!(maxi, 1.89, 0.01);
 
         let _mesh = remesher.to_mesh(true);
         // mesh.write_vtk("sphere_surf_aniso.vtu")?;
@@ -2282,7 +2403,7 @@ mod tests {
         remesher.remesh(&params, &geom)?;
         remesher.check()?;
         let (mini, maxi, _) = remesher.check_edge_lengths_analytical(m_func);
-        assert_delta!(mini, 0.41, 0.01);
+        assert_delta!(mini, 0.45, 0.01);
         assert_delta!(maxi, 1.66, 0.01);
         Ok(())
     }

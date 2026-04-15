@@ -10,7 +10,7 @@ use crate::{
 };
 use log::{debug, info, trace};
 use tmesh::{
-    mesh::{Edge, Simplex},
+    mesh::{Edge, GSimplex, Simplex},
     trace_if,
 };
 
@@ -19,6 +19,7 @@ enum TrySwapResult {
     FixedEdge,
     CouldNotSwap,
     CouldSwap(usize, f64),
+    BoundaryElement,
 }
 
 #[derive(Clone, Debug)]
@@ -113,7 +114,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
 
         if cavity.global_elem_ids.len() == 1 {
             trace_if!(dbg, "Cannot swap, only one adjacent cell");
-            return TrySwapResult::QualitySufficient;
+            return TrySwapResult::BoundaryElement;
         }
 
         if cavity.q_min > params.q {
@@ -148,10 +149,15 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
 
         let mut vx = None;
 
-        let edge_tag = self
-            .topo
-            .parent(cavity.tags[local_i0], cavity.tags[local_i1])
-            .unwrap();
+        let edge_tag = match (C::DIM, &cavity.etags[..]) {
+            // For triangle meshes, an edge with two identical tags is never
+            // a boundary edge whatever his vertices tags are if the two
+            // adjacent faces have the same tag.
+            (2, [t1, t2]) if t1 == t2 => (2, *t1),
+            _ => self.edge_tag(&edg),
+        };
+        trace_if!(dbg, "Edge tag: {edge_tag:?}");
+
         // tag < 0 on fixed boundaries
         if edge_tag.1 < 0 {
             trace_if!(dbg, "Cannot swap: fixed edge");
@@ -218,6 +224,54 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         })
     }
 
+    // In 3D, remove tetrahedra with two tagged faces on the same boundary tag if
+    // the other two represent the geometry better
+    pub(super) fn remove_boundary_element<G: Geometry<D>>(
+        &mut self,
+        cavity: &Cavity<D, C, M>,
+        geom: &G,
+    ) -> Result<bool> {
+        if C::DIM == 3
+            && cavity.tagged_faces.len() == 2
+            && cavity.tagged_faces[0].1 == cavity.tagged_faces[1].1
+            && cavity.tagged_faces[0].1 > 0
+        {
+            let f0 = &cavity.tagged_faces[0].0;
+            let f1 = &cavity.tagged_faces[1].0;
+            assert_eq!(cavity.faces.len(), 2);
+            let mut f2 = cavity.faces[0].0;
+            f2.invert();
+            let mut f3 = cavity.faces[1].0;
+            f3.invert();
+
+            let tag = cavity.tagged_faces[0].1;
+
+            let [a0, a1, a2, a3] = [f0, f1, &f2, &f3].map(|f| {
+                let gf = cavity.gface(f);
+                let c = gf.center();
+                let n = gf.normal(None).normalize();
+                geom.angle(&c, &n, &(2, tag))
+            });
+
+            if a0.max(a1) > a2.max(a3) {
+                let [f0, f1, f2, f3] = [f0, f1, &f2, &f3].map(|f| cavity.global_elem(f).sorted());
+                // Check if f2 or f3 are already tagged, in which case we cannot remove the element
+                if self.face_tag(&f2.sorted()).is_some() || self.face_tag(&f3.sorted()).is_some() {
+                    return Ok(false);
+                }
+                self.remove_tagged_face(f0)?;
+                self.remove_tagged_face(f1)?;
+                self.add_tagged_face(f2, tag)?;
+                self.add_tagged_face(f3, tag)?;
+                self.remove_elem(cavity.global_elem_ids[0])?;
+                return Ok(true);
+            }
+            return Ok(false);
+        }
+
+        Ok(false)
+    }
+
     /// Loop over the edges and perform edge swaps if
     /// - the quality of an adjacent element is < `q_target`
     /// - no edge smaller than
@@ -254,6 +308,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             let mut n_swaps = 0;
             let mut n_fails = 0;
             let mut n_ok = 0;
+            let mut n_removed = 0;
             for edg in edges {
                 cavity.init_from_edge(edg, self);
                 match self.find_swap_vertex(edg, params, &cavity, geom) {
@@ -263,11 +318,20 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                         self.perform_swap(&cavity, vx, &edg)?;
                         n_swaps += 1;
                     }
+                    TrySwapResult::BoundaryElement => {
+                        if self.remove_boundary_element(&cavity, geom)? {
+                            n_removed += 1;
+                        } else {
+                            n_ok += 1;
+                        }
+                    }
                     _ => n_ok += 1,
                 }
             }
 
-            debug!("Iteration {n_iter}: {n_swaps} edges swapped ({n_fails} failed, {n_ok} OK)");
+            debug!(
+                "Iteration {n_iter}: {n_swaps} edges swapped ({n_fails} failed, {n_ok} OK, {n_removed} boundary elements removed)"
+            );
             self.stats
                 .push(StepStats::Swap(SwapStats::new(n_swaps, n_fails, self)));
             if n_swaps == 0 || n_iter == params.max_iter {

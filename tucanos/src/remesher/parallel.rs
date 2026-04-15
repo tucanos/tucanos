@@ -252,7 +252,7 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
         geom: &G,
         params: &RemesherParams,
         submesh: SubMesh<D, M>,
-    ) -> (GenericMesh<D, M::C>, Vec<T>) {
+    ) -> Result<(GenericMesh<D, M::C>, Vec<T>)> {
         let mut local_mesh = submesh.mesh;
 
         // to be consistent with the base topology
@@ -263,11 +263,11 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
         let local_topo = MeshTopology::new_from(&local_mesh, topo);
 
         let local_m: Vec<_> = submesh.parent_vert_ids.iter().map(|&i| m[i]).collect();
-        let mut local_remesher = Remesher::new(&local_mesh, &local_topo, &local_m, geom).unwrap();
+        let mut local_remesher = Remesher::new(&local_mesh, &local_topo, &local_m, geom)?;
 
-        local_remesher.remesh(params, geom).unwrap();
+        local_remesher.remesh(params, geom)?;
 
-        (local_remesher.to_mesh(true), local_remesher.metrics())
+        Ok((local_remesher.to_mesh(true), local_remesher.metrics()))
     }
 
     /// Remeshes all partitions in parallel.
@@ -307,7 +307,11 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
                 debug!("Remeshing level {level} / partition {i_part}");
                 let n_verts_init = submesh.mesh.n_verts();
                 let now = Instant::now();
-                let (mut local_mesh, local_m) = self.remesh_submesh(metric, geom, params, submesh);
+                let (mut local_mesh, local_m) = self
+                    .remesh_submesh(metric, geom, params, submesh)
+                    .unwrap_or_else(|e| {
+                        panic!("Failed to remesh partition {i_part}.\n{e}");
+                    });
                 let time = now.elapsed().as_secs_f64();
 
                 // Get the info
@@ -562,7 +566,7 @@ mod tests {
             let hmax = 0.1;
             let sigma: f64 = 0.25;
             hmin + (hmax - hmin)
-                * (1.0 - f64::exp(-((x - 0.5).powi(2) + (y - 0.35).powi(2)) / sigma.powi(2)))
+                * (1.0 - libm::exp(-((x - 0.5).powi(2) + (y - 0.35).powi(2)) / sigma.powi(2)))
         };
 
         let m: Vec<_> = (0..dd.mesh.n_verts())
@@ -593,9 +597,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn test_dd_2d_hilbert_1() {
-        test_domain_decomposition_2d::<HilbertPartitioner>(false, 1).unwrap();
+    fn test_dd_2d_hilbert_1() -> Result<()> {
+        test_domain_decomposition_2d::<HilbertPartitioner>(false, 1)
     }
 
     #[test]
@@ -620,11 +623,10 @@ mod tests {
 
     #[cfg(feature = "metis")]
     #[test]
-    #[should_panic]
-    fn test_dd_2d_metis_1() {
+    fn test_dd_2d_metis_1() -> Result<()> {
         use tmesh::mesh::partition::{MetisPartitioner, MetisRecursive};
 
-        test_domain_decomposition_2d::<MetisPartitioner<MetisRecursive>>(false, 1).unwrap();
+        test_domain_decomposition_2d::<MetisPartitioner<MetisRecursive>>(false, 1)
     }
 
     #[cfg(feature = "metis")]
@@ -668,7 +670,7 @@ mod tests {
             let sigma: f64 = 0.25;
             hmin + (hmax - hmin)
                 * (1.0
-                    - f64::exp(
+                    - libm::exp(
                         -((x - 0.5).powi(2) + (y - 0.35).powi(2) + (z - 0.65).powi(2))
                             / sigma.powi(2),
                     ))
@@ -701,9 +703,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn test_dd_3d_hilbert_1() {
-        test_domain_decomposition_3d::<HilbertPartitioner>(false, 1).unwrap();
+    fn test_dd_3d_hilbert_1() -> Result<()> {
+        test_domain_decomposition_3d::<HilbertPartitioner>(false, 1)
     }
 
     #[test]
@@ -730,9 +731,8 @@ mod tests {
 
     #[cfg(feature = "metis")]
     #[test]
-    #[should_panic]
-    fn test_dd_3d_metis_1() {
-        test_domain_decomposition_3d::<MetisPartitioner<MetisRecursive>>(false, 1).unwrap();
+    fn test_dd_3d_metis_1() -> Result<()> {
+        test_domain_decomposition_3d::<MetisPartitioner<MetisRecursive>>(false, 1)
     }
 
     #[cfg(feature = "metis")]

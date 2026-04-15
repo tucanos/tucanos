@@ -191,8 +191,8 @@ mod tests {
             let r = r_in + (r_out - r_in) * p[0];
             let theta = 3.0 * p[1];
             let z = p[2];
-            let x = r * f64::cos(theta);
-            let y = r * f64::sin(theta);
+            let x = r * libm::cos(theta);
+            let y = r * libm::sin(theta);
             *p = Vert3d::new(x, y, z);
         });
 

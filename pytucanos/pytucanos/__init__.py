@@ -15,6 +15,8 @@ from .pytucanos import PyPolyMesh3d as PolyMesh3d  # noqa: F401
 from .pytucanos import PyExtrudedMesh2d as ExtrudedMesh2d  # noqa: F401
 from .pytucanos import PyPartitionerType as PartitionerType  # noqa: F401
 from .pytucanos import HAVE_METIS, USE_32BIT_INTS  # noqa: F401
+from .pytucanos import SHORT_COMMIT, BUILD_RUST_CHANNEL, GIT_CLEAN  # noqa: F401
+
 import numpy as np
 
 if USE_32BIT_INTS:

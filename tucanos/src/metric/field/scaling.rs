@@ -57,7 +57,7 @@ impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
                 warn!("Target complexity {n_elems} not reached: complexity {c:.2e}");
                 return -1.0;
             }
-            fac = f64::powf(n_elems / c, -1. / M::C::DIM as f64);
+            fac = libm::pow(n_elems / c, -1. / M::C::DIM as f64);
             scale *= fac;
         }
         -1.0

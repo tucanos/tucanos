@@ -58,11 +58,16 @@ pub fn set_thread_affinity(cores: PyReadonlyArray1<usize>) -> PyResult<usize> {
     }
 }
 
+shadow_rs::shadow!(build);
+
 /// Python bindings for pytucanos
 #[pymodule]
 #[pyo3(name = "pytucanos")]
 pub fn pytucanos(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     pyo3_log::init();
+    m.add("SHORT_COMMIT", build::SHORT_COMMIT)?;
+    m.add("BUILD_RUST_CHANNEL", build::BUILD_RUST_CHANNEL)?;
+    m.add("GIT_CLEAN", build::GIT_CLEAN)?;
     m.add_class::<mesh::PyMesh2d>()?;
     m.add_class::<mesh::PyQuadraticMesh2d>()?;
     m.add_class::<mesh::PyBoundaryMesh2d>()?;

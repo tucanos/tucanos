@@ -397,8 +397,8 @@ mod tests {
         mesh.verts_mut().for_each(|p| {
             let r = r_in + (r_out - r_in) * p[0];
             let theta = 3.0 * p[1];
-            let x = r * f64::cos(theta);
-            let y = r * f64::sin(theta);
+            let x = r * libm::cos(theta);
+            let y = r * libm::sin(theta);
             *p = Vertex::<2>::new(x, y);
         });
 
@@ -456,8 +456,8 @@ mod tests {
         mesh.verts_mut().for_each(|p| {
             let r = r_in + (r_out - r_in) * p[0];
             let theta = 3.0 * p[1];
-            let x = r * f64::cos(theta);
-            let y = r * f64::sin(theta);
+            let x = r * libm::cos(theta);
+            let y = r * libm::sin(theta);
             *p = Vertex::<2>::new(x, y);
         });
 
@@ -507,8 +507,8 @@ mod tests {
             .map(|p| {
                 let z = p[0];
                 let theta = 3.0 * p[1];
-                let x = radius * f64::cos(theta);
-                let y = radius * f64::sin(theta);
+                let x = radius * libm::cos(theta);
+                let y = radius * libm::sin(theta);
                 Vertex::<3>::new(x, y, z)
             })
             .collect();
@@ -570,8 +570,8 @@ mod tests {
             .map(|p| {
                 let z = p[0];
                 let theta = 3.0 * p[1];
-                let x = radius * f64::cos(theta);
-                let y = radius * f64::sin(theta);
+                let x = radius * libm::cos(theta);
+                let y = radius * libm::sin(theta);
                 Vertex::<3>::new(x, y, z)
             })
             .collect();
@@ -626,8 +626,8 @@ mod tests {
             .map(|p| {
                 let z = p[0];
                 let theta = 2.0 * p[1];
-                let x = radius * f64::cos(theta);
-                let y = radius * f64::sin(theta);
+                let x = radius * libm::cos(theta);
+                let y = radius * libm::sin(theta);
                 Vertex::<3>::new(x, y, z)
             })
             .collect();
