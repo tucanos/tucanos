@@ -591,7 +591,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
     #[must_use]
     #[cfg(not(feature = "trace_edges"))]
     pub fn debug_edge(&self, edg: Edge<usize>) -> bool {
-        edg.get(0) == 80613 && edg.get(1) == 80709
+        false
     }
 
     /// Get the geometrical element corresponding to elem
