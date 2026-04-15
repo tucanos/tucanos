@@ -33,5 +33,8 @@ name = "cube_cylinder"
 [[bin]]
 name = "debug"
 
+[[bin]]
+name = "debug2d"
+
 [lints]
 workspace = true
