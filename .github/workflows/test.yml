@@ -31,7 +31,7 @@ jobs:
     - id: toolchain
       uses: dtolnay/rust-toolchain@master
       with:
-        components: clippy
+        components: clippy, rustfmt
         toolchain: stable
     - run: rustup override set ${{steps.toolchain.outputs.name}}
     - name: Rust cache
@@ -49,6 +49,8 @@ jobs:
       uses: clechasseur/rs-clippy-check@v5
       with:
         args: --all-targets --workspace --features=metis --exclude tucanos-ffi-test
+    - name: Rustfmt Check
+      uses: actions-rust-lang/rustfmt@v1
     - name: Run cargo test
       uses: clechasseur/rs-cargo@v4
       with:
