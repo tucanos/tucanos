@@ -632,26 +632,24 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         for (f, t) in self.faces().zip(self.ftags()) {
             let (_, i0, i1) = all_faces.get(&f.sorted()).unwrap();
             match (i0, i1) {
-                (Some(i0), Some(i1)) => {
-                    if self.etag(*i0) == self.etag(*i1) {
-                        let fc = self.gface(&f).center();
-                        let msg = format!("Tagged face inside the domain: center = {fc:?}");
-                        return Err(Error::from(&msg));
-                    }
+                (Some(i0), Some(i1)) if self.etag(*i0) == self.etag(*i1) => {
+                    let fc = self.gface(&f).center();
+                    let msg = format!("Tagged face inside the domain: center = {fc:?}");
+                    return Err(Error::from(&msg));
                 }
-                (Some(i), None) | (None, Some(i)) => {
-                    if Self::faces_are_oriented() && Self::C::order() == 1 {
-                        let gf = self.gface(&f);
-                        let fc = gf.center();
-                        let ec = self.gelem(&self.elem(*i)).center();
-                        let n = gf.normal(None);
-                        if n.dot(&(fc - ec)) < 0.0 {
-                            let m = format!(
-                                "Invalid face orientation: center = {fc:?}, normal = {n:?}, \
+                (Some(i), None) | (None, Some(i))
+                    if Self::faces_are_oriented() && Self::C::order() == 1 =>
+                {
+                    let gf = self.gface(&f);
+                    let fc = gf.center();
+                    let ec = self.gelem(&self.elem(*i)).center();
+                    let n = gf.normal(None);
+                    if n.dot(&(fc - ec)) < 0.0 {
+                        let m = format!(
+                            "Invalid face orientation: center = {fc:?}, normal = {n:?}, \
                                 face = {f:?}, tag = {t}"
-                            );
-                            return Err(Error::from(&m));
-                        }
+                        );
+                        return Err(Error::from(&m));
                     }
                 }
                 _ => {}
