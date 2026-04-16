@@ -8,6 +8,7 @@ use crate::{
     mesh::{PyMesh2d, PyMesh3d},
     to_numpy_1d, to_numpy_2d,
 };
+use minimeshb::writer::MeshbWriter;
 use numpy::{PyArray1, PyArray2, PyReadonlyArray2, PyUntypedArrayMethods};
 use pyo3::{
     Bound, PyResult, Python,
@@ -15,7 +16,7 @@ use pyo3::{
     pyclass, pymethods,
     types::PyType,
 };
-use tmesh::mesh::{Mesh, Tetrahedron, Triangle};
+use tmesh::mesh::{Mesh, Simplex, Tetrahedron, Triangle};
 use tucanos::{
     mesh::MeshTopology,
     metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric, MetricField},
@@ -818,6 +819,63 @@ macro_rules! create_remesher {
             #[must_use]
             pub fn metric<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray2<f64>> {
                 return to_numpy_2d(py, self.remesher.metric(), <$metric as Metric<$dim>>::N);
+            }
+
+            /// Compute the element qualities & edge lengths
+            #[classmethod]
+            pub fn export_qualities_and_lengths(
+                _cls: &Bound<'_, PyType>,
+                mesh: &$mesh,
+                m: PyReadonlyArray2<f64>,
+                prefix: &str,
+            ) -> PyResult<()> {
+                if m.shape()[0] != mesh.n_verts()  {
+                    return Err(PyValueError::new_err("Invalid dimension 0"));
+                }
+                if m.shape()[1] != $metric::N as usize {
+                    return Err(PyValueError::new_err("Invalid dimension 1"));
+                }
+
+                let m = m.as_slice()?;
+                let m: Vec<_> = m
+                    .chunks($metric::N)
+                    .map(|x| $metric::from_slice(x))
+                    .collect();
+                let m = MetricField::new(&mesh.0, m);
+                let q = m.qualities();
+                let edgs = mesh.0.edges();
+                let edgs = edgs.keys().copied().collect::<Vec<_>>();
+                let l = m.edge_lengths(&edgs);
+
+                let file_name = format!("{prefix}_edges.meshb");
+                let mut writer = MeshbWriter::new(&file_name, 3, $dim as u8)
+                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+                writer.write_edges(
+                    edgs.iter().map(|x| std::array::from_fn(|i| x.get(i))),
+                    std::iter::repeat_n(1, edgs.len()))
+                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+                writer.close();
+
+                let file_name = format!("{prefix}_lengths.solb");
+                let mut writer = MeshbWriter::new(&file_name, 3, $dim as u8)
+                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+                writer.write_edge_solution(l.iter().map(|&x| [x]))
+                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+                writer.close();
+
+                let file_name = format!("{prefix}_qualities.solb");
+                let mut writer = MeshbWriter::new(&file_name, 3, $dim as u8)
+                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+                match $etype::<Idx>::DIM {
+                    2 => writer.write_triangle_solution(q.iter().map(|&x| [x]))
+                        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?,
+                    3 => writer.write_tetrahedron_solution(q.iter().map(|&x| [x]))
+                        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?,
+                    _ => unreachable!(),
+                }
+                writer.close();
+
+                Ok(())
             }
         }
     };

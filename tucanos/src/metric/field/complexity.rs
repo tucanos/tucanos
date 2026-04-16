@@ -3,7 +3,7 @@ use rayon::{
     prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator},
     slice::ParallelSlice,
 };
-use tmesh::mesh::{GSimplex, Mesh, Simplex};
+use tmesh::mesh::{Edge, GSimplex, Mesh, Simplex};
 
 impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
     /// Get the metric information (min/max size, max anisotropy, complexity)
@@ -43,11 +43,9 @@ impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
 
     /// Get the lengths of all the edges using a metric field
     #[must_use]
-    pub fn edge_lengths(&self) -> Vec<f64> {
-        let edgs = self.msh.edges();
-
+    pub fn edge_lengths(&self, edgs: &[Edge<<<M as Mesh<D>>::C as Simplex>::T>]) -> Vec<f64> {
         edgs.par_iter()
-            .map(|(e, _)| {
+            .map(|e| {
                 let i0 = e.get(0);
                 let i1 = e.get(1);
                 T::edge_length(

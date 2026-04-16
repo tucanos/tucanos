@@ -5,7 +5,7 @@ edition.workspace = true
 
 [dependencies]
 log = "0.4.27"
-minimeshb = { git = "https://github.com/tucanos/minimeshb.git", rev = "3b1086a" }
+minimeshb = { git = "https://github.com/tucanos/minimeshb.git", rev = "230d45dc" }
 nalgebra = { version = "0.34.0"}
 rand = "0.10.0"
 rayon = "1.10.0"
