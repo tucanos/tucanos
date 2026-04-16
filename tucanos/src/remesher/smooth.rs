@@ -239,7 +239,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                     valid = true;
                     break;
                 }
-                trace!("Smooth, quality would decrease for omega={omega}",);
+                trace!("Smooth, quality would decrease for omega={omega}");
             }
 
             if !valid {

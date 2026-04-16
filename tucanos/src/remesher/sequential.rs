@@ -666,7 +666,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
     /// Get the metric at every vertex
     #[must_use]
     pub fn metric(&self) -> Vec<f64> {
-        self.verts.iter().flat_map(|(_k, v)| v.m).collect()
+        self.verts.values().flat_map(|v| v.m).collect()
     }
 
     /// Get an iterator over edge length
