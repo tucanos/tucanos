@@ -1,6 +1,6 @@
 //! Mesh partitioners
 use super::{GSimplex, Mesh, hilbert::hilbert_indices};
-use crate::{Error, Result, graph::CSRGraph};
+use crate::{Error, Result, argmax, graph::CSRGraph};
 use coupe::{Partition, nalgebra::SVector};
 use std::collections::VecDeque;
 #[cfg(feature = "metis")]
@@ -63,48 +63,51 @@ pub trait Partitioner: Sized + Send + Sync {
         f64::from(split) / f64::from(count)
     }
 
-    // fn partition_correction(&self, part: &mut Vec<usize>) {
-    //     let n_elems = self.graph().n();
-    //     let weights = self.weights().collect::<Vec<_>>();
-    //     for i_part in 0..self.n_parts() {
-    //         let elem_ids = (0..n_elems)
-    //             .filter(|&i| part[i] == i_part)
-    //             .collect::<Vec<_>>();
-    //         let sgraph = self.graph().subgraph(elem_ids.iter().copied());
-    //         let cc = sgraph.connected_components().unwrap();
-    //         let n_cc = cc.iter().copied().max().unwrap_or(0) + 1;
-    //         //println!("{i_part} -> {n_cc}");
-    //         if n_cc > 1 {
-    //             let mut cc_weights = vec![0.0; n_cc];
-    //             let mut n_faces = vec![vec![0; self.n_parts()]; n_cc];
-    //             for (i, &j) in elem_ids.iter().enumerate() {
-    //                 let i_cc = cc[i];
-    //                 cc_weights[cc[i]] += weights[j];
-    //                 for &i_neighbor in self.graph().row(j) {
-    //                     let i_part_neighbor = part[i_neighbor];
-    //                     if i_part_neighbor != i_part {
-    //                         n_faces[i_cc][i_part_neighbor] += 1;
-    //                     }
-    //                 }
-    //             }
-    //             let i_max_cc = argmax(&cc_weights).unwrap();
-    //             for (i_cc, n_faces) in n_faces.iter().enumerate() {
-    //                 if i_cc != i_max_cc {
-    //                     //Option 1 : Maximize the quality of partitions
-    //                     let i_new_part = argmax(n_faces).unwrap();
-    //                     //Todo
-    //                     //Option 2 : Maximize the load balancing
-    //                     //Option 3 : Maximize Both
-    //                     for (i, &j) in elem_ids.iter().enumerate() {
-    //                         if cc[i] == i_cc {
-    //                             part[j] = i_new_part;
-    //                         }
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
+    /// Identifies partitions that are split into multiple disconnected
+    /// subgraphs (islands). For each fragmented partition, it preserves the heaviest
+    /// connected component and reassigns the smaller isolated components to the
+    /// neighboring partition with which they share the most faces.
+    fn partition_correction(&self, part: &mut Vec<usize>) {
+        let n_elems = self.graph().n();
+        let weights = self.weights().collect::<Vec<_>>();
+        for i_part in 0..self.n_parts() {
+            let elem_ids = (0..n_elems)
+                .filter(|&i| part[i] == i_part)
+                .collect::<Vec<_>>();
+            let sgraph = self.graph().subgraph(elem_ids.iter().copied());
+            let cc = sgraph.connected_components().unwrap();
+            let n_cc = cc.iter().copied().max().unwrap_or(0) + 1;
+            if n_cc > 1 {
+                let mut cc_weights = vec![0.0; n_cc];
+                let mut n_faces = vec![vec![0; self.n_parts()]; n_cc];
+                for (i, &j) in elem_ids.iter().enumerate() {
+                    let i_cc = cc[i];
+                    cc_weights[cc[i]] += weights[j];
+                    for &i_neighbor in self.graph().row(j) {
+                        let i_part_neighbor = part[i_neighbor];
+                        if i_part_neighbor != i_part {
+                            n_faces[i_cc][i_part_neighbor] += 1;
+                        }
+                    }
+                }
+                let i_max_cc = argmax(&cc_weights).unwrap();
+                for (i_cc, n_faces) in n_faces.iter().enumerate() {
+                    if i_cc != i_max_cc {
+                        //Option 1 : Maximize the quality of partitions
+                        let i_new_part = argmax(n_faces).unwrap();
+                        //Todo
+                        //Option 2 : Maximize the load balancing
+                        //Option 3 : Maximize Both
+                        for (i, &j) in elem_ids.iter().enumerate() {
+                            if cc[i] == i_cc {
+                                part[j] = i_new_part;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Simple geometric partitionner based on the Hilbert indices of the element centers
@@ -178,7 +181,6 @@ impl Partitioner for HilbertBallPartitioner {
         let graph = msh.element_pairs(&faces);
         let (_, vertex_ids, elems_ids, _) = msh.reorder_hilbert();
 
-        //let ids = hilbert_indices(msh.verts());
         let weights = weights.unwrap_or_else(|| vec![1.0; msh.n_elems()]);
         Ok(Self {
             n_parts,
@@ -217,7 +219,7 @@ impl Partitioner for HilbertBallPartitioner {
                 }
             }
         }
-        // Self::partition_correction(self, &mut partition);
+        Self::partition_correction(self, &mut partition);
         Ok(partition)
     }
 
@@ -482,7 +484,7 @@ impl Partitioner for BFSWRPartitionner {
                 next_unassigned_elem_root = 0;
             }
         }
-        // Self::partition_correction(self, &mut res);
+        Self::partition_correction(self, &mut res);
         Ok(res)
     }
 
@@ -572,7 +574,7 @@ impl Partitioner for BFSPartitionner {
                 }
             }
         }
-        // Self::partition_correction(self, &mut res);
+        Self::partition_correction(self, &mut res);
 
         Ok(res)
     }

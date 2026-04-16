@@ -85,3 +85,10 @@ pub fn init_log(level: &str) {
         .format_timestamp(None)
         .init();
 }
+
+fn argmax<T: PartialOrd>(arr: &[T]) -> Option<usize> {
+    arr.iter()
+        .enumerate()
+        .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+        .map(|(index, _)| index)
+}
