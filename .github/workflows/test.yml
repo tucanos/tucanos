@@ -22,7 +22,12 @@ jobs:
     - uses: actions/checkout@v6
       with:
         lfs: false
-    - run: sudo apt-get install -y libmetis-dev gmsh
+    - name: Configure Fast APT Mirror
+      uses: vegardit/fast-apt-mirror.sh@v1
+    - name: Install dependencies
+      uses: eclipse-score/apt-install@main
+      with:
+        packages: libmetis-dev gmsh
     - id: toolchain
       uses: dtolnay/rust-toolchain@master
       with:
@@ -80,7 +85,12 @@ jobs:
     - uses: actions/checkout@v6
       with:
         lfs: false
-    - run: sudo apt-get install -y libmetis-dev
+    - name: Configure Fast APT Mirror
+      uses: vegardit/fast-apt-mirror.sh@v1
+    - name: Install dependencies
+      uses: eclipse-score/apt-install@main
+      with:
+        packages: libmetis-dev
     - id: toolchain
       uses: dtolnay/rust-toolchain@master
       with:
@@ -112,7 +122,12 @@ jobs:
     - uses: actions/checkout@v6
       with:
         lfs: false
-    - run: sudo apt-get install -y libmetis-dev
+    - name: Configure Fast APT Mirror
+      uses: vegardit/fast-apt-mirror.sh@v1
+    - name: Install dependencies
+      uses: eclipse-score/apt-install@main
+      with:
+        packages: libmetis-dev
     - id: toolchain
       uses: dtolnay/rust-toolchain@master
       with:
