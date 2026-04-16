@@ -19,7 +19,7 @@ use pyo3::{
 use tmesh::mesh::partition::HilbertPartitioner;
 #[cfg(feature = "metis")]
 use tmesh::mesh::partition::{MetisPartitioner, MetisRecursive};
-use tmesh::mesh::{GenericMesh, Tetrahedron, Triangle};
+use tmesh::mesh::{GenericMesh, Mesh, Tetrahedron, Triangle};
 use tucanos::{
     mesh::MeshTopology,
     metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric, MetricField},
@@ -162,7 +162,9 @@ macro_rules! create_parallel_remesher {
                     .collect();
                 let m = MetricField::new(&mesh.0, m);
                 let q = m.qualities();
-                let l = m.edge_lengths();
+                let edgs = mesh.0.edges();
+                let edgs = edgs.iter().map(|(e, _)| *e).collect::<Vec<_>>();
+                let l = m.edge_lengths(&edgs);
 
                 Ok((to_numpy_1d(py, q), to_numpy_1d(py, l)))
             }

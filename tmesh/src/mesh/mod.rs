@@ -1116,7 +1116,7 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         let mut reader = MeshbReader::new(file_name)?;
         let d = reader.dimension();
         assert_eq!(d, D as u8);
-        let m = reader.get_solution_size()?;
+        let m = reader.get_solution_size("SolAtVertices")?;
 
         let res = match d {
             2 => match m {
