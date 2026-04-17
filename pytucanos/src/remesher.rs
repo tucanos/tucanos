@@ -16,7 +16,7 @@ use pyo3::{
     pyclass, pymethods,
     types::PyType,
 };
-use tmesh::mesh::{Mesh, Simplex, Tetrahedron, Triangle};
+use tmesh::mesh::{Mesh, Simplex, SolutionLocation, Tetrahedron, Triangle};
 use tucanos::{
     mesh::MeshTopology,
     metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, Metric, MetricField},
@@ -857,23 +857,12 @@ macro_rules! create_remesher {
                 writer.close();
 
                 let file_name = format!("{prefix}_lengths.solb");
-                let mut writer = MeshbWriter::new(&file_name, 3, $dim as u8)
+                mesh.0.write_solb(&l, &file_name, SolutionLocation::Edges)
                     .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-                writer.write_edge_solution(l.iter().map(|&x| [x]))
-                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-                writer.close();
 
                 let file_name = format!("{prefix}_qualities.solb");
-                let mut writer = MeshbWriter::new(&file_name, 3, $dim as u8)
+                mesh.0.write_solb(&q, &file_name, SolutionLocation::Elements)
                     .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-                match $etype::<Idx>::DIM {
-                    2 => writer.write_triangle_solution(q.iter().map(|&x| [x]))
-                        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?,
-                    3 => writer.write_tetrahedron_solution(q.iter().map(|&x| [x]))
-                        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?,
-                    _ => unreachable!(),
-                }
-                writer.close();
 
                 Ok(())
             }
