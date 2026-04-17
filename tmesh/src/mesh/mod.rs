@@ -95,6 +95,14 @@ pub fn bandwidth<C: Simplex>(elems: impl ExactSizeIterator<Item = C>) -> (usize,
     (bmax, bmean)
 }
 
+/// Location of the solution
+pub enum SolutionLocation {
+    Vertices,
+    Elements,
+    Faces,
+    Edges,
+}
+
 /// Submesh of a `Mesh<D, C, F>`, with information about the vertices, element
 /// and face ids in the parent mesh
 pub struct SubMesh<const D: usize, M: Mesh<D>> {
@@ -1071,31 +1079,76 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         arr: &[f64],
         file_name: &str,
         f: G,
+        loc: SolutionLocation,
     ) -> Result<()> {
-        assert_eq!(arr.len(), N * self.n_verts());
-
         let mut writer = MeshbWriter::new(file_name, 3, D as u8)?;
-        writer.write_solution(arr.chunks(N).map(f))?;
+        match loc {
+            SolutionLocation::Vertices => {
+                assert_eq!(arr.len(), N * self.n_verts());
+                writer.write_solution(arr.chunks(N).map(f))?;
+            }
+            SolutionLocation::Elements => {
+                assert_eq!(arr.len(), N * self.n_elems());
+                if Self::C::DIM == 3 && Self::C::order() == 1 {
+                    writer.write_tetrahedron_solution(arr.chunks(N).map(f))?;
+                } else if Self::C::DIM == 2 && Self::C::order() == 1 {
+                    writer.write_triangle_solution(arr.chunks(N).map(f))?;
+                } else {
+                    unimplemented!(
+                        "Solution at elements is only implemented for linear simplicial meshes"
+                    )
+                }
+            }
+            SolutionLocation::Faces => {
+                assert_eq!(arr.len(), N * self.n_faces());
+                if Self::C::DIM == 3 && Self::C::order() == 1 {
+                    writer.write_triangle_solution(arr.chunks(N).map(f))?;
+                } else if Self::C::DIM == 2 && Self::C::order() == 1 {
+                    writer.write_edge_solution(arr.chunks(N).map(f))?;
+                } else {
+                    unimplemented!(
+                        "Solution at faces is only implemented for linear simplicial meshes"
+                    )
+                }
+            }
+            SolutionLocation::Edges => {
+                if Self::C::order() == 1 {
+                    writer.write_edge_solution(arr.chunks(N).map(f))?;
+                } else {
+                    unimplemented!(
+                        "Solution at edges is only implemented for linear simplicial meshes"
+                    )
+                }
+            }
+        }
         writer.close();
 
         Ok(())
     }
 
-    fn write_solb(&self, arr: &[f64], file_name: &str) -> Result<()> {
-        let n_comp = arr.len() / self.n_verts();
+    fn write_solb(&self, arr: &[f64], file_name: &str, loc: SolutionLocation) -> Result<()> {
+        let n_comp = match loc {
+            SolutionLocation::Vertices => arr.len() / self.n_verts(),
+            SolutionLocation::Elements => arr.len() / self.n_elems(),
+            SolutionLocation::Faces => arr.len() / self.n_faces(),
+            SolutionLocation::Edges => 1, // assume scalar data for edges
+        };
         match D {
             2 => match n_comp {
-                1 => self.write_solb_it::<1, _>(arr, file_name, |x| [x[0]])?,
-                2 => self.write_solb_it::<2, _>(arr, file_name, |x| [x[0], x[1]])?,
-                3 => self.write_solb_it::<3, _>(arr, file_name, |x| [x[0], x[2], x[1]])?,
+                1 => self.write_solb_it::<1, _>(arr, file_name, |x| [x[0]], loc)?,
+                2 => self.write_solb_it::<2, _>(arr, file_name, |x| [x[0], x[1]], loc)?,
+                3 => self.write_solb_it::<3, _>(arr, file_name, |x| [x[0], x[2], x[1]], loc)?,
                 _ => unreachable!(),
             },
             3 => match n_comp {
-                1 => self.write_solb_it::<1, _>(arr, file_name, |x| [x[0]])?,
-                3 => self.write_solb_it::<3, _>(arr, file_name, |x| [x[0], x[1], x[2]])?,
-                6 => self.write_solb_it::<6, _>(arr, file_name, |x| {
-                    [x[0], x[3], x[1], x[5], x[4], x[2]]
-                })?,
+                1 => self.write_solb_it::<1, _>(arr, file_name, |x| [x[0]], loc)?,
+                3 => self.write_solb_it::<3, _>(arr, file_name, |x| [x[0], x[1], x[2]], loc)?,
+                6 => self.write_solb_it::<6, _>(
+                    arr,
+                    file_name,
+                    |x| [x[0], x[3], x[1], x[5], x[4], x[2]],
+                    loc,
+                )?,
                 _ => unreachable!(),
             },
             _ => unreachable!(),

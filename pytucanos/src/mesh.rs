@@ -23,8 +23,8 @@ use tmesh::{
     mesh::{
         AdativeBoundsQuadraticTetrahedron, AdativeBoundsQuadraticTriangle, Edge, GSimplex,
         GenericMesh, GradientMethod, Hexahedron, Mesh, Prism, Pyramid, Quadrangle, QuadraticEdge,
-        QuadraticTetrahedron, QuadraticTriangle, Simplex, Tetrahedron, Triangle, ball_mesh,
-        circle_mesh, nonuniform_box_mesh, nonuniform_rectangle_mesh,
+        QuadraticTetrahedron, QuadraticTriangle, Simplex, SolutionLocation, Tetrahedron, Triangle,
+        ball_mesh, circle_mesh, nonuniform_box_mesh, nonuniform_rectangle_mesh,
         partition::{HilbertPartitioner, KMeansPartitioner2d, KMeansPartitioner3d, RCMPartitioner},
         quadratic_circle_mesh, quadratic_sphere_mesh, read_stl, sphere_mesh,
         to_quadratic::{to_quadratic_tetrahedron_mesh, to_quadratic_triangle_mesh},
@@ -264,10 +264,24 @@ macro_rules! impl_mesh {
                     .map_err(|e| PyRuntimeError::new_err(e.to_string()))
             }
 
-            /// Write a solution to a .sol(b) file
+            /// Write a solution defined at the vertices to a .sol(b) file
             pub fn write_solb(&self, fname: &str, arr: PyReadonlyArray2<f64>) -> PyResult<()> {
                 self.0
-                    .write_solb(&arr.to_vec().unwrap(), fname)
+                    .write_solb(&arr.to_vec().unwrap(), fname, SolutionLocation::Vertices)
+                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+            }
+
+            /// Write a solution defined at the elements to a .sol(b) file
+            pub fn write_elem_solb(&self, fname: &str, arr: PyReadonlyArray2<f64>) -> PyResult<()> {
+                self.0
+                    .write_solb(&arr.to_vec().unwrap(), fname, SolutionLocation::Elements)
+                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+            }
+
+            /// Write a solution defined at the faces to a .sol(b) file
+            pub fn write_face_solb(&self, fname: &str, arr: PyReadonlyArray2<f64>) -> PyResult<()> {
+                self.0
+                    .write_solb(&arr.to_vec().unwrap(), fname, SolutionLocation::Faces)
                     .map_err(|e| PyRuntimeError::new_err(e.to_string()))
             }
 
