@@ -4,12 +4,15 @@ use crate::{
         PyBoundaryMesh2d, PyBoundaryMesh3d, PyMesh2d, PyMesh3d, PyQuadraticBoundaryMesh2d,
         PyQuadraticBoundaryMesh3d,
     },
-    to_numpy_2d,
+    to_numpy_1d, to_numpy_2d,
 };
-use numpy::PyArray2;
+use numpy::{PyArray1, PyArray2};
 use pyo3::{Bound, PyResult, Python, exceptions::PyRuntimeError, pyclass, pymethods};
-use tmesh::mesh::{Edge, GenericMesh, Mesh, QuadraticEdge, QuadraticTriangle, Triangle};
+use tmesh::mesh::{
+    Edge, GSimplex, GenericMesh, Mesh, QuadraticEdge, QuadraticTriangle, Simplex, Triangle,
+};
 use tucanos::{
+    Dim,
     geometry::{Geometry, MeshedGeometry},
     mesh::MeshTopology,
 };
@@ -77,6 +80,26 @@ macro_rules! create_geometry {
                 }
 
                 Ok(to_numpy_2d(py, coords, $dim))
+            }
+
+            /// Compute the angle between the mesh face normals and the geometry normals
+            pub fn angles<'py>(
+                &self,
+                py: Python<'py>,
+                mesh: &$mesh,
+            ) -> PyResult<Bound<'py, PyArray1<f64>>> {
+
+                let res = mesh.0.gfaces().zip(mesh.0.ftags()).map(|(gf, tag)| {
+                    let c = gf.center();
+                    let n = gf.normal(None).normalize();
+                    self.geom.angle(
+                        &c,
+                        &n,
+                        &(<$etype::<Idx> as Simplex>::DIM as Dim, tag)
+                    )
+                }).collect();
+
+                Ok(to_numpy_1d(py, res))
             }
         }
     };
