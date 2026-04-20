@@ -55,7 +55,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             let p1 = self.verts.get(&e.get(1)).unwrap();
             (
                 e,
-                self.topo.parent(p0.tag, p1.tag).unwrap(),
+                self.edge_tag(&e),
                 M::edge_length(&p0.vx, &p0.m, &p1.vx, &p1.m),
             )
         };
