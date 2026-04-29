@@ -88,7 +88,7 @@ def check_etypes(etypes):
     return cell_dim, order
 
 
-def load_cgns(fname, cls=None, xy=True):
+def load_cgns(fname, cls=None):
     """
     Load a tmesh mesh from a .cgns file
     Bases / zones are merged together, with a single element tag
@@ -120,11 +120,21 @@ def load_cgns(fname, cls=None, xy=True):
                 z = CGU.getValue(n)
                 coords = np.stack([x, y, z], axis=-1, dtype=np.float64)
             else:
-                if xy:
+                z = CGU.getValue(n)
+                if np.all(np.abs(z) < 1e-10):
+                    logging.warning("2D mesh in xy plane")
                     coords = np.stack([x, y], axis=-1, dtype=np.float64)
-                else:
-                    z = CGU.getValue(n)
+                elif np.all(np.abs(y) < 1e-10):
+                    logging.warning("2D mesh in xz plane")
                     coords = np.stack([x, z], axis=-1, dtype=np.float64)
+                elif np.all(np.abs(x) < 1e-10):
+                    logging.warning("2D mesh in yz plane")
+                    coords = np.stack([y, z], axis=-1, dtype=np.float64)
+                else:
+                    raise RuntimeError(
+                        "Expected a 2D mesh, but the coordinates vary significantly along all three axes (x, y, and z)."
+                        "Could not deduce a primary 2D plane (xy, xz, or yz) to flatten the mesh onto."
+                    )
 
             etypes = np.unique(
                 [
