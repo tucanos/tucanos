@@ -811,10 +811,10 @@ macro_rules! impl_mesh {
                 if arr.shape()[0] != self.0.n_elems() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
+                let view = arr.as_array();
+                let slice = view.as_slice().ok_or_else(|| PyValueError::new_err("Memory is not contiguous. Please use `.copy()` or `np.ascontiguousarray()` on your input data."))?;
                 let v2e = self.0.vertex_to_elems();
-                let res = self
-                    .0
-                    .elem_data_to_vertex_data(&v2e, arr.as_slice().unwrap());
+                let res = self.0.elem_data_to_vertex_data(&v2e, slice);
 
                 Ok(PyArray::from_vec(py, res)
                     .reshape([self.0.n_verts(), arr.shape()[1]])
