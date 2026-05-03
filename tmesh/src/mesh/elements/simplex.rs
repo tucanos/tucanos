@@ -8,6 +8,9 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::{Index, IndexMut};
 
+// FIXME: pytucanos needs to create Simplex from &[Idx] but we currently do not have anything
+// for that. Instead we convert the Idx to usize, then usize back to Idx. This is somehow stupid.
+
 /// Simplex elements
 pub trait Simplex:
     Sized
