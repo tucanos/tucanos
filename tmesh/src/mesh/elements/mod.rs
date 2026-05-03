@@ -50,6 +50,9 @@ impl Idx for i32 {
     type ConvertError = TryFromIntError;
 }
 
+// TODO: add a way to create Hexadron, Prism, ... from &[Idx], simplify pytucanos/src/mesh.rs
+// and avoid useless u32 to and from usize
+
 /// Hexahedron
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Hexahedron<T: Idx>([T; 8]);

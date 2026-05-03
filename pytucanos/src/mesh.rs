@@ -50,6 +50,135 @@ pub enum PyPartitionerType {
     MetisKWay,
 }
 
+/// Validate that coords array has correct shape for dimension D
+fn validate_coords_shape<const D: usize>(shape: &[usize]) -> PyResult<()> {
+    if shape.len() < 2 || shape[1] != D {
+        return Err(PyValueError::new_err(format!(
+            "Invalid dimension 1 for coords (expecting {}, got {})",
+            D,
+            shape.get(1).copied().unwrap_or(0)
+        )));
+    }
+    Ok(())
+}
+
+/// Validate that elems array has correct shape for cell type C
+fn validate_elems_shape<C: Simplex>(shape: &[usize]) -> PyResult<()> {
+    if shape.len() < 2 || shape[1] != C::N_VERTS {
+        return Err(PyValueError::new_err(format!(
+            "Invalid dimension 1 for elems (expecting {}, got {})",
+            C::N_VERTS,
+            shape.get(1).copied().unwrap_or(0)
+        )));
+    }
+    Ok(())
+}
+
+/// Validate that faces array has correct shape for face type
+fn validate_faces_shape<C: Simplex>(shape: &[usize]) -> PyResult<()> {
+    if shape.len() < 2 || shape[1] != C::FACE::N_VERTS {
+        return Err(PyValueError::new_err(format!(
+            "Invalid dimension 1 for faces (expecting {}, got {})",
+            C::FACE::N_VERTS,
+            shape.get(1).copied().unwrap_or(0)
+        )));
+    }
+    Ok(())
+}
+
+/// Validate that tags array has correct length
+fn validate_tags_length(tags_len: usize, expected: usize, name: &str) -> PyResult<()> {
+    if tags_len != expected {
+        return Err(PyValueError::new_err(format!(
+            "Invalid dimension 0 for {name} (expecting {expected}, got {tags_len})"
+        )));
+    }
+    Ok(())
+}
+
+/// Convert numpy array to iterator of Vertex<D>
+fn coords_to_vertices<const D: usize>(
+    coords: &[f64],
+) -> impl ExactSizeIterator<Item = Vertex<D>> + '_ {
+    coords.chunks_exact(D).map(|p| {
+        let mut vx = Vertex::<D>::zeros();
+        vx.copy_from_slice(p);
+        vx
+    })
+}
+
+/// Convert numpy array to iterator of cells
+fn slice_to_cells<C: Simplex>(elems: &[Idx]) -> impl ExactSizeIterator<Item = C> + '_ {
+    let it = elems.chunks_exact(C::N_VERTS);
+    #[cfg(not(feature = "32bit-ints"))]
+    let r = it.map(|x| C::from_iter(x.iter().copied()));
+    #[cfg(feature = "32bit-ints")]
+    let r = it.map(|x| C::from_iter(x.iter().copied().map(|i| i.try_into().unwrap())));
+    r
+}
+
+/// Convert numpy array to iterator of faces
+fn slice_to_faces<C: Simplex>(faces: &[Idx]) -> impl ExactSizeIterator<Item = C::FACE> + '_ {
+    let it = faces.chunks_exact(C::FACE::N_VERTS);
+    #[cfg(not(feature = "32bit-ints"))]
+    let r = it.map(|x| C::FACE::from_iter(x.iter().copied()));
+    #[cfg(feature = "32bit-ints")]
+    let r = it.map(|x| C::FACE::from_iter(x.iter().copied().map(|i| i.try_into().unwrap())));
+    r
+}
+
+/// Create a PyArray2 from vertices with automatic 32bit-int conversion
+fn verts_to_pyarray<const D: usize>(
+    py: Python<'_>,
+    verts: impl Iterator<Item = impl AsRef<[f64]>>,
+    n_verts: usize,
+) -> PyResult<Bound<'_, PyArray2<f64>>> {
+    let mut res = Vec::with_capacity(D * n_verts);
+    for v in verts {
+        for &x in v.as_ref() {
+            res.push(x);
+        }
+    }
+    PyArray::from_vec(py, res).reshape([n_verts, D])
+}
+
+/// Create a PyArray2 from elements with automatic 32bit-int conversion
+fn elems_to_pyarray<C: Simplex>(
+    py: Python<'_>,
+    elems: impl Iterator<Item = C>,
+    n_elems: usize,
+) -> PyResult<Bound<'_, PyArray2<Idx>>> {
+    #[cfg(not(feature = "32bit-ints"))]
+    let res = PyArray::from_vec(py, elems.flatten().collect()).reshape([n_elems, C::N_VERTS]);
+
+    #[cfg(feature = "32bit-ints")]
+    let res = PyArray::from_vec(py, elems.flatten().map(|x| x.try_into().unwrap()).collect())
+        .reshape([n_elems, C::N_VERTS]);
+
+    res
+}
+
+/// Create a PyArray2 from faces with automatic 32bit-int conversion
+fn faces_to_pyarray<C: Simplex>(
+    py: Python<'_>,
+    faces: impl Iterator<Item = C::FACE>,
+    n_faces: usize,
+) -> PyResult<Bound<'_, PyArray2<Idx>>> {
+    #[cfg(not(feature = "32bit-ints"))]
+    let res = PyArray::from_vec(py, faces.flatten().collect()).reshape([n_faces, C::FACE::N_VERTS]);
+
+    #[cfg(feature = "32bit-ints")]
+    let res = PyArray::from_vec(py, faces.flatten().map(|x| x.try_into().unwrap()).collect())
+        .reshape([n_faces, C::FACE::N_VERTS]);
+
+    res
+}
+
+/// Map Result error to PyRuntimeError
+fn to_py_err<T>(result: Result<T, impl std::fmt::Display>) -> PyResult<T> {
+    result.map_err(|e| PyRuntimeError::new_err(e.to_string()))
+}
+
 macro_rules! create_mesh {
     ($pyname: ident, $dim: expr, $cell: ident) => {
         #[doc = concat!("Python binding for ", stringify!($pyname))]
@@ -72,63 +201,20 @@ macro_rules! impl_mesh {
                 faces: PyReadonlyArray2<Idx>,
                 ftags: PyReadonlyArray1<Tag>,
             ) -> PyResult<Self> {
-                if coords.shape()[1] != $dim {
-                    return Err(PyValueError::new_err(format!(
-                        "Invalid dimension 1 for coords (expecting {}, got {})",
-                        $dim,
-                        coords.shape()[1]
-                    )));
-                }
-                let n = elems.shape()[0];
-                if elems.shape()[1] != $cell::<Idx>::N_VERTS {
-                    return Err(PyValueError::new_err(format!(
-                        "Invalid dimension 1 for elems (expecting {}, got {})",
-                        $cell::<Idx>::N_VERTS,
-                        elems.shape()[1]
-                    )));
-                }
-                if etags.shape()[0] != n {
-                    return Err(PyValueError::new_err("Invalid dimension 0 for etags"));
-                }
-                let n = faces.shape()[0];
+                validate_coords_shape::<$dim>(coords.shape())?;
+                validate_elems_shape::<$cell<Idx>>(elems.shape())?;
+                validate_tags_length(etags.shape()[0], elems.shape()[0], "etags")?;
+                validate_faces_shape::<$cell<Idx>>(faces.shape())?;
+                validate_tags_length(ftags.shape()[0], faces.shape()[0], "ftags")?;
 
-                if faces.shape()[1] != <$cell<Idx> as Simplex>::FACE::N_VERTS {
-                    return Err(PyValueError::new_err(format!(
-                        "Invalid dimension 1 for faces (expecting {}, got {})",
-                        <$cell::<Idx> as Simplex>::FACE::N_VERTS,
-                        faces.shape()[1]
-                    )));
-                }
-                if ftags.shape()[0] != n {
-                    return Err(PyValueError::new_err("Invalid dimension 0 for ftags"));
-                }
-
-                let coords = coords.as_slice()?;
-                let coords = coords.chunks($dim).map(|p| {
-                    let mut vx = Vertex::<$dim>::zeros();
-                    vx.copy_from_slice(p);
-                    vx
-                });
-
-                let elems = elems.as_slice()?;
-                let elems = elems.chunks($cell::<Idx>::N_VERTS).map(|x| {
-                    $cell::<Idx>::from_iter(x.iter().copied().map(|x| x.try_into().unwrap()))
-                });
-
-                let faces = faces.as_slice()?;
-                let faces = faces
-                    .chunks(<$cell<Idx> as Simplex>::FACE::N_VERTS)
-                    .map(|x| {
-                        <$cell<Idx> as Simplex>::FACE::from_iter(
-                            x.iter().copied().map(|x| x.try_into().unwrap()),
-                        )
-                    });
+                let coords_iter = coords_to_vertices::<$dim>(coords.as_slice()?);
+                let elems_iter = slice_to_cells::<$cell<Idx>>(elems.as_slice()?);
+                let faces_iter = slice_to_faces::<$cell<Idx>>(faces.as_slice()?);
 
                 let mut res = GenericMesh::empty();
-
-                res.add_verts(coords);
-                res.add_elems(elems, etags.to_vec().unwrap().iter().cloned());
-                res.add_faces(faces, ftags.to_vec().unwrap().iter().cloned());
+                res.add_verts(coords_iter);
+                res.add_elems(elems_iter, etags.to_vec().unwrap().iter().cloned());
+                res.add_faces(faces_iter, ftags.to_vec().unwrap().iter().cloned());
 
                 Ok(Self(res))
             }
@@ -140,13 +226,7 @@ macro_rules! impl_mesh {
 
             /// Get a copy of the vertices
             fn get_verts<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<f64>>> {
-                let mut res = Vec::with_capacity($dim * self.n_verts());
-                for v in self.0.verts() {
-                    for &x in v.as_slice() {
-                        res.push(x);
-                    }
-                }
-                PyArray::from_vec(py, res).reshape([self.n_verts(), $dim])
+                verts_to_pyarray::<$dim>(py, self.0.verts(), self.n_verts())
             }
 
             /// Number of elements
@@ -156,22 +236,7 @@ macro_rules! impl_mesh {
 
             /// Get a copy of the elements
             fn get_elems<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<Idx>>> {
-                #[cfg(not(feature = "32bit-ints"))]
-                let res = PyArray::from_vec(py, self.0.elems().flatten().collect())
-                    .reshape([self.n_elems(), $cell::<Idx>::N_VERTS]);
-
-                #[cfg(feature = "32bit-ints")]
-                let res = PyArray::from_vec(
-                    py,
-                    self.0
-                        .elems()
-                        .flatten()
-                        .map(|x| x.try_into().unwrap())
-                        .collect(),
-                )
-                .reshape([self.n_elems(), $cell::<Idx>::N_VERTS]);
-
-                res
+                elems_to_pyarray::<$cell<Idx>>(py, self.0.elems(), self.n_elems())
             }
 
             /// Get a copy of the element tags
@@ -186,21 +251,7 @@ macro_rules! impl_mesh {
 
             /// Get a copy of the faces
             fn get_faces<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<Idx>>> {
-                #[cfg(not(feature = "32bit-ints"))]
-                let res = PyArray::from_vec(py, self.0.faces().flatten().collect())
-                    .reshape([self.n_faces(), <$cell<Idx> as Simplex>::FACE::N_VERTS]);
-
-                #[cfg(feature = "32bit-ints")]
-                let res = PyArray::from_vec(
-                    py,
-                    self.0
-                        .faces()
-                        .flatten()
-                        .map(|x| x.try_into().unwrap())
-                        .collect(),
-                )
-                .reshape([self.n_faces(), <$cell<Idx> as Simplex>::FACE::N_VERTS]);
-                res
+                faces_to_pyarray::<$cell<Idx>>(py, self.0.faces(), self.n_faces())
             }
 
             /// Get a copy of the face tags
@@ -213,10 +264,7 @@ macro_rules! impl_mesh {
                 &mut self,
                 py: Python<'py>,
             ) -> PyResult<(Bound<'py, PyDict>, Bound<'py, PyDict>)> {
-                let (bdy, ifc) = self
-                    .0
-                    .fix()
-                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+                let (bdy, ifc) = to_py_err(self.0.fix())?;
                 let dict_bdy = PyDict::new(py);
                 for (k, v) in bdy.iter() {
                     dict_bdy.set_item(k, v)?;
@@ -252,46 +300,44 @@ macro_rules! impl_mesh {
                         writer.add_cell_data(name, n, arr.iter().copied())
                     }
                 }
-                writer
-                    .export(file_name)
-                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+                to_py_err(writer.export(file_name))
             }
 
             /// Export the mesh to a `.meshb` file
             fn write_meshb(&self, file_name: &str) -> PyResult<()> {
-                self.0
-                    .write_meshb(file_name)
-                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+                to_py_err(self.0.write_meshb(file_name))
             }
 
             /// Write a solution defined at the vertices to a .sol(b) file
             pub fn write_solb(&self, fname: &str, arr: PyReadonlyArray2<f64>) -> PyResult<()> {
-                self.0
-                    .write_solb(&arr.to_vec().unwrap(), fname, SolutionLocation::Vertices)
-                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+                to_py_err(self.0.write_solb(
+                    &arr.to_vec().unwrap(),
+                    fname,
+                    SolutionLocation::Vertices,
+                ))
             }
 
             /// Write a solution defined at the elements to a .sol(b) file
             pub fn write_elem_solb(&self, fname: &str, arr: PyReadonlyArray2<f64>) -> PyResult<()> {
-                self.0
-                    .write_solb(&arr.to_vec().unwrap(), fname, SolutionLocation::Elements)
-                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+                to_py_err(self.0.write_solb(
+                    &arr.to_vec().unwrap(),
+                    fname,
+                    SolutionLocation::Elements,
+                ))
             }
 
             /// Write a solution defined at the faces to a .sol(b) file
             pub fn write_face_solb(&self, fname: &str, arr: PyReadonlyArray2<f64>) -> PyResult<()> {
-                self.0
-                    .write_solb(&arr.to_vec().unwrap(), fname, SolutionLocation::Faces)
-                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+                to_py_err(
+                    self.0
+                        .write_solb(&arr.to_vec().unwrap(), fname, SolutionLocation::Faces),
+                )
             }
 
             /// Read a `.meshb` file
             #[classmethod]
             fn from_meshb(_cls: &Bound<'_, PyType>, file_name: &str) -> PyResult<Self> {
-                Ok(Self(
-                    GenericMesh::from_meshb(file_name)
-                        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?,
-                ))
+                Ok(Self(to_py_err(GenericMesh::from_meshb(file_name))?))
             }
 
             /// Read a solution stored in a .sol(b) file
@@ -328,20 +374,9 @@ macro_rules! impl_mesh {
 
             /// Add vertices
             pub fn add_verts(&mut self, coords: PyReadonlyArray2<f64>) -> PyResult<()> {
-                if coords.shape()[1] != $dim {
-                    return Err(PyValueError::new_err(format!(
-                        "Invalid dimension 1 for coords (expecting {})",
-                        $dim
-                    )));
-                }
-                let coords = coords.as_slice()?;
-                let coords = coords.chunks($dim).map(|p| {
-                    let mut vx = Vertex::<$dim>::zeros();
-                    vx.copy_from_slice(p);
-                    vx
-                });
-                self.0.add_verts(coords);
-
+                validate_coords_shape::<$dim>(coords.shape())?;
+                let coords_iter = coords_to_vertices::<$dim>(coords.as_slice()?);
+                self.0.add_verts(coords_iter);
                 Ok(())
             }
 
@@ -356,23 +391,10 @@ macro_rules! impl_mesh {
                 faces: PyReadonlyArray2<Idx>,
                 ftags: PyReadonlyArray1<Tag>,
             ) -> PyResult<()> {
-                if faces.shape()[1] != <$cell<Idx> as Simplex>::FACE::N_VERTS {
-                    return Err(PyValueError::new_err(format!(
-                        "Invalid dimension 1 for faces (expecting {})",
-                        <$cell::<Idx> as Simplex>::FACE::N_VERTS
-                    )));
-                }
-                let faces = faces.as_slice()?;
-                let faces = faces
-                    .chunks(<$cell<Idx> as Simplex>::FACE::N_VERTS)
-                    .map(|x| {
-                        <$cell<Idx> as Simplex>::FACE::from_iter(
-                            x.iter().copied().map(|x| x.try_into().unwrap()),
-                        )
-                    });
-                let ftags = ftags.as_slice()?;
-                self.0.add_faces(faces, ftags.iter().copied());
-
+                validate_faces_shape::<$cell<Idx>>(faces.shape())?;
+                let faces_iter = slice_to_faces::<$cell<Idx>>(faces.as_slice()?);
+                self.0
+                    .add_faces(faces_iter, ftags.as_slice()?.iter().copied());
                 Ok(())
             }
 
@@ -382,19 +404,10 @@ macro_rules! impl_mesh {
                 elems: PyReadonlyArray2<Idx>,
                 etags: PyReadonlyArray1<Tag>,
             ) -> PyResult<()> {
-                if elems.shape()[1] != $cell::<Idx>::N_VERTS {
-                    return Err(PyValueError::new_err(format!(
-                        "Invalid dimension 1 for elems (expecting {})",
-                        $cell::<Idx>::N_VERTS
-                    )));
-                }
-                let elems = elems.as_slice()?;
-                let elems = elems.chunks($cell::<Idx>::N_VERTS).map(|x| {
-                    $cell::<Idx>::from_iter(x.iter().copied().map(|x| x.try_into().unwrap()))
-                });
-                let etags = etags.as_slice()?;
-                self.0.add_elems(elems, etags.iter().copied());
-
+                validate_elems_shape::<$cell<Idx>>(elems.shape())?;
+                let elems_iter = slice_to_cells::<$cell<Idx>>(elems.as_slice()?);
+                self.0
+                    .add_elems(elems_iter, etags.as_slice()?.iter().copied());
                 Ok(())
             }
 
@@ -404,14 +417,10 @@ macro_rules! impl_mesh {
                 elems: PyReadonlyArray2<Idx>,
                 etags: PyReadonlyArray1<Tag>,
             ) -> PyResult<()> {
-                let n = elems.shape()[0];
+                validate_tags_length(etags.shape()[0], elems.shape()[0], "etags")?;
                 if elems.shape()[1] != 4 {
                     return Err(PyValueError::new_err("Invalid dimension 1 for elems"));
                 }
-                if etags.shape()[0] != n {
-                    return Err(PyValueError::new_err("Invalid dimension 0 for etags"));
-                }
-
                 self.0.add_quadrangles(
                     elems.as_slice()?.chunks(4).map(|x| {
                         let quad: [Idx; 4] = x.try_into().unwrap();
@@ -425,7 +434,6 @@ macro_rules! impl_mesh {
                     }),
                     etags.as_slice()?.iter().cloned(),
                 );
-
                 Ok(())
             }
 
@@ -435,14 +443,10 @@ macro_rules! impl_mesh {
                 elems: PyReadonlyArray2<Idx>,
                 etags: PyReadonlyArray1<Tag>,
             ) -> PyResult<()> {
-                let n = elems.shape()[0];
+                validate_tags_length(etags.shape()[0], elems.shape()[0], "etags")?;
                 if elems.shape()[1] != 5 {
                     return Err(PyValueError::new_err("Invalid dimension 1 for elems"));
                 }
-                if etags.shape()[0] != n {
-                    return Err(PyValueError::new_err("Invalid dimension 0 for etags"));
-                }
-
                 self.0.add_pyramids(
                     elems.as_slice()?.chunks(5).map(|x| {
                         let pyr: [Idx; 5] = x.try_into().unwrap();
@@ -455,7 +459,6 @@ macro_rules! impl_mesh {
                     }),
                     etags.as_slice()?.iter().cloned(),
                 );
-
                 Ok(())
             }
 
@@ -465,14 +468,10 @@ macro_rules! impl_mesh {
                 elems: PyReadonlyArray2<Idx>,
                 etags: PyReadonlyArray1<Tag>,
             ) -> PyResult<()> {
-                let n = elems.shape()[0];
+                validate_tags_length(etags.shape()[0], elems.shape()[0], "etags")?;
                 if elems.shape()[1] != 6 {
                     return Err(PyValueError::new_err("Invalid dimension 1 for elems"));
                 }
-                if etags.shape()[0] != n {
-                    return Err(PyValueError::new_err("Invalid dimension 0 for etags"));
-                }
-
                 self.0.add_prisms(
                     elems.as_slice()?.chunks(6).map(|x| {
                         let pri: [Idx; 6] = x.try_into().unwrap();
@@ -485,7 +484,6 @@ macro_rules! impl_mesh {
                     }),
                     etags.as_slice()?.iter().cloned(),
                 );
-
                 Ok(())
             }
 
@@ -496,14 +494,10 @@ macro_rules! impl_mesh {
                 elems: PyReadonlyArray2<Idx>,
                 etags: PyReadonlyArray1<Tag>,
             ) -> PyResult<Bound<'py, PyArray1<usize>>> {
-                let n = elems.shape()[0];
+                validate_tags_length(etags.shape()[0], elems.shape()[0], "etags")?;
                 if elems.shape()[1] != 8 {
                     return Err(PyValueError::new_err("Invalid dimension 1 for elems"));
                 }
-                if etags.shape()[0] != n {
-                    return Err(PyValueError::new_err("Invalid dimension 0 for etags"));
-                }
-
                 let ids = self.0.add_hexahedra(
                     elems.as_slice()?.chunks(8).map(|x| {
                         let hex: [Idx; 8] = x.try_into().unwrap();
@@ -517,7 +511,6 @@ macro_rules! impl_mesh {
                     }),
                     etags.as_slice()?.iter().cloned(),
                 );
-
                 Ok(PyArray1::from_vec(py, ids))
             }
 
@@ -561,9 +554,7 @@ macro_rules! impl_mesh {
 
             /// Check that two meshes are equal
             fn check_equals(&self, other: &Self, tol: f64) -> PyResult<()> {
-                self.0
-                    .check_equals(&other.0, tol)
-                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+                to_py_err(self.0.check_equals(&other.0, tol))
             }
 
             /// Partition the mesh
@@ -576,36 +567,27 @@ macro_rules! impl_mesh {
             ) -> PyResult<(f64, f64)> {
                 let weights = weights.map(|x| x.as_slice().unwrap().to_vec());
                 match method {
-                    PyPartitionerType::Hilbert => self
-                        .0
-                        .partition::<HilbertPartitioner>(n_parts, weights)
-                        .map_err(|e| PyRuntimeError::new_err(e.to_string())),
-                    PyPartitionerType::RCM => self
-                        .0
-                        .partition::<RCMPartitioner>(n_parts, weights)
-                        .map_err(|e| PyRuntimeError::new_err(e.to_string())),
+                    PyPartitionerType::Hilbert => {
+                        to_py_err(self.0.partition::<HilbertPartitioner>(n_parts, weights))
+                    }
+                    PyPartitionerType::RCM => {
+                        to_py_err(self.0.partition::<RCMPartitioner>(n_parts, weights))
+                    }
                     PyPartitionerType::KMeans => match $dim {
-                        3 => self
-                            .0
-                            .partition::<KMeansPartitioner3d>(n_parts, weights)
-                            .map_err(|e| PyRuntimeError::new_err(e.to_string())),
-                        2 => self
-                            .0
-                            .partition::<KMeansPartitioner2d>(n_parts, weights)
-                            .map_err(|e| PyRuntimeError::new_err(e.to_string())),
+                        3 => to_py_err(self.0.partition::<KMeansPartitioner3d>(n_parts, weights)),
+                        2 => to_py_err(self.0.partition::<KMeansPartitioner2d>(n_parts, weights)),
                         _ => unimplemented!(),
                     },
                     #[cfg(feature = "metis")]
-                    PyPartitionerType::MetisRecursive => self
-                        .0
-                        .partition::<MetisPartitioner<MetisRecursive>>(n_parts, weights)
-                        .map_err(|e| PyRuntimeError::new_err(e.to_string())),
-
+                    PyPartitionerType::MetisRecursive => to_py_err(
+                        self.0
+                            .partition::<MetisPartitioner<MetisRecursive>>(n_parts, weights),
+                    ),
                     #[cfg(feature = "metis")]
-                    PyPartitionerType::MetisKWay => self
-                        .0
-                        .partition::<MetisPartitioner<MetisKWay>>(n_parts, weights)
-                        .map_err(|e| PyRuntimeError::new_err(e.to_string())),
+                    PyPartitionerType::MetisKWay => to_py_err(
+                        self.0
+                            .partition::<MetisPartitioner<MetisKWay>>(n_parts, weights),
+                    ),
                 }
             }
 
@@ -851,9 +833,7 @@ macro_rules! impl_mesh {
 
             /// Check that the mesh is valid
             pub fn check(&self) -> PyResult<()> {
-                self.0
-                    .check(&self.0.all_faces())
-                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+                to_py_err(self.0.check(&self.0.all_faces()))
             }
         }
     };
@@ -959,8 +939,7 @@ impl PyBoundaryMesh3d {
     /// Read a stl file
     #[classmethod]
     fn read_stl(_cls: &Bound<'_, PyType>, file_name: &str) -> PyResult<Self> {
-        let msh = read_stl(file_name).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-        Ok(Self(msh))
+        Ok(Self(to_py_err(read_stl(file_name))?))
     }
 
     /// Create a sphere
