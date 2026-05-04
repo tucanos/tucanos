@@ -207,6 +207,14 @@ impl<T: Idx> Simplex for QuadraticTetrahedron<T> {
     fn order() -> u8 {
         2
     }
+
+    fn as_slice(&self) -> &[Self::T] {
+        &self.0
+    }
+
+    fn from_slice(slice: &[Self::T]) -> Result<Self, std::array::TryFromSliceError> {
+        slice.try_into().map(|x| Self(x))
+    }
 }
 
 impl<const D: usize> GSimplex<D> for QuadraticGTetrahedron<D> {

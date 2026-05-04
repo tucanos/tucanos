@@ -50,9 +50,6 @@ impl Idx for i32 {
     type ConvertError = TryFromIntError;
 }
 
-// TODO: add a way to create Hexadron, Prism, ... from &[Idx], simplify pytucanos/src/mesh.rs
-// and avoid useless u32 to and from usize
-
 /// Hexahedron
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Hexahedron<T: Idx>([T; 8]);
@@ -88,6 +85,13 @@ impl<T: Idx> FromIterator<usize> for Hexahedron<T> {
         }
         assert_eq!(count, 8);
         res
+    }
+}
+
+impl<T: Idx> TryFrom<&[T]> for Hexahedron<T> {
+    type Error = std::array::TryFromSliceError;
+    fn try_from(slice: &[T]) -> Result<Self, Self::Error> {
+        Ok(Self(slice.try_into()?))
     }
 }
 
@@ -136,6 +140,13 @@ impl<T: Idx> FromIterator<usize> for Prism<T> {
     }
 }
 
+impl<T: Idx> TryFrom<&[T]> for Prism<T> {
+    type Error = std::array::TryFromSliceError;
+    fn try_from(slice: &[T]) -> Result<Self, Self::Error> {
+        Ok(Self(slice.try_into()?))
+    }
+}
+
 /// Pyramid
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Pyramid<T: Idx>([T; 5]);
@@ -180,6 +191,13 @@ impl<T: Idx> FromIterator<usize> for Pyramid<T> {
     }
 }
 
+impl<T: Idx> TryFrom<&[T]> for Pyramid<T> {
+    type Error = std::array::TryFromSliceError;
+    fn try_from(slice: &[T]) -> Result<Self, Self::Error> {
+        Ok(Self(slice.try_into()?))
+    }
+}
+
 /// Quadrangle
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Quadrangle<T: Idx>([T; 4]);
@@ -220,5 +238,12 @@ impl<T: Idx> IntoIterator for Quadrangle<T> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter().map(|x| x.try_into().unwrap())
+    }
+}
+
+impl<T: Idx> TryFrom<&[T]> for Quadrangle<T> {
+    type Error = std::array::TryFromSliceError;
+    fn try_from(slice: &[T]) -> Result<Self, Self::Error> {
+        Ok(Self(slice.try_into()?))
     }
 }

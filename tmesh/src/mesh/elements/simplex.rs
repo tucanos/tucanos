@@ -8,9 +8,6 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::{Index, IndexMut};
 
-// FIXME: pytucanos needs to create Simplex from &[Idx] but we currently do not have anything
-// for that. Instead we convert the Idx to usize, then usize back to Idx. This is somehow stupid.
-
 /// Simplex elements
 pub trait Simplex:
     Sized
@@ -116,6 +113,22 @@ pub trait Simplex:
     #[must_use]
     fn order() -> u8 {
         1
+    }
+
+    fn from_slice(slice: &[Self::T]) -> Result<Self, std::array::TryFromSliceError>;
+    fn as_slice(&self) -> &[Self::T];
+
+    fn collect_flattened<I>(iter: I) -> Vec<Self::T>
+    where
+        I: IntoIterator<Item = Self>,
+    {
+        let iter = iter.into_iter();
+        let (lower, _) = iter.size_hint();
+        let mut v = Vec::with_capacity(lower * Self::N_VERTS);
+        for item in iter {
+            v.extend_from_slice(item.as_slice());
+        }
+        v
     }
 }
 

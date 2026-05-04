@@ -22,9 +22,9 @@ use tmesh::{
     io::VTUFile,
     mesh::{
         AdativeBoundsQuadraticTetrahedron, AdativeBoundsQuadraticTriangle, Edge, GSimplex,
-        GenericMesh, GradientMethod, Hexahedron, Mesh, Prism, Pyramid, Quadrangle, QuadraticEdge,
-        QuadraticTetrahedron, QuadraticTriangle, Simplex, SolutionLocation, Tetrahedron, Triangle,
-        ball_mesh, circle_mesh, nonuniform_box_mesh, nonuniform_rectangle_mesh,
+        GenericMesh, GradientMethod, Mesh, QuadraticEdge, QuadraticTetrahedron, QuadraticTriangle,
+        Simplex, SolutionLocation, Tetrahedron, Triangle, ball_mesh, circle_mesh,
+        nonuniform_box_mesh, nonuniform_rectangle_mesh,
         partition::{HilbertPartitioner, KMeansPartitioner2d, KMeansPartitioner3d, RCMPartitioner},
         quadratic_circle_mesh, quadratic_sphere_mesh, read_stl, sphere_mesh,
         to_quadratic::{to_quadratic_tetrahedron_mesh, to_quadratic_triangle_mesh},
@@ -107,24 +107,19 @@ fn coords_to_vertices<const D: usize>(
     })
 }
 
-/// Convert numpy array to iterator of cells
-fn slice_to_cells<C: Simplex>(elems: &[Idx]) -> impl ExactSizeIterator<Item = C> + '_ {
-    let it = elems.chunks_exact(C::N_VERTS);
-    #[cfg(not(feature = "32bit-ints"))]
-    let r = it.map(|x| C::from_iter(x.iter().copied()));
-    #[cfg(feature = "32bit-ints")]
-    let r = it.map(|x| C::from_iter(x.iter().copied().map(|i| i.try_into().unwrap())));
-    r
-}
+fn slice_to_simplex<C>(indices: &[C::T]) -> PyResult<impl ExactSizeIterator<Item = C> + '_>
+where
+    C: Simplex,
+{
+    if indices.len() % C::N_VERTS != 0 {
+        return Err(PyValueError::new_err("Invalid array length"));
+    }
 
-/// Convert numpy array to iterator of faces
-fn slice_to_faces<C: Simplex>(faces: &[Idx]) -> impl ExactSizeIterator<Item = C::FACE> + '_ {
-    let it = faces.chunks_exact(C::FACE::N_VERTS);
-    #[cfg(not(feature = "32bit-ints"))]
-    let r = it.map(|x| C::FACE::from_iter(x.iter().copied()));
-    #[cfg(feature = "32bit-ints")]
-    let r = it.map(|x| C::FACE::from_iter(x.iter().copied().map(|i| i.try_into().unwrap())));
-    r
+    let iter = indices
+        .chunks_exact(C::N_VERTS)
+        .map(|x| C::from_slice(x).unwrap());
+
+    Ok(iter)
 }
 
 /// Create a PyArray2 from vertices with automatic 32bit-int conversion
@@ -142,36 +137,12 @@ fn verts_to_pyarray<const D: usize>(
     PyArray::from_vec(py, res).reshape([n_verts, D])
 }
 
-/// Create a PyArray2 from elements with automatic 32bit-int conversion
-fn elems_to_pyarray<C: Simplex>(
+fn simplex_to_pyarray<C: Simplex<T = Idx>>(
     py: Python<'_>,
-    elems: impl Iterator<Item = C>,
-    n_elems: usize,
+    simplices: impl Iterator<Item = C>,
 ) -> PyResult<Bound<'_, PyArray2<Idx>>> {
-    #[cfg(not(feature = "32bit-ints"))]
-    let res = PyArray::from_vec(py, elems.flatten().collect()).reshape([n_elems, C::N_VERTS]);
-
-    #[cfg(feature = "32bit-ints")]
-    let res = PyArray::from_vec(py, elems.flatten().map(|x| x.try_into().unwrap()).collect())
-        .reshape([n_elems, C::N_VERTS]);
-
-    res
-}
-
-/// Create a PyArray2 from faces with automatic 32bit-int conversion
-fn faces_to_pyarray<C: Simplex>(
-    py: Python<'_>,
-    faces: impl Iterator<Item = C::FACE>,
-    n_faces: usize,
-) -> PyResult<Bound<'_, PyArray2<Idx>>> {
-    #[cfg(not(feature = "32bit-ints"))]
-    let res = PyArray::from_vec(py, faces.flatten().collect()).reshape([n_faces, C::FACE::N_VERTS]);
-
-    #[cfg(feature = "32bit-ints")]
-    let res = PyArray::from_vec(py, faces.flatten().map(|x| x.try_into().unwrap()).collect())
-        .reshape([n_faces, C::FACE::N_VERTS]);
-
-    res
+    let r = PyArray::from_vec(py, C::collect_flattened(simplices));
+    r.reshape([r.len() / C::N_VERTS, C::N_VERTS])
 }
 
 /// Map Result error to PyRuntimeError
@@ -208,8 +179,8 @@ macro_rules! impl_mesh {
                 validate_tags_length(ftags.shape()[0], faces.shape()[0], "ftags")?;
 
                 let coords_iter = coords_to_vertices::<$dim>(coords.as_slice()?);
-                let elems_iter = slice_to_cells::<$cell<Idx>>(elems.as_slice()?);
-                let faces_iter = slice_to_faces::<$cell<Idx>>(faces.as_slice()?);
+                let elems_iter = slice_to_simplex(elems.as_slice()?)?;
+                let faces_iter = slice_to_simplex(faces.as_slice()?)?;
 
                 let mut res = GenericMesh::empty();
                 res.add_verts(coords_iter);
@@ -236,7 +207,7 @@ macro_rules! impl_mesh {
 
             /// Get a copy of the elements
             fn get_elems<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<Idx>>> {
-                elems_to_pyarray::<$cell<Idx>>(py, self.0.elems(), self.n_elems())
+                simplex_to_pyarray(py, self.0.elems())
             }
 
             /// Get a copy of the element tags
@@ -251,7 +222,7 @@ macro_rules! impl_mesh {
 
             /// Get a copy of the faces
             fn get_faces<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<Idx>>> {
-                faces_to_pyarray::<$cell<Idx>>(py, self.0.faces(), self.n_faces())
+                simplex_to_pyarray(py, self.0.faces())
             }
 
             /// Get a copy of the face tags
@@ -390,7 +361,7 @@ macro_rules! impl_mesh {
                 ftags: PyReadonlyArray1<Tag>,
             ) -> PyResult<()> {
                 validate_faces_shape::<$cell<Idx>>(faces.shape())?;
-                let faces_iter = slice_to_faces::<$cell<Idx>>(faces.as_slice()?);
+                let faces_iter = slice_to_simplex(faces.as_slice()?)?;
                 self.0
                     .add_faces(faces_iter, ftags.as_slice()?.iter().copied());
                 Ok(())
@@ -403,7 +374,7 @@ macro_rules! impl_mesh {
                 etags: PyReadonlyArray1<Tag>,
             ) -> PyResult<()> {
                 validate_elems_shape::<$cell<Idx>>(elems.shape())?;
-                let elems_iter = slice_to_cells::<$cell<Idx>>(elems.as_slice()?);
+                let elems_iter = slice_to_simplex(elems.as_slice()?)?;
                 self.0
                     .add_elems(elems_iter, etags.as_slice()?.iter().copied());
                 Ok(())
@@ -420,16 +391,7 @@ macro_rules! impl_mesh {
                     return Err(PyValueError::new_err("Invalid dimension 1 for elems"));
                 }
                 self.0.add_quadrangles(
-                    elems.as_slice()?.chunks(4).map(|x| {
-                        let quad: [Idx; 4] = x.try_into().unwrap();
-                        #[cfg(not(feature = "32bit-ints"))]
-                        let res = Quadrangle::<Idx>::from_iter(quad);
-                        #[cfg(feature = "32bit-ints")]
-                        let res = Quadrangle::<Idx>::from_iter(
-                            quad.iter().map(|&x| x.try_into().unwrap()),
-                        );
-                        res
-                    }),
+                    elems.as_slice()?.chunks(4).map(|x| x.try_into().unwrap()),
                     etags.as_slice()?.iter().cloned(),
                 );
                 Ok(())
@@ -446,15 +408,7 @@ macro_rules! impl_mesh {
                     return Err(PyValueError::new_err("Invalid dimension 1 for elems"));
                 }
                 self.0.add_pyramids(
-                    elems.as_slice()?.chunks(5).map(|x| {
-                        let pyr: [Idx; 5] = x.try_into().unwrap();
-                        #[cfg(not(feature = "32bit-ints"))]
-                        let res = Pyramid::<Idx>::from_iter(pyr);
-                        #[cfg(feature = "32bit-ints")]
-                        let res =
-                            Pyramid::<Idx>::from_iter(pyr.iter().map(|&x| x.try_into().unwrap()));
-                        res
-                    }),
+                    elems.as_slice()?.chunks(5).map(|x| x.try_into().unwrap()),
                     etags.as_slice()?.iter().cloned(),
                 );
                 Ok(())
@@ -471,15 +425,7 @@ macro_rules! impl_mesh {
                     return Err(PyValueError::new_err("Invalid dimension 1 for elems"));
                 }
                 self.0.add_prisms(
-                    elems.as_slice()?.chunks(6).map(|x| {
-                        let pri: [Idx; 6] = x.try_into().unwrap();
-                        #[cfg(not(feature = "32bit-ints"))]
-                        let res = Prism::<Idx>::from_iter(pri);
-                        #[cfg(feature = "32bit-ints")]
-                        let res =
-                            Prism::<Idx>::from_iter(pri.iter().map(|&x| x.try_into().unwrap()));
-                        res
-                    }),
+                    elems.as_slice()?.chunks(6).map(|x| x.try_into().unwrap()),
                     etags.as_slice()?.iter().cloned(),
                 );
                 Ok(())
@@ -497,16 +443,7 @@ macro_rules! impl_mesh {
                     return Err(PyValueError::new_err("Invalid dimension 1 for elems"));
                 }
                 let ids = self.0.add_hexahedra(
-                    elems.as_slice()?.chunks(8).map(|x| {
-                        let hex: [Idx; 8] = x.try_into().unwrap();
-                        #[cfg(not(feature = "32bit-ints"))]
-                        let res = Hexahedron::<Idx>::from_iter(hex);
-                        #[cfg(feature = "32bit-ints")]
-                        let res = Hexahedron::<Idx>::from_iter(
-                            hex.iter().map(|&x| x.try_into().unwrap()),
-                        );
-                        res
-                    }),
+                    elems.as_slice()?.chunks(8).map(|x| x.try_into().unwrap()),
                     etags.as_slice()?.iter().cloned(),
                 );
                 Ok(PyArray1::from_vec(py, ids))

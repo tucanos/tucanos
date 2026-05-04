@@ -121,6 +121,14 @@ impl<T: Idx> Simplex for Triangle<T> {
     fn invert(&mut self) {
         self.0.swap(1, 0);
     }
+
+    fn as_slice(&self) -> &[Self::T] {
+        &self.0
+    }
+
+    fn from_slice(slice: &[Self::T]) -> Result<Self, std::array::TryFromSliceError> {
+        slice.try_into().map(|x| Self(x))
+    }
 }
 
 impl<const D: usize> GSimplex<D> for GTriangle<D> {
