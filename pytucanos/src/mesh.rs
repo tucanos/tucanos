@@ -213,8 +213,8 @@ macro_rules! impl_mesh {
 
                 let mut res = GenericMesh::empty();
                 res.add_verts(coords_iter);
-                res.add_elems(elems_iter, etags.to_vec().unwrap().iter().cloned());
-                res.add_faces(faces_iter, ftags.to_vec().unwrap().iter().cloned());
+                res.add_elems(elems_iter, etags.to_vec()?.iter().cloned());
+                res.add_faces(faces_iter, ftags.to_vec()?.iter().cloned());
 
                 Ok(Self(res))
             }
@@ -310,27 +310,25 @@ macro_rules! impl_mesh {
 
             /// Write a solution defined at the vertices to a .sol(b) file
             pub fn write_solb(&self, fname: &str, arr: PyReadonlyArray2<f64>) -> PyResult<()> {
-                to_py_err(self.0.write_solb(
-                    &arr.to_vec().unwrap(),
-                    fname,
-                    SolutionLocation::Vertices,
-                ))
+                to_py_err(
+                    self.0
+                        .write_solb(&arr.to_vec()?, fname, SolutionLocation::Vertices),
+                )
             }
 
             /// Write a solution defined at the elements to a .sol(b) file
             pub fn write_elem_solb(&self, fname: &str, arr: PyReadonlyArray2<f64>) -> PyResult<()> {
-                to_py_err(self.0.write_solb(
-                    &arr.to_vec().unwrap(),
-                    fname,
-                    SolutionLocation::Elements,
-                ))
+                to_py_err(
+                    self.0
+                        .write_solb(&arr.to_vec()?, fname, SolutionLocation::Elements),
+                )
             }
 
             /// Write a solution defined at the faces to a .sol(b) file
             pub fn write_face_solb(&self, fname: &str, arr: PyReadonlyArray2<f64>) -> PyResult<()> {
                 to_py_err(
                     self.0
-                        .write_solb(&arr.to_vec().unwrap(), fname, SolutionLocation::Faces),
+                        .write_solb(&arr.to_vec()?, fname, SolutionLocation::Faces),
                 )
             }
 
@@ -565,7 +563,11 @@ macro_rules! impl_mesh {
                 method: PyPartitionerType,
                 weights: Option<PyReadonlyArray1<f64>>,
             ) -> PyResult<(f64, f64)> {
-                let weights = weights.map(|x| x.as_slice().unwrap().to_vec());
+                let weights = if let Some(weights) = weights {
+                    Some(weights.to_vec()?)
+                } else {
+                    None
+                };
                 match method {
                     PyPartitionerType::Hilbert => {
                         to_py_err(self.0.partition::<HilbertPartitioner>(n_parts, weights))
@@ -697,11 +699,8 @@ macro_rules! impl_mesh {
                     _ => unreachable!("Invalid order {order}"),
                 };
 
-                let res = self.0.smooth(method, arr.as_slice().unwrap());
-
-                Ok(PyArray::from_vec(py, res)
-                    .reshape([self.0.n_verts(), 1])
-                    .unwrap())
+                let res = self.0.smooth(method, arr.as_slice()?);
+                PyArray::from_vec(py, res).reshape([self.0.n_verts(), 1])
             }
 
             /// Compute the gradient of a field defined at the mesh vertices using a 1st order
@@ -726,11 +725,8 @@ macro_rules! impl_mesh {
                     2 => GradientMethod::LinearLeastSquares(weight_exp),
                     _ => unreachable!("Invalid order {order}"),
                 };
-                let res = self.0.gradient(method, arr.as_slice().unwrap());
-
-                Ok(PyArray::from_vec(py, res)
-                    .reshape([self.0.n_verts(), $dim])
-                    .unwrap())
+                let res = self.0.gradient(method, arr.as_slice()?);
+                PyArray::from_vec(py, res).reshape([self.0.n_verts(), $dim])
             }
 
             /// Compute the hessian of a field defined at the mesh vertices using a 2nd order
@@ -751,12 +747,10 @@ macro_rules! impl_mesh {
 
                 let res = self.0.hessian(
                     GradientMethod::QuadraticLeastSquares(weight_exp),
-                    arr.as_slice().unwrap(),
+                    arr.as_slice()?,
                 );
 
-                Ok(PyArray::from_vec(py, res)
-                    .reshape([self.0.n_verts(), $dim * ($dim + 1) / 2])
-                    .unwrap())
+                PyArray::from_vec(py, res).reshape([self.0.n_verts(), $dim * ($dim + 1) / 2])
             }
 
             /// Compute the hessian of a field defined at the mesh vertices using a 2nd order
@@ -776,11 +770,9 @@ macro_rules! impl_mesh {
 
                 let res = self
                     .0
-                    .hessian(GradientMethod::L2Projection, arr.as_slice().unwrap());
+                    .hessian(GradientMethod::L2Projection, arr.as_slice()?);
 
-                Ok(PyArray::from_vec(py, res)
-                    .reshape([self.0.n_verts(), $dim * ($dim + 1) / 2])
-                    .unwrap())
+                PyArray::from_vec(py, res).reshape([self.0.n_verts(), $dim * ($dim + 1) / 2])
             }
 
             /// Convert a (scalar or vector) field defined at the element centers (P0) to a field
@@ -794,13 +786,8 @@ macro_rules! impl_mesh {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
                 let v2e = self.0.vertex_to_elems();
-                let res = self
-                    .0
-                    .elem_data_to_vertex_data(&v2e, arr.as_slice().unwrap());
-
-                Ok(PyArray::from_vec(py, res)
-                    .reshape([self.0.n_verts(), arr.shape()[1]])
-                    .unwrap())
+                let res = self.0.elem_data_to_vertex_data(&v2e, arr.as_slice()?);
+                PyArray::from_vec(py, res).reshape([self.0.n_verts(), arr.shape()[1]])
             }
 
             /// Convert a field (scalar or vector) defined at the vertices (P1) to a field defined
@@ -813,11 +800,8 @@ macro_rules! impl_mesh {
                 if arr.shape()[0] != self.0.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
-                let res = self.0.vertex_data_to_elem_data(arr.as_slice().unwrap());
-
-                Ok(PyArray::from_vec(py, res)
-                    .reshape([self.0.n_elems(), arr.shape()[1]])
-                    .unwrap())
+                let res = self.0.vertex_data_to_elem_data(arr.as_slice()?);
+                PyArray::from_vec(py, res).reshape([self.0.n_elems(), arr.shape()[1]])
             }
 
             /// Get the mesh volume
