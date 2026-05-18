@@ -18,7 +18,7 @@ affinity = "0.1.2"
 tmesh = { path = "../tmesh" }
 libm = "0.2.15"
 shadow-rs = "2.0.0"
-minimeshb = { git = "https://github.com/tucanos/minimeshb.git", rev = "230d45dc" }
+minimeshb = { git = "https://github.com/tucanos/minimeshb.git", tag = "0.2.0" }
 
 [build-dependencies]
 shadow-rs = "2.0.0"
