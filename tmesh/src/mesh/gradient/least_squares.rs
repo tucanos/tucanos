@@ -1,6 +1,8 @@
 //! Weighted least square gradient computation
+use std::ops::{AddAssign, MulAssign};
+
 use crate::{Error, Result, graph::CSRGraph, mesh::Mesh};
-use nalgebra::{Const, DMatrix, DVector, Dim, Dyn, OMatrix, QR, SVector};
+use nalgebra::{Const, DMatrix, DVector, Dim, Dyn, OMatrix, QR, SMatrix, SVector};
 use rayon::{
     iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
     slice::ParallelSliceMut,
@@ -133,6 +135,20 @@ impl<const D: usize> LeastSquaresGradient<D> {
         rhs
     }
 
+    fn compute_vec<const N: usize>(&self, df: impl ExactSizeIterator<Item = SVector<f64, N>>) -> DMatrix<f64> {
+        assert_eq!(df.len(), self.weights.len());
+        let mut rhs = DMatrix::<f64>::zeros(df.len() + 1, N);
+        for (irow, df) in df.enumerate() {
+            let w = self.weights[irow];
+            let irow = irow + 1;
+            let tmp = w * df.transpose();
+            rhs.set_row(irow, &tmp);
+        }
+        self.qr.q_tr_mul(&mut rhs);
+        assert!(self.r.solve_upper_triangular_mut(&mut rhs));
+        rhs
+    }
+
     /// Smoothing
     pub fn smooth(&self, df: impl ExactSizeIterator<Item = f64>) -> f64 {
         let rhs = self.compute(df);
@@ -140,11 +156,25 @@ impl<const D: usize> LeastSquaresGradient<D> {
         rhs[0]
     }
 
+    /// Smoothing
+    pub fn smooth_vec<const N: usize>(&self, df: impl ExactSizeIterator<Item = SVector<f64, N>>) -> SVector<f64, N> {
+        let rhs = self.compute_vec(df);
+
+        rhs.fixed_view::<N, 1>(1, 0).into()
+    }
+
     /// Compute the gradient
     pub fn gradient(&self, df: impl ExactSizeIterator<Item = f64>) -> SVector<f64, D> {
         let rhs = self.compute(df);
 
         rhs.fixed_view::<D, 1>(1, 0).into()
+    }
+
+    /// Compute the gradient
+    pub fn gradient_vec<const N: usize>(&self, df: impl ExactSizeIterator<Item = SVector<f64, N>>) -> SMatrix<f64, N, D> {
+        let rhs = self.compute_vec(df);
+
+        rhs.fixed_view::<D, N>(1, 0).to_owned().transpose()
     }
 
     /// Compute the gradient
@@ -169,7 +199,7 @@ impl<const D: usize> LeastSquaresGradient<D> {
             rhs[irow + 1] = w;
             self.qr.q_tr_mul(&mut rhs);
             assert!(self.r.solve_upper_triangular_mut(&mut rhs));
-            rhs.fixed_view::<D, 1>(1, 0).into()
+            rhs.fixed_view::<D, 1>(1, 0).clone_owned()
         })
     }
 }
@@ -179,9 +209,9 @@ impl<const D: usize> LeastSquaresGradient<D> {
 /// failed: Flag that indicates if not valid approximation has been computed
 /// m: The number of components (1 for scalar, D for gradients, D*(D-1)/2 for hessians)
 /// `max_iter`: The max number of iteration through the mesh vertices
-fn fix_not_computed(
+fn fix_not_computed<T : AddAssign + MulAssign<f64> + Copy>(
     v2v: &CSRGraph,
-    res: &mut [f64],
+    res: &mut [T],
     failed: &mut [bool],
     m: usize,
     max_iter: usize,
@@ -227,16 +257,16 @@ where
     Const<D>: Dim,
 {
     let mut res = vec![0.0; D * msh.n_verts()];
-    let flg = msh.boundary_flag();
+    // let flg = msh.boundary_flag();
     let mut failed = vec![false; msh.n_verts()];
 
     res.par_chunks_mut(D)
         .zip(failed.par_iter_mut())
         .enumerate()
         .for_each(|(i, (grad, fail))| {
-            if flg[i] {
-                *fail = true;
-            } else {
+            // if flg[i] {
+            //     *fail = true;
+            // } else {
                 let x = msh.vert(i);
                 let first_order_neighbors = v2v.row(i);
                 let mut neighbors = first_order_neighbors
@@ -258,11 +288,66 @@ where
                 } else {
                     *fail = true;
                 }
-            }
+            // }
         });
 
     if fix_not_computed(v2v, &mut res, &mut failed, D, 6) {
         if res.iter().copied().any(f64::is_nan) {
+            return Err(Error::from("NaN in gradient computation"));
+        }
+        Ok(res)
+    } else {
+        Err(Error::from("Cannot compute the value everywhere"))
+    }
+}
+
+/// Compute the gradient of a field defined of the mesh vertices using weighted
+/// least squares
+pub fn gradient_vec<const D: usize, M: Mesh<D>, const N: usize>(
+    msh: &M,
+    v2v: &CSRGraph,
+    order: i32,
+    weight: i32,
+    f: &[SVector<f64, N>],
+) -> Result<Vec<SMatrix<f64, N, D>>>
+where
+    Const<D>: Dim,
+{
+    let mut res = vec![SMatrix::<f64, N, D>::zeros(); msh.n_verts()];
+    // let flg = msh.boundary_flag();
+    let mut failed = vec![false; msh.n_verts()];
+
+    res.par_iter_mut()
+        .zip(failed.par_iter_mut())
+        .enumerate()
+        .for_each(|(i, (grad, fail))| {
+            // if flg[i] {
+            //     *fail = true;
+            // } else {
+                let x = msh.vert(i);
+                let first_order_neighbors = v2v.row(i);
+                let mut neighbors = first_order_neighbors
+                    .iter()
+                    .copied()
+                    .collect::<FxHashSet<_>>();
+                if order == 2 {
+                    for &i in first_order_neighbors {
+                        neighbors.extend(v2v.row(i).iter().copied());
+                    }
+                    neighbors.remove(&i);
+                }
+                let dx = neighbors.iter().map(|&j| msh.vert(j) - x);
+                if let Ok(ls) = LeastSquaresGradient::new(order, weight, dx) {
+                    let df = neighbors.iter().map(|&j| f[j] - f[i]);
+                    *grad = ls.gradient_vec(df);
+                } else {
+                    *fail = true;
+                }
+            // }
+        });
+
+    if fix_not_computed(v2v, &mut res, &mut failed, 1, 6) {
+        if res.iter().flatten().copied().any(f64::is_nan) {
             return Err(Error::from("NaN in gradient computation"));
         }
         Ok(res)

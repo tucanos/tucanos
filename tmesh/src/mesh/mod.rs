@@ -21,7 +21,7 @@ pub mod to_quadratic;
 
 mod vector;
 
-use std::path::Path;
+use std::{iter::Sum, ops::{Add, Mul}, path::Path};
 
 use log::{debug, warn};
 use minimeshb::{reader::MeshbReader, writer::MeshbWriter};
@@ -734,11 +734,11 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     }
 
     /// Integrate `g(f)` over the mesh, where `f` is a field defined on the mesh vertices
-    fn integrate<G: Fn(f64) -> f64 + Send + Sync>(&self, f: &[f64], op: G) -> f64 {
+    fn integrate<T: Copy + Add + Mul<f64, Output = T> + Sum + Send + Sync, G: Fn(T) -> f64 + Send + Sync>(&self, f: &[T], op: G) -> f64 {
         self.par_elems()
             .map(|e| {
                 let func = |x: &<<Self::C as Simplex>::GEOM<D> as GSimplex<D>>::BCOORDS| {
-                    op(x.into_iter().zip(e).map(|(b, i)| b * f[i]).sum::<f64>())
+                    op(x.into_iter().zip(e).map(|(b, i)| f[i] * b).sum::<T>())
                 };
                 self.gelem(&e).integrate(func)
             })
@@ -1746,6 +1746,7 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
 
     /// Sequential iterator over the mesh faces
     fn ftags_mut(&mut self) -> impl ExactSizeIterator<Item = &mut Tag> + '_;
+    
 }
 
 /// Generic meshes implemented with Vecs
