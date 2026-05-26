@@ -25,8 +25,20 @@ impl<T: Idx> IntoIterator for Edge<T> {
     }
 }
 
+impl<T: Idx> Into<[usize; 2]> for Edge<T> {
+    fn into(self) -> [usize; 2] {
+        [self.get(0), self.get(1)]
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct GEdge<const D: usize>([Vertex<D>; 2]);
+
+impl<const D: usize> Into<[Vertex<D>; 2]> for GEdge<D> {
+    fn into(self) -> [Vertex<D>; 2] {
+        self.0
+    }
+}
 
 impl<const D: usize> GEdge<D> {
     #[must_use]
