@@ -213,7 +213,7 @@ impl<T: Idx> DualMesh<2> for DualMesh2d<T> {
         }
 
         // build boundary faces
-        let mut bdy_faces = Vec::with_capacity(msh.n_faces() * 3);
+        let mut bdy_faces = Vec::with_capacity(msh.n_faces() * 2);
 
         for (f, tag) in msh.faces().zip(msh.ftags()) {
             let tmp = f.sorted();
@@ -243,8 +243,9 @@ impl<T: Idx> DualMesh<2> for DualMesh2d<T> {
                 assert!(ok);
 
                 let face = Edge::new(vert_idx_edge(i_edge), vert_ids_bdy(f.get(1)));
+
                 let gf = GEdge::new(&verts[face.get(0)], &verts[face.get(1)]);
-                bdy_faces.push((f.get(0), tag, gf.normal(None)));
+                bdy_faces.push((f.get(1), tag, gf.normal(None)));
 
                 let i_new_face = faces.len();
                 faces.push(face);
@@ -264,6 +265,7 @@ impl<T: Idx> DualMesh<2> for DualMesh2d<T> {
             }
         }
 
+        assert_eq!(bdy_faces.len(), msh.n_faces() * 2);
         assert_eq!(faces.len(), n_poly_faces - n_empty_faces);
         assert_eq!(ftags.len(), n_poly_faces - n_empty_faces);
 
