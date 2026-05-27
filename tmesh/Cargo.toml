@@ -7,7 +7,7 @@ edition.workspace = true
 log = "0.4.27"
 minimeshb = { git = "https://github.com/tucanos/minimeshb.git", tag = "0.2.0" }
 nalgebra = { version = "0.34.0"}
-rand = "0.10.0"
+rand = "0.10.1"
 rayon = "1.10.0"
 rustc-hash = "2.1.1"
 kdtree = { version = "0.8" }
