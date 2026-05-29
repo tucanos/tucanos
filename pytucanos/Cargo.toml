@@ -1,6 +1,6 @@
 [package]
 name = "pytucanos"
-version = "0.4.0"
+version.workspace = true
 edition.workspace = true
 
 [lib]
@@ -8,17 +8,17 @@ name = "pytucanos"
 crate-type = ["cdylib"]
 
 [dependencies]
-log = "0.4.27"
+log.workspace = true
 tucanos = { path="../tucanos" }
 numpy = "0.28.0"
 pyo3 = { version = "0.28.2", features = ["extension-module", "multiple-pymethods"] }
 pyo3-log = "0.13.3"
-rayon = "1.10.0"
+rayon.workspace = true
 affinity = "0.1.2"
 tmesh = { path = "../tmesh" }
-libm = "0.2.15"
+libm.workspace = true
 shadow-rs = "2.0.0"
-minimeshb = { git = "https://github.com/tucanos/minimeshb.git", tag = "0.2.0" }
+minimeshb.workspace = true
 
 [build-dependencies]
 shadow-rs = "2.0.0"

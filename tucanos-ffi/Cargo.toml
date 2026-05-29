@@ -1,6 +1,6 @@
 [package]
 name = "tucanos-ffi"
-version = "0.4.0"
+version.workspace = true
 edition.workspace = true
 description = "C / FFI wrapper for the Tucanos mesher"
 
@@ -12,7 +12,7 @@ doc = false
 [dependencies]
 tmesh = {path = "../tmesh" }
 tucanos = { path = "../tucanos" }
-log = "0.4.22"
+log.workspace = true
 
 [build-dependencies]
 cbindgen = "0.29"
