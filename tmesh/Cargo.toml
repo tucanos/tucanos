@@ -1,15 +1,15 @@
 [package]
 name = "tmesh"
-version = "0.4.0"
+version.workspace = true
 edition.workspace = true
 
 [dependencies]
-log = "0.4.27"
-minimeshb = { git = "https://github.com/tucanos/minimeshb.git", tag = "0.2.0" }
-nalgebra = { version = "0.34.0"}
-rand = "0.10.0"
-rayon = "1.10.0"
-rustc-hash = "2.1.1"
+log.workspace = true
+minimeshb.workspace = true
+nalgebra.workspace = true
+rand.workspace = true
+rayon.workspace = true
+rustc-hash.workspace = true
 kdtree = { version = "0.8" }
 parry3d-f64 = { version = "0.26.0" }
 parry2d-f64 = { version = "0.26.0" }
@@ -23,7 +23,7 @@ argmin-math = { git = "https://github.com/tucanos/argmin.git", tag = "tucanos-0.
     "nalgebra_latest",
 ] }
 argmin-observer-slog = "0.2.0"
-libm = "0.2.15"
+libm.workspace = true
 
 [features]
 32bit-tags = []

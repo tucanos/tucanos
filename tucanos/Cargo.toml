@@ -1,22 +1,22 @@
 [package]
 name = "tucanos"
-version = "0.4.0"
+version.workspace = true
 edition.workspace = true
 links = "tucanos"
 
 [dependencies]
-nalgebra = { version = "0.34.1", features = ["rand"] }
-log = "0.4.22"
+nalgebra = { workspace = true, features = ["rand"] }
+log.workspace = true
 serde_json = "1.0.149"
 serde = { version = "1.0.225", features = ["derive"] }
-rustc-hash = "2.0.0"
+rustc-hash.workspace = true
 sorted-vec = "0.8.6"
-rand = "0.10.0"
-rayon = "1.11.0"
+rand.workspace = true
+rayon.workspace = true
 typenum = { version ="1.19.0", features = ["const-generics"] }
 num = "0.4.3"
 tmesh = {path = "../tmesh"}
-libm = "0.2.15"
+libm.workspace = true
 
 [features]
 32bit-tags = ["tmesh/32bit-tags"]
