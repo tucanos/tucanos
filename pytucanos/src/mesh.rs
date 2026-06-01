@@ -14,6 +14,8 @@ use pyo3::{
     types::{PyDict, PyDictMethods, PyType},
 };
 use std::collections::HashMap;
+#[cfg(feature = "coupe")]
+use tmesh::mesh::partition::{KMeansPartitioner2d, KMeansPartitioner3d};
 #[cfg(feature = "metis")]
 use tmesh::mesh::partition::{MetisKWay, MetisPartitioner, MetisRecursive};
 use tmesh::{
@@ -25,7 +27,7 @@ use tmesh::{
         GenericMesh, GradientMethod, Mesh, QuadraticEdge, QuadraticTetrahedron, QuadraticTriangle,
         Simplex, SolutionLocation, Tetrahedron, Triangle, ball_mesh, circle_mesh,
         nonuniform_box_mesh, nonuniform_rectangle_mesh,
-        partition::{HilbertPartitioner, KMeansPartitioner2d, KMeansPartitioner3d, RCMPartitioner},
+        partition::{HilbertPartitioner, RCMPartitioner},
         quadratic_circle_mesh, quadratic_sphere_mesh, read_stl, sphere_mesh,
         to_quadratic::{to_quadratic_tetrahedron_mesh, to_quadratic_triangle_mesh},
     },
@@ -40,6 +42,7 @@ pub enum PyPartitionerType {
     /// RCM
     #[allow(clippy::upper_case_acronyms)]
     RCM,
+    #[cfg(feature = "coupe")]
     /// KMeans
     KMeans,
     #[cfg(feature = "metis")]
@@ -512,6 +515,7 @@ macro_rules! impl_mesh {
                     PyPartitionerType::RCM => {
                         to_py_err(self.0.partition::<RCMPartitioner>(n_parts, weights))
                     }
+                    #[cfg(feature = "coupe")]
                     PyPartitionerType::KMeans => match $dim {
                         3 => to_py_err(self.0.partition::<KMeansPartitioner3d>(n_parts, weights)),
                         2 => to_py_err(self.0.partition::<KMeansPartitioner2d>(n_parts, weights)),

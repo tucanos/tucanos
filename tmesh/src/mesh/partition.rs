@@ -1,6 +1,7 @@
 //! Mesh partitioners
 use super::{GSimplex, Mesh, hilbert::hilbert_indices};
-use crate::{Error, Result, graph::CSRGraph};
+use crate::{Result, graph::CSRGraph};
+#[cfg(feature = "coupe")]
 use coupe::{Partition, nalgebra::SVector};
 #[cfg(feature = "metis")]
 use std::marker::PhantomData;
@@ -168,6 +169,7 @@ impl Partitioner for RCMPartitioner {
     }
 }
 
+#[cfg(feature = "coupe")]
 /// KMeans partitionner based on `coupe` (2d)
 pub struct KMeansPartitioner2d {
     n_parts: usize,
@@ -175,6 +177,8 @@ pub struct KMeansPartitioner2d {
     centers: Vec<SVector<f64, 2>>,
     weights: Vec<f64>,
 }
+
+#[cfg(feature = "coupe")]
 impl Partitioner for KMeansPartitioner2d {
     fn new<const D: usize, M: Mesh<D>>(
         msh: &M,
@@ -198,7 +202,7 @@ impl Partitioner for KMeansPartitioner2d {
                     weights,
                 })
             }
-            _ => Err(Error::from("Partitioner only available for D=2")),
+            _ => Err(crate::Error::from("Partitioner only available for D=2")),
         }
     }
     fn compute(&self) -> Result<Vec<usize>> {
@@ -228,6 +232,7 @@ impl Partitioner for KMeansPartitioner2d {
     }
 }
 
+#[cfg(feature = "coupe")]
 /// KMeans partitionner based on `coupe` (3d)
 pub struct KMeansPartitioner3d {
     n_parts: usize,
@@ -236,6 +241,7 @@ pub struct KMeansPartitioner3d {
     weights: Vec<f64>,
 }
 
+#[cfg(feature = "coupe")]
 impl Partitioner for KMeansPartitioner3d {
     fn new<const D: usize, M: Mesh<D>>(
         msh: &M,
@@ -259,7 +265,7 @@ impl Partitioner for KMeansPartitioner3d {
                     weights,
                 })
             }
-            _ => Err(Error::from("Partitioner only available for D=2")),
+            _ => Err(crate::Error::from("Partitioner only available for D=2")),
         }
     }
     fn compute(&self) -> Result<Vec<usize>> {
@@ -402,11 +408,13 @@ mod tests {
     #[cfg(feature = "metis")]
     use crate::mesh::partition::{MetisPartitioner, MetisRecursive};
     use crate::mesh::{
-        Mesh, Mesh2d, Mesh3d, box_mesh,
-        partition::{
-            HilbertPartitioner, KMeansPartitioner2d, KMeansPartitioner3d, Partitioner,
-            RCMPartitioner,
-        },
+        Mesh, Mesh3d, box_mesh,
+        partition::{HilbertPartitioner, Partitioner, RCMPartitioner},
+    };
+    #[cfg(feature = "coupe")]
+    use crate::mesh::{
+        Mesh2d,
+        partition::{KMeansPartitioner2d, KMeansPartitioner3d},
         rectangle_mesh,
     };
 
@@ -435,6 +443,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "coupe")]
     fn test_coupe_kmeans2d() {
         let msh: Mesh2d = rectangle_mesh(1.0, 5, 1.0, 6);
         let msh = msh.random_shuffle();
@@ -447,6 +456,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "coupe")]
     #[cfg_attr(debug_assertions, ignore = "Kmeans is slow")]
     fn test_coupe_kmeans() {
         let msh: Mesh3d = box_mesh(1.0, 6, 1.0, 5, 1.0, 5);

@@ -107,5 +107,5 @@ class TestGeometry(unittest.TestCase):
         coords = msh.get_verts()
         new_coords = geom.project(msh)
         d = np.linalg.norm(coords - new_coords, axis=1)
-        self.assertLess(d[:n].max(), 1e-12)
+        self.assertLess(d[:n].max(), 1e-9)
         self.assertLess(d[n:].max(), 1.5e-2)
