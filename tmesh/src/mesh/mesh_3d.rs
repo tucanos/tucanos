@@ -239,7 +239,7 @@ mod tests {
             AdativeBoundsQuadraticTetrahedron, BoundaryMesh3d, GSimplex, GradientMethod, Mesh,
             Mesh3d, QuadraticBoundaryMesh3d, QuadraticMesh3d, bandwidth, box_mesh,
             mesh_3d::ball_mesh,
-            partition::{HilbertPartitioner, KMeansPartitioner3d, RCMPartitioner},
+            partition::{HilbertPartitioner, RCMPartitioner},
             quadratic_ball_mesh,
         },
     };
@@ -601,8 +601,11 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "coupe")]
     #[ignore = "kmeans is slow"]
     fn test_part_kmeans() {
+        use tmesh::mesh::partition::KMeansPartitioner3d;
+
         let mut msh = box_mesh::<Mesh3d>(1.0, 6, 1.0, 5, 1.0, 5).random_shuffle();
         let (quality, imbalance) = msh.partition::<KMeansPartitioner3d>(4, None).unwrap();
 

@@ -25,7 +25,9 @@ shadow-rs = "2.0.0"
 
 [features]
 32bit-ints = []
-metis = ["tucanos/metis"]
+metis = ["tmesh/metis"]
+coupe = ["tmesh/coupe"]
+argmin = ["tmesh/argmin"]
 
 [lints]
 workspace = true

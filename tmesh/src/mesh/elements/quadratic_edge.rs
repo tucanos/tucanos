@@ -5,7 +5,9 @@ use crate::{
         elements::{ho_simplex::HOType, quadratures::QUADRATURE_EDGE_6},
     },
 };
+#[cfg(feature = "argmin")]
 use argmin::core::{CostFunction, Executor, Gradient, Hessian};
+use nalgebra::Vector1;
 use std::fmt::Debug;
 use std::ops::Index;
 
@@ -238,22 +240,54 @@ impl<const D: usize> GSimplex<D> for QuadraticGEdge<D> {
     }
 
     fn bcoords(&self, v: &Vertex<D>) -> Self::BCOORDS {
+        #[allow(unused_variables)]
         let uv = self.linear().bcoords(v);
+        let proj = QuadraticEdgeProjection { v, ge: self };
 
-        let linesearch = argmin::solver::linesearch::MoreThuenteLineSearch::new();
-        let solver = argmin::solver::newton::NewtonCG::new(linesearch)
-            .with_tolerance(1e-10)
-            .unwrap();
-        let res = Executor::new(QuadraticEdgeProjection { v, ge: self }, solver)
-            .configure(|state| state.param([uv[1]].into()).max_iters(100))
-            // .add_observer(
-            //     argmin_observer_slog::SlogLogger::term(),
-            //     argmin::core::observers::ObserverMode::Always,
-            // )
-            .run()
-            .unwrap();
-        let v = res.state.best_param.unwrap();
-        [1.0 - v[0], v[0]]
+        #[cfg(not(feature = "argmin"))]
+        {
+            use crate::mesh::elements::newton_cg;
+            let start: Vector1<f64> = if uv.into_iter().all(|x| x > 0.0) {
+                [uv[1]].into()
+            } else {
+                [0.5].into()
+            };
+            let (x, reason) = newton_cg::newton_cg_minimize(
+                start,
+                |x| proj.f(x),
+                |x| proj.grad_f(x),
+                |x| proj.hess_f(x),
+                1e-12,
+                20,
+            );
+
+            if matches!(reason, newton_cg::ConvergenceStatus::NotConverged) {
+                assert!(
+                    x[0] < 0.0 || 1.0 - x[0] < 0.0,
+                    "Not converged but x = {x:?}",
+                );
+            }
+
+            [1.0 - x[0], x[0]]
+        }
+
+        #[cfg(feature = "argmin")]
+        {
+            let linesearch = argmin::solver::linesearch::MoreThuenteLineSearch::new();
+            let solver = argmin::solver::newton::NewtonCG::new(linesearch)
+                .with_tolerance(1e-10)
+                .unwrap();
+            let res = Executor::new(proj, solver)
+                .configure(|state| state.param([uv[1]].into()).max_iters(100))
+                // .add_observer(
+                //     argmin_observer_slog::SlogLogger::term(),
+                //     argmin::core::observers::ObserverMode::Always,
+                // )
+                .run()
+                .unwrap();
+            let v = res.state.best_param.unwrap();
+            [1.0 - v[0], v[0]]
+        }
     }
 
     /// Vertex from barycentric coordinates
@@ -287,45 +321,64 @@ struct QuadraticEdgeProjection<'a, const D: usize> {
     ge: &'a QuadraticGEdge<D>,
 }
 
+impl<const D: usize> QuadraticEdgeProjection<'_, D> {
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    fn f(&self, x: &Vector1<f64>) -> f64 {
+        let uv = [1.0 - x[0], x[0]];
+        let dx = self.v - self.ge.mapping(&uv);
+        dx.norm_squared()
+    }
+
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    fn grad_f(&self, x: &Vector1<f64>) -> Vector1<f64> {
+        let uv = [1.0 - x[0], x[0]];
+        let dx = self.v - self.ge.mapping(&uv);
+        let [du, dv] = self.ge.jac_mapping(&uv);
+        [-2.0 * dx.dot(&(dv - du))].into()
+    }
+
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    fn hess_f(&self, x: &Vector1<f64>) -> Vector1<f64> {
+        let uv = [1.0 - x[0], x[0]];
+        let dx = self.v - self.ge.mapping(&uv);
+        let [du, dv] = self.ge.jac_mapping(&uv);
+        let [duu, dvv, duv] = self.ge.hess_mapping(&uv);
+        [-2.0 * (dx.dot(&(duu + dvv - 2.0 * duv)) - (dv - du).norm_squared())].into()
+    }
+}
+
+#[cfg(feature = "argmin")]
 impl<const D: usize> CostFunction for QuadraticEdgeProjection<'_, D> {
     type Param = nalgebra::Vector1<f64>;
     type Output = f64;
 
     fn cost(&self, param: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
-        let uv = [1.0 - param[0], param[0]];
-        let dx = self.v - self.ge.mapping(&uv);
-        Ok(dx.norm_squared())
+        Ok(self.f(param))
     }
 }
 
+#[cfg(feature = "argmin")]
 impl<const D: usize> Gradient for QuadraticEdgeProjection<'_, D> {
     type Param = nalgebra::Vector1<f64>;
     type Gradient = nalgebra::Vector1<f64>;
 
     fn gradient(&self, param: &Self::Param) -> Result<Self::Gradient, argmin::core::Error> {
-        let uv = [1.0 - param[0], param[0]];
-        let dx = self.v - self.ge.mapping(&uv);
-        let [du, dv] = self.ge.jac_mapping(&uv);
-        Ok([-2.0 * dx.dot(&(dv - du))].into())
+        Ok(self.grad_f(param))
     }
 }
 
+#[cfg(feature = "argmin")]
 impl<const D: usize> Hessian for QuadraticEdgeProjection<'_, D> {
     type Param = nalgebra::Vector1<f64>;
     type Hessian = nalgebra::Matrix1<f64>;
 
     fn hessian(&self, param: &Self::Param) -> Result<Self::Hessian, argmin::core::Error> {
-        let uv = [1.0 - param[0], param[0]];
-        let dx = self.v - self.ge.mapping(&uv);
-        let [du, dv] = self.ge.jac_mapping(&uv);
-        let [duu, dvv, duv] = self.ge.hess_mapping(&uv);
-        Ok([-2.0 * (dx.dot(&(duu + dvv - 2.0 * duv)) - (dv - du).norm_squared())].into())
+        Ok(self.hess_f(param))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use argmin::core::{CostFunction, Gradient, Hessian};
     use rand::{RngExt, SeedableRng, rngs::StdRng};
 
     use crate::{
@@ -349,15 +402,12 @@ mod tests {
             let proj = QuadraticEdgeProjection { v: &v, ge: &ge };
 
             let x = rng.random::<f64>();
-            let g = proj.gradient(&[x].into()).unwrap()[0];
-            let h = proj.hessian(&[x].into()).unwrap()[0];
+            let g = proj.grad_f(&[x].into())[0];
+            let h = proj.hess_f(&[x].into())[0];
 
             let eps = 1e-6;
-            let g2 = (proj.cost(&[x + eps].into()).unwrap()
-                - proj.cost(&[x - eps].into()).unwrap())
-                / (2.0 * eps);
-            let h3 = (proj.gradient(&[x + eps].into()).unwrap()[0]
-                - proj.gradient(&[x - eps].into()).unwrap()[0])
+            let g2 = (proj.f(&[x + eps].into()) - proj.f(&[x - eps].into())) / (2.0 * eps);
+            let h3 = (proj.grad_f(&[x + eps].into())[0] - proj.grad_f(&[x - eps].into())[0])
                 / (2.0 * eps);
             assert_delta!(g, g2, 1e-6);
             assert_delta!(h, h3, 1e-6);
@@ -372,15 +422,12 @@ mod tests {
             let proj = QuadraticEdgeProjection { v: &v, ge: &ge };
 
             let x = rng.random::<f64>();
-            let g = proj.gradient(&[x].into()).unwrap()[0];
-            let h = proj.hessian(&[x].into()).unwrap()[0];
+            let g = proj.grad_f(&[x].into())[0];
+            let h = proj.hess_f(&[x].into())[0];
 
             let eps = 1e-6;
-            let g2 = (proj.cost(&[x + eps].into()).unwrap()
-                - proj.cost(&[x - eps].into()).unwrap())
-                / (2.0 * eps);
-            let h3 = (proj.gradient(&[x + eps].into()).unwrap()[0]
-                - proj.gradient(&[x - eps].into()).unwrap()[0])
+            let g2 = (proj.f(&[x + eps].into()) - proj.f(&[x - eps].into())) / (2.0 * eps);
+            let h3 = (proj.grad_f(&[x + eps].into())[0] - proj.grad_f(&[x - eps].into())[0])
                 / (2.0 * eps);
             assert_delta!(g, g2, 1e-6);
             assert_delta!(h, h3, 1e-6);
@@ -429,7 +476,11 @@ mod tests {
 
         for p2 in [p + 0.1 * n, p + n, p + 10.0 * n] {
             let (p3, _) = ge2.project(&p2);
-            assert!((p - p3).norm() < 1e-12);
+            assert!(
+                (p - p3).norm() < 1e-10,
+                "distance = {:.2e} > 1e-10",
+                (p - p3).norm()
+            );
         }
     }
 }

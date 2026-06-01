@@ -5,6 +5,7 @@ use std::num::TryFromIntError;
 
 pub(super) mod edge;
 pub(super) mod ho_simplex;
+pub(super) mod newton_cg;
 pub(super) mod node;
 pub(super) mod quadratic_edge;
 pub(super) mod quadratic_tetrahedron;
