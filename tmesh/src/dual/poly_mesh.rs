@@ -382,7 +382,7 @@ impl<const D: usize> SimplePolyMesh<D> {
         res
     }
 
-    /// PolyMesh representation of a `Mesh<D, C, F>`
+    /// PolyMesh representation of a `Mesh<D>`
     pub fn from_mesh<M: Mesh<D>>(mesh: &M) -> Self {
         let poly_type = match <M::C as Simplex>::N_VERTS {
             4 => PolyMeshType::Polyhedra,

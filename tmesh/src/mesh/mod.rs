@@ -3,7 +3,6 @@
 //!   - elements of type `C` and element tags
 //!   - faces of type `C::FACE` and element tags
 //!
-//! F = C-1 cannot be imposed in rust stable
 mod boundary_mesh_2d;
 mod boundary_mesh_3d;
 mod elements;
@@ -103,7 +102,7 @@ pub enum SolutionLocation {
     Edges,
 }
 
-/// Submesh of a `Mesh<D, C, F>`, with information about the vertices, element
+/// Submesh of a `Mesh<D>`, with information about the vertices, element
 /// and face ids in the parent mesh
 pub struct SubMesh<const D: usize, M: Mesh<D>> {
     /// Mesh
@@ -1195,7 +1194,8 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         VTUFile::from_mesh(self).export(file_name)
     }
 
-    /// Build a `Mesh<D, C::FACE>` mesh containing faces such that `filter(tag)` is true
+    /// Build a `Mesh<D>` mesh (with element type `C::FACE`) containing faces such that
+    /// `filter(tag)` is true
     /// Only the required vertices are present
     /// The following must be true: C2 = C - 1 and F2 = F - 1 (rust stable limitation)
     fn extract_faces<M: Mesh<D, C = <Self::C as Simplex>::FACE>, G: Fn(Tag) -> bool>(
@@ -1248,8 +1248,8 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         (res, vert_ids)
     }
 
-    /// Build a `Mesh<D, C2, F2>` mesh containing the boundary faces
-    /// The following must be true: C2 = C - 1 and F2 = F - 1 (rust stable limitation)
+    /// Build a `Mesh<D>` mesh containing the boundary faces
+    /// The returned mesh element type is `C::FACE`.
     fn boundary<M: Mesh<D, C = <Self::C as Simplex>::FACE>>(&self) -> (M, Vec<usize>) {
         self.extract_faces(|_| true)
     }
