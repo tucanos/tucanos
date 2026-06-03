@@ -311,9 +311,9 @@ pub struct AdativeBoundsQuadraticTetrahedron<'a> {
     c2: SVector<f64, 4>,
     c3: SVector<f64, 4>,
     tet: &'a QuadraticGTetrahedron<3>,
-    b: SVector<f64, 10>,
+    b: SVector<f64, 20>,
     children: Option<Box<[Self; 8]>>,
-    lu: &'a LU<f64, Const<10>, Const<10>>,
+    lu: &'a LU<f64, Const<20>, Const<20>>,
 }
 
 impl<'a> AdativeBoundsQuadraticTetrahedron<'a> {
@@ -333,32 +333,73 @@ impl<'a> AdativeBoundsQuadraticTetrahedron<'a> {
         ]
     }
 
+    fn cubic_lagrange_points(
+        c0: &SVector<f64, 4>,
+        c1: &SVector<f64, 4>,
+        c2: &SVector<f64, 4>,
+        c3: &SVector<f64, 4>,
+    ) -> [SVector<f64, 4>; 20] {
+        [
+            *c0,
+            *c1,
+            *c2,
+            *c3,
+            (2.0 * c0 + c1) / 3.0,
+            (c0 + 2.0 * c1) / 3.0,
+            (2.0 * c1 + c2) / 3.0,
+            (c1 + 2.0 * c2) / 3.0,
+            (2.0 * c2 + c0) / 3.0,
+            (c2 + 2.0 * c0) / 3.0,
+            (2.0 * c0 + c3) / 3.0,
+            (c0 + 2.0 * c3) / 3.0,
+            (2.0 * c1 + c3) / 3.0,
+            (c1 + 2.0 * c3) / 3.0,
+            (2.0 * c2 + c3) / 3.0,
+            (c2 + 2.0 * c3) / 3.0,
+            (c0 + c1 + c2) / 3.0,
+            (c0 + c1 + c3) / 3.0,
+            (c0 + c2 + c3) / 3.0,
+            (c1 + c2 + c3) / 3.0,
+        ]
+    }
+
+    fn cubic_bezier(i: usize, u: f64, v: f64, w: f64, t: f64) -> f64 {
+        match i {
+            0 => u * u * u,
+            1 => v * v * v,
+            2 => w * w * w,
+            3 => t * t * t,
+            4 => 3.0 * u * u * v,
+            5 => 3.0 * u * v * v,
+            6 => 3.0 * v * v * w,
+            7 => 3.0 * v * w * w,
+            8 => 3.0 * w * w * u,
+            9 => 3.0 * w * u * u,
+            10 => 3.0 * u * u * t,
+            11 => 3.0 * u * t * t,
+            12 => 3.0 * v * v * t,
+            13 => 3.0 * v * t * t,
+            14 => 3.0 * w * w * t,
+            15 => 3.0 * w * t * t,
+            16 => 6.0 * u * v * w,
+            17 => 6.0 * u * v * t,
+            18 => 6.0 * u * w * t,
+            19 => 6.0 * v * w * t,
+            _ => unreachable!(),
+        }
+    }
+
     #[must_use]
-    pub fn lagrange_to_bezier() -> LU<f64, Const<10>, Const<10>> {
+    pub fn lagrange_to_bezier() -> LU<f64, Const<20>, Const<20>> {
         let c0 = SVector::<f64, 4>::new(1.0, 0.0, 0.0, 0.0);
         let c1 = SVector::<f64, 4>::new(0.0, 1.0, 0.0, 0.0);
         let c2 = SVector::<f64, 4>::new(0.0, 0.0, 1.0, 0.0);
         let c3 = SVector::<f64, 4>::new(0.0, 0.0, 0.0, 1.0);
 
-        let [c4, c5, c6, c7, c8, c9] = Self::midpoints(&c0, &c1, &c2, &c3);
-        let pts = [c0, c1, c2, c3, c4, c5, c6, c7, c8, c9];
+        let pts = Self::cubic_lagrange_points(&c0, &c1, &c2, &c3);
 
-        let bezier = |(i, u, v, w, t)| match i {
-            0 => u * u,
-            1 => v * v,
-            2 => w * w,
-            3 => t * t,
-            4 => 2.0 * u * v,
-            5 => 2.0 * v * w,
-            6 => 2.0 * w * u,
-            7 => 2.0 * u * t,
-            8 => 2.0 * v * t,
-            9 => 2.0 * w * t,
-            _ => unreachable!(),
-        };
-
-        let mat = SMatrix::<f64, 10, 10>::from_fn(|i, j| {
-            bezier((j, pts[i][0], pts[i][1], pts[i][2], pts[i][3]))
+        let mat = SMatrix::<f64, 20, 20>::from_fn(|i, j| {
+            Self::cubic_bezier(j, pts[i][0], pts[i][1], pts[i][2], pts[i][3])
         });
         mat.lu()
     }
@@ -379,7 +420,7 @@ impl<'a> AdativeBoundsQuadraticTetrahedron<'a> {
     }
 
     #[must_use]
-    pub fn new(tet: &'a QuadraticGTetrahedron<3>, lu: &'a LU<f64, Const<10>, Const<10>>) -> Self {
+    pub fn new(tet: &'a QuadraticGTetrahedron<3>, lu: &'a LU<f64, Const<20>, Const<20>>) -> Self {
         Self::new_with_corners(
             tet,
             lu,
@@ -393,24 +434,23 @@ impl<'a> AdativeBoundsQuadraticTetrahedron<'a> {
     #[must_use]
     fn new_with_corners(
         tet: &'a QuadraticGTetrahedron<3>,
-        lu: &'a LU<f64, Const<10>, Const<10>>,
+        lu: &'a LU<f64, Const<20>, Const<20>>,
         c0: SVector<f64, 4>,
         c1: SVector<f64, 4>,
         c2: SVector<f64, 4>,
         c3: SVector<f64, 4>,
     ) -> Self {
-        let [c4, c5, c6, c7, c8, c9] = Self::midpoints(&c0, &c1, &c2, &c3);
-        let pts = [c0, c1, c2, c3, c4, c5, c6, c7, c8, c9];
+        let pts = Self::cubic_lagrange_points(&c0, &c1, &c2, &c3);
 
         let det_jac = |u, v, w, t| {
             let [du, mut dv, mut dw, mut dt] = tet.jac_mapping(&[u, v, w, t]);
             dv -= du;
             dw -= du;
             dt -= du;
-            dt.dot(&dv.cross(&dw)) / 6.0
+            dt.dot(&dv.cross(&dw))
         };
         let vals =
-            SVector::<f64, 10>::from_fn(|i, _| det_jac(pts[i][0], pts[i][1], pts[i][2], pts[i][3]));
+            SVector::<f64, 20>::from_fn(|i, _| det_jac(pts[i][0], pts[i][1], pts[i][2], pts[i][3]));
         let b = lu.solve(&vals).unwrap();
         Self {
             c0,
@@ -488,17 +528,17 @@ impl<'a> AdativeBoundsQuadraticTetrahedron<'a> {
 
     fn refine_max(&mut self) {
         if let Some(children) = &mut self.children {
-            let mut children_bounds = [(0.0, 0.0); 4];
+            let mut children_bounds = [(0.0, 0.0); 8];
             for (i, child) in children.iter_mut().enumerate() {
                 children_bounds[i] = child.bounds();
             }
             let max = children_bounds
                 .iter()
-                .map(|(x, _)| *x)
+                .map(|(_, x)| *x)
                 .fold(f64::NEG_INFINITY, f64::max);
             let imax = children_bounds
                 .iter()
-                .position(|(x, _)| (*x - max).abs() < f64::EPSILON)
+                .position(|(_, x)| (*x - max).abs() < f64::EPSILON)
                 .unwrap();
             children[imax].refine_max();
         } else {
@@ -537,119 +577,88 @@ impl<'a> AdativeBoundsQuadraticTetrahedron<'a> {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use crate::{
-//         Vert2d, Vert3d, assert_delta,
-//         mesh::{
-//             BoundaryMesh3d, GSimplex, GTetrahedron, Mesh, QuadraticGTetrahedron, Tetrahedron,
-//             elements::{
-//                 ho_simplex::HOType, quadratic_Tetrahedron::AdativeBoundsQuadraticTetrahedron,
-//             },
-//         },
-//     };
+#[cfg(test)]
+mod tests {
+    use crate::{
+        Vert3d,
+        mesh::{
+            QuadraticGTetrahedron,
+            elements::{
+                ho_simplex::HOType, quadratic_tetrahedron::AdativeBoundsQuadraticTetrahedron,
+            },
+        },
+    };
 
-//     fn to_linear_mesh(ge: &QuadraticGTetrahedron<3>, n_splits: u32) -> BoundaryMesh3d {
-//         let mut msh = BoundaryMesh3d::from_vecs(
-//             vec![
-//                 Vert3d::new(0.0, 0.0, 0.0),
-//                 Vert3d::new(1.0, 0.0, 0.0),
-//                 Vert3d::new(0.0, 1.0, 0.0),
-//             ],
-//             vec![Tetrahedron::<usize>::new(0, 1, 2)],
-//             vec![1],
-//             Vec::new(),
-//             Vec::new(),
-//         );
-//         for _ in 0..n_splits {
-//             msh = msh.split();
-//         }
+    fn curved_tet() -> QuadraticGTetrahedron<3> {
+        let p0 = Vert3d::new(0.0, 0.0, 0.0);
+        let p1 = Vert3d::new(1.0, 0.0, 0.0);
+        let p2 = Vert3d::new(0.0, 1.0, 0.0);
+        let p3 = Vert3d::new(0.0, 0.0, 1.0);
+        let p4 = Vert3d::new(0.50, 0.00, 0.05);
+        let p5 = Vert3d::new(0.50, 0.50, 0.05);
+        let p6 = Vert3d::new(0.00, 0.50, 0.05);
+        let p7 = Vert3d::new(0.00, 0.00, 0.55);
+        let p8 = Vert3d::new(0.50, 0.00, 0.55);
+        let p9 = Vert3d::new(0.00, 0.50, 0.55);
 
-//         msh.verts_mut()
-//             .for_each(|x| *x = ge.vert(&[1.0 - x[0] - x[1], x[0], x[1]]));
+        QuadraticGTetrahedron::new(
+            &p0,
+            &p1,
+            &p2,
+            &p3,
+            &p4,
+            &p5,
+            &p6,
+            &p7,
+            &p8,
+            &p9,
+            HOType::Lagrange,
+        )
+    }
 
-//         msh
-//     }
+    // Reference for this test can be computed as follows:
+    //
+    // tests/data/curved_tetra_t10.msh
+    // $MeshFormat
+    // 2.2 0 8
+    // $EndMeshFormat
+    // $Nodes
+    // 10
+    // 1 0.0 0.0 0.0
+    // 2 1.0 0.0 0.0
+    // 3 0.0 1.0 0.0
+    // 4 0.0 0.0 1.0
+    // 5 0.50 0.00 0.05
+    // 6 0.50 0.50 0.05
+    // 7 0.00 0.50 0.05
+    // 8 0.00 0.00 0.55
+    // 9 0.50 0.00 0.55
+    // 10 0.00 0.50 0.55
+    // $EndNodes
+    // $Elements
+    // 1
+    // 1 11 2 1 1 1 2 3 4 5 6 7 8 10 9
+    // $EndElements
+    //
+    // tests/data/curved_tetra_analyse_curved_mesh.geo
+    // Merge "curved_tetra_t10.msh";
+    // Plugin(AnalyseMeshQuality).Run;
+    //
+    // Commands:
+    // - gmsh tests/data/curved_tetra_analyse_curved_mesh.geo -parse_and_exit
+    #[test]
+    fn test_bounds_curved_tetrahedron() {
+        let tet = curved_tet();
+        let lu = AdativeBoundsQuadraticTetrahedron::lagrange_to_bezier();
+        let mut adb = AdativeBoundsQuadraticTetrahedron::new(&tet, &lu);
+        let (_is_invalid, (min, max)) = adb.compute_bounds(Some(1e-6));
 
-//     #[test]
-//     fn test_quadratic_Tetrahedron() {
-//         let p0 = Vert3d::new(0., 0., 0.);
-//         let p1 = Vert3d::new(2., 0., -0.25);
-//         let p2 = Vert3d::new(1., 1., 1.0);
-//         let p3 = Vert3d::new(1., -0.25, 0.25);
-//         let p4 = Vert3d::new(1.5, 0.75, 0.5);
-//         let p5 = Vert3d::new(0.25, 0.5, 0.5);
+        assert!(min.is_finite());
+        assert!(max.is_finite());
+        assert!(max >= min);
+        assert!(max > 0.0);
 
-//         let ge = GTetrahedron::new(&p0, &p1, &p2);
-//         let ge2 = QuadraticGTetrahedron::new(
-//             &p0,
-//             &p1,
-//             &p2,
-//             &(0.5 * (p0 + p1)),
-//             &(0.5 * (p1 + p2)),
-//             &(0.5 * (p2 + p0)),
-//             HOType::Lagrange,
-//         );
-
-//         let n = ge.normal(None);
-//         let n2 = ge2.normal(Some(&[0.5, 0.5, 0.5]));
-//         assert_delta!((n - n2).norm(), 0.0, 1e-12);
-
-//         let v = ge.vol();
-//         let v2 = ge2.vol();
-//         assert_delta!(v, v2, 1e-12);
-
-//         let [v, w] = [0.1234, 0.2345];
-//         let p = ge2.vert(&[1.0 - v - w, v, w]);
-//         let n = ge2.normal(Some(&[1.0 - v - w, v, w]));
-
-//         for p2 in [p + 0.1 * n, p + n, p + 10.0 * n] {
-//             let (p3, _) = ge2.project(&p2);
-//             assert_delta!((p - p3).norm(), 0.0, 1e-12);
-//         }
-
-//         let ge2 = QuadraticGTetrahedron::new(&p0, &p1, &p2, &p3, &p4, &p5, HOType::Lagrange);
-
-//         let msh = to_linear_mesh(&ge2, 6);
-//         let v = msh.vol();
-//         let v2 = ge2.vol();
-//         assert_delta!(v, v2, 1e-4);
-
-//         let [v, w] = [0.1234, 0.2345];
-//         let p = ge2.vert(&[1.0 - v - w, v, w]);
-//         let n = ge2.normal(Some(&[1.0 - v - w, v, w]));
-
-//         for p2 in [p + 0.1 * n, p + n] {
-//             let (p3, _) = ge2.project(&p2);
-//             assert_delta!((p - p3).norm(), 0.0, 1e-5);
-//         }
-
-//         let (mini, maxi) = ge2.bounding_box();
-//         for v in msh.verts() {
-//             for i in 0..3 {
-//                 assert!(v[i] > mini[i] - 1e-12);
-//                 assert!(v[i] < maxi[i] + 1e-12);
-//             }
-//         }
-//     }
-
-//     #[test]
-//     fn test_bounds() {
-//         let p0 = Vert2d::new(0., 0.);
-//         let p1 = Vert2d::new(2., 0.);
-//         let p2 = Vert2d::new(1., 1.);
-//         let p3 = Vert2d::new(1.8, 0.4);
-//         let p4 = Vert2d::new(2.1, 0.41);
-//         let p5 = Vert2d::new(0.25, 0.5);
-
-//         let tri = QuadraticGTetrahedron::new(&p0, &p1, &p2, &p3, &p4, &p5, HOType::Lagrange);
-
-//         let lu = AdativeBoundsQuadraticTetrahedron::lagrange_to_bezier();
-//         let mut adb = AdativeBoundsQuadraticTetrahedron::new(&tri, &lu);
-
-//         let (is_invalid, (min, max)) = adb.compute_bounds(Some(1e-3));
-//         assert!(is_invalid);
-//         assert_delta!(min, -0.247, 1e-3);
-//         assert_delta!(max, 6.12, 1e-3);
-//     }
-// }
+        assert!((min - 0.8).abs() < 1e-5); // given by gmsh
+        assert!((min / max - 0.66666).abs() < 1e-5); // given by gmsh
+    }
+}
