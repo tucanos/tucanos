@@ -1,4 +1,37 @@
-//! Computation of the dual for `Mesh<2, 3, 2>`
+//! Computation of the 2D dual mesh for triangular primal meshes (`Mesh<2>` with
+//! `C = Triangle<T>`).
+//!
+//! The constructor [`DualMesh2d::new`] builds a polygonal dual control-volume
+//! around each primal vertex with the following algorithm:
+//!
+//! 1. Enumerate all primal edges and boundary vertices.
+//! 2. Create dual vertices from:
+//!    - primal boundary vertices,
+//!    - primal edge midpoints,
+//!    - one center per primal triangle (depends on [`DualType`]):
+//!      - `Median`: triangle centroid,
+//!      - `Barth` / `ThresholdBarth`: circumcenter when admissible, otherwise
+//!        fallback to an edge-centered location to keep robust cells.
+//! 3. Build dual internal faces by connecting each primal edge midpoint to the
+//!    center of each adjacent primal element.
+//! 4. Build dual boundary faces by connecting a boundary primal vertex to its
+//!    boundary-edge midpoint(s).
+//! 5. Accumulate oriented dual face incidences per primal vertex to define
+//!    polygonal dual elements (`elem_to_face`).
+//! 6. Compute edge-based flux normals by summing oriented contributions from the
+//!    dual segments attached to each primal edge.
+//! 7. Remove degenerate/empty dual faces and filter zero-length edge-normal
+//!    contributions.
+//!
+//! TODO (possible improvements):
+//! - Add focused tests for each `DualType` branch (`Median`, `Barth`,
+//!   `ThresholdBarth`) on pathological obtuse meshes.
+//! - Add a geometric validation pass for dual boundary orientation and normal
+//!   consistency.
+//! - Reduce temporary allocations in `new` (especially face incidence buffers)
+//!   to improve construction performance on large meshes.
+//! - Expose optional diagnostics (number of degenerate faces removed, fallback
+//!   center usage count) for debugging and quality monitoring.
 use super::{DualCellCenter, DualMesh, DualType, PolyMesh, PolyMeshType};
 use crate::{
     Tag, Vert2d,
@@ -7,7 +40,10 @@ use crate::{
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rustc_hash::FxHashMap;
 
-/// Dual of a Triangle mesh in 2d
+/// Dual of a 2D triangular primal mesh.
+///
+/// The dual mesh stores polygonal control volumes centered on primal vertices,
+/// plus edge-based normals commonly used by finite-volume discretizations.
 pub struct DualMesh2d<T: Idx> {
     verts: Vec<Vert2d>,
     faces: Vec<Edge<T>>,
@@ -20,6 +56,22 @@ pub struct DualMesh2d<T: Idx> {
     bdy_faces: Vec<(usize, Tag, Vert2d)>,
 }
 
+struct FaceBuildState2d<T: Idx> {
+    faces: Vec<Edge<T>>,
+    ftags: Vec<Tag>,
+    poly_to_face: Vec<(usize, bool)>,
+    edge_normals: Vec<Vert2d>,
+    bdy_faces: Vec<(usize, Tag, Vert2d)>,
+    n_empty_faces: usize,
+}
+
+struct VertexBuild2d {
+    verts: Vec<Vert2d>,
+    bdy_verts: FxHashMap<usize, usize>,
+    vert_idx_elem: Vec<usize>,
+    n_bdy_verts: usize,
+}
+
 impl<T: Idx> DualMesh2d<T> {
     fn get_tri_center(v: &GTriangle<2>, t: DualType) -> DualCellCenter<2, Triangle<T>> {
         match t {
@@ -29,8 +81,8 @@ impl<T: Idx> DualMesh2d<T> {
                     DualType::Barth => 0.0,
                     DualType::ThresholdBarth(l) => l,
                     DualType::Median => unreachable!(),
-                };
-                let f = f.max(1e-6);
+                }
+                .max(1e-6);
                 let bcoords = v.circumcenter_bcoords();
                 if bcoords.iter().all(|&x| x > f) {
                     DualCellCenter::Vertex(v.vert(&bcoords))
@@ -44,59 +96,14 @@ impl<T: Idx> DualMesh2d<T> {
             }
         }
     }
-}
 
-impl<T: Idx> PolyMesh<2> for DualMesh2d<T> {
-    fn poly_type(&self) -> PolyMeshType {
-        PolyMeshType::Polygons
-    }
-
-    fn n_verts(&self) -> usize {
-        self.verts.len()
-    }
-
-    fn vert(&self, i: usize) -> Vert2d {
-        self.verts[i]
-    }
-
-    fn n_elems(&self) -> usize {
-        self.elem_to_face_ptr.len() - 1
-    }
-
-    fn elem(&self, i: usize) -> impl ExactSizeIterator<Item = (usize, bool)> + Clone + Send {
-        let start = self.elem_to_face_ptr[i];
-        let end = self.elem_to_face_ptr[i + 1];
-        self.elem_to_face[start..end].iter().copied()
-    }
-
-    fn etag(&self, i: usize) -> Tag {
-        self.etags[i]
-    }
-
-    fn n_faces(&self) -> usize {
-        self.faces.len()
-    }
-
-    fn face(&self, i: usize) -> impl ExactSizeIterator<Item = usize> + Clone + Send {
-        self.faces[i].into_iter()
-    }
-
-    fn ftag(&self, i: usize) -> Tag {
-        self.ftags[i]
-    }
-}
-
-impl<T: Idx> DualMesh<2> for DualMesh2d<T> {
-    type C = Triangle<T>;
-    #[allow(clippy::too_many_lines)]
-    fn new(msh: &impl Mesh<2, C = Self::C>, t: DualType) -> Self {
-        // edges
-        let all_edges = msh.edges();
+    fn init_vertices(
+        msh: &impl Mesh<2, C = Triangle<T>>,
+        all_edges: &FxHashMap<Edge<T>, usize>,
+        t: DualType,
+    ) -> VertexBuild2d {
         let n_edges = all_edges.len();
-
         let n_elems = msh.n_elems();
-
-        // vertices: boundary
         let mut bdy_verts: FxHashMap<usize, usize> =
             msh.faces().flatten().map(|i| (i, 0)).collect();
         let n_bdy_verts = bdy_verts.len();
@@ -106,65 +113,79 @@ impl<T: Idx> DualMesh<2> for DualMesh2d<T> {
             *i_new = verts.len();
             verts.push(msh.vert(i_old));
         }
-        let vert_ids_bdy = |i: usize| *bdy_verts.get(&i).unwrap();
 
-        // vertices: edge centers
         verts.resize(verts.len() + n_edges, Vert2d::zeros());
-        let vert_idx_edge = |i: usize| i + n_bdy_verts;
-        for (&edge, &i_edge) in &all_edges {
+        for (&edge, &i_edge) in all_edges {
             let ge = GEdge::new(&msh.vert(edge.get(0)), &msh.vert(edge.get(1)));
-            verts[vert_idx_edge(i_edge)] = ge.center();
+            verts[n_bdy_verts + i_edge] = ge.center();
         }
 
-        // vertices: triangle centers
         let mut vert_idx_elem = vec![usize::MAX; n_elems];
         for (i_elem, e) in msh.elems().enumerate() {
             let ge = msh.gelem(&e);
-            let center = Self::get_tri_center(&ge, t);
-            match center {
+            match Self::get_tri_center(&ge, t) {
                 DualCellCenter::Vertex(center) => {
                     vert_idx_elem[i_elem] = verts.len();
                     verts.push(center);
                 }
                 DualCellCenter::Face(f) => {
                     let edge = Edge::new(e.get(f.get(0)), e.get(f.get(1))).sorted();
-                    let i_edge = *all_edges.get(&edge).unwrap();
-                    vert_idx_elem[i_elem] = vert_idx_edge(i_edge);
+                    vert_idx_elem[i_elem] = n_bdy_verts + all_edges[&edge];
                 }
             }
         }
 
-        // faces and elements
-        let n_poly_faces = 3 * msh.n_elems() + 2 * msh.n_faces();
-        let mut faces = Vec::with_capacity(n_poly_faces);
-        let mut ftags = Vec::with_capacity(n_poly_faces);
+        VertexBuild2d {
+            verts,
+            bdy_verts,
+            vert_idx_elem,
+            n_bdy_verts,
+        }
+    }
 
-        let mut poly_to_face_ptr = vec![0; msh.n_verts() + 1];
-
-        // internal faces
+    fn init_poly_to_face_ptr(msh: &impl Mesh<2, C = Triangle<T>>) -> Vec<usize> {
+        let mut ptr = vec![0; msh.n_verts() + 1];
         for e in msh.elems() {
             for edg in e.edges() {
-                poly_to_face_ptr[edg.get(0) + 1] += 1;
-                poly_to_face_ptr[edg.get(1) + 1] += 1;
+                ptr[edg.get(0) + 1] += 1;
+                ptr[edg.get(1) + 1] += 1;
             }
         }
-
-        // boundary faces
         for f in msh.faces() {
             for v in f {
-                poly_to_face_ptr[v + 1] += 1;
+                ptr[v + 1] += 1;
             }
         }
-
         for i in 0..msh.n_verts() {
-            poly_to_face_ptr[i + 1] += poly_to_face_ptr[i];
+            ptr[i + 1] += ptr[i];
         }
+        ptr
+    }
 
-        let mut poly_to_face = vec![(usize::MAX, true); poly_to_face_ptr[msh.n_verts()]];
-        let mut edge_normals = vec![Vert2d::zeros(); n_edges];
+    fn insert_face(
+        poly_to_face: &mut [(usize, bool)],
+        poly_to_face_ptr: &[usize],
+        i_vert: usize,
+        face_id: usize,
+        orient: bool,
+    ) {
+        let slice = &mut poly_to_face[poly_to_face_ptr[i_vert]..poly_to_face_ptr[i_vert + 1]];
+        for slot in slice {
+            if slot.0 == usize::MAX {
+                *slot = (face_id, orient);
+                return;
+            }
+        }
+        panic!("No free slot for dual face insertion");
+    }
 
-        let mut n_empty_faces = 0;
-        // build internal faces
+    fn build_internal_faces(
+        msh: &impl Mesh<2, C = Triangle<T>>,
+        all_edges: &FxHashMap<Edge<T>, usize>,
+        vb: &VertexBuild2d,
+        poly_to_face_ptr: &[usize],
+        state: &mut FaceBuildState2d<T>,
+    ) {
         for (i_elem, e) in msh.elems().enumerate() {
             for edg in e.edges() {
                 let (i_edge, sgn) = if edg.get(0) < edg.get(1) {
@@ -174,122 +195,117 @@ impl<T: Idx> DualMesh<2> for DualMesh2d<T> {
                     let tmp = Edge::new(edg.get(1), edg.get(0));
                     (*all_edges.get(&tmp).unwrap(), -1.0)
                 };
-                let face = Edge::new(vert_idx_edge(i_edge), vert_idx_elem[i_elem]);
+
+                let face = Edge::new(vb.n_bdy_verts + i_edge, vb.vert_idx_elem[i_elem]);
                 if face.get(0) == face.get(1) {
-                    n_empty_faces += 1;
-                } else {
-                    let gf = GEdge::new(&verts[face.get(0)], &verts[face.get(1)]);
-                    edge_normals[i_edge] += sgn * gf.normal(None);
-
-                    let i_new_face = faces.len();
-                    faces.push(face);
-                    ftags.push(0);
-
-                    let mut ok = false;
-                    let slice = &mut poly_to_face
-                        [poly_to_face_ptr[edg.get(0)]..poly_to_face_ptr[edg.get(0) + 1]];
-                    for j in slice {
-                        if j.0 == usize::MAX {
-                            *j = (i_new_face, true);
-                            ok = true;
-                            break;
-                        }
-                    }
-                    assert!(ok);
-
-                    let mut ok = false;
-                    let slice = &mut poly_to_face
-                        [poly_to_face_ptr[edg.get(1)]..poly_to_face_ptr[edg.get(1) + 1]];
-                    for j in slice {
-                        if j.0 == usize::MAX {
-                            *j = (i_new_face, false);
-                            ok = true;
-                            break;
-                        }
-                    }
-                    assert!(ok);
+                    state.n_empty_faces += 1;
+                    continue;
                 }
+
+                let gf = GEdge::new(&vb.verts[face.get(0)], &vb.verts[face.get(1)]);
+                state.edge_normals[i_edge] += sgn * gf.normal(None);
+
+                let i_new_face = state.faces.len();
+                state.faces.push(face);
+                state.ftags.push(0);
+                Self::insert_face(
+                    &mut state.poly_to_face,
+                    poly_to_face_ptr,
+                    edg.get(0),
+                    i_new_face,
+                    true,
+                );
+                Self::insert_face(
+                    &mut state.poly_to_face,
+                    poly_to_face_ptr,
+                    edg.get(1),
+                    i_new_face,
+                    false,
+                );
             }
         }
+    }
 
-        // build boundary faces
-        let mut bdy_faces = Vec::with_capacity(msh.n_faces() * 3);
-
+    fn build_boundary_faces(
+        msh: &impl Mesh<2, C = Triangle<T>>,
+        all_edges: &FxHashMap<Edge<T>, usize>,
+        vb: &VertexBuild2d,
+        poly_to_face_ptr: &[usize],
+        state: &mut FaceBuildState2d<T>,
+    ) {
         for (f, tag) in msh.faces().zip(msh.ftags()) {
-            let tmp = f.sorted();
-            let i_edge = *all_edges.get(&tmp).unwrap();
+            let i_edge = all_edges[&f.sorted()];
+            let v0 = vb.bdy_verts[&f.get(0)];
+            let v1 = vb.bdy_verts[&f.get(1)];
+            let em = vb.n_bdy_verts + i_edge;
 
-            let face = Edge::new(vert_ids_bdy(f.get(0)), vert_idx_edge(i_edge));
-            if face.get(0) == face.get(1) {
-                n_empty_faces += 1;
+            let f0 = Edge::new(v0, em);
+            if f0.get(0) == f0.get(1) {
+                state.n_empty_faces += 1;
             } else {
-                let gf = GEdge::new(&verts[face.get(0)], &verts[face.get(1)]);
-                bdy_faces.push((f.get(0), tag, gf.normal(None)));
+                let gf = GEdge::new(&vb.verts[f0.get(0)], &vb.verts[f0.get(1)]);
+                state.bdy_faces.push((f.get(0), tag, gf.normal(None)));
+                let id = state.faces.len();
+                state.faces.push(f0);
+                state.ftags.push(tag);
+                Self::insert_face(
+                    &mut state.poly_to_face,
+                    poly_to_face_ptr,
+                    f.get(0),
+                    id,
+                    true,
+                );
+            }
 
-                let i_new_face = faces.len();
-                faces.push(face);
-                ftags.push(tag);
-
-                let mut ok = false;
-                let slice =
-                    &mut poly_to_face[poly_to_face_ptr[f.get(0)]..poly_to_face_ptr[f.get(0) + 1]];
-                for j in slice {
-                    if j.0 == usize::MAX {
-                        *j = (i_new_face, true);
-                        ok = true;
-                        break;
-                    }
-                }
-                assert!(ok);
-
-                let face = Edge::new(vert_idx_edge(i_edge), vert_ids_bdy(f.get(1)));
-                let gf = GEdge::new(&verts[face.get(0)], &verts[face.get(1)]);
-                bdy_faces.push((f.get(0), tag, gf.normal(None)));
-
-                let i_new_face = faces.len();
-                faces.push(face);
-                ftags.push(tag);
-
-                let mut ok = false;
-                let slice =
-                    &mut poly_to_face[poly_to_face_ptr[f.get(1)]..poly_to_face_ptr[f.get(1) + 1]];
-                for j in slice {
-                    if j.0 == usize::MAX {
-                        *j = (i_new_face, true);
-                        ok = true;
-                        break;
-                    }
-                }
-                assert!(ok);
+            let f1 = Edge::new(em, v1);
+            if f1.get(0) == f1.get(1) {
+                state.n_empty_faces += 1;
+            } else {
+                let gf = GEdge::new(&vb.verts[f1.get(0)], &vb.verts[f1.get(1)]);
+                state.bdy_faces.push((f.get(0), tag, gf.normal(None)));
+                let id = state.faces.len();
+                state.faces.push(f1);
+                state.ftags.push(tag);
+                Self::insert_face(
+                    &mut state.poly_to_face,
+                    poly_to_face_ptr,
+                    f.get(1),
+                    id,
+                    true,
+                );
             }
         }
+    }
 
-        assert_eq!(faces.len(), n_poly_faces - n_empty_faces);
-        assert_eq!(ftags.len(), n_poly_faces - n_empty_faces);
-
-        // remove unused
-        let n = poly_to_face.iter().filter(|&i| i.0 != usize::MAX).count();
-
-        let mut new_poly_to_face_ptr = Vec::with_capacity(poly_to_face_ptr.len());
-        new_poly_to_face_ptr.push(0);
-        let mut new_poly_to_face = Vec::with_capacity(n);
-        for i_elem in 0..msh.n_verts() {
+    fn compact_poly_to_face(
+        poly_to_face_ptr: &[usize],
+        poly_to_face: &[(usize, bool)],
+        n_verts: usize,
+    ) -> (Vec<usize>, Vec<(usize, bool)>) {
+        let mut new_ptr = Vec::with_capacity(poly_to_face_ptr.len());
+        let mut new_map = Vec::new();
+        new_ptr.push(0);
+        for i in 0..n_verts {
             for v in poly_to_face
                 .iter()
-                .take(poly_to_face_ptr[i_elem + 1])
-                .skip(poly_to_face_ptr[i_elem])
+                .take(poly_to_face_ptr[i + 1])
+                .skip(poly_to_face_ptr[i])
             {
                 if v.0 != usize::MAX {
-                    new_poly_to_face.push(*v);
+                    new_map.push(*v);
                 }
             }
-            new_poly_to_face_ptr.push(new_poly_to_face.len());
+            new_ptr.push(new_map.len());
         }
+        (new_ptr, new_map)
+    }
 
-        assert!(!new_poly_to_face.iter().any(|&i| i.0 == usize::MAX));
-
-        let mut edges = vec![Edge::default(); n_edges];
-        for (&edg, &i_edg) in &all_edges {
+    fn collect_edges_and_normals(
+        all_edges: &FxHashMap<Edge<T>, usize>,
+        edge_normals: &[Vert2d],
+    ) -> (Vec<Edge<T>>, Vec<Vert2d>) {
+        let mut edges = vec![Edge::default(); all_edges.len()];
+        for (&edg, &i_edg) in all_edges {
             edges[i_edg] = edg;
         }
 
@@ -304,16 +320,91 @@ impl<T: Idx> DualMesh<2> for DualMesh2d<T> {
             .filter(|&&i| edge_normals[i].norm() > 1e-12)
             .map(|&i| edge_normals[i])
             .collect::<Vec<_>>();
+
+        (edges, edge_normals)
+    }
+}
+
+impl<T: Idx> PolyMesh<2> for DualMesh2d<T> {
+    fn poly_type(&self) -> PolyMeshType {
+        PolyMeshType::Polygons
+    }
+
+    fn n_verts(&self) -> usize {
+        self.verts.len()
+    }
+
+    fn n_elems(&self) -> usize {
+        self.elem_to_face_ptr.len() - 1
+    }
+
+    fn n_faces(&self) -> usize {
+        self.faces.len()
+    }
+
+    fn vert(&self, i: usize) -> Vert2d {
+        self.verts[i]
+    }
+
+    fn etag(&self, i: usize) -> Tag {
+        self.etags[i]
+    }
+
+    fn ftag(&self, i: usize) -> Tag {
+        self.ftags[i]
+    }
+
+    fn elem(&self, i: usize) -> impl ExactSizeIterator<Item = (usize, bool)> + Clone {
+        self.elem_to_face[self.elem_to_face_ptr[i]..self.elem_to_face_ptr[i + 1]]
+            .iter()
+            .copied()
+    }
+
+    fn face(&self, i: usize) -> impl ExactSizeIterator<Item = usize> + Clone + Send {
+        self.faces[i].into_iter()
+    }
+}
+
+impl<T: Idx> DualMesh<2> for DualMesh2d<T> {
+    type C = Triangle<T>;
+
+    fn new(msh: &impl Mesh<2, C = Self::C>, t: DualType) -> Self {
+        let all_edges = msh.edges();
+        let n_poly_faces = 3 * msh.n_elems() + 2 * msh.n_faces();
+        let vb = Self::init_vertices(msh, &all_edges, t);
+        let poly_to_face_ptr = Self::init_poly_to_face_ptr(msh);
+
+        let mut state = FaceBuildState2d {
+            faces: Vec::with_capacity(n_poly_faces),
+            ftags: Vec::with_capacity(n_poly_faces),
+            poly_to_face: vec![(usize::MAX, true); poly_to_face_ptr[msh.n_verts()]],
+            edge_normals: vec![Vert2d::zeros(); all_edges.len()],
+            bdy_faces: Vec::with_capacity(msh.n_faces() * 3),
+            n_empty_faces: 0,
+        };
+
+        Self::build_internal_faces(msh, &all_edges, &vb, &poly_to_face_ptr, &mut state);
+        Self::build_boundary_faces(msh, &all_edges, &vb, &poly_to_face_ptr, &mut state);
+
+        assert_eq!(state.faces.len(), n_poly_faces - state.n_empty_faces);
+        assert_eq!(state.ftags.len(), n_poly_faces - state.n_empty_faces);
+
+        let (elem_to_face_ptr, elem_to_face) =
+            Self::compact_poly_to_face(&poly_to_face_ptr, &state.poly_to_face, msh.n_verts());
+        assert!(!elem_to_face.iter().any(|x| x.0 == usize::MAX));
+        let (edges, edge_normals) =
+            Self::collect_edges_and_normals(&all_edges, &state.edge_normals);
+
         Self {
-            verts,
-            faces,
-            ftags,
-            elem_to_face_ptr: new_poly_to_face_ptr,
-            elem_to_face: new_poly_to_face,
+            verts: vb.verts,
+            faces: state.faces,
+            ftags: state.ftags,
+            elem_to_face_ptr,
+            elem_to_face,
             etags: vec![1; msh.n_verts()],
             edges,
             edge_normals,
-            bdy_faces,
+            bdy_faces: state.bdy_faces,
         }
     }
 
@@ -332,9 +423,11 @@ impl<T: Idx> DualMesh<2> for DualMesh2d<T> {
     fn n_boundary_faces(&self) -> usize {
         self.bdy_faces.len()
     }
+
     fn par_boundary_faces(&self) -> impl IndexedParallelIterator<Item = (usize, Tag, Vert2d)> + '_ {
         self.bdy_faces.par_iter().copied()
     }
+
     fn boundary_faces(&self) -> impl ExactSizeIterator<Item = (usize, Tag, Vert2d)> + '_ {
         self.bdy_faces.iter().copied()
     }
