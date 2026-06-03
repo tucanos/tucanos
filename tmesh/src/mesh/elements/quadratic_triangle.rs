@@ -788,6 +788,40 @@ mod tests {
         }
     }
 
+    // Reference files used by this test:
+    //
+    // /tmp/curved_tri_t6.msh
+    // $MeshFormat
+    // 2.2 0 8
+    // $EndMeshFormat
+    // $Nodes
+    // 6
+    // 1 0.0 0.0 0.0
+    // 2 2.0 0.0 0.0
+    // 3 1.0 1.0 0.0
+    // 4 1.8 0.4 0.0
+    // 5 2.1 0.41 0.0
+    // 6 0.25 0.5 0.0
+    // $EndNodes
+    // $Elements
+    // 1
+    // 1 9 2 1 1 1 2 3 4 5 6
+    // $EndElements
+    //
+    // /tmp/curved_tri_analyse.geo
+    // Merge "/tmp/curved_tri_t6.msh";
+    // Plugin(AnalyseMeshQuality).Run;
+    //
+    // Commands:
+    // - Run this bounds test only:
+    //   cargo test -p tmesh test_bounds -- --nocapture
+    // - Run gmsh directly on the .geo file:
+    //   cd tmesh && pixi run gmsh /tmp/curved_tri_analyse.geo -parse_and_exit -v 5
+    //
+    // Checked reference values:
+    // - gmsh reports minJ = -0.224 and minJ/maxJ = -0.0366, hence maxJ ≈ 6.12
+    // - our Bezier hull lower bound is slightly more conservative on min (-0.247)
+    //   the present algorithm stops as soon as an invalid element is found, while gmsh continues refining
     #[test]
     fn test_bounds() {
         let p0 = Vert2d::new(0., 0.);
@@ -802,9 +836,32 @@ mod tests {
         let lu = AdativeBoundsQuadraticTriangle::lagrange_to_bezier();
         let mut adb = AdativeBoundsQuadraticTriangle::new(&tri, &lu);
 
-        let (is_invalid, (min, max)) = adb.compute_bounds(Some(1e-3));
+        let (is_invalid, (min, max)) = adb.compute_bounds(Some(1e-6));
         assert!(is_invalid);
         assert_delta!(min, -0.247, 1e-3);
         assert_delta!(max, 6.12, 1e-3);
+    }
+
+    #[test]
+    fn test_bounds_valid() {
+        let p0 = Vert2d::new(0., 0.);
+        let p1 = Vert2d::new(2., 0.);
+        let p2 = Vert2d::new(1., 1.);
+        let p3 = Vert2d::new(1.12, 0.08);
+        let p4 = Vert2d::new(1.58, 0.58);
+        let p5 = Vert2d::new(0.42, 0.46);
+
+        let tri = QuadraticGTriangle::new(&p0, &p1, &p2, &p3, &p4, &p5, HOType::Lagrange);
+
+        let lu = AdativeBoundsQuadraticTriangle::lagrange_to_bezier();
+        let mut adb = AdativeBoundsQuadraticTriangle::new(&tri, &lu);
+
+        let (is_invalid, (min, max)) = adb.compute_bounds(Some(1e-6));
+        assert!(!is_invalid);
+
+        // gmsh (AnalyseMeshQuality) reference for this valid curved T6 element:
+        // minJ = 1.79, minJ/maxJ = 0.736 -> maxJ ≈ 2.43
+        assert_delta!(min, 1.79, 1e-2);
+        assert_delta!(max, 2.43, 1e-2);
     }
 }
