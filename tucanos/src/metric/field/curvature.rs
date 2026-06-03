@@ -180,8 +180,86 @@ mod tests {
         mesh::{BoundaryMesh3d, Mesh},
     };
 
+    fn classify_boundary_vertices(bdy: &BoundaryMesh3d, tag_in: i16, tag_out: i16) -> Vec<u8> {
+        let mut bdy_flg = vec![0; bdy.n_verts()];
+        bdy.elems().zip(bdy.etags()).for_each(|(f, t)| {
+            if t == tag_in {
+                f.into_iter().for_each(|i| bdy_flg[i] = 1);
+            }
+            if t == tag_out {
+                f.into_iter().for_each(|i| bdy_flg[i] = 2);
+            }
+        });
+        bdy.elems().zip(bdy.etags()).for_each(|(f, t)| {
+            if t != tag_in && t != tag_out {
+                f.into_iter().for_each(|i| bdy_flg[i] = 0);
+            }
+        });
+        bdy_flg
+    }
+
+    fn assert_default_curvature_sizes(
+        m_curv: &[AnisoMetric3d],
+        bdy_ids: &[usize],
+        bdy_flg: &[u8],
+        r_in: f64,
+        r_out: f64,
+    ) {
+        for (i_bdy_vert, &i_vert) in bdy_ids.iter().enumerate() {
+            if bdy_flg[i_bdy_vert] == 1 {
+                let m = m_curv[i_vert];
+                let s = m.sizes();
+                assert_delta!(s[0], r_in / 4.0, r_in * 0.1);
+                assert_delta!(s[1], r_in / 4.0, r_in * 0.1);
+                assert!(s[2] > 1000.0);
+            }
+            if bdy_flg[i_bdy_vert] == 2 {
+                let m = m_curv[i_vert];
+                let s = m.sizes();
+                assert_delta!(s[0], r_out / 4.0, r_out * 0.1);
+                assert_delta!(s[1], r_out / 4.0, r_out * 0.1);
+                assert!(s[2] > 1000.0);
+            }
+        }
+    }
+
+    fn build_prescribed_normal_sizes(bdy: &BoundaryMesh3d, tag_in: i16, h_0: f64) -> Vec<f64> {
+        let mut h_n = vec![-1.0; bdy.n_verts()];
+        bdy.elems().zip(bdy.etags()).for_each(|(f, t)| {
+            if t == tag_in {
+                f.into_iter().for_each(|i| h_n[i] = h_0);
+            }
+        });
+        h_n
+    }
+
+    fn assert_prescribed_normal_sizes(
+        m: &[AnisoMetric3d],
+        bdy_ids: &[usize],
+        bdy_flg: &[u8],
+        r_in: f64,
+        r_out: f64,
+        h_0: f64,
+    ) {
+        for (i_bdy_vert, &i_vert) in bdy_ids.iter().enumerate() {
+            if bdy_flg[i_bdy_vert] == 1 {
+                let m = m[i_vert];
+                let s = m.sizes();
+                assert!(f64::abs(s[0] - h_0) < 1e-8);
+                assert!(f64::abs(s[1] - r_in / 4.0) < r_in * 0.1);
+                assert!(s[2] > f64::min(1000., 0.99 * h_0 * ANISO_MAX)); // bounded by ANISO_MAX
+            }
+            if bdy_flg[i_bdy_vert] == 2 {
+                let m = m[i_vert];
+                let s = m.sizes();
+                assert!(f64::abs(s[0] - r_out / 4.0) < r_out * 0.1);
+                assert!(f64::abs(s[1] - r_out / 4.0) < r_out * 0.1);
+                assert!(s[2] > 1000.0);
+            }
+        }
+    }
+
     #[test]
-    #[allow(clippy::too_many_lines)]
     fn test_curvature() -> Result<()> {
         // build a cylinder mesh
         let (r_in, r_out) = (0.1, 0.5);
@@ -200,22 +278,8 @@ mod tests {
         let (mut bdy, bdy_ids) = mesh.boundary::<BoundaryMesh3d>();
         bdy.fix().unwrap();
 
-        // tag vertices on the interior & exterior cylinders
-        let mut bdy_flg = vec![0; bdy.n_verts()];
         let (tag_in, tag_out) = (6, 5);
-        bdy.elems().zip(bdy.etags()).for_each(|(f, t)| {
-            if t == tag_in {
-                f.into_iter().for_each(|i| bdy_flg[i] = 1);
-            }
-            if t == tag_out {
-                f.into_iter().for_each(|i| bdy_flg[i] = 2);
-            }
-        });
-        bdy.elems().zip(bdy.etags()).for_each(|(f, t)| {
-            if t != tag_in && t != tag_out {
-                f.into_iter().for_each(|i| bdy_flg[i] = 0);
-            }
-        });
+        let bdy_flg = classify_boundary_vertices(&bdy, tag_in, tag_out);
 
         let mut geom = MeshedGeometry::new(&bdy)?;
         let topo = MeshTopology::new(&mesh);
@@ -228,31 +292,11 @@ mod tests {
         )?;
         let m_curv = m_curv.metric();
 
-        for (i_bdy_vert, &i_vert) in bdy_ids.iter().enumerate() {
-            if bdy_flg[i_bdy_vert] == 1 {
-                let m = m_curv[i_vert];
-                let s = m.sizes();
-                assert_delta!(s[0], r_in / 4.0, r_in * 0.1);
-                assert_delta!(s[1], r_in / 4.0, r_in * 0.1);
-                assert!(s[2] > 1000.0);
-            }
-            if bdy_flg[i_bdy_vert] == 2 {
-                let m = m_curv[i_vert];
-                let s = m.sizes();
-                assert_delta!(s[0], r_out / 4.0, r_out * 0.1);
-                assert_delta!(s[1], r_out / 4.0, r_out * 0.1);
-                assert!(s[2] > 1000.0);
-            }
-        }
+        assert_default_curvature_sizes(m_curv, &bdy_ids, &bdy_flg, r_in, r_out);
 
         // curvature metric (prescribed normal size on the inner cylinder)
         let h_0 = 1e-3;
-        let mut h_n = vec![-1.0; bdy.n_verts()];
-        bdy.elems().zip(bdy.etags()).for_each(|(f, t)| {
-            if t == tag_in {
-                f.into_iter().for_each(|i| h_n[i] = h_0);
-            }
-        });
+        let h_n = build_prescribed_normal_sizes(&bdy, tag_in, h_0);
 
         let v2v = mesh.vertex_to_vertices();
         let m_curv = MetricField::curvature_metric_3d(
@@ -268,22 +312,7 @@ mod tests {
             Some(&[tag_in]),
         )?;
         let m = m_curv.metric();
-        for (i_bdy_vert, &i_vert) in bdy_ids.iter().enumerate() {
-            if bdy_flg[i_bdy_vert] == 1 {
-                let m = m[i_vert];
-                let s = m.sizes();
-                assert!(f64::abs(s[0] - h_0) < 1e-8);
-                assert!(f64::abs(s[1] - r_in / 4.0) < r_in * 0.1);
-                assert!(s[2] > f64::min(1000., 0.99 * h_0 * ANISO_MAX)); // bounded by ANISO_MAX
-            }
-            if bdy_flg[i_bdy_vert] == 2 {
-                let m = m[i_vert];
-                let s = m.sizes();
-                assert!(f64::abs(s[0] - r_out / 4.0) < r_out * 0.1);
-                assert!(f64::abs(s[1] - r_out / 4.0) < r_out * 0.1);
-                assert!(s[2] > 1000.0);
-            }
-        }
+        assert_prescribed_normal_sizes(m, &bdy_ids, &bdy_flg, r_in, r_out, h_0);
 
         // test metric
         let mfunc = |_p| {
