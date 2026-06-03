@@ -34,7 +34,7 @@ pub enum DualCellCenter<const D: usize, C: Simplex> {
     Face(C::FACE),
 }
 
-/// Dual of a `Mesh<D, C, F>`
+/// Dual of a `Mesh<D>`
 pub trait DualMesh<const D: usize>: PolyMesh<D> {
     type C: Simplex;
 
@@ -284,7 +284,8 @@ pub trait DualMesh<const D: usize>: PolyMesh<D> {
         Ok(())
     }
 
-    /// Return a `Mesh<D, C2, F2>` containing the faces such that `filter(tag)` is true.
+    /// Return a `Mesh<D>` (with element type `C::FACE`) containing the faces
+    /// such that `filter(tag)` is true.
     fn extract_faces<M: Mesh<D, C = <Self::C as Simplex>::FACE>, G: Fn(Tag) -> bool>(
         &self,
         filter: G,
@@ -342,7 +343,8 @@ pub trait DualMesh<const D: usize>: PolyMesh<D> {
         (res, vert_ids)
     }
 
-    /// Return a `Mesh<D, C2, F2>` containing all the boundary faces.
+    /// Return a `Mesh<D>` (with element type `C::FACE`) containing all the
+    /// boundary faces.
     fn boundary<M: Mesh<D, C = <Self::C as Simplex>::FACE>>(&self) -> (M, Vec<usize>) {
         self.extract_faces(|t| t > 0)
     }
