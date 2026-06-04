@@ -10,7 +10,7 @@ use pyo3::{
 };
 use tmesh::{
     Tag, Vertex,
-    dual::{PolyMesh, PolyMeshType, SimplePolyMesh},
+    dual::{PolyFaceType, PolyMesh, PolyMeshType, SimplePolyMesh},
 };
 
 /// Type of poly cells (mapping of `tmesh::PolyMeshType`)
@@ -77,6 +77,7 @@ macro_rules! create_poly_mesh {
 
                 Ok(Self(SimplePolyMesh::<$dim>::new(
                     poly_type,
+                    PolyFaceType::General,
                     coords,
                     face_to_node_ptr.to_vec().unwrap(),
                     face_to_node.to_vec().unwrap(),
