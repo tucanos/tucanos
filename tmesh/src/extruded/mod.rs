@@ -1,7 +1,7 @@
 //! Extrude 2d triangle meshes to 3d as 1 layer of prisms
 use crate::{
     Tag, Vert2d, Vert3d,
-    dual::{DualMesh2d, PolyMesh, PolyMeshType, SimplePolyMesh, merge_polylines},
+    dual::{DualMesh2d, PolyFaceType, PolyMesh, PolyMeshType, SimplePolyMesh, merge_polylines},
     io::VTUFile,
     mesh::{Edge, GenericMesh, Idx, Mesh, Prism, Quadrangle, Simplex, Triangle},
 };
@@ -213,7 +213,7 @@ impl<T: Idx> DualMesh2d<T> {
     /// Extrude the mesh by a distance `h` along direction `z`
     #[must_use]
     pub fn extrude(&self, h: f64) -> SimplePolyMesh<3> {
-        let mut res = SimplePolyMesh::<3>::empty(PolyMeshType::Polyhedra);
+        let mut res = SimplePolyMesh::<3>::empty(PolyMeshType::Polyhedra, PolyFaceType::General);
 
         let n = self.n_verts();
         for v in self.verts() {

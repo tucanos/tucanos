@@ -36,6 +36,7 @@
 use super::{DualCellCenter, DualMesh, DualType, PolyMesh, PolyMeshType};
 use crate::{
     Tag, Vert3d,
+    dual::poly_mesh::PolyFaceType,
     mesh::{
         Edge, FaceConnectivity, GEdge, GSimplex, GTetrahedron, GTriangle, Idx, Mesh, Simplex,
         Tetrahedron, Triangle, sort_elem_min_ids,
@@ -475,6 +476,16 @@ impl<T: Idx> DualMesh3d<T> {
             .collect::<Vec<_>>();
         (edges, edge_normals)
     }
+
+    #[must_use]
+    pub fn vols(&self) -> impl ExactSizeIterator<Item = f64> + '_ {
+        <Self as PolyMesh<3>>::vols_c::<Triangle<T>>(self)
+    }
+
+    #[must_use]
+    pub fn par_vols(&self) -> impl IndexedParallelIterator<Item = f64> + '_ {
+        <Self as PolyMesh<3>>::par_vols_c::<Triangle<T>>(self)
+    }
 }
 
 impl<T: Idx> PolyMesh<3> for DualMesh3d<T> {
@@ -514,6 +525,27 @@ impl<T: Idx> PolyMesh<3> for DualMesh3d<T> {
 
     fn ftag(&self, i: usize) -> Tag {
         self.ftags[i]
+    }
+
+    fn face_type(&self) -> PolyFaceType {
+        PolyFaceType::Simplices
+    }
+
+    fn elem_gfaces_c<C: Simplex>(
+        &self,
+        i: usize,
+    ) -> Option<impl ExactSizeIterator<Item = C::GEOM<3>> + '_> {
+        if C::DIM != 2 {
+            return None;
+        }
+        let gfaces = self.elem(i).map(|(i, orient)| {
+            let mut f = C::from_iter(self.face(i));
+            if !orient {
+                f.invert();
+            }
+            C::GEOM::from_iter(f.into_iter().map(|i| self.vert(i)))
+        });
+        Some(gfaces)
     }
 }
 
@@ -604,8 +636,9 @@ impl<T: Idx> DualMesh<3> for DualMesh3d<T> {
 #[cfg(test)]
 mod tests {
     use crate::{
+        Vert3d, assert_delta,
         dual::{DualMesh, DualMesh3d, DualType, PolyMesh},
-        mesh::{Mesh, Mesh3d, box_mesh},
+        mesh::{Hexahedron, Mesh, Mesh3d, Triangle, box_mesh},
     };
     use rayon::iter::ParallelIterator;
 
@@ -631,7 +664,7 @@ mod tests {
         let msh = box_mesh::<Mesh3d>(1.0, 2, 2.0, 2, 1.0, 2);
         msh.write_vtk("mesh3d.vtu").unwrap();
 
-        let dual = DualMesh3d::new(&msh, DualType::Barth);
+        let dual = DualMesh3d::new(&msh, DualType::Median);
         dual.check().unwrap();
 
         assert!((dual.par_vols().sum::<f64>() - 2.0) < 1e-10);
@@ -643,5 +676,53 @@ mod tests {
 
         // let poly = SimplePolyMesh::<3>::simplify(&dual, true);
         // poly.write_vtk("barth3d_simplified.vtu").unwrap();
+    }
+
+    #[test]
+    fn test_split_elements_l_shape_3d() {
+        let mut msh = Mesh3d::empty();
+
+        // L-shape extruded on z in [0, 1] with no top-right block.
+        // Coordinates are in {0,1,4} x {0,1,4} x {0,1} minus vertices at x=4,y=4.
+        let verts = [
+            Vert3d::new(0.0, 0.0, 0.0),
+            Vert3d::new(1.0, 0.0, 0.0),
+            Vert3d::new(4.0, 0.0, 0.0),
+            Vert3d::new(0.0, 1.0, 0.0),
+            Vert3d::new(1.0, 1.0, 0.0),
+            Vert3d::new(4.0, 1.0, 0.0),
+            Vert3d::new(0.0, 4.0, 0.0),
+            Vert3d::new(1.0, 4.0, 0.0),
+            Vert3d::new(0.0, 0.0, 1.0),
+            Vert3d::new(1.0, 0.0, 1.0),
+            Vert3d::new(4.0, 0.0, 1.0),
+            Vert3d::new(0.0, 1.0, 1.0),
+            Vert3d::new(1.0, 1.0, 1.0),
+            Vert3d::new(4.0, 1.0, 1.0),
+            Vert3d::new(0.0, 4.0, 1.0),
+            Vert3d::new(1.0, 4.0, 1.0),
+        ];
+        msh.add_verts(verts.into_iter());
+
+        let hexas = [
+            // lower-left block: x in [0,1], y in [0,1]
+            Hexahedron::new([0, 1, 4, 3, 8, 9, 12, 11]),
+            // lower-right block: x in [1,4], y in [0,1]
+            Hexahedron::new([1, 2, 5, 4, 9, 10, 13, 12]),
+            // upper-left block: x in [0,1], y in [1,4]
+            Hexahedron::new([3, 4, 7, 6, 11, 12, 15, 14]),
+        ];
+        msh.add_hexahedra(hexas.iter().copied(), (0..hexas.len()).map(|_| 1));
+        msh.fix().unwrap();
+
+        assert_delta!(msh.vol(), 7.0, 1e-10);
+
+        let dual = DualMesh3d::new(&msh, DualType::Median);
+        dual.check().unwrap();
+
+        let split = dual.split_elements(&msh);
+        split.check().unwrap();
+
+        assert_delta!(split.vols_c::<Triangle<usize>>().sum::<f64>(), 7.0, 1e-10);
     }
 }

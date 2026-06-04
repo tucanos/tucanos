@@ -8,11 +8,12 @@
 //! are built
 use super::PolyMesh;
 use crate::{
-    Error, Result, Tag, Vertex,
+    Tag, Vertex,
+    dual::{PolyMeshType, SimplePolyMesh, poly_mesh::PolyFaceType},
     mesh::{Edge, GSimplex, Mesh, Simplex},
 };
 use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
-use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
+use rustc_hash::{FxBuildHasher, FxHashMap};
 
 /// Types of dual cells
 #[derive(Clone, Copy, Debug)]
@@ -65,7 +66,7 @@ pub trait DualMesh<const D: usize>: PolyMesh<D> {
                     n.norm()
                 );
             });
-        println!("  vol: {:.2e}", self.vol(i));
+        println!("  vol: {:.2e}", self.vol_c::<<Self::C as Simplex>::FACE>(i));
     }
 
     /// Get the vertex coordinates for face `f`
@@ -147,143 +148,6 @@ pub trait DualMesh<const D: usize>: PolyMesh<D> {
     /// Sequential iterator over the boundary faces
     fn boundary_faces(&self) -> impl ExactSizeIterator<Item = (usize, Tag, Vertex<D>)> + '_;
 
-    /// Get the volume of the `i`th cell
-    fn vol(&self, i: usize) -> f64 {
-        self.elem(i)
-            .map(|(i, orient)| {
-                let mut f = <Self::C as Simplex>::FACE::from_iter(self.face(i));
-                if !orient {
-                    f.invert();
-                }
-                self.gface(&f)
-            })
-            .map(|gf| gf.center().dot(&gf.normal(None)))
-            .sum::<f64>()
-            / D as f64
-    }
-
-    /// Parallel iterator over cell volumes
-    fn par_vols(&self) -> impl IndexedParallelIterator<Item = f64> + '_ {
-        (0..self.n_elems()).into_par_iter().map(|i| self.vol(i))
-    }
-
-    /// Sequential iterator over cell volumes
-    fn vols(&self) -> impl ExactSizeIterator<Item = f64> + '_ {
-        (0..self.n_elems()).map(|i| self.vol(i))
-    }
-
-    /// Check if polygonal cell `e` is closed
-    fn is_closed(&self, e: impl ExactSizeIterator<Item = (usize, bool)>) -> bool {
-        let mut res = [0.0; D];
-
-        e.map(|(i, orient)| {
-            let mut f = <Self::C as Simplex>::FACE::from_iter(self.face(i));
-            if !orient {
-                f.invert();
-            }
-            self.gface(&f)
-        })
-        .for_each(|gf| {
-            let n = gf.normal(None);
-            res.iter_mut().zip(n.iter()).for_each(|(x, y)| *x += y);
-        });
-        res.iter().map(|x| x.abs()).sum::<f64>() < 1e-10
-    }
-
-    /// Check the validity of the dual mesh
-    ///  - consistent number of faces and faces tags
-    ///  - consistent face to vertex connectivity
-    ///  - consistent element to face connectivity
-    ///  - closed elements
-    ///  - unique faces
-    fn check(&self) -> Result<()> {
-        // lengths
-        if self.par_faces().len() != self.par_ftags().len() {
-            return Err(Error::from("Inconsistent sizes (faces)"));
-        }
-
-        // indices
-        if self.par_faces().any(|mut f| f.any(|i| i >= self.n_verts())) {
-            return Err(Error::from("Inconsistent indices (faces)"));
-        }
-
-        // faces
-        if self
-            .par_elems()
-            .any(|mut e| e.any(|x| x.0 >= self.n_faces()))
-        {
-            return Err(Error::from("Inconsistent indices (elems)"));
-        }
-
-        // closed elements
-        for (i, (e, v)) in self.elems().zip(self.vols()).enumerate() {
-            if v < 0.0 {
-                let e = e.collect::<Vec<_>>();
-                return Err(Error::from(&format!(
-                    "Element {i} invalid: vol={v} < 0  ({e:?})"
-                )));
-            }
-            if !self.is_closed(e.clone()) {
-                let e = e.collect::<Vec<_>>();
-                return Err(Error::from(&format!("Element {i} not closed ({e:?})")));
-            }
-        }
-
-        // all faces appear only once
-        let mut faces = FxHashMap::with_hasher(FxBuildHasher);
-        for (i, f) in self.faces().enumerate() {
-            assert_eq!(f.len(), <Self::C as Simplex>::FACE::N_VERTS);
-            let res = <Self::C as Simplex>::FACE::from_iter(f.clone()).sorted();
-            if let std::collections::hash_map::Entry::Vacant(e) = faces.entry(res) {
-                e.insert(i);
-            } else {
-                let j = *faces.get(&res).unwrap();
-                let f = f.collect::<Vec<_>>();
-                let f_j = self.face(j).collect::<Vec<_>>();
-                return Err(Error::from(&format!(
-                    "Face {i} ({f:?}) = face {j} ({f_j:?})"
-                )));
-            }
-        }
-
-        // faces appear at most once in 1 or 2 elements
-        let mut flg = vec![0; self.n_faces()];
-        for (i_elem, e) in self.elems().enumerate() {
-            let mut tmp = FxHashSet::with_capacity_and_hasher(e.len(), FxBuildHasher);
-            for (i, sgn) in e {
-                if tmp.contains(&i) {
-                    return Err(Error::from(&format!(
-                        "Face {i} appears multiple times in element {i_elem}"
-                    )));
-                }
-                tmp.insert(i);
-                if flg[i] == 0 {
-                    if sgn {
-                        flg[i] = 1;
-                    } else {
-                        flg[i] = -1;
-                    }
-                } else if flg[i] == 1 {
-                    if sgn {
-                        return Err(Error::from(&format!("Face {i} appears twice with True")));
-                    }
-                    flg[i] = 2;
-                } else if flg[i] == -1 {
-                    if !sgn {
-                        return Err(Error::from(&format!("Face {i} appears twice with False")));
-                    }
-                    flg[i] = 2;
-                } else if flg[i] == 2 {
-                    return Err(Error::from(&format!("Face {i} appears 3 times")));
-                } else {
-                    unreachable!()
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     /// Return a `Mesh<D>` (with element type `C::FACE`) containing the faces
     /// such that `filter(tag)` is true.
     fn extract_faces<M: Mesh<D, C = <Self::C as Simplex>::FACE>, G: Fn(Tag) -> bool>(
@@ -347,5 +211,221 @@ pub trait DualMesh<const D: usize>: PolyMesh<D> {
     /// boundary faces.
     fn boundary<M: Mesh<D, C = <Self::C as Simplex>::FACE>>(&self) -> (M, Vec<usize>) {
         self.extract_faces(|t| t > 0)
+    }
+
+    /// Return the id of a split face and its orientation.
+    ///
+    /// Algorithm:
+    /// 1. Build a canonical key by sorting the node ids (topology-only identity).
+    /// 2. Reuse an existing face if the key is already in `new_faces`.
+    /// 3. Compute orientation as `key.is_same(face)`.
+    /// 4. If needed, create the sorted face `key` in `res`, cache its id, and return `(id, orient)`.
+    ///
+    /// This deduplicates faces shared by neighboring cones during element splitting.
+    #[must_use]
+    fn get_or_insert_split_face(
+        res: &mut SimplePolyMesh<D>,
+        new_faces: &mut FxHashMap<<Self::C as Simplex>::FACE, (usize, bool)>,
+        face: &<Self::C as Simplex>::FACE,
+    ) -> (usize, bool) {
+        let key = face.sorted();
+        let orient_wrt_key = key.is_same(face);
+        if let Some(&(idx, stored_orient_wrt_key)) = new_faces.get(&key) {
+            (idx, orient_wrt_key == stored_orient_wrt_key)
+        } else {
+            let idx = if D == 2 {
+                let nodes = [key.get(0), key.get(1)];
+                res.insert_face(&nodes, 0)
+            } else {
+                let nodes = [key.get(0), key.get(1), key.get(2)];
+                res.insert_face(&nodes, 0)
+            };
+            new_faces.insert(key, (idx, true));
+            (idx, orient_wrt_key)
+        }
+    }
+
+    /// Split one parent edge-face of a 2D dual element into a cone triangle.
+    ///
+    /// Algorithm:
+    /// 1. Orient the base edge according to `orient_parent`.
+    /// 2. Skip if the cone is topologically invalid or geometrically flat.
+    /// 3. Build one triangle from:
+    ///    - original base face `(i_face, orient_parent)`
+    ///    - two side edges `(v -> apex)` and `(apex -> u)`.
+    /// 4. Deduplicate side edges across the current split element and compute
+    ///    orientation flags from topology only.
+    fn add_simplex_from_face_and_vert_2d(
+        &self,
+        res: &mut SimplePolyMesh<D>,
+        new_faces: &mut FxHashMap<<Self::C as Simplex>::FACE, (usize, bool)>,
+        mut face: <Self::C as Simplex>::FACE,
+        parent_face: (usize, bool),
+        i_vert: usize,
+        etag: Tag,
+    ) {
+        if face.contains(i_vert) {
+            return;
+        }
+
+        let (i_face, orient_parent) = parent_face;
+
+        // Base edge oriented as seen by the parent element.
+        if !orient_parent {
+            face.invert();
+        }
+
+        let mut elem_faces = [(0, false); 3];
+        elem_faces[0] = (i_face, orient_parent);
+
+        // Triangle edges in local order: (u->v), (v->i_vert), (i_vert->u)
+        for (k, node_face) in face.faces().enumerate() {
+            let mut nodes = <Self::C as Simplex>::FACE::from_vert_and_face(i_vert, &node_face);
+            if k == 0 {
+                // Keep the same local orientation as the previous explicit construction.
+                nodes.invert();
+            }
+            let (i_new_face, orient) = Self::get_or_insert_split_face(res, new_faces, &nodes);
+            elem_faces[k + 1] = (i_new_face, orient);
+        }
+
+        res.insert_elem(elem_faces, etag);
+    }
+
+    /// Split one parent triangle-face of a 3D dual element into a cone tetrahedron.
+    ///
+    /// Algorithm:
+    /// 1. Orient the base triangle according to `orient_parent`.
+    /// 2. Skip if the cone is topologically invalid or geometrically flat.
+    /// 3. Build one tetrahedron from:
+    ///    - original base face `(i_face, orient_parent)`
+    ///    - three side triangles `(apex, v, u)`, `(apex, w, v)`, `(apex, u, w)`.
+    /// 4. Deduplicate side triangles across the current split element and compute
+    ///    orientation flags from topology only.
+    fn add_simplex_from_face_and_vert_3d(
+        &self,
+        res: &mut SimplePolyMesh<D>,
+        new_faces: &mut FxHashMap<<Self::C as Simplex>::FACE, (usize, bool)>,
+        mut face: <Self::C as Simplex>::FACE,
+        parent_face: (usize, bool),
+        i_vert: usize,
+        etag: Tag,
+    ) {
+        if face.contains(i_vert) {
+            return;
+        }
+
+        let (i_face, orient_parent) = parent_face;
+
+        // Base triangle oriented as seen by the parent element.
+        if !orient_parent {
+            face.invert();
+        }
+
+        let mut elem_faces = [(0, false); 4];
+        elem_faces[0] = (i_face, orient_parent);
+
+        for (k, mut edge_face) in face.faces().enumerate() {
+            edge_face.invert();
+            let nodes = <Self::C as Simplex>::FACE::from_vert_and_face(i_vert, &edge_face);
+            let (i_new_face, orient) = Self::get_or_insert_split_face(res, new_faces, &nodes);
+            elem_faces[k + 1] = (i_new_face, orient);
+        }
+
+        res.insert_elem(elem_faces, etag);
+    }
+
+    /// Split elements whose centers is outside the element into simplices by adding a vertex at the vertices of the primal mesh
+    /// and connecting it to the faces
+    fn split_elements(&self, primal: &impl Mesh<D, C = Self::C>) -> SimplePolyMesh<D> {
+        let poly_type = match D {
+            2 => PolyMeshType::Polygons,
+            3 => PolyMeshType::Polyhedra,
+            _ => unreachable!(),
+        };
+
+        let mut res = SimplePolyMesh::empty(poly_type, PolyFaceType::Simplices);
+
+        // add the vertices and faces from self
+        for v in self.verts() {
+            res.insert_vert(v);
+        }
+        for (f, t) in self.faces().zip(self.ftags()) {
+            let f = f.collect::<Vec<_>>();
+            res.insert_face(&f, t);
+        }
+
+        let mut new_faces =
+            FxHashMap::<<Self::C as Simplex>::FACE, (usize, bool)>::with_hasher(FxBuildHasher);
+
+        for i in 0..self.n_elems() {
+            let center = self.elem_center_c::<<Self::C as Simplex>::FACE>(i);
+            if self.is_vertex_in_elem_c::<<Self::C as Simplex>::FACE>(&center, i) {
+                // keep element unchanged: face ids are the same as in self
+                res.insert_elem(self.elem(i), self.etag(i));
+                continue;
+            }
+
+            let elem_faces = self.elem(i).collect::<Vec<_>>();
+            let has_boundary_face = elem_faces.iter().any(|(i_face, _)| self.ftag(*i_face) != 0);
+            let primal_vert = primal.vert(i);
+
+            // split the element by coning each boundary simplex face to a new vertex
+            let i_vert = if has_boundary_face {
+                let mut i_vert = None;
+                for (i_face, _) in &elem_faces {
+                    for j in self.face(*i_face) {
+                        if (res.vert(j) - primal_vert).norm() <= 1e-14 {
+                            i_vert = Some(j);
+                            break;
+                        }
+                    }
+                    if i_vert.is_some() {
+                        break;
+                    }
+                }
+                i_vert.unwrap_or_else(|| res.insert_vert(primal_vert))
+            } else {
+                res.insert_vert(primal_vert)
+            };
+            let etag = self.etag(i);
+            new_faces.clear();
+            for (i_face, _) in &elem_faces {
+                if self.ftag(*i_face) != 0 {
+                    let face = <Self::C as Simplex>::FACE::from_iter(res.face(*i_face));
+                    let key = face.sorted();
+                    if let std::collections::hash_map::Entry::Vacant(entry) = new_faces.entry(key) {
+                        entry.insert((*i_face, key.is_same(&face)));
+                    }
+                }
+            }
+
+            for (i_face, orient_parent) in elem_faces {
+                let face = <Self::C as Simplex>::FACE::from_iter(self.face(i_face));
+                if D == 2 {
+                    self.add_simplex_from_face_and_vert_2d(
+                        &mut res,
+                        &mut new_faces,
+                        face,
+                        (i_face, orient_parent),
+                        i_vert,
+                        etag,
+                    );
+                } else if D == 3 {
+                    self.add_simplex_from_face_and_vert_3d(
+                        &mut res,
+                        &mut new_faces,
+                        face,
+                        (i_face, orient_parent),
+                        i_vert,
+                        etag,
+                    );
+                } else {
+                    unreachable!();
+                }
+            }
+        }
+
+        res
     }
 }
