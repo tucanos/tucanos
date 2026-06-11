@@ -34,8 +34,8 @@ impl<T: Idx> From<Edge<T>> for [usize; 2] {
 #[derive(Clone, Copy, Debug)]
 pub struct GEdge<const D: usize>([Vertex<D>; 2]);
 
-impl<const D: usize> From<&GEdge<D>> for [Vertex<D>; 2] {
-    fn from(edg: &GEdge<D>) -> Self {
+impl<const D: usize> From<GEdge<D>> for [Vertex<D>; 2] {
+    fn from(edg: GEdge<D>) -> Self {
         edg.0
     }
 }
