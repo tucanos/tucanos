@@ -41,7 +41,7 @@ impl<'a, const D: usize, M: Mesh<D> + Clone> Interpolator<'a, D, M> {
     }
 
     /// Get the mesh
-    pub fn mesh(&self) -> &'a M {
+    pub const fn mesh(&self) -> &'a M {
         self.mesh
     }
 
@@ -92,8 +92,10 @@ impl<'a, const D: usize, M: Mesh<D> + Clone> Interpolator<'a, D, M> {
     }
 
     pub fn project(&self, v: &Vertex<D>) -> (f64, Vertex<D>) {
-        
-        let index = self.elem_index.as_ref().expect("InterpolationMethod::Linear required for projection");
+        let index = self
+            .elem_index
+            .as_ref()
+            .expect("InterpolationMethod::Linear required for projection");
         index.project(v)
     }
 }

@@ -135,7 +135,10 @@ impl<const D: usize> LeastSquaresGradient<D> {
         rhs
     }
 
-    fn compute_vec<const N: usize>(&self, df: impl ExactSizeIterator<Item = SVector<f64, N>>) -> DMatrix<f64> {
+    fn compute_vec<const N: usize>(
+        &self,
+        df: impl ExactSizeIterator<Item = SVector<f64, N>>,
+    ) -> DMatrix<f64> {
         assert_eq!(df.len(), self.weights.len());
         let mut rhs = DMatrix::<f64>::zeros(df.len() + 1, N);
         for (irow, df) in df.enumerate() {
@@ -157,7 +160,10 @@ impl<const D: usize> LeastSquaresGradient<D> {
     }
 
     /// Smoothing
-    pub fn smooth_vec<const N: usize>(&self, df: impl ExactSizeIterator<Item = SVector<f64, N>>) -> SVector<f64, N> {
+    pub fn smooth_vec<const N: usize>(
+        &self,
+        df: impl ExactSizeIterator<Item = SVector<f64, N>>,
+    ) -> SVector<f64, N> {
         let rhs = self.compute_vec(df);
 
         rhs.fixed_view::<N, 1>(1, 0).into()
@@ -171,10 +177,13 @@ impl<const D: usize> LeastSquaresGradient<D> {
     }
 
     /// Compute the gradient
-    pub fn gradient_vec<const N: usize>(&self, df: impl ExactSizeIterator<Item = SVector<f64, N>>) -> SMatrix<f64, N, D> {
+    pub fn gradient_vec<const N: usize>(
+        &self,
+        df: impl ExactSizeIterator<Item = SVector<f64, N>>,
+    ) -> SMatrix<f64, N, D> {
         let rhs = self.compute_vec(df);
 
-        rhs.fixed_view::<D, N>(1, 0).to_owned().transpose()
+        rhs.fixed_view::<D, N>(1, 0).clone().transpose()
     }
 
     /// Compute the gradient
@@ -209,7 +218,7 @@ impl<const D: usize> LeastSquaresGradient<D> {
 /// failed: Flag that indicates if not valid approximation has been computed
 /// m: The number of components (1 for scalar, D for gradients, D*(D-1)/2 for hessians)
 /// `max_iter`: The max number of iteration through the mesh vertices
-fn fix_not_computed<T : AddAssign + MulAssign<f64> + Copy>(
+fn fix_not_computed<T: AddAssign + MulAssign<f64> + Copy>(
     v2v: &CSRGraph,
     res: &mut [T],
     failed: &mut [bool],
@@ -267,27 +276,27 @@ where
             // if flg[i] {
             //     *fail = true;
             // } else {
-                let x = msh.vert(i);
-                let first_order_neighbors = v2v.row(i);
-                let mut neighbors = first_order_neighbors
-                    .iter()
-                    .copied()
-                    .collect::<FxHashSet<_>>();
-                if order == 2 {
-                    for &i in first_order_neighbors {
-                        neighbors.extend(v2v.row(i).iter().copied());
-                    }
-                    neighbors.remove(&i);
+            let x = msh.vert(i);
+            let first_order_neighbors = v2v.row(i);
+            let mut neighbors = first_order_neighbors
+                .iter()
+                .copied()
+                .collect::<FxHashSet<_>>();
+            if order == 2 {
+                for &i in first_order_neighbors {
+                    neighbors.extend(v2v.row(i).iter().copied());
                 }
-                let dx = neighbors.iter().map(|&j| msh.vert(j) - x);
-                if let Ok(ls) = LeastSquaresGradient::new(order, weight, dx) {
-                    let df = neighbors.iter().map(|&j| f[j] - f[i]);
-                    grad.iter_mut()
-                        .zip(ls.gradient(df).as_slice())
-                        .for_each(|(x, y)| *x = *y);
-                } else {
-                    *fail = true;
-                }
+                neighbors.remove(&i);
+            }
+            let dx = neighbors.iter().map(|&j| msh.vert(j) - x);
+            if let Ok(ls) = LeastSquaresGradient::new(order, weight, dx) {
+                let df = neighbors.iter().map(|&j| f[j] - f[i]);
+                grad.iter_mut()
+                    .zip(ls.gradient(df).as_slice())
+                    .for_each(|(x, y)| *x = *y);
+            } else {
+                *fail = true;
+            }
             // }
         });
 
@@ -324,25 +333,25 @@ where
             // if flg[i] {
             //     *fail = true;
             // } else {
-                let x = msh.vert(i);
-                let first_order_neighbors = v2v.row(i);
-                let mut neighbors = first_order_neighbors
-                    .iter()
-                    .copied()
-                    .collect::<FxHashSet<_>>();
-                if order == 2 {
-                    for &i in first_order_neighbors {
-                        neighbors.extend(v2v.row(i).iter().copied());
-                    }
-                    neighbors.remove(&i);
+            let x = msh.vert(i);
+            let first_order_neighbors = v2v.row(i);
+            let mut neighbors = first_order_neighbors
+                .iter()
+                .copied()
+                .collect::<FxHashSet<_>>();
+            if order == 2 {
+                for &i in first_order_neighbors {
+                    neighbors.extend(v2v.row(i).iter().copied());
                 }
-                let dx = neighbors.iter().map(|&j| msh.vert(j) - x);
-                if let Ok(ls) = LeastSquaresGradient::new(order, weight, dx) {
-                    let df = neighbors.iter().map(|&j| f[j] - f[i]);
-                    *grad = ls.gradient_vec(df);
-                } else {
-                    *fail = true;
-                }
+                neighbors.remove(&i);
+            }
+            let dx = neighbors.iter().map(|&j| msh.vert(j) - x);
+            if let Ok(ls) = LeastSquaresGradient::new(order, weight, dx) {
+                let df = neighbors.iter().map(|&j| f[j] - f[i]);
+                *grad = ls.gradient_vec(df);
+            } else {
+                *fail = true;
+            }
             // }
         });
 
