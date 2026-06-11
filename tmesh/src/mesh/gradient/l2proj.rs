@@ -1,14 +1,13 @@
-use log::debug;
-use nalgebra::SMatrix;
-use rayon::{
-    iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
-    slice::ParallelSliceMut,
-};
-
 use crate::{
     Vertex,
     graph::CSRGraph,
     mesh::{GSimplex, Mesh, Simplex},
+};
+use log::debug;
+use nalgebra::{SMatrix, SVector};
+use rayon::{
+    iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
+    slice::ParallelSliceMut,
 };
 
 /// Compute the gradient of a scalar field defined at the mesh vertices
@@ -62,6 +61,52 @@ pub fn gradient_l2proj<const D: usize, M: Mesh<D>>(msh: &M, v2e: &CSRGraph, f: &
         for x in g.iter_mut() {
             *x /= fac * v;
         }
+    });
+
+    res
+}
+
+pub fn gradient_l2proj_vec<const D: usize, M: Mesh<D>, const N: usize>(
+    msh: &M,
+    v2e: &CSRGraph,
+    f: &[SVector<f64, N>],
+) -> Vec<SMatrix<f64, N, D>> {
+    debug!("Compute gradient using L2 projection");
+
+    assert_eq!(f.len(), msh.n_verts());
+
+    let mut tmp = vec![SMatrix::zeros(); msh.n_elems()];
+
+    let mut vol = vec![0.0; msh.n_elems()];
+
+    tmp.par_iter_mut()
+        .zip(msh.par_elems())
+        .zip(vol.par_iter_mut())
+        .for_each(|((g, e), v)| {
+            let ge = msh.gelem(&e);
+            for i_face in 0..<M::C as Simplex>::N_FACES {
+                let i_vert = e.get(i_face);
+                let gf = ge.face(i_face);
+                *g += f[i_vert] * gf.normal(None).transpose();
+            }
+            *v = ge.vol();
+        });
+
+    let fac = match D {
+        2 => -6.0,
+        3 => -12.0,
+        _ => unreachable!(),
+    };
+
+    let mut res = vec![SMatrix::zeros(); msh.n_verts()];
+    res.par_iter_mut().enumerate().for_each(|(i_vert, g)| {
+        let mut v = 0.0;
+        for &i_elem in v2e.row(i_vert) {
+            v += vol[i_elem];
+            *g += tmp[i_elem];
+        }
+        v /= <M::C as Simplex>::N_VERTS as f64;
+        *g /= fac * v;
     });
 
     res
