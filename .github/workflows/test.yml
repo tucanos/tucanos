@@ -19,7 +19,7 @@ jobs:
   stable:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
       with:
         lfs: false
     - name: Configure Fast APT Mirror
@@ -84,7 +84,7 @@ jobs:
   c_api:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
       with:
         lfs: false
     - name: Configure Fast APT Mirror
@@ -121,7 +121,7 @@ jobs:
   python:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
       with:
         lfs: false
     - name: Configure Fast APT Mirror
