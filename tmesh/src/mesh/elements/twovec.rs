@@ -80,7 +80,7 @@ impl<T> Index<usize> for Vec<T> {
         match &self.data {
             Data::Empty() => panic!("Index out of bounds"),
             Data::One(v) => {
-                debug_assert!(index == 0);
+                debug_assert_eq!(index, 0);
                 v
             }
             Data::Two(v) => &v[index],
