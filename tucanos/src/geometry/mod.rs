@@ -93,6 +93,33 @@ pub trait Geometry<const D: usize>: Send + Sync {
         a_max
     }
 
+    /// Get the angle between the mesh face normals and the geometry normals for all faces in the mesh
+    fn normal_angle<M: Mesh<D>>(&self, mesh: &M) -> Vec<f64> {
+        if M::C::DIM == D {
+            let mut a = Vec::with_capacity(mesh.n_faces());
+            for (gf, tag) in mesh.gfaces().zip(mesh.ftags()) {
+                if tag > 0 {
+                    let c = gf.center();
+                    let n = gf.normal(None).normalize();
+                    a.push(self.angle(&c, &n, &(<M::C as Simplex>::FACE::DIM as Dim, tag)));
+                }
+            }
+            a
+        } else if M::C::DIM == D - 1 {
+            let mut a = Vec::with_capacity(mesh.n_elems());
+            for (gf, tag) in mesh.gelems().zip(mesh.etags()) {
+                if tag > 0 {
+                    let c = gf.center();
+                    let n = gf.normal(None).normalize();
+                    a.push(self.angle(&c, &n, &(M::C::DIM as Dim, tag)));
+                }
+            }
+            a
+        } else {
+            unreachable!();
+        }
+    }
+
     /// Convert a linear mesh to a quadratic mesh (triangles)
     fn to_quadratic_triangle_mesh<M: Mesh<D, C = QuadraticTriangle<impl Idx>>>(
         &self,
