@@ -3,11 +3,47 @@ use crate::{
     mesh::{PyMesh2d, PyMesh3d},
     to_numpy_2d,
 };
-use numpy::{PyArray2, PyReadonlyArray1};
+use numpy::{PyArray2, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
 use pyo3::{Bound, PyResult, Python, exceptions::PyRuntimeError, pyfunction};
 
 use tmesh::mesh::Mesh;
-use tucanos::{Tag, metric::MetricField};
+use tucanos::{
+    Tag,
+    metric::{AnisoMetric2d, AnisoMetric3d, Metric, MetricField},
+};
+
+/// Intersect 3d anisotropic metrics
+#[pyfunction]
+#[allow(clippy::needless_pass_by_value)]
+pub fn intersect_aniso_metric_3d<'py>(
+    py: Python<'py>,
+    m1: PyReadonlyArray2<f64>,
+    m2: PyReadonlyArray2<f64>,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    if m1.shape()[1] != 6 || m2.shape()[1] != 6 {
+        return Err(PyRuntimeError::new_err("Metrics must have 6 components"));
+    }
+
+    if m1.shape()[0] != m2.shape()[0] {
+        return Err(PyRuntimeError::new_err(
+            "Metrics must have the same number of rows",
+        ));
+    }
+
+    let m1 = m1.as_slice()?;
+    let m2 = m2.as_slice()?;
+
+    let m = m1
+        .chunks(6)
+        .zip(m2.chunks(6))
+        .flat_map(|(x, y)| {
+            let m1 = AnisoMetric3d::from_slice(x);
+            let m2 = AnisoMetric3d::from_slice(y);
+            m1.intersect(&m2)
+        })
+        .collect::<Vec<_>>();
+    Ok(to_numpy_2d(py, m, 6))
+}
 
 /// Get the element-implied metric
 #[pyfunction]
@@ -134,6 +170,39 @@ pub fn curvature_metric_3d_quadratic<'py>(
         .collect();
 
     Ok(to_numpy_2d(py, m, 6))
+}
+
+/// Intersect 3d anisotropic metrics
+#[pyfunction]
+#[allow(clippy::needless_pass_by_value)]
+pub fn intersect_aniso_metric_2d<'py>(
+    py: Python<'py>,
+    m1: PyReadonlyArray2<f64>,
+    m2: PyReadonlyArray2<f64>,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    if m1.shape()[1] != 3 || m2.shape()[1] != 3 {
+        return Err(PyRuntimeError::new_err("Metrics must have 6 components"));
+    }
+
+    if m1.shape()[0] != m2.shape()[0] {
+        return Err(PyRuntimeError::new_err(
+            "Metrics must have the same number of rows",
+        ));
+    }
+
+    let m1 = m1.as_slice()?;
+    let m2 = m2.as_slice()?;
+
+    let m = m1
+        .chunks(3)
+        .zip(m2.chunks(3))
+        .flat_map(|(x, y)| {
+            let m1 = AnisoMetric2d::from_slice(x);
+            let m2 = AnisoMetric2d::from_slice(y);
+            m1.intersect(&m2)
+        })
+        .collect::<Vec<_>>();
+    Ok(to_numpy_2d(py, m, 3))
 }
 
 /// Get the element-implied metric

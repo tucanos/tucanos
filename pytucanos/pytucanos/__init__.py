@@ -69,6 +69,8 @@ from .pytucanos import (
     curvature_metric_2d_quadratic,  # noqa: F401
     transfer_tags_face_2d,  # noqa: F401
     transfer_tags_elem_2d,  # noqa: F401
+    intersect_aniso_metric_3d,  # noqa: F401
+    intersect_aniso_metric_2d,  # noqa: F401
 )
 
 
