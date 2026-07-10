@@ -321,7 +321,7 @@ impl DataArray {
                         .collect::<Vec<_>>();
 
                     let polygons = merge_polylines(&faces);
-                    assert_eq!(polygons.len(), 1);
+                    assert_eq!(polygons.len(), 1, "faces = {faces:?}");
                     connectivity.extend_from_slice(&polygons[0]);
                 }
                 PolyMeshType::Polyhedra => {

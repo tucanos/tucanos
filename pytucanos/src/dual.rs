@@ -1,6 +1,9 @@
 //! Python bindings for dual meshes
 use super::Idx;
-use crate::mesh::{PyBoundaryMesh2d, PyBoundaryMesh3d, PyMesh2d, PyMesh3d};
+use crate::{
+    mesh::{PyBoundaryMesh2d, PyBoundaryMesh3d, PyMesh2d, PyMesh3d},
+    poly::{PyPolyMesh2d, PyPolyMesh3d},
+};
 use numpy::{PyArray, PyArray1, PyArray2, PyArrayMethods};
 use pyo3::{Bound, PyResult, Python, exceptions::PyRuntimeError, pyclass, pymethods};
 use tmesh::{
@@ -178,6 +181,11 @@ impl PyDualMesh2d {
         let (bdy, ids) = self.0.boundary();
         (PyBoundaryMesh2d(bdy), PyArray1::from_vec(py, ids))
     }
+
+    /// Split the elements for which the center of mass is outside the element
+    pub fn split_elements(&self, msh: &PyMesh2d) -> PyPolyMesh2d {
+        PyPolyMesh2d(self.0.split_elements(&msh.0))
+    }
 }
 
 #[pymethods]
@@ -189,5 +197,10 @@ impl PyDualMesh3d {
     ) -> (PyBoundaryMesh3d, Bound<'py, PyArray1<usize>>) {
         let (bdy, ids) = self.0.boundary();
         (PyBoundaryMesh3d(bdy), PyArray1::from_vec(py, ids))
+    }
+
+    /// Split the elements for which the center of mass is outside the element
+    pub fn split_elements(&self, msh: &PyMesh3d) -> PyPolyMesh3d {
+        PyPolyMesh3d(self.0.split_elements(&msh.0))
     }
 }

@@ -2,7 +2,7 @@
 use crate::{
     Error, Result, Tag, Vertex,
     io::VTUFile,
-    mesh::{Mesh, Simplex},
+    mesh::{Edge, GSimplex, Mesh, Simplex, Triangle},
 };
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
@@ -18,6 +18,15 @@ pub enum PolyMeshType {
     Polyhedra,
 }
 
+/// Polymesh type
+#[derive(Debug, Clone, Copy)]
+pub enum PolyFaceType {
+    /// General,
+    General,
+    /// Simplices
+    Simplices,
+}
+
 /// Polylines, polygons or polyhedra meshes in D dimensions
 ///   - faces are represented by the indices of their vertices (oriented)
 ///   - elements are indices of their faces and flags indicating if the face is oriented
@@ -25,6 +34,9 @@ pub enum PolyMeshType {
 pub trait PolyMesh<const D: usize>: Sync + Sized {
     /// Element type
     fn poly_type(&self) -> PolyMeshType;
+
+    /// Face type
+    fn face_type(&self) -> PolyFaceType;
 
     /// Number of vertices
     fn n_verts(&self) -> usize;
@@ -131,11 +143,259 @@ pub trait PolyMesh<const D: usize>: Sync + Sized {
     fn write_vtk(&self, file_name: &str) -> std::io::Result<()> {
         VTUFile::from_poly_mesh(self).export(file_name)
     }
+
+    fn elem_gfaces_c<C: Simplex>(
+        &self,
+        i: usize,
+    ) -> Option<impl ExactSizeIterator<Item = C::GEOM<D>> + '_>;
+
+    /// Get the centroid of the `i`th cell
+    fn elem_center_c<C: Simplex>(&self, i: usize) -> Vertex<D> {
+        let mut vol = 0.0;
+        let mut first_moment = Vertex::<D>::zeros();
+
+        self.elem_gfaces_c::<C>(i)
+            .expect("Faces are not simplices")
+            .for_each(|gf| {
+                let c = gf.center();
+                let flux = c.dot(&gf.normal(None));
+                vol += flux / D as f64;
+                first_moment += c * (flux / (D as f64 + 1.0));
+            });
+
+        assert!(vol > f64::EPSILON, "Element {i} has zero volume");
+        first_moment / vol
+    }
+
+    /// Check if vertex `v` is in the `i`th element by computing the winding number
+    fn is_vertex_in_elem_c<C: Simplex>(&self, v: &Vertex<D>, i: usize) -> bool {
+        let tol = 1e-12;
+
+        if D == 2 {
+            let mut angle_sum = 0.0;
+
+            for gf in self.elem_gfaces_c::<C>(i).expect("Faces are not simplices") {
+                let mut pts = gf.into_iter();
+                let p0 = pts.next().unwrap();
+                let p1 = pts.next().unwrap();
+
+                let a = p0 - *v;
+                let b = p1 - *v;
+
+                let la = a.norm();
+                let lb = b.norm();
+                if la <= tol || lb <= tol {
+                    return true;
+                }
+
+                let edge = p1 - p0;
+                let edge_len = edge.norm();
+                if edge_len > tol {
+                    let t = (v - p0).dot(&edge) / edge.norm_squared();
+                    if (-tol..=1.0 + tol).contains(&t) {
+                        let proj = p0 + t * edge;
+                        if (*v - proj).norm() <= tol * edge_len {
+                            return true;
+                        }
+                    }
+                }
+
+                let cross = a[0] * b[1] - a[1] * b[0];
+                let dot = a.dot(&b);
+                angle_sum += cross.atan2(dot);
+            }
+
+            return angle_sum.abs() > std::f64::consts::PI;
+        }
+
+        if D == 3 {
+            let mut solid_angle_sum = 0.0;
+
+            for gf in self.elem_gfaces_c::<C>(i).expect("Faces are not simplices") {
+                let mut pts = gf.into_iter();
+                let p0 = pts.next().unwrap();
+                let p1 = pts.next().unwrap();
+                let p2 = pts.next().unwrap();
+
+                let a = p0 - *v;
+                let b = p1 - *v;
+                let c = p2 - *v;
+
+                let la = a.norm();
+                let lb = b.norm();
+                let lc = c.norm();
+                if la <= tol || lb <= tol || lc <= tol {
+                    return true;
+                }
+
+                // Van Oosterom-Strackee solid angle of oriented triangle (p0,p1,p2) at v
+                let det = a[0] * (b[1] * c[2] - b[2] * c[1])
+                    + a[1] * (b[2] * c[0] - b[0] * c[2])
+                    + a[2] * (b[0] * c[1] - b[1] * c[0]);
+                let den = la * lb * lc + a.dot(&b) * lc + b.dot(&c) * la + c.dot(&a) * lb;
+                solid_angle_sum += 2.0 * det.atan2(den);
+            }
+
+            return solid_angle_sum.abs() > 2.0 * std::f64::consts::PI;
+        }
+
+        unreachable!("is_vertex_in_elem is only implemented for D=2 and D=3");
+    }
+
+    /// Get the volume of the `i`th cell
+    fn vol_c<C: Simplex>(&self, i: usize) -> f64 {
+        self.elem_gfaces_c::<C>(i)
+            .expect("Faces are not simplices")
+            .map(|gf| gf.center().dot(&gf.normal(None)))
+            .sum::<f64>()
+            / D as f64
+    }
+
+    /// Parallel iterator over cell volumes
+    fn par_vols_c<C: Simplex>(&self) -> impl IndexedParallelIterator<Item = f64> + '_ {
+        (0..self.n_elems())
+            .into_par_iter()
+            .map(|i| self.vol_c::<C>(i))
+    }
+
+    /// Sequential iterator over cell volumes
+    fn vols_c<C: Simplex>(&self) -> impl ExactSizeIterator<Item = f64> + '_ {
+        (0..self.n_elems()).map(|i| self.vol_c::<C>(i))
+    }
+
+    /// Check if polygonal cell `i` is closed
+    fn is_closed_c<C: Simplex>(&self, i: usize) -> bool {
+        let mut res = [0.0; D];
+
+        self.elem_gfaces_c::<C>(i)
+            .expect("Faces are not simplices")
+            .for_each(|gf| {
+                let n = gf.normal(None);
+                res.iter_mut().zip(n.iter()).for_each(|(x, y)| *x += y);
+            });
+        res.iter().map(|x| x.abs()).sum::<f64>() < 1e-10
+    }
+
+    /// Check the validity of the dual mesh
+    ///  - consistent number of faces and faces tags
+    ///  - consistent face to vertex connectivity
+    ///  - consistent element to face connectivity
+    ///  - closed elements
+    ///  - unique faces
+    fn check_c<C: Simplex>(&self) -> Result<()> {
+        // lengths
+        if self.par_faces().len() != self.par_ftags().len() {
+            return Err(Error::from("Inconsistent sizes (faces)"));
+        }
+
+        // indices
+        if self.par_faces().any(|mut f| f.any(|i| i >= self.n_verts())) {
+            return Err(Error::from("Inconsistent indices (faces)"));
+        }
+
+        // faces
+        if self
+            .par_elems()
+            .any(|mut e| e.any(|x| x.0 >= self.n_faces()))
+        {
+            return Err(Error::from("Inconsistent indices (elems)"));
+        }
+
+        // closed elements
+        for (i, (e, v)) in self.elems().zip(self.vols_c::<C>()).enumerate() {
+            if v < f64::EPSILON {
+                let e = e.collect::<Vec<_>>();
+                return Err(Error::from(&format!(
+                    "Element {i} invalid: vol={v} < 0  ({e:?})"
+                )));
+            }
+            if !self.is_closed_c::<C>(i) {
+                let e = e.collect::<Vec<_>>();
+                return Err(Error::from(&format!("Element {i} not closed ({e:?})")));
+            }
+        }
+
+        // all faces appear only once
+        let mut faces = FxHashMap::with_hasher(FxBuildHasher);
+        for (i, f) in self.faces().enumerate() {
+            assert_eq!(f.len(), C::N_VERTS);
+            let res = C::from_iter(f.clone()).sorted();
+            if let std::collections::hash_map::Entry::Vacant(e) = faces.entry(res) {
+                e.insert(i);
+            } else {
+                let j = *faces.get(&res).unwrap();
+                let f = f.collect::<Vec<_>>();
+                let f_j = self.face(j).collect::<Vec<_>>();
+                return Err(Error::from(&format!(
+                    "Face {i} ({f:?}) = face {j} ({f_j:?})"
+                )));
+            }
+        }
+
+        // faces appear at most once in 1 or 2 elements
+        let mut flg = vec![0; self.n_faces()];
+        for (i_elem, e) in self.elems().enumerate() {
+            let mut tmp = FxHashSet::with_capacity_and_hasher(e.len(), FxBuildHasher);
+            for (i, sgn) in e {
+                if tmp.contains(&i) {
+                    return Err(Error::from(&format!(
+                        "Face {i} appears multiple times in element {i_elem}"
+                    )));
+                }
+                tmp.insert(i);
+                if flg[i] == 0 {
+                    if sgn {
+                        flg[i] = 1;
+                    } else {
+                        flg[i] = -1;
+                    }
+                } else if flg[i] == 1 {
+                    if sgn {
+                        return Err(Error::from(&format!("Face {i} appears twice with True")));
+                    }
+                    flg[i] = 2;
+                } else if flg[i] == -1 {
+                    if !sgn {
+                        return Err(Error::from(&format!("Face {i} appears twice with False")));
+                    }
+                    flg[i] = 2;
+                } else if flg[i] == 2 {
+                    return Err(Error::from(&format!("Face {i} appears 3 times")));
+                } else {
+                    unreachable!()
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get the dimension of the elements
+    fn elem_dim(&self) -> usize {
+        match self.poly_type() {
+            PolyMeshType::Polylines => 1,
+            PolyMeshType::Polygons => 2,
+            PolyMeshType::Polyhedra => 3,
+        }
+    }
+
+    fn check(&self) -> Result<()> {
+        if matches!(self.face_type(), PolyFaceType::Simplices) {
+            match self.elem_dim() {
+                2 => self.check_c::<Edge<usize>>(),
+                3 => self.check_c::<Triangle<usize>>(),
+                _ => unimplemented!(),
+            }
+        } else {
+            Err(Error::from("Check only available with simplex faces"))
+        }
+    }
 }
 
 /// General `PolyMesh<D>`
 pub struct SimplePolyMesh<const D: usize> {
     poly_type: PolyMeshType,
+    face_type: PolyFaceType,
     verts: Vec<Vertex<D>>,
     face_to_node_ptr: Vec<usize>,
     face_to_node: Vec<usize>,
@@ -151,6 +411,7 @@ impl<const D: usize> SimplePolyMesh<D> {
     #[must_use]
     pub const fn new(
         poly_type: PolyMeshType,
+        face_type: PolyFaceType,
         verts: Vec<Vertex<D>>,
         face_to_node_ptr: Vec<usize>,
         face_to_node: Vec<usize>,
@@ -161,6 +422,7 @@ impl<const D: usize> SimplePolyMesh<D> {
     ) -> Self {
         Self {
             poly_type,
+            face_type,
             verts,
             face_to_node_ptr,
             face_to_node,
@@ -173,9 +435,10 @@ impl<const D: usize> SimplePolyMesh<D> {
 
     /// Create an empty mesh with a given element type
     #[must_use]
-    pub fn empty(poly_type: PolyMeshType) -> Self {
+    pub fn empty(poly_type: PolyMeshType, face_type: PolyFaceType) -> Self {
         Self {
             poly_type,
+            face_type,
             verts: Vec::new(),
             face_to_node_ptr: vec![0],
             face_to_node: Vec::new(),
@@ -194,6 +457,9 @@ impl<const D: usize> SimplePolyMesh<D> {
 
     /// Insert a face and return its index
     pub fn insert_face(&mut self, f: &[usize], t: Tag) -> usize {
+        if matches!(self.face_type, PolyFaceType::Simplices) {
+            assert_eq!(f.len(), self.elem_dim());
+        }
         self.face_to_node.extend(f);
         self.face_to_node_ptr.push(self.face_to_node.len());
         self.ftags.push(t);
@@ -354,6 +620,7 @@ impl<const D: usize> SimplePolyMesh<D> {
             Self::build_element_connectivity(mesh.n_elems(), &new_faces_elems);
         let mut res = Self {
             poly_type: mesh.poly_type(),
+            face_type: PolyFaceType::General,
             verts: mesh.verts().collect(),
             face_to_node_ptr: new_faces_ptr,
             face_to_node: new_faces,
@@ -384,10 +651,10 @@ impl<const D: usize> SimplePolyMesh<D> {
 
     /// PolyMesh representation of a `Mesh<D>`
     pub fn from_mesh<M: Mesh<D>>(mesh: &M) -> Self {
-        let poly_type = match <M::C as Simplex>::N_VERTS {
-            4 => PolyMeshType::Polyhedra,
-            3 => PolyMeshType::Polygons,
-            2 => PolyMeshType::Polylines,
+        let poly_type = match <M::C as Simplex>::DIM {
+            3 => PolyMeshType::Polyhedra,
+            2 => PolyMeshType::Polygons,
+            1 => PolyMeshType::Polylines,
             _ => unimplemented!(),
         };
         let all_faces = mesh.all_faces();
@@ -452,6 +719,7 @@ impl<const D: usize> SimplePolyMesh<D> {
 
         Self {
             poly_type,
+            face_type: PolyFaceType::Simplices,
             verts: mesh.par_verts().collect(),
             face_to_node_ptr,
             face_to_node,
@@ -466,6 +734,10 @@ impl<const D: usize> SimplePolyMesh<D> {
 impl<const D: usize> PolyMesh<D> for SimplePolyMesh<D> {
     fn poly_type(&self) -> PolyMeshType {
         self.poly_type
+    }
+
+    fn face_type(&self) -> PolyFaceType {
+        self.face_type
     }
 
     fn n_verts(&self) -> usize {
@@ -502,6 +774,23 @@ impl<const D: usize> PolyMesh<D> for SimplePolyMesh<D> {
 
     fn ftag(&self, i: usize) -> Tag {
         self.ftags[i]
+    }
+
+    fn elem_gfaces_c<C: Simplex>(
+        &self,
+        i: usize,
+    ) -> Option<impl ExactSizeIterator<Item = C::GEOM<D>> + '_> {
+        if matches!(self.face_type, PolyFaceType::Simplices) && C::DIM == self.elem_dim() - 1 {
+            Some(self.elem(i).map(|(i_face, orient)| {
+                let mut f = C::from_iter(self.face(i_face));
+                if !orient {
+                    f.invert();
+                }
+                C::GEOM::from_iter(f.into_iter().map(|i| self.vert(i)))
+            }))
+        } else {
+            None
+        }
     }
 }
 
