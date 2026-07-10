@@ -56,6 +56,16 @@ macro_rules! create_geometry {
                 self.geom.max_normal_angle(&mesh.0)
             }
 
+            ///Get the angle between the mesh face normals and the geometry normals for all faces in the mesh
+            pub fn normal_angle<'py>(
+                &self,
+                py: Python<'py>,
+                mesh: &$mesh,
+            ) -> PyResult<Bound<'py, PyArray1<f64>>> {
+                let a = self.geom.normal_angle(&mesh.0);
+                Ok(to_numpy_1d(py, a))
+            }
+
             /// Export the curvature to a vtk file
             pub fn write_curvature_vtk(&self, fname: &str) -> PyResult<()> {
                 self.geom
