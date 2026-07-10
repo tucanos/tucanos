@@ -106,7 +106,7 @@ impl<const D: usize> LeastSquaresGradient<D> {
             .unwrap();
         if maxd / mind > 1e8 {
             Err(Error::from(&format!(
-                "Poor conditionning in QR: {:2e}",
+                "Poor conditionning in QR: {:.2e}",
                 maxd / mind
             )))
         } else {
