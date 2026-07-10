@@ -35,6 +35,7 @@
 use super::{DualCellCenter, DualMesh, DualType, PolyMesh, PolyMeshType};
 use crate::{
     Tag, Vert2d,
+    dual::poly_mesh::PolyFaceType,
     mesh::{Edge, GEdge, GSimplex, GTriangle, Idx, Mesh, Simplex, Triangle, sort_elem_min_ids},
 };
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
@@ -323,6 +324,16 @@ impl<T: Idx> DualMesh2d<T> {
 
         (edges, edge_normals)
     }
+
+    #[must_use]
+    pub fn vols(&self) -> impl ExactSizeIterator<Item = f64> + '_ {
+        <Self as PolyMesh<2>>::vols_c::<Edge<T>>(self)
+    }
+
+    #[must_use]
+    pub fn par_vols(&self) -> impl IndexedParallelIterator<Item = f64> + '_ {
+        <Self as PolyMesh<2>>::par_vols_c::<Edge<T>>(self)
+    }
 }
 
 impl<T: Idx> PolyMesh<2> for DualMesh2d<T> {
@@ -362,6 +373,27 @@ impl<T: Idx> PolyMesh<2> for DualMesh2d<T> {
 
     fn face(&self, i: usize) -> impl ExactSizeIterator<Item = usize> + Clone + Send {
         self.faces[i].into_iter()
+    }
+
+    fn face_type(&self) -> PolyFaceType {
+        PolyFaceType::Simplices
+    }
+
+    fn elem_gfaces_c<C: Simplex>(
+        &self,
+        i: usize,
+    ) -> Option<impl ExactSizeIterator<Item = C::GEOM<2>> + '_> {
+        if C::DIM != 1 {
+            return None;
+        }
+        let gfaces = self.elem(i).map(|(i, orient)| {
+            let mut f = C::from_iter(self.face(i));
+            if !orient {
+                f.invert();
+            }
+            C::GEOM::from_iter(f.into_iter().map(|i| self.vert(i)))
+        });
+        Some(gfaces)
     }
 }
 
@@ -438,9 +470,9 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::{
-        Vert2d,
+        Vert2d, assert_delta,
         dual::{DualMesh, DualMesh2d, DualType, PolyMesh},
-        mesh::{Edge, GSimplex, Mesh, Mesh2d, rectangle_mesh},
+        mesh::{Edge, GSimplex, Mesh, Mesh2d, Triangle, rectangle_mesh},
     };
     use rayon::iter::ParallelIterator;
 
@@ -542,5 +574,49 @@ mod tests {
         dual.check().unwrap();
 
         assert!((dual.par_vols().sum::<f64>() - 2.0) < 1e-10);
+    }
+
+    #[test]
+    fn test_split_elements_l_shape_2d_6_tris() {
+        // L-shape from a 2x2 grid with the top-right square removed.
+        // It is triangulated into 6 triangles.
+        let verts = [
+            Vert2d::new(0.0, 0.0),
+            Vert2d::new(1.0, 0.0),
+            Vert2d::new(4.0, 0.0),
+            Vert2d::new(0.0, 1.0),
+            Vert2d::new(1.0, 1.0),
+            Vert2d::new(4.0, 1.0),
+            Vert2d::new(0.0, 4.0),
+            Vert2d::new(1.0, 4.0),
+        ];
+        let elems = [
+            Triangle::new(0, 1, 4),
+            Triangle::new(0, 4, 3),
+            Triangle::new(1, 2, 5),
+            Triangle::new(1, 5, 4),
+            Triangle::new(3, 4, 7),
+            Triangle::new(3, 7, 6),
+        ];
+
+        let mut msh = Mesh2d::empty();
+        msh.add_verts(verts.into_iter());
+        msh.add_elems(elems.into_iter(), (0..elems.len()).map(|_| 1));
+        msh.fix().unwrap();
+        for _ in 0..3 {
+            msh = msh.split();
+        }
+        let msh = msh.random_shuffle();
+
+        let dual = DualMesh2d::new(&msh, DualType::Median);
+        dual.check().unwrap();
+
+        dual.write_vtk("dual.vtu").unwrap();
+
+        let split = dual.split_elements(&msh);
+        split.check().unwrap();
+        split.write_vtk("split.vtu").unwrap();
+
+        assert_delta!(split.vols_c::<Edge<usize>>().sum::<f64>(), 7.0, 1e-10);
     }
 }
