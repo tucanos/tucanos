@@ -30,8 +30,8 @@ pub fn intersect_aniso_metric_3d<'py>(
         ));
     }
 
-    let m1 = m1.as_slice()?;
-    let m2 = m2.as_slice()?;
+    let m1 = crate::as_c_slice(&m1)?;
+    let m2 = crate::as_c_slice(&m2)?;
 
     let m = m1
         .chunks(6)
@@ -190,8 +190,8 @@ pub fn intersect_aniso_metric_2d<'py>(
         ));
     }
 
-    let m1 = m1.as_slice()?;
-    let m2 = m2.as_slice()?;
+    let m1 = crate::as_c_slice(&m1)?;
+    let m2 = crate::as_c_slice(&m2)?;
 
     let m = m1
         .chunks(3)

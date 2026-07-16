@@ -181,9 +181,9 @@ macro_rules! impl_mesh {
                 validate_faces_shape::<$cell<Idx>>(faces.shape())?;
                 validate_tags_length(ftags.shape()[0], faces.shape()[0], "ftags")?;
 
-                let coords_iter = coords_to_vertices::<$dim>(coords.as_slice()?);
-                let elems_iter = slice_to_simplex(elems.as_slice()?)?;
-                let faces_iter = slice_to_simplex(faces.as_slice()?)?;
+                let coords_iter = coords_to_vertices::<$dim>($crate::as_c_slice(&coords)?);
+                let elems_iter = slice_to_simplex($crate::as_c_slice(&elems)?)?;
+                let faces_iter = slice_to_simplex($crate::as_c_slice(&faces)?)?;
 
                 let mut res = GenericMesh::empty();
                 res.add_verts(coords_iter);
@@ -263,14 +263,14 @@ macro_rules! impl_mesh {
                 if let Some(data) = vert_data.as_ref() {
                     for (name, arr) in data.iter() {
                         let n = arr.shape()[1];
-                        let arr = arr.as_slice()?;
+                        let arr = $crate::as_c_slice(arr)?;
                         writer.add_point_data(name, n, arr.iter().copied())
                     }
                 }
                 if let Some(data) = elem_data.as_ref() {
                     for (name, arr) in data.iter() {
                         let n = arr.shape()[1];
-                        let arr = arr.as_slice()?;
+                        let arr = $crate::as_c_slice(arr)?;
                         writer.add_cell_data(name, n, arr.iter().copied())
                     }
                 }
@@ -347,7 +347,7 @@ macro_rules! impl_mesh {
             /// Add vertices
             pub fn add_verts(&mut self, coords: PyReadonlyArray2<f64>) -> PyResult<()> {
                 validate_coords_shape::<$dim>(coords.shape())?;
-                let coords_iter = coords_to_vertices::<$dim>(coords.as_slice()?);
+                let coords_iter = coords_to_vertices::<$dim>($crate::as_c_slice(&coords)?);
                 self.0.add_verts(coords_iter);
                 Ok(())
             }
@@ -364,7 +364,7 @@ macro_rules! impl_mesh {
                 ftags: PyReadonlyArray1<Tag>,
             ) -> PyResult<()> {
                 validate_faces_shape::<$cell<Idx>>(faces.shape())?;
-                let faces_iter = slice_to_simplex(faces.as_slice()?)?;
+                let faces_iter = slice_to_simplex($crate::as_c_slice(&faces)?)?;
                 self.0
                     .add_faces(faces_iter, ftags.as_slice()?.iter().copied());
                 Ok(())
@@ -377,7 +377,7 @@ macro_rules! impl_mesh {
                 etags: PyReadonlyArray1<Tag>,
             ) -> PyResult<()> {
                 validate_elems_shape::<$cell<Idx>>(elems.shape())?;
-                let elems_iter = slice_to_simplex(elems.as_slice()?)?;
+                let elems_iter = slice_to_simplex($crate::as_c_slice(&elems)?)?;
                 self.0
                     .add_elems(elems_iter, etags.as_slice()?.iter().copied());
                 Ok(())
@@ -394,7 +394,9 @@ macro_rules! impl_mesh {
                     return Err(PyValueError::new_err("Invalid dimension 1 for elems"));
                 }
                 self.0.add_quadrangles(
-                    elems.as_slice()?.chunks(4).map(|x| x.try_into().unwrap()),
+                    $crate::as_c_slice(&elems)?
+                        .chunks(4)
+                        .map(|x| x.try_into().unwrap()),
                     etags.as_slice()?.iter().cloned(),
                 );
                 Ok(())
@@ -411,7 +413,9 @@ macro_rules! impl_mesh {
                     return Err(PyValueError::new_err("Invalid dimension 1 for elems"));
                 }
                 self.0.add_pyramids(
-                    elems.as_slice()?.chunks(5).map(|x| x.try_into().unwrap()),
+                    $crate::as_c_slice(&elems)?
+                        .chunks(5)
+                        .map(|x| x.try_into().unwrap()),
                     etags.as_slice()?.iter().cloned(),
                 );
                 Ok(())
@@ -428,7 +432,9 @@ macro_rules! impl_mesh {
                     return Err(PyValueError::new_err("Invalid dimension 1 for elems"));
                 }
                 self.0.add_prisms(
-                    elems.as_slice()?.chunks(6).map(|x| x.try_into().unwrap()),
+                    $crate::as_c_slice(&elems)?
+                        .chunks(6)
+                        .map(|x| x.try_into().unwrap()),
                     etags.as_slice()?.iter().cloned(),
                 );
                 Ok(())
@@ -446,7 +452,9 @@ macro_rules! impl_mesh {
                     return Err(PyValueError::new_err("Invalid dimension 1 for elems"));
                 }
                 let ids = self.0.add_hexahedra(
-                    elems.as_slice()?.chunks(8).map(|x| x.try_into().unwrap()),
+                    $crate::as_c_slice(&elems)?
+                        .chunks(8)
+                        .map(|x| x.try_into().unwrap()),
                     etags.as_slice()?.iter().cloned(),
                 );
                 Ok(PyArray1::from_vec(py, ids))
@@ -568,9 +576,8 @@ macro_rules! impl_mesh {
                 let interp = Interpolator::new(&self.0, method);
 
                 let res = interp.interpolate(
-                    data.as_slice()?,
-                    verts
-                        .as_slice()?
+                    $crate::as_c_slice(&data)?,
+                    $crate::as_c_slice(&verts)?
                         .chunks($dim)
                         .map(|x| Vertex::<$dim>::from_column_slice(x)),
                 );
@@ -640,7 +647,7 @@ macro_rules! impl_mesh {
                     _ => unreachable!("Invalid order {order}"),
                 };
 
-                let res = self.0.smooth(method, arr.as_slice()?);
+                let res = self.0.smooth(method, $crate::as_c_slice(&arr)?);
                 PyArray::from_vec(py, res).reshape([self.0.n_verts(), 1])
             }
 
@@ -666,7 +673,7 @@ macro_rules! impl_mesh {
                     2 => GradientMethod::LinearLeastSquares(weight_exp),
                     _ => unreachable!("Invalid order {order}"),
                 };
-                let res = self.0.gradient(method, arr.as_slice()?);
+                let res = self.0.gradient(method, $crate::as_c_slice(&arr)?);
                 PyArray::from_vec(py, res).reshape([self.0.n_verts(), $dim])
             }
 
@@ -688,7 +695,7 @@ macro_rules! impl_mesh {
 
                 let res = self.0.hessian(
                     GradientMethod::QuadraticLeastSquares(weight_exp),
-                    arr.as_slice()?,
+                    $crate::as_c_slice(&arr)?,
                 );
 
                 PyArray::from_vec(py, res).reshape([self.0.n_verts(), $dim * ($dim + 1) / 2])
@@ -711,7 +718,7 @@ macro_rules! impl_mesh {
 
                 let res = self
                     .0
-                    .hessian(GradientMethod::L2Projection, arr.as_slice()?);
+                    .hessian(GradientMethod::L2Projection, $crate::as_c_slice(&arr)?);
 
                 PyArray::from_vec(py, res).reshape([self.0.n_verts(), $dim * ($dim + 1) / 2])
             }
@@ -727,7 +734,9 @@ macro_rules! impl_mesh {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
                 let v2e = self.0.vertex_to_elems();
-                let res = self.0.elem_data_to_vertex_data(&v2e, arr.as_slice()?);
+                let res = self
+                    .0
+                    .elem_data_to_vertex_data(&v2e, $crate::as_c_slice(&arr)?);
                 PyArray::from_vec(py, res).reshape([self.0.n_verts(), arr.shape()[1]])
             }
 
@@ -741,7 +750,7 @@ macro_rules! impl_mesh {
                 if arr.shape()[0] != self.0.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
                 }
-                let res = self.0.vertex_data_to_elem_data(arr.as_slice()?);
+                let res = self.0.vertex_data_to_elem_data($crate::as_c_slice(&arr)?);
                 PyArray::from_vec(py, res).reshape([self.0.n_elems(), arr.shape()[1]])
             }
 
