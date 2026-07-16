@@ -335,7 +335,7 @@ def write_cgns(
         cell_dim = 3
     elif isinstance(mesh, (Mesh2d, BoundaryMesh3d, QuadraticBoundaryMesh3d)):
         cell_dim = 2
-    elif isinstance(mesh, BoundaryMesh2d):
+    elif isinstance(mesh, (BoundaryMesh2d, QuadraticBoundaryMesh2d)):
         cell_dim = 1
     else:
         raise NotImplementedError(f"not implemented for {type(mesh)}")
@@ -351,6 +351,15 @@ def write_cgns(
     CGL.newDataArray(gc, CGK.CoordinateY_s, coords[:, 1].copy())
     if coords.shape[1] == 3:
         CGL.newDataArray(gc, CGK.CoordinateZ_s, coords[:, 2].copy())
+    else:
+        # load_cgns always reads CoordinateZ, even for a phys_dim=2 mesh (it
+        # picks the flat axis from whichever of X/Y/Z is all-zero). Without
+        # it, load_cgns cannot read the file write_cgns just produced, for
+        # every 2D mesh type, not just the new QuadraticBoundaryMesh2d case
+        # below.
+        CGL.newDataArray(
+            gc, CGK.CoordinateZ_s, np.zeros(coords.shape[0], dtype=np.float64)
+        )
 
     if isinstance(mesh, Mesh3d):
         logging.info(f"Adding {base[0]}/{zone[0]}/Elems")
@@ -405,13 +414,30 @@ def write_cgns(
             np.array([1, mesh.n_elems()]),
             elems.astype(np.int32).ravel() + 1,
         )
+    elif isinstance(mesh, QuadraticBoundaryMesh2d):
+        logging.info(f"Adding {base[0]}/{zone[0]}/Elems")
+        CGL.newElements(
+            zone,
+            "Elems",
+            CGK.BAR_3,
+            np.array([1, mesh.n_elems()]),
+            elems.astype(np.int32).ravel() + 1,
+        )
     else:
         raise NotImplementedError(f"not implemented for {type(mesh)}")
 
     zbc = CGL.newZoneBC(zone)
     if isinstance(mesh, (Mesh2d, Mesh3d)):
         ftags = mesh.get_ftags()
-    elif isinstance(mesh, (BoundaryMesh2d, BoundaryMesh3d, QuadraticBoundaryMesh3d)):
+    elif isinstance(
+        mesh,
+        (
+            BoundaryMesh2d,
+            QuadraticBoundaryMesh2d,
+            BoundaryMesh3d,
+            QuadraticBoundaryMesh3d,
+        ),
+    ):
         ftags = mesh.get_etags()
     else:
         raise NotImplementedError(f"not implemented for {type(mesh)}")
