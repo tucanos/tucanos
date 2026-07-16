@@ -63,7 +63,7 @@ impl PyExtrudedMesh2d {
             return Err(PyValueError::new_err("Invalid dimension 0 for quad_tags"));
         }
 
-        let coords = coords.as_slice()?;
+        let coords = crate::as_c_slice(&coords)?;
         let coords = coords
             .chunks(3)
             .map(|p| {
@@ -73,19 +73,19 @@ impl PyExtrudedMesh2d {
             })
             .collect();
 
-        let prisms = prisms.as_slice()?;
+        let prisms = crate::as_c_slice(&prisms)?;
         let prisms = prisms
             .chunks(6)
             .map(|x| Prism::<Idx>::from_iter(x.iter().copied().map(|x| x.try_into().unwrap())))
             .collect();
 
-        let tris = tris.as_slice()?;
+        let tris = crate::as_c_slice(&tris)?;
         let tris = tris
             .chunks(3)
             .map(|x| Triangle::<Idx>::from_iter(x.iter().copied().map(|x| x.try_into().unwrap())))
             .collect();
 
-        let quads = quads.as_slice()?;
+        let quads = crate::as_c_slice(&quads)?;
         let quads = quads
             .chunks(4)
             .map(|x| Quadrangle::<Idx>::from_iter(x.iter().copied().map(|x| x.try_into().unwrap())))

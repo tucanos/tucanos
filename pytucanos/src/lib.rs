@@ -7,10 +7,13 @@ mod metric;
 mod parallel;
 mod poly;
 mod remesher;
-use numpy::{PyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1};
+use numpy::{
+    PyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray, PyReadonlyArray1,
+    PyUntypedArrayMethods, ndarray::Dimension,
+};
 use pyo3::{
     Bound, PyResult, Python,
-    exceptions::PyRuntimeError,
+    exceptions::{PyRuntimeError, PyValueError},
     pyfunction, pymodule,
     types::{PyModule, PyModuleMethods},
     wrap_pyfunction,
@@ -20,6 +23,24 @@ use pyo3::{
 pub type Idx = u32;
 #[cfg(not(feature = "32bit-ints"))]
 pub type Idx = usize;
+
+/// Get the flat data slice of a numpy array, requiring C (row-major) order.
+///
+/// `as_slice` alone accepts any contiguous layout, including Fortran order
+/// (e.g. `arr[:, [1, 0, 2]]` returns an F-ordered copy), but the flat buffer
+/// of an F-ordered array is the transpose of what the row-major consumers of
+/// this crate expect, so the values would be silently scrambled. 1D
+/// contiguous arrays carry both contiguity flags and always pass.
+pub(crate) fn as_c_slice<'a, T: numpy::Element, D: Dimension>(
+    arr: &'a PyReadonlyArray<'_, T, D>,
+) -> PyResult<&'a [T]> {
+    if !arr.is_c_contiguous() {
+        return Err(PyValueError::new_err(
+            "array is not C-contiguous: convert it with numpy.ascontiguousarray()",
+        ));
+    }
+    arr.as_slice().map_err(Into::into)
+}
 
 fn to_numpy_1d<T: numpy::Element>(py: Python<'_>, vec: Vec<T>) -> Bound<'_, PyArray1<T>> {
     PyArray::from_vec(py, vec)

@@ -408,7 +408,7 @@ macro_rules! create_remesher {
                     return Err(PyValueError::new_err("Invalid dimension 1"));
                 }
 
-                let m = m.as_slice()?;
+                let m = crate::as_c_slice(&m)?;
                 let m: Vec<_> = m
                     .chunks($metric::N)
                     .map(|x| $metric::from_slice(x))
@@ -443,7 +443,7 @@ macro_rules! create_remesher {
                 }
 
                 let mut res = Vec::with_capacity(m.shape()[0] * m.shape()[1]);
-                let m = m.as_slice().unwrap();
+                let m = crate::as_c_slice(&m)?;
                 let mut m: Vec<_> = m
                     .chunks($metric::N)
                     .map(|x| $metric::from_slice(x))
@@ -492,7 +492,7 @@ macro_rules! create_remesher {
                     return Err(PyValueError::new_err("Invalid dimension 1"));
                 }
 
-                let m = m.as_slice().unwrap();
+                let m = crate::as_c_slice(&m)?;
                 let m: Vec<_> = m
                     .chunks($metric::N)
                     .map(|x| $metric::from_slice(x))
@@ -500,14 +500,14 @@ macro_rules! create_remesher {
                 let mut m = MetricField::new(&mesh.0, m);
 
                 let res = if let Some(fixed_m) = fixed_m {
-                    let fixed_m = fixed_m.as_slice().unwrap();
+                    let fixed_m = crate::as_c_slice(&fixed_m)?;
                     let fixed_m: Vec<_> = fixed_m
                         .chunks($metric::N)
                         .map(|x| $metric::from_slice(x))
                         .collect();
                     let fixed_m = MetricField::new(&mesh.0, fixed_m);
                     if let Some(implied_m) = implied_m {
-                        let implied_m = implied_m.as_slice().unwrap();
+                        let implied_m = crate::as_c_slice(&implied_m)?;
                         let implied_m: Vec<_> = implied_m
                             .chunks($metric::N)
                             .map(|x| $metric::from_slice(x))
@@ -533,7 +533,7 @@ macro_rules! create_remesher {
                         )
                     }
                 } else if let Some(implied_m) = implied_m {
-                    let implied_m = implied_m.as_slice().unwrap();
+                    let implied_m = crate::as_c_slice(&implied_m)?;
                     let implied_m: Vec<_> = implied_m
                         .chunks($metric::N)
                         .map(|x| $metric::from_slice(x))
@@ -582,7 +582,7 @@ macro_rules! create_remesher {
                     return Err(PyValueError::new_err("Invalid dimension 1"));
                 }
 
-                let m = m.as_slice().unwrap();
+                let m = crate::as_c_slice(&m)?;
                 let m: Vec<_> = m
                     .chunks($metric::N)
                     .map(|x| $metric::from_slice(x))
@@ -619,7 +619,7 @@ macro_rules! create_remesher {
                     return Err(PyValueError::new_err("Invalid dimension 1"));
                 }
 
-                let m = m.as_slice().unwrap();
+                let m = crate::as_c_slice(&m)?;
                 let  m: Vec<_> = m
                     .chunks($metric::N)
                     .map(|x| $metric::from_slice(x))
@@ -652,7 +652,7 @@ macro_rules! create_remesher {
                     return Err(PyValueError::new_err("Invalid dimension 1"));
                 }
 
-                let m = m.as_slice().unwrap();
+                let m = crate::as_c_slice(&m)?;
                 let m: Vec<_> = m
                     .chunks($metric::N)
                     .map(|x| $metric::from_slice(x))
@@ -679,7 +679,7 @@ macro_rules! create_remesher {
                     return Err(PyValueError::new_err("Invalid dimension 1"));
                 }
 
-                let m = m.as_slice().unwrap();
+                let m = crate::as_c_slice(&m)?;
                 let m: Vec<_> = m
                     .chunks($metric::N)
                     .map(|x| $metric::from_slice(x))
@@ -715,10 +715,10 @@ macro_rules! create_remesher {
                     return Err(PyValueError::new_err("Invalid dimension 1"));
                 }
 
-                let m = m.as_slice().unwrap();
+                let m = crate::as_c_slice(&m)?;
                 let m = m.chunks($metric::N).map(|x| $metric::from_slice(x));
 
-                let m_other = m_other.as_slice().unwrap();
+                let m_other = crate::as_c_slice(&m_other)?;
                 let m_other = m_other.chunks($metric::N).map(|x| $metric::from_slice(x));
 
                 let mut res =
@@ -738,14 +738,14 @@ macro_rules! create_remesher {
                 _cls: &Bound<'_, PyType>,
                 mesh: &$mesh,
                 m: PyReadonlyArray2<f64>,
-            ) -> (f64, f64, f64, f64) {
-                let m = m.as_slice().unwrap();
+            ) -> PyResult<(f64, f64, f64, f64)> {
+                let m = crate::as_c_slice(&m)?;
                 let m = m
                     .chunks($metric::N)
                     .map(|x| $metric::from_slice(x))
                     .collect::<Vec<_>>();
                 let m = MetricField::new(&mesh.0, m);
-                m.info()
+                Ok(m.info())
             }
 
             /// Check that the mesh is valid
@@ -836,7 +836,7 @@ macro_rules! create_remesher {
                     return Err(PyValueError::new_err("Invalid dimension 1"));
                 }
 
-                let m = m.as_slice()?;
+                let m = crate::as_c_slice(&m)?;
                 let m: Vec<_> = m
                     .chunks($metric::N)
                     .map(|x| $metric::from_slice(x))

@@ -131,6 +131,23 @@ class TestMeshes(unittest.TestCase):
         self.assertTrue(np.allclose(msh.get_faces(), faces))
         self.assertTrue(np.allclose(msh.get_ftags(), ftags))
 
+    def test_init_f_order_fail(self):
+        # F-ordered (column-major) arrays used to be accepted and read as if
+        # they were C-ordered, silently scrambling the connectivity (e.g.
+        # elems[:, [1, 0, 2]] returns an F-ordered copy). They must now be
+        # rejected with a clear error.
+        coords, elems, etags, faces, ftags = get_square()
+
+        flipped = elems[:, [1, 0, 2]]
+        self.assertFalse(flipped.flags["C_CONTIGUOUS"])
+        with self.assertRaises(ValueError):
+            _msh = Mesh2d(coords, flipped, etags, faces, ftags)
+        with self.assertRaises(ValueError):
+            _msh = Mesh2d(np.asfortranarray(coords), elems, etags, faces, ftags)
+
+        msh = Mesh2d(coords, np.ascontiguousarray(flipped), etags, faces, ftags)
+        self.assertTrue(np.array_equal(msh.get_elems(), flipped))
+
     def test_meshb_2d(self):
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh2d(coords, elems, etags, faces, ftags)

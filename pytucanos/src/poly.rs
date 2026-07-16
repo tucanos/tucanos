@@ -57,7 +57,7 @@ macro_rules! create_poly_mesh {
                     PyPolyMeshType::Polyhedra => PolyMeshType::Polyhedra,
                 };
 
-                let coords = coords.as_slice()?;
+                let coords = crate::as_c_slice(&coords)?;
                 let coords = coords
                     .chunks($dim)
                     .map(|p| {

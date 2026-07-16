@@ -117,7 +117,7 @@ macro_rules! create_parallel_remesher {
                     return Err(PyValueError::new_err("Invalid dimension 1"));
                 }
 
-                let m = m.as_slice()?;
+                let m = crate::as_c_slice(&m)?;
                 let m: Vec<_> = m
                     .chunks($metric::N)
                     .map(|x| $metric::from_slice(x))
@@ -155,7 +155,7 @@ macro_rules! create_parallel_remesher {
                     return Err(PyValueError::new_err("Invalid dimension 1"));
                 }
 
-                let m = m.as_slice()?;
+                let m = crate::as_c_slice(&m)?;
                 let m: Vec<_> = m
                     .chunks($metric::N)
                     .map(|x| $metric::from_slice(x))
