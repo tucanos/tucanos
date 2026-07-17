@@ -44,6 +44,7 @@ impl<const D: usize> QuadraticGEdge<D> {
         Self([*v0, *v1, *v2], etype)
     }
 
+    #[cfg_attr(not(feature = "argmin"), allow(dead_code))]
     fn linear(&self) -> GEdge<D> {
         GEdge::new(&self[0], &self[1])
     }
@@ -240,39 +241,40 @@ impl<const D: usize> GSimplex<D> for QuadraticGEdge<D> {
     }
 
     fn bcoords(&self, v: &Vertex<D>) -> Self::BCOORDS {
-        #[allow(unused_variables)]
-        let uv = self.linear().bcoords(v);
-        let proj = QuadraticEdgeProjection { v, ge: self };
-
         #[cfg(not(feature = "argmin"))]
         {
-            use crate::mesh::elements::newton_cg;
-            let start: Vector1<f64> = if uv.into_iter().all(|x| x > 0.0) {
-                [uv[1]].into()
-            } else {
-                [0.5].into()
-            };
-            let (x, reason) = newton_cg::newton_cg_minimize(
-                start,
-                |x| proj.f(x),
-                |x| proj.grad_f(x),
-                |x| proj.hess_f(x),
-                1e-12,
-                20,
+            // With p(t) quadratic in t, the stationary points of |p(t) - v|^2
+            // are the real roots of a cubic polynomial that can be computed
+            // directly. An iterative minimization is not robust here: the
+            // objective has negative curvature wherever v lies beyond the
+            // local center of curvature, and the gradient magnitude scales as
+            // the squared edge length, so fallback gradient steps stall for
+            // small edges.
+            let a = 2.0 * self[0] + 2.0 * self[1] - 4.0 * self[2];
+            let b = 4.0 * self[2] - 3.0 * self[0] - self[1];
+            let e = self[0] - v;
+            let (roots, n) = real_cubic_roots(
+                2.0 * a.norm_squared(),
+                3.0 * a.dot(&b),
+                b.norm_squared() + 2.0 * a.dot(&e),
+                b.dot(&e),
             );
-
-            if matches!(reason, newton_cg::ConvergenceStatus::NotConverged) {
-                assert!(
-                    x[0] < 0.0 || 1.0 - x[0] < 0.0,
-                    "Not converged but x = {x:?}",
-                );
+            let mut t = 0.5;
+            let mut dmin = f64::MAX;
+            for &r in roots.iter().take(n) {
+                let d = (e + r * (b + r * a)).norm_squared();
+                if d < dmin {
+                    dmin = d;
+                    t = r;
+                }
             }
-
-            [1.0 - x[0], x[0]]
+            [1.0 - t, t]
         }
 
         #[cfg(feature = "argmin")]
         {
+            let uv = self.linear().bcoords(v);
+            let proj = QuadraticEdgeProjection { v, ge: self };
             let linesearch = argmin::solver::linesearch::MoreThuenteLineSearch::new();
             let solver = argmin::solver::newton::NewtonCG::new(linesearch)
                 .with_tolerance(1e-10)
@@ -316,11 +318,97 @@ impl<const D: usize> GSimplex<D> for QuadraticGEdge<D> {
     }
 }
 
+/// Real roots of `c3 x^3 + c2 x^2 + c1 x + c0`, gracefully degrading to the
+/// quadratic / linear case when the leading coefficients vanish (e.g. the
+/// stationary points of the distance to a straight quadratic edge).
+fn real_cubic_roots(c3: f64, c2: f64, c1: f64, c0: f64) -> ([f64; 3], usize) {
+    let mut roots = [0.0; 3];
+    let scale = c3.abs().max(c2.abs()).max(c1.abs()).max(c0.abs());
+    if scale == 0.0 {
+        return (roots, 0);
+    }
+    let eps = 1e-12 * scale;
+
+    let n = if c3.abs() < eps {
+        if c2.abs() < eps {
+            if c1.abs() < eps {
+                return (roots, 0);
+            }
+            roots[0] = -c0 / c1;
+            1
+        } else {
+            let delta = c1 * c1 - 4.0 * c2 * c0;
+            if delta < 0.0 {
+                return (roots, 0);
+            }
+            // Citardauq formulation to avoid cancellation
+            let q = -0.5 * (c1 + c1.signum() * delta.sqrt());
+            roots[0] = q / c2;
+            if q.abs() > 0.0 {
+                roots[1] = c0 / q;
+                2
+            } else {
+                1
+            }
+        }
+    } else {
+        // Depressed cubic y^3 + p y + q = 0 with x = y - c2 / (3 c3)
+        let a = c2 / c3;
+        let b = c1 / c3;
+        let c = c0 / c3;
+        let p = b - a * a / 3.0;
+        let q = 2.0 * a * a * a / 27.0 - a * b / 3.0 + c;
+        let shift = -a / 3.0;
+        let delta = 0.25 * q * q + p * p * p / 27.0;
+        if delta > 0.0 {
+            // One real root (Cardano)
+            let s = delta.sqrt();
+            roots[0] = shift + (-0.5 * q + s).cbrt() + (-0.5 * q - s).cbrt();
+            1
+        } else {
+            // Three real roots (trigonometric method); delta <= 0 implies p <= 0
+            let r = (-p / 3.0).sqrt();
+            if r < 1e-30 {
+                // p ~ 0 and delta <= 0 imply q ~ 0: triple root
+                roots[0] = shift;
+                1
+            } else {
+                let phi = ((3.0 * q) / (2.0 * p * r)).clamp(-1.0, 1.0).acos() / 3.0;
+                for (k, root) in roots.iter_mut().enumerate() {
+                    *root = shift
+                        + 2.0 * r * (phi - 2.0 * std::f64::consts::PI * (k as f64) / 3.0).cos();
+                }
+                3
+            }
+        }
+    };
+
+    // Newton polish on the original polynomial, keeping a step only if it
+    // reduces the residual
+    for root in roots.iter_mut().take(n) {
+        for _ in 0..2 {
+            let g = ((c3 * *root + c2) * *root + c1) * *root + c0;
+            let dg = (3.0 * c3 * *root + 2.0 * c2) * *root + c1;
+            if dg != 0.0 {
+                let cand = *root - g / dg;
+                let gc = ((c3 * cand + c2) * cand + c1) * cand + c0;
+                if gc.abs() < g.abs() {
+                    *root = cand;
+                }
+            }
+        }
+    }
+
+    (roots, n)
+}
+
+#[cfg_attr(not(any(test, feature = "argmin")), allow(dead_code))]
 struct QuadraticEdgeProjection<'a, const D: usize> {
     v: &'a Vertex<D>,
     ge: &'a QuadraticGEdge<D>,
 }
 
+#[cfg_attr(not(any(test, feature = "argmin")), allow(dead_code))]
 impl<const D: usize> QuadraticEdgeProjection<'_, D> {
     #[allow(clippy::trivially_copy_pass_by_ref)]
     fn f(&self, x: &Vector1<f64>) -> f64 {
@@ -431,6 +519,61 @@ mod tests {
                 / (2.0 * eps);
             assert_delta!(g, g2, 1e-6);
             assert_delta!(h, h3, 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_projection_concave_side() {
+        // Points beyond the local center of curvature used to make the
+        // Newton-CG iteration stall inside the edge and panic
+        let h = 1e-3;
+        let p0 = Vert2d::new(0.0, 0.0);
+        let p1 = Vert2d::new(h, 0.0);
+        let p2 = Vert2d::new(0.5 * h, 0.1 * h);
+        let ge = QuadraticGEdge::new(&p0, &p1, &p2, HOType::Lagrange);
+
+        for (x, y) in [(0.55, -3.0e-3), (0.68, -1.0e-2), (0.9, -3.0e-3)] {
+            let v = Vert2d::new(x * h, y);
+            let bc = ge.bcoords(&v);
+            let d = (ge.vert(&bc) - v).norm_squared();
+            let d_ref = (0..=10000)
+                .map(|i| {
+                    let t = f64::from(i) / 1e4;
+                    (ge.vert(&[1.0 - t, t]) - v).norm_squared()
+                })
+                .fold(f64::MAX, f64::min);
+            assert!(
+                d <= d_ref * (1.0 + 1e-8),
+                "d = {d:.16e} > d_ref = {d_ref:.16e}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_projection_global_min() {
+        // The distance at the computed stationary point cannot exceed the
+        // minimal distance sampled on the edge
+        let mut rng = StdRng::seed_from_u64(5678);
+
+        for _ in 0..10000 {
+            let p0 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let p1 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let p2 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
+            let ge = QuadraticGEdge::new(&p0, &p1, &p2, HOType::Lagrange);
+            let v = Vert2d::from_fn(|_, _| 10.0 * (rng.random::<f64>() - 0.5));
+
+            let bc = ge.bcoords(&v);
+            let d = (ge.vert(&bc) - v).norm_squared();
+            let d_ref = (0..=1000)
+                .map(|i| {
+                    let t = f64::from(i) / 1e3;
+                    (ge.vert(&[1.0 - t, t]) - v).norm_squared()
+                })
+                .fold(f64::MAX, f64::min);
+            assert!(
+                d <= d_ref * (1.0 + 1e-8),
+                "d = {d:.16e} > d_ref = {d_ref:.16e}"
+            );
         }
     }
 
