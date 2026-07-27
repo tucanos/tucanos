@@ -33,5 +33,9 @@ name = "adapt_ellipse"
 [[example]]
 name = "cube_cylinder"
 
+[[test]]
+name = "metric_computation"
+harness = false
+
 [lints]
 workspace = true
