@@ -5,6 +5,7 @@ use crate::{
     geometry::curvature::{compute_curvature, write_curvature},
     mesh::{MeshTopology, Topology},
 };
+pub use curvature::{VertexNormalWeight, compute_vertex_normals};
 use log::debug;
 pub use orient::orient_geometry;
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
