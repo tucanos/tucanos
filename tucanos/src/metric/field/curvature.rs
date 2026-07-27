@@ -18,7 +18,8 @@ impl<'a, T: Idx, M: Mesh<3, C = Tetrahedron<T>>> MetricField<'a, 3, M, AnisoMetr
     /// - beta: the mesh gradation
     /// - h_n: the normal size, defined at the boundary vertices
     /// - h_n_tags: the tags on which the normal size is imposed
-    /// - max_surface_anisotropy: the maximum anisotropy allowed on the surface
+    /// - max_surface_anisotropy: the maximum anisotropy allowed on the surface (only on tags in h_n_tags)
+    /// - max_surface_h: the maximum size allowed on the surface (only on tags in h_n_tags)
     ///   if <0, the min of the tangential sizes is used
     #[allow(clippy::too_many_arguments)]
     pub fn curvature_metric_3d(
@@ -33,6 +34,7 @@ impl<'a, T: Idx, M: Mesh<3, C = Tetrahedron<T>>> MetricField<'a, 3, M, AnisoMetr
         h_n: Option<&[f64]>,
         h_n_tags: Option<&[Tag]>,
         max_surface_anisotropy: Option<f64>,
+        max_surface_h: Option<f64>,
     ) -> Result<Self> {
         info!("Compute the curvature metric (3d)");
         info!("  r/h = {r_h}");
@@ -71,12 +73,16 @@ impl<'a, T: Idx, M: Mesh<3, C = Tetrahedron<T>>> MetricField<'a, 3, M, AnisoMetr
                         hv = hv.max(h_min);
                         hn = hn.max(h_min);
                     }
-                    if let Some(h_max) = h_max {
+                    if use_h_n && let Some(max_surface_h) = max_surface_h {
+                        hu = hu.min(max_surface_h);
+                        hv = hv.min(max_surface_h);
+                        hn = hn.min(max_surface_h);
+                    } else if let Some(h_max) = h_max {
                         hu = hu.min(h_max);
                         hv = hv.min(h_max);
                         hn = hn.min(h_max);
                     }
-                    if let Some(max_surface_anisotropy) = max_surface_anisotropy {
+                    if use_h_n && let Some(max_surface_anisotropy) = max_surface_anisotropy {
                         if hu > hv * max_surface_anisotropy {
                             hu = hv * max_surface_anisotropy;
                         } else if hv > hu * max_surface_anisotropy {
@@ -298,7 +304,7 @@ mod tests {
         // curvature metric (no prescribes normal size)
         let v2v = mesh.vertex_to_vertices();
         let m_curv = MetricField::curvature_metric_3d(
-            &mesh, &v2v, &geom, 4.0, 2.0, 1.0, None, None, None, None, None,
+            &mesh, &v2v, &geom, 4.0, 2.0, 1.0, None, None, None, None, None, None,
         )?;
         let m_curv = m_curv.metric();
 
@@ -320,6 +326,7 @@ mod tests {
             None,
             Some(&h_n),
             Some(&[tag_in]),
+            None,
             None,
         )?;
         let m = m_curv.metric();
