@@ -17,6 +17,8 @@ impl<'a, T: Idx, M: Mesh<3, C = Tetrahedron<T>>> MetricField<'a, 3, M, AnisoMetr
     /// - r_h: the curvature radius to element size ratio
     /// - beta: the mesh gradation
     /// - h_n: the normal size, defined at the boundary vertices
+    /// - h_n_tags: the tags on which the normal size is imposed
+    /// - max_surface_anisotropy: the maximum anisotropy allowed on the surface
     ///   if <0, the min of the tangential sizes is used
     #[allow(clippy::too_many_arguments)]
     pub fn curvature_metric_3d(
@@ -30,6 +32,7 @@ impl<'a, T: Idx, M: Mesh<3, C = Tetrahedron<T>>> MetricField<'a, 3, M, AnisoMetr
         h_max: Option<f64>,
         h_n: Option<&[f64]>,
         h_n_tags: Option<&[Tag]>,
+        max_surface_anisotropy: Option<f64>,
     ) -> Result<Self> {
         info!("Compute the curvature metric (3d)");
         info!("  r/h = {r_h}");
@@ -72,6 +75,13 @@ impl<'a, T: Idx, M: Mesh<3, C = Tetrahedron<T>>> MetricField<'a, 3, M, AnisoMetr
                         hu = hu.min(h_max);
                         hv = hv.min(h_max);
                         hn = hn.min(h_max);
+                    }
+                    if let Some(max_surface_anisotropy) = max_surface_anisotropy {
+                        if hu > hv * max_surface_anisotropy {
+                            hu = hv * max_surface_anisotropy;
+                        } else if hv > hu * max_surface_anisotropy {
+                            hv = hu * max_surface_anisotropy;
+                        }
                     }
                     u.normalize_mut();
                     v.normalize_mut();
@@ -288,7 +298,7 @@ mod tests {
         // curvature metric (no prescribes normal size)
         let v2v = mesh.vertex_to_vertices();
         let m_curv = MetricField::curvature_metric_3d(
-            &mesh, &v2v, &geom, 4.0, 2.0, 1.0, None, None, None, None,
+            &mesh, &v2v, &geom, 4.0, 2.0, 1.0, None, None, None, None, None,
         )?;
         let m_curv = m_curv.metric();
 
@@ -310,6 +320,7 @@ mod tests {
             None,
             Some(&h_n),
             Some(&[tag_in]),
+            None,
         )?;
         let m = m_curv.metric();
         assert_prescribed_normal_sizes(m, &bdy_ids, &bdy_flg, r_in, r_out, h_0);

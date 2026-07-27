@@ -63,7 +63,7 @@ pub fn implied_metric_3d<'py>(py: Python<'py>, msh: &PyMesh3d) -> Bound<'py, PyA
 ///  - if a normal size array is not provided, the minimum of the tangential sizes is used.
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
-#[pyo3(signature = (msh, geom, r_h, beta, t=1.0, h_min=None, h_max=None, h_n=None, h_n_tags=None))]
+#[pyo3(signature = (msh, geom, r_h, beta, t=1.0, h_min=None, h_max=None, h_n=None, h_n_tags=None, max_surface_anisotropy=None))]
 pub fn curvature_metric_3d<'py>(
     py: Python<'py>,
     msh: &PyMesh3d,
@@ -75,6 +75,7 @@ pub fn curvature_metric_3d<'py>(
     h_max: Option<f64>,
     h_n: Option<PyReadonlyArray1<f64>>,
     h_n_tags: Option<PyReadonlyArray1<Tag>>,
+    max_surface_anisotropy: Option<f64>,
 ) -> PyResult<Bound<'py, PyArray2<f64>>> {
     let v2v = msh.0.vertex_to_vertices();
 
@@ -96,10 +97,21 @@ pub fn curvature_metric_3d<'py>(
             h_max,
             Some(h_n),
             Some(h_n_tags),
+            max_surface_anisotropy,
         )
     } else {
         MetricField::curvature_metric_3d(
-            &msh.0, &v2v, &geom.geom, r_h, beta, t, h_min, h_max, None, None,
+            &msh.0,
+            &v2v,
+            &geom.geom,
+            r_h,
+            beta,
+            t,
+            h_min,
+            h_max,
+            None,
+            None,
+            max_surface_anisotropy,
         )
     };
 
@@ -122,7 +134,7 @@ pub fn curvature_metric_3d<'py>(
 ///  - if a normal size array is not provided, the minimum of the tangential sizes is used.
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
-#[pyo3(signature = (msh, geom, r_h, beta, t=1.0, h_min=None, h_max=None, h_n=None, h_n_tags=None))]
+#[pyo3(signature = (msh, geom, r_h, beta, t=1.0, h_min=None, h_max=None, h_n=None, h_n_tags=None, max_surface_anisotropy=None))]
 pub fn curvature_metric_3d_quadratic<'py>(
     py: Python<'py>,
     msh: &PyMesh3d,
@@ -134,6 +146,7 @@ pub fn curvature_metric_3d_quadratic<'py>(
     h_max: Option<f64>,
     h_n: Option<PyReadonlyArray1<f64>>,
     h_n_tags: Option<PyReadonlyArray1<Tag>>,
+    max_surface_anisotropy: Option<f64>,
 ) -> PyResult<Bound<'py, PyArray2<f64>>> {
     let v2v = msh.0.vertex_to_vertices();
 
@@ -155,10 +168,21 @@ pub fn curvature_metric_3d_quadratic<'py>(
             h_max,
             Some(h_n),
             Some(h_n_tags),
+            max_surface_anisotropy,
         )
     } else {
         MetricField::curvature_metric_3d(
-            &msh.0, &v2v, &geom.geom, r_h, beta, t, h_min, h_max, None, None,
+            &msh.0,
+            &v2v,
+            &geom.geom,
+            r_h,
+            beta,
+            t,
+            h_min,
+            h_max,
+            None,
+            None,
+            max_surface_anisotropy,
         )
     };
 
