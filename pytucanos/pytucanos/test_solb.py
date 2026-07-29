@@ -1,8 +1,10 @@
 import os
-import numpy as np
 import unittest
+
+import numpy as np
+
 from . import Mesh2d, Mesh3d
-from .mesh import get_square, get_cube
+from .mesh import get_cube, get_square
 
 
 class TestField(unittest.TestCase):

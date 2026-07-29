@@ -1,24 +1,27 @@
-import os
 import json
-import subprocess
-import numpy as np
-import matplotlib.pyplot as plt
 import logging
+import os
+import subprocess
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+logger = logging.getLogger(__name__)
 
 from . import (
-    Mesh2d,
-    Mesh3d,
+    CollapseParams,
     LinearGeometry2d,
     LinearGeometry3d,
-    CollapseParams,
+    Mesh2d,
+    Mesh3d,
+    Remesher2dAniso,
+    Remesher2dIso,
+    Remesher3dAniso,
+    Remesher3dIso,
+    RemesherParams,
+    SmoothParams,
     SplitParams,
     SwapParams,
-    SmoothParams,
-    RemesherParams,
-    Remesher2dIso,
-    Remesher2dAniso,
-    Remesher3dIso,
-    Remesher3dAniso,
 )
 
 
@@ -80,7 +83,7 @@ def print_params(params, print_fn=print):
             for attr in attrs:
                 print_fn(f"  {attr} = {getattr(step, attr)}")
         else:
-            raise RuntimeError()
+            raise TypeError(f"Unsupported step type: {type(step)!r}")
 
 
 def update_params(params, step, key, value):
@@ -219,7 +222,7 @@ def use_podman():
             "podman",
             "run",
             "-v",
-            "%s:/data:z" % os.getcwd(),
+            f"{os.getcwd()}:/data:z",
             "-w",
             "/data",
             "-it",
@@ -256,7 +259,7 @@ def remesh_mmg(msh, h, hgrad=10.0, hausd=10.0):
         "-hausd",
         repr(hausd),
     ]
-    logging.info(f"Running {' '.join(cmd)}")
+    logger.info(f"Running {' '.join(cmd)}")
     subprocess.check_output(
         cmd,
         stderr=subprocess.STDOUT,
@@ -289,7 +292,7 @@ def remesh_omega_h(msh, h):
         "--metric-out",
         "tmp.solb",
     ]
-    logging.info(f"Running {' '.join(cmd)}")
+    logger.info(f"Running {' '.join(cmd)}")
     subprocess.check_output(
         cmd,
         stderr=subprocess.STDOUT,
@@ -328,7 +331,7 @@ def remesh_refine(msh, h, geom=None, fname=None):
     if geom is not None:
         cmd += ["--egads", geom]
 
-    logging.info(f"Running {' '.join(cmd)}")
+    logger.info(f"Running {' '.join(cmd)}")
     subprocess.check_output(
         cmd,
         stderr=subprocess.STDOUT,
@@ -362,7 +365,7 @@ def remesh_avro(msh, h, geom, limit=False):
         "tmp.mesh",
         "limit=%s" % ("true" if limit else "false"),
     ]
-    logging.info(f"Running {' '.join(cmd)}")
+    logger.info(f"Running {' '.join(cmd)}")
     subprocess.check_output(
         cmd,
         stderr=subprocess.STDOUT,

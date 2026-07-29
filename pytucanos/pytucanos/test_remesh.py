@@ -1,17 +1,19 @@
-import numpy as np
 import unittest
+
+import numpy as np
+
 from . import (
     BoundaryMesh2d,
-    Mesh2d,
+    Idx,
     LinearGeometry2d,
-    Remesher2dIso,
+    Mesh2d,
+    ParallelRemesher2dAniso,
+    ParallelRemesher2dIso,
+    ParallelRemesherParams,
     Remesher2dAniso,
+    Remesher2dIso,
     RemesherParams,
     RemeshingStep,
-    ParallelRemesher2dIso,
-    ParallelRemesher2dAniso,
-    ParallelRemesherParams,
-    Idx,
 )
 from .mesh import (
     get_square,

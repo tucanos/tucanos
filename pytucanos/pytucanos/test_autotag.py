@@ -1,7 +1,9 @@
-import numpy as np
 import unittest
-from .mesh import get_square, get_cube
+
+import numpy as np
+
 from . import Mesh2d, Mesh3d, autotag, transfer_tags
+from .mesh import get_cube, get_square
 
 
 class TestMeshes(unittest.TestCase):

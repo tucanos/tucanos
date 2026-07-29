@@ -1,4 +1,5 @@
 import unittest
+
 import numpy as np
 
 try:
@@ -9,7 +10,7 @@ try:
 except ImportError:
     HAVE_VTK = False
 
-from . import Mesh2d, Mesh3d, DualType, DualMesh2d, DualMesh3d, USE_32BIT_INTS, Idx
+from . import USE_32BIT_INTS, DualMesh2d, DualMesh3d, DualType, Idx, Mesh2d, Mesh3d
 
 
 class TestMeshes(unittest.TestCase):
