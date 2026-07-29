@@ -1,20 +1,24 @@
-import numpy as np
-from . import (
-    Mesh2d,
-    BoundaryMesh2d,
-    QuadraticBoundaryMesh2d,
-    Mesh3d,
-    BoundaryMesh3d,
-    QuadraticBoundaryMesh3d,
-    Idx,
-)
 import logging
+
+import numpy as np
+
+from . import (
+    BoundaryMesh2d,
+    BoundaryMesh3d,
+    Idx,
+    Mesh2d,
+    Mesh3d,
+    QuadraticBoundaryMesh2d,
+    QuadraticBoundaryMesh3d,
+)
+
+logger = logging.getLogger(__name__)
 
 try:
     import CGNS.MAP as CGM
+    import CGNS.PAT.cgnskeywords as CGK
     import CGNS.PAT.cgnslib as CGL
     import CGNS.PAT.cgnsutils as CGU
-    import CGNS.PAT.cgnskeywords as CGK
     import CGNS.VAL.simplecheck as CGV
 
     HAVE_CGNS = True
@@ -76,13 +80,12 @@ def check_etypes(etypes):
         else:
             order = 1
 
-    CGK.ElementType
     cell_dim = 0
-    if any([x in CGK.ElementType1D for x in etypes]):
+    if any(x in CGK.ElementType1D for x in etypes):
         cell_dim = 1
-    if any([x in CGK.ElementType2D for x in etypes]):
+    if any(x in CGK.ElementType2D for x in etypes):
         cell_dim = 2
-    if any([x in CGK.ElementType3D for x in etypes]):
+    if any(x in CGK.ElementType3D for x in etypes):
         cell_dim = 3
 
     return cell_dim, order
@@ -97,7 +100,7 @@ def load_cgns(fname, cls=None):
     if not HAVE_CGNS:
         raise RuntimeError("pycgns not available")
     flags = CGM.S2P_DEFAULT
-    logging.info(f"Reading {fname}")
+    logger.info(f"Reading {fname}")
     tree, _, _ = CGM.load(fname, flags=flags)
 
     res = None
@@ -111,7 +114,7 @@ def load_cgns(fname, cls=None):
     for base in CGU.hasChildType(tree, CGK.CGNSBase_ts):
         cell_dim_f, phys_dim = CGU.getValue(base)
         for zone in CGU.hasChildType(base, CGK.Zone_ts):
-            logging.info(f"Reading {base[0]}/{zone[0]}")
+            logger.info(f"Reading {base[0]}/{zone[0]}")
             cg = CGU.hasChildName(zone, CGK.GridCoordinates_s)
             x = CGU.getValue(CGU.getChildByName(cg, CGK.CoordinateX_s))
             y = CGU.getValue(CGU.getChildByName(cg, CGK.CoordinateY_s))
@@ -122,13 +125,13 @@ def load_cgns(fname, cls=None):
             else:
                 z = CGU.getValue(n)
                 if np.all(np.abs(z) < 1e-10):
-                    logging.warning("2D mesh in xy plane")
+                    logger.warning("2D mesh in xy plane")
                     coords = np.stack([x, y], axis=-1, dtype=np.float64)
                 elif np.all(np.abs(y) < 1e-10):
-                    logging.warning("2D mesh in xz plane")
+                    logger.warning("2D mesh in xz plane")
                     coords = np.stack([x, z], axis=-1, dtype=np.float64)
                 elif np.all(np.abs(x) < 1e-10):
-                    logging.warning("2D mesh in yz plane")
+                    logger.warning("2D mesh in yz plane")
                     coords = np.stack([y, z], axis=-1, dtype=np.float64)
                 else:
                     raise RuntimeError(
@@ -144,20 +147,20 @@ def load_cgns(fname, cls=None):
             )
             cell_dim, order = check_etypes(etypes)
             if cell_dim != cell_dim_f:
-                logging.warning(
+                logger.warning(
                     f"cell_dim = {cell_dim_f} for the base but using {cell_dim} based on the element types"
                 )
-            logging.debug(f"phys_dim = {phys_dim}")
-            logging.debug(f"cell_dim = {cell_dim}")
-            logging.debug(f"order = {order}")
+            logger.debug(f"phys_dim = {phys_dim}")
+            logger.debug(f"cell_dim = {cell_dim}")
+            logger.debug(f"order = {order}")
 
             if cls is None:
                 msh = get_empty_mesh(phys_dim, cell_dim, order)
             else:
                 msh = cls.empty()
-            logging.debug(f"mesh type: {type(msh)}")
+            logger.debug(f"mesh type: {type(msh)}")
 
-            logging.debug(f"Read {coords.shape[0]} vertices")
+            logger.debug(f"Read {coords.shape[0]} vertices")
             msh.add_verts(coords)
 
             zbc = CGU.getChildByName(zone, "ZoneBC")
@@ -181,7 +184,7 @@ def load_cgns(fname, cls=None):
 
                 bcs.append((bc[0], tag, ids))
 
-                logging.debug(f"Read BC {bc[0]}: {ids.size} faces, tag = {tag}")
+                logger.debug(f"Read BC {bc[0]}: {ids.size} faces, tag = {tag}")
 
             for els in CGU.hasChildType(zone, CGK.Elements_ts):
                 etype, _ = CGU.getValue(els)
@@ -202,7 +205,7 @@ def load_cgns(fname, cls=None):
                 erange = CGU.getValue(CGU.getChildByName(els, "ElementRange"))
                 ids = np.arange(erange[0] - 1, erange[1], dtype=np.uint32)
                 econn = CGU.getValue(CGU.getChildByName(els, "ElementConnectivity"))
-                logging.info(f"Read {ids.size} {cgns_elem_name(etype)}")
+                logger.info(f"Read {ids.size} {cgns_elem_name(etype)}")
                 econn = econn.astype(Idx).reshape((ids.size, -1)) - 1
                 tags = np.zeros(ids.size, dtype=np.int16)
                 for name, tag, bdy_ids in bcs:
@@ -213,7 +216,7 @@ def load_cgns(fname, cls=None):
                     tags[:] = 1
                 else:
                     assert tags.min() > 0
-                logging.debug(f"tags = {np.unique(tags)}")
+                logger.debug(f"tags = {np.unique(tags)}")
 
                 if cell_dim == 3:
                     if etype == CGK.TRI_3:
@@ -279,11 +282,11 @@ def load_cgns(fname, cls=None):
             if cell_dim == 3:
                 assert len(ifc) == 0
 
-            for _, i in bdy.items():
-                logging.debug(f"Tagging untagged faces with {i}")
+            for i in bdy.values():
+                logger.debug(f"Tagging untagged faces with {i}")
                 tags_to_be_removed.append(i)
             for (t0, t1), i in ifc.items():
-                logging.info(f"Tagging faces between {t0} and {t1} with {i}")
+                logger.info(f"Tagging faces between {t0} and {t1} with {i}")
             #     tags_to_be_removed.append(i)
 
             if res is None:
@@ -292,7 +295,7 @@ def load_cgns(fname, cls=None):
                 multizone = True
                 n = res.n_verts() + msh.n_verts()
                 res.add(msh, tol=1e-6)
-                logging.info(f"Merge zone: {n - res.n_verts()} vertices merged")
+                logger.info(f"Merge zone: {n - res.n_verts()} vertices merged")
 
     if multizone:
         # Remove internal faces
@@ -345,7 +348,7 @@ def write_cgns(
     s = np.array([[mesh.n_verts(), mesh.n_elems(), 0]], dtype=np.int32)
     zone = CGL.newZone(base, "Zone", s, CGK.Unstructured_s)
 
-    logging.info(f"Adding {base[0]}/{zone[0]}/{CGK.GridCoordinates_s}")
+    logger.info(f"Adding {base[0]}/{zone[0]}/{CGK.GridCoordinates_s}")
     gc = CGL.newGridCoordinates(zone, CGK.GridCoordinates_s)
     CGL.newDataArray(gc, CGK.CoordinateX_s, coords[:, 0].copy())
     CGL.newDataArray(gc, CGK.CoordinateY_s, coords[:, 1].copy())
@@ -362,7 +365,7 @@ def write_cgns(
         )
 
     if isinstance(mesh, Mesh3d):
-        logging.info(f"Adding {base[0]}/{zone[0]}/Elems")
+        logger.info(f"Adding {base[0]}/{zone[0]}/Elems")
         CGL.newElements(
             zone,
             "Elems",
@@ -370,7 +373,7 @@ def write_cgns(
             np.array([1, mesh.n_elems()]),
             elems.astype(np.int32).ravel() + 1,
         )
-        logging.info(f"Adding {base[0]}/{zone[0]}/Faces")
+        logger.info(f"Adding {base[0]}/{zone[0]}/Faces")
         CGL.newElements(
             zone,
             "Faces",
@@ -379,7 +382,7 @@ def write_cgns(
             mesh.get_faces().astype(np.int32).ravel() + 1,
         )
     elif isinstance(mesh, (Mesh2d, BoundaryMesh3d)):
-        logging.info(f"Adding {base[0]}/{zone[0]}/Elems")
+        logger.info(f"Adding {base[0]}/{zone[0]}/Elems")
         CGL.newElements(
             zone,
             "Elems",
@@ -388,7 +391,7 @@ def write_cgns(
             elems.astype(np.int32).ravel() + 1,
         )
         if mesh.n_faces() > 0:
-            logging.info(f"Adding {base[0]}/{zone[0]}/Faces")
+            logger.info(f"Adding {base[0]}/{zone[0]}/Faces")
             CGL.newElements(
                 zone,
                 "Faces",
@@ -397,7 +400,7 @@ def write_cgns(
                 mesh.get_faces().astype(np.int32).ravel() + 1,
             )
     elif isinstance(mesh, QuadraticBoundaryMesh3d):
-        logging.info(f"Adding {base[0]}/{zone[0]}/Elems")
+        logger.info(f"Adding {base[0]}/{zone[0]}/Elems")
         CGL.newElements(
             zone,
             "Elems",
@@ -406,7 +409,7 @@ def write_cgns(
             elems.astype(np.int32).ravel() + 1,
         )
     elif isinstance(mesh, BoundaryMesh2d):
-        logging.info(f"Adding {base[0]}/{zone[0]}/Elems")
+        logger.info(f"Adding {base[0]}/{zone[0]}/Elems")
         CGL.newElements(
             zone,
             "Elems",
@@ -415,7 +418,7 @@ def write_cgns(
             elems.astype(np.int32).ravel() + 1,
         )
     elif isinstance(mesh, QuadraticBoundaryMesh2d):
-        logging.info(f"Adding {base[0]}/{zone[0]}/Elems")
+        logger.info(f"Adding {base[0]}/{zone[0]}/Elems")
         CGL.newElements(
             zone,
             "Elems",
@@ -444,7 +447,7 @@ def write_cgns(
 
     for name, tag in tags.items():
         (ids,) = np.nonzero(ftags == tag)
-        logging.info(f"Adding {base[0]}/{zone[0]}/{zbc[0]}/{name}")
+        logger.info(f"Adding {base[0]}/{zone[0]}/{zbc[0]}/{name}")
         CGL.newBC(zbc, name, ids + 1, pttype=CGK.PointList_s)
 
     if vert_data is not None:
@@ -466,5 +469,5 @@ def write_cgns(
             print(pth, msg)
 
     if is_ok:
-        logging.info(f"Writing {fname}")
+        logger.info(f"Writing {fname}")
         CGM.save(fname, tree)

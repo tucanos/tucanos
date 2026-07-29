@@ -1,15 +1,17 @@
 import logging
-import numpy as np
+
 import matplotlib.pyplot as plt
-from pytucanos import (
-    Mesh2d,
-    LinearGeometry2d,
-    Remesher2dAniso,
-    RemesherParams,
-)
+import numpy as np
 from pytucanos.mesh import (
     get_square,
     plot_mesh,
+)
+
+from pytucanos import (
+    LinearGeometry2d,
+    Mesh2d,
+    Remesher2dAniso,
+    RemesherParams,
 )
 
 
@@ -65,6 +67,6 @@ if __name__ == "__main__":
 
     fig, ax = plt.subplots(tight_layout=True)
     plot_mesh(ax, msh)
-    ax.set_title("Adapted (%d elements)" % msh.n_elems())
+    ax.set_title(f"Adapted ({msh.n_elems()} elements)")
 
     plt.show()

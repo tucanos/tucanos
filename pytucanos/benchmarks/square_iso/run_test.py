@@ -1,11 +1,12 @@
 import os
 import subprocess
 from time import time
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
 from pytucanos.mesh import Mesh22, get_square
-from pytucanos.remesh import remesh, remesh_mmg
 from pytucanos.quality import qualities_and_lengths
+from pytucanos.remesh import remesh, remesh_mmg
 
 
 def get_mesh():
@@ -49,26 +50,26 @@ def run():
 
     perf = []
     for name, fn in zip(names, fns):
-        print("Running %s" % name)
+        print(f"Running {name}")
         try:
             msh, t = run_loop(fn)
             perf.append((name, t, msh.n_elems()))
-            print("%s: %d elems, %f s" % (name, msh.n_elems(), t))
+            print(f"{name}: {msh.n_elems()} elems, {t:f} s")
 
             qualities, lengths = qualities_and_lengths(msh, get_metric(msh))
 
-            msh.write_vtk(os.path.join(pth, "square-iso-%s.vtu" % name))
+            msh.write_vtk(os.path.join(pth, f"square-iso-{name}.vtu"))
 
             axs_q[0].hist(
                 qualities,
                 bins=50,
                 alpha=0.25,
                 density=True,
-                label="%s (min = %.2f)" % (name, qualities.min()),
+                label=f"{name} (min = {qualities.min():.2f})",
             )
             axs_q[1].hist(lengths, bins=50, alpha=0.25, density=True)
         except subprocess.CalledProcessError as e:
-            print("%s failed: %s" % (name, e.output))
+            print(f"{name} failed: {e.output}")
 
     axs_q[0].set_xlabel("quality")
     axs_q[0].legend()

@@ -1,7 +1,8 @@
 # adapted from https://github.com/python-pillow/Pillow/blob/main/_custom_build/backend.py
 # see also https://peps.python.org/pep-0517/#in-tree-build-backends
 import sys
-from setuptools.build_meta import build_wheel, build_editable
+
+from setuptools.build_meta import build_editable, build_wheel
 
 FEATURES = ["metis", "32bit-ints", "coupe", "argmin"]
 
@@ -18,7 +19,7 @@ def update_argv(config_settings):
             if config_settings.get(feature, "false").lower() == "true":
                 features.append(feature)
         if len(features) > 0:
-            flags += ["--features=%s" % ",".join(features)]
+            flags += ["--features={}".format(",".join(features))]
         if flags:
             sys.argv = sys.argv[:1] + ["build_rust"] + flags + sys.argv[1:]
 

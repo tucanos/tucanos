@@ -1,23 +1,22 @@
 import os
 import shutil
 import subprocess
-import numpy as np
-import matplotlib.pyplot as plt
+from time import time
 
-from pytucanos.mesh import Mesh33, Mesh32
+import matplotlib.pyplot as plt
+import numpy as np
+from pytucanos.mesh import Mesh32, Mesh33
+from pytucanos.quality import qualities_and_lengths
 from pytucanos.remesh import (
     remesh,
     remesh_mmg,
     # remesh_omega_h,
     remesh_refine,
 )
-from pytucanos.quality import qualities_and_lengths
-
-from time import time
 
 
 def get_metric(msh):
-    x, y, z = msh.get_verts().T
+    x, y, _z = msh.get_verts().T
 
     r = (x**2 + y**2) ** 0.5
     t = np.arctan2(y, x)
@@ -80,22 +79,22 @@ def run(cases):
 
     perf = []
     for name, fn in cases.items():
-        print("Running %s" % name)
+        print(f"Running {name}")
         try:
             msh, t = run_loop(fn, name)
             perf.append((name, t, msh.n_elems()))
-            print("%s: %d elems, %f s" % (name, msh.n_elems(), t))
+            print(f"{name}: {msh.n_elems()} elems, {t:f} s")
 
             qualities, lengths = qualities_and_lengths(msh, get_metric(msh))
 
-            msh.write_vtk(os.path.join(pth, "cube-cylinder-%s.vtu" % name))
+            msh.write_vtk(os.path.join(pth, f"cube-cylinder-{name}.vtu"))
 
             axs_q[0].hist(
                 qualities,
                 bins=50,
                 alpha=0.25,
                 density=True,
-                label="%s (min = %.2f)" % (name, qualities.min()),
+                label=f"{name} (min = {qualities.min():.2f})",
             )
             axs_q[0].set_xlim([0.0, 1.0])
             axs_q[1].hist(
@@ -103,12 +102,11 @@ def run(cases):
                 bins=50,
                 alpha=0.25,
                 density=True,
-                label="%s (min = %.2f, max = %.2f)"
-                % (name, lengths.min(), lengths.max()),
+                label=f"{name} (min = {lengths.min():.2f}, max = {lengths.max():.2f})",
             )
             axs_q[1].set_xlim([0.0, 2.0])
         except subprocess.CalledProcessError as e:
-            print("%s failed: %s" % (name, e.output.decode()))
+            print(f"{name} failed: {e.output.decode()}")
 
     axs_q[0].set_xlabel("quality")
     axs_q[0].legend()

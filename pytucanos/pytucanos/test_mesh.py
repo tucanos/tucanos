@@ -1,5 +1,6 @@
 import os
 import unittest
+
 import numpy as np
 
 try:
@@ -10,7 +11,7 @@ try:
 except ImportError:
     HAVE_VTK = False
 
-from . import Mesh2d, Mesh3d, BoundaryMesh3d, Idx
+from . import BoundaryMesh3d, Idx, Mesh2d, Mesh3d
 from .mesh import get_cube, get_square
 
 

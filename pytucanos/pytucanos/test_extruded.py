@@ -1,6 +1,8 @@
 import unittest
+
 import numpy as np
-from . import Mesh2d, DualType, DualMesh2d
+
+from . import DualMesh2d, DualType, Mesh2d
 
 
 class TestExtrudedMeshes(unittest.TestCase):
@@ -21,7 +23,7 @@ class TestExtrudedMeshes(unittest.TestCase):
         extruded = dual.extrude(1.0)
 
         self.assertEqual(extruded.n_elems(), msh.n_verts())
-        (ptr, conn, orient) = extruded.get_elems()
+        (ptr, conn, _orient) = extruded.get_elems()
         self.assertEqual(ptr.size, extruded.n_elems() + 1)
         self.assertEqual(ptr.min(), 0)
         self.assertEqual(ptr.max(), conn.size)

@@ -1,5 +1,6 @@
 import numpy as np
-from . import Mesh2d, Mesh3d, BoundaryMesh2d, BoundaryMesh3d, Idx
+
+from . import BoundaryMesh2d, BoundaryMesh3d, Idx, Mesh2d, Mesh3d
 
 TRI2EDG = [
     [0, 1],
@@ -53,10 +54,10 @@ def __plot_boundary(ax, bdy, normals):
         i = np.nonzero(tags == t)[0][0]
         X, Y = xy[e, 0], xy[e, 1]
         if t not in labels:
-            ax.plot(X, Y, c="C%d" % i, label=repr(t))
+            ax.plot(X, Y, c=f"C{i}", label=repr(t))
             labels[t] = True
         else:
-            ax.plot(X, Y, c="C%d" % i)
+            ax.plot(X, Y, c=f"C{i}")
 
         if normals:
             ax.arrow(

@@ -1,13 +1,14 @@
-import numpy as np
 import matplotlib.pyplot as plt
-from pytucanos import (
-    Mesh2d,
-    LinearGeometry2d,
-    ParallelRemesher2dIso,
-    RemesherParams,
-    ParallelRemesherParams,
-)
+import numpy as np
 from pytucanos.mesh import get_square
+
+from pytucanos import (
+    LinearGeometry2d,
+    Mesh2d,
+    ParallelRemesher2dIso,
+    ParallelRemesherParams,
+    RemesherParams,
+)
 
 
 def get_h(msh):

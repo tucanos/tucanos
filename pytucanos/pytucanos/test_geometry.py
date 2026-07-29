@@ -1,12 +1,14 @@
-import numpy as np
 import unittest
+
+import numpy as np
+
 from . import (
-    Mesh2d,
-    Mesh3d,
     BoundaryMesh2d,
+    Idx,
     LinearGeometry2d,
     LinearGeometry3d,
-    Idx,
+    Mesh2d,
+    Mesh3d,
     QuadraticBoundaryMesh3d,
     QuadraticGeometry3d,
 )

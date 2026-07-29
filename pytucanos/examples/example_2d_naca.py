@@ -1,19 +1,21 @@
-import sys
 import logging
-import numpy as np
-import matplotlib.pyplot as plt
+import sys
+
 import gmsh
+import matplotlib.pyplot as plt
+import numpy as np
+from pytucanos.mesh import plot_mesh
+
 from pytucanos import (
-    Mesh2d,
     BoundaryMesh2d,
+    Idx,
     LinearGeometry2d,
+    Mesh2d,
     Remesher2dAniso,
     RemesherParams,
     curvature_metric,
     implied_metric,
-    Idx,
 )
-from pytucanos.mesh import plot_mesh
 
 
 def naca_profile(
@@ -314,7 +316,7 @@ if __name__ == "__main__":
             bins=50,
             alpha=0.25,
             density=True,
-            label="parmesan (q_min = %.2f)" % qualities.min(),
+            label=f"parmesan (q_min = {qualities.min():.2f})",
         )
         ax[0].set_xlabel("quality")
         ax[0].legend()
@@ -323,8 +325,7 @@ if __name__ == "__main__":
             bins=50,
             alpha=0.25,
             density=True,
-            label="parmesan (l_min = %.2f, l_max = %.2f)"
-            % (lengths.min(), lengths.max()),
+            label=f"parmesan (l_min = {lengths.min():.2f}, l_max = {lengths.max():.2f})",
         )
         ax[1].axvline(x=0.5**0.5, c="r")
         ax[1].axvline(x=2**0.5, c="r")
