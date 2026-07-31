@@ -1,0 +1,8 @@
+[package]
+name = "tucanos-vtkio"
+version.workspace = true
+edition.workspace = true
+description = "Experimental crate for streaming VTK files in appended format on-the-fly without temporary allocations."
+
+[lints]
+workspace = true
