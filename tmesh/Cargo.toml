@@ -12,7 +12,7 @@ rayon.workspace = true
 rustc-hash.workspace = true
 kdtree = { version = "0.8" }
 parry3d-f64 = { version = "0.28.0" }
-parry2d-f64 = { version = "0.28.0" }
+parry2d-f64 = { version = "0.29.0" }
 coupe = { git = "https://github.com/LIHPC-Computational-Geometry/coupe.git", rev = "20f0de6", optional=true }
 metis = { git = "https://github.com/tucanos/metis-rs.git", rev = "d31aa3e", optional=true}
 lindel = "0.1.1"
