@@ -96,6 +96,7 @@ from .pytucanos import (
 from .pytucanos import (
     PySwapParams as SwapParams,  # noqa: F401
 )
+from .curving import p1_to_p2, p2_to_p1  # noqa: F401
 
 
 def autotag(msh, angle_deg):
