@@ -72,6 +72,7 @@ from .pytucanos import (
     intersect_aniso_metric_3d,  # noqa: F401
     intersect_aniso_metric_2d,  # noqa: F401
 )
+from .curving import p1_to_p2, p2_to_p1  # noqa: F401
 
 
 def autotag(msh, angle_deg):

@@ -25,6 +25,7 @@ setuptools.setup(
     version="0.4.0",
     packages=["pytucanos"],
     install_requires=["numpy", "matplotlib"],
+    extras_require={"curving": ["ferreus_rbf"]},
     rust_extensions=[
         RustExtension(
             "pytucanos.pytucanos",

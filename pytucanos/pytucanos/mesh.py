@@ -30,6 +30,52 @@ def edges(els):
     return np.unique(edgs, axis=0)
 
 
+def calibrate_mid_edge_columns(qm, tol=1e-9):
+    """
+    Determine which connectivity column of a `QuadraticMesh2d` (Tri6) holds
+    the mid-edge node for each corner pair.
+
+    `to_quadratic()` does not document which of its extra columns holds
+    which edge's mid-node, so this discovers it empirically: on a
+    straight-sided quadratic mesh (fresh out of `to_quadratic()`, before any
+    curving/projection), every mid-edge node is still the exact arithmetic
+    midpoint of its corner pair.
+
+    Args:
+        qm: `QuadraticMesh2d` produced by `Mesh2d.to_quadratic()` on a
+            straight-sided mesh, so every mid-edge node is still the exact
+            arithmetic midpoint of its corner pair.
+        tol: max allowed distance between a candidate column and the
+            arithmetic midpoint for a match.
+
+    Returns:
+        Dict mapping each corner pair `(0, 1)`, `(1, 2)`, `(2, 0)` to the
+        connectivity column index (3, 4, or 5) holding that edge's mid-node.
+
+    Raises:
+        RuntimeError: if some corner pair can't be matched to any column
+            within `tol` (the mesh isn't actually straight-sided, or
+            `to_quadratic()`'s column convention changed).
+    """
+    elems = qm.get_elems()
+    verts = qm.get_verts()
+    col_for_pair = {}
+    for pair in TRI2EDG:
+        pair = tuple(pair)
+        a, b = pair
+        target = 0.5 * (verts[elems[:, a]] + verts[elems[:, b]])
+        for col in (3, 4, 5):
+            if np.abs(verts[elems[:, col]] - target).max() < tol:
+                col_for_pair[pair] = col
+                break
+        else:
+            raise RuntimeError(
+                f"could not match corner pair {pair} to a mid-edge column"
+            )
+    assert set(col_for_pair.values()) == {3, 4, 5}, col_for_pair
+    return col_for_pair
+
+
 def create_mesh(coords, elems, etags, faces, ftags):
     if coords.shape[1] == 2:
         return Mesh2d(coords, elems, etags, faces, ftags)
