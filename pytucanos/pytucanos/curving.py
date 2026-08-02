@@ -91,7 +91,7 @@ def p1_to_p2(
     mesh: Mesh2d,
     geom: str | tuple,
     tag_names: dict,
-    tag_name_map: dict = None,
+    tag_name_map: dict | None = None,
     fitting_accuracy=None,
 ) -> QuadraticMesh2d:
     """
