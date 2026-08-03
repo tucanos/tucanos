@@ -23,7 +23,7 @@ use tmesh::{
     interpolate::{InterpolationMethod, Interpolator},
     io::VTUFile,
     mesh::{
-        AdativeBoundsQuadraticTetrahedron, AdativeBoundsQuadraticTriangle, Edge, GSimplex,
+        AdaptiveBoundsQuadraticTetrahedron, AdaptiveBoundsQuadraticTriangle, Edge, GSimplex,
         GenericMesh, GradientMethod, Mesh, QuadraticEdge, QuadraticTetrahedron, QuadraticTriangle,
         Simplex, SolutionLocation, Tetrahedron, Triangle, ball_mesh, circle_mesh,
         nonuniform_box_mesh, nonuniform_rectangle_mesh,
@@ -837,7 +837,7 @@ impl PyQuadraticMesh2d {
 
     /// Compute the distortion for all the elements in the mesh
     fn distortion<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
-        let d = AdativeBoundsQuadraticTriangle::element_distortion(&self.0);
+        let d = AdaptiveBoundsQuadraticTriangle::element_distortion(&self.0);
         PyArray1::from_vec(py, d)
     }
 }
@@ -949,7 +949,7 @@ impl PyQuadraticMesh3d {
 
     /// Compute the distortion for all the elements in the mesh
     fn distortion<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
-        let d = AdativeBoundsQuadraticTetrahedron::element_distortion(&self.0);
+        let d = AdaptiveBoundsQuadraticTetrahedron::element_distortion(&self.0);
         PyArray1::from_vec(py, d)
     }
 }
