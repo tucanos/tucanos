@@ -5,9 +5,6 @@ use crate::{
         elements::{ho_simplex::HOType, quadratures::QUADRATURE_EDGE_6},
     },
 };
-#[cfg(feature = "argmin")]
-use argmin::core::{CostFunction, Executor, Gradient, Hessian};
-use nalgebra::Vector1;
 use std::fmt::Debug;
 use std::ops::Index;
 
@@ -44,7 +41,7 @@ impl<const D: usize> QuadraticGEdge<D> {
         Self([*v0, *v1, *v2], etype)
     }
 
-    #[cfg_attr(not(feature = "argmin"), allow(dead_code))]
+    #[allow(dead_code)]
     fn linear(&self) -> GEdge<D> {
         GEdge::new(&self[0], &self[1])
     }
@@ -241,55 +238,32 @@ impl<const D: usize> GSimplex<D> for QuadraticGEdge<D> {
     }
 
     fn bcoords(&self, v: &Vertex<D>) -> Self::BCOORDS {
-        #[cfg(not(feature = "argmin"))]
-        {
-            // With p(t) quadratic in t, the stationary points of |p(t) - v|^2
-            // are the real roots of a cubic polynomial that can be computed
-            // directly. An iterative minimization is not robust here: the
-            // objective has negative curvature wherever v lies beyond the
-            // local center of curvature, and the gradient magnitude scales as
-            // the squared edge length, so fallback gradient steps stall for
-            // small edges.
-            let a = 2.0 * self[0] + 2.0 * self[1] - 4.0 * self[2];
-            let b = 4.0 * self[2] - 3.0 * self[0] - self[1];
-            let e = self[0] - v;
-            let (roots, n) = real_cubic_roots(
-                2.0 * a.norm_squared(),
-                3.0 * a.dot(&b),
-                b.norm_squared() + 2.0 * a.dot(&e),
-                b.dot(&e),
-            );
-            let mut t = 0.5;
-            let mut dmin = f64::MAX;
-            for &r in roots.iter().take(n) {
-                let d = (e + r * (b + r * a)).norm_squared();
-                if d < dmin {
-                    dmin = d;
-                    t = r;
-                }
+        // With p(t) quadratic in t, the stationary points of |p(t) - v|^2
+        // are the real roots of a cubic polynomial that can be computed
+        // directly. An iterative minimization is not robust here: the
+        // objective has negative curvature wherever v lies beyond the
+        // local center of curvature, and the gradient magnitude scales as
+        // the squared edge length, so fallback gradient steps stall for
+        // small edges.
+        let a = 2.0 * self[0] + 2.0 * self[1] - 4.0 * self[2];
+        let b = 4.0 * self[2] - 3.0 * self[0] - self[1];
+        let e = self[0] - v;
+        let (roots, n) = real_cubic_roots(
+            2.0 * a.norm_squared(),
+            3.0 * a.dot(&b),
+            b.norm_squared() + 2.0 * a.dot(&e),
+            b.dot(&e),
+        );
+        let mut t = 0.5;
+        let mut dmin = f64::MAX;
+        for &r in roots.iter().take(n) {
+            let d = (e + r * (b + r * a)).norm_squared();
+            if d < dmin {
+                dmin = d;
+                t = r;
             }
-            [1.0 - t, t]
         }
-
-        #[cfg(feature = "argmin")]
-        {
-            let uv = self.linear().bcoords(v);
-            let proj = QuadraticEdgeProjection { v, ge: self };
-            let linesearch = argmin::solver::linesearch::MoreThuenteLineSearch::new();
-            let solver = argmin::solver::newton::NewtonCG::new(linesearch)
-                .with_tolerance(1e-10)
-                .unwrap();
-            let res = Executor::new(proj, solver)
-                .configure(|state| state.param([uv[1]].into()).max_iters(100))
-                // .add_observer(
-                //     argmin_observer_slog::SlogLogger::term(),
-                //     argmin::core::observers::ObserverMode::Always,
-                // )
-                .run()
-                .unwrap();
-            let v = res.state.best_param.unwrap();
-            [1.0 - v[0], v[0]]
-        }
+        [1.0 - t, t]
     }
 
     /// Vertex from barycentric coordinates
@@ -402,125 +376,14 @@ fn real_cubic_roots(c3: f64, c2: f64, c1: f64, c0: f64) -> ([f64; 3], usize) {
     (roots, n)
 }
 
-#[cfg_attr(not(any(test, feature = "argmin")), allow(dead_code))]
-struct QuadraticEdgeProjection<'a, const D: usize> {
-    v: &'a Vertex<D>,
-    ge: &'a QuadraticGEdge<D>,
-}
-
-#[cfg_attr(not(any(test, feature = "argmin")), allow(dead_code))]
-impl<const D: usize> QuadraticEdgeProjection<'_, D> {
-    #[allow(clippy::trivially_copy_pass_by_ref)]
-    fn f(&self, x: &Vector1<f64>) -> f64 {
-        let uv = [1.0 - x[0], x[0]];
-        let dx = self.v - self.ge.mapping(&uv);
-        dx.norm_squared()
-    }
-
-    #[allow(clippy::trivially_copy_pass_by_ref)]
-    fn grad_f(&self, x: &Vector1<f64>) -> Vector1<f64> {
-        let uv = [1.0 - x[0], x[0]];
-        let dx = self.v - self.ge.mapping(&uv);
-        let [du, dv] = self.ge.jac_mapping(&uv);
-        [-2.0 * dx.dot(&(dv - du))].into()
-    }
-
-    #[allow(clippy::trivially_copy_pass_by_ref)]
-    fn hess_f(&self, x: &Vector1<f64>) -> Vector1<f64> {
-        let uv = [1.0 - x[0], x[0]];
-        let dx = self.v - self.ge.mapping(&uv);
-        let [du, dv] = self.ge.jac_mapping(&uv);
-        let [duu, dvv, duv] = self.ge.hess_mapping(&uv);
-        [-2.0 * (dx.dot(&(duu + dvv - 2.0 * duv)) - (dv - du).norm_squared())].into()
-    }
-}
-
-#[cfg(feature = "argmin")]
-impl<const D: usize> CostFunction for QuadraticEdgeProjection<'_, D> {
-    type Param = nalgebra::Vector1<f64>;
-    type Output = f64;
-
-    fn cost(&self, param: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
-        Ok(self.f(param))
-    }
-}
-
-#[cfg(feature = "argmin")]
-impl<const D: usize> Gradient for QuadraticEdgeProjection<'_, D> {
-    type Param = nalgebra::Vector1<f64>;
-    type Gradient = nalgebra::Vector1<f64>;
-
-    fn gradient(&self, param: &Self::Param) -> Result<Self::Gradient, argmin::core::Error> {
-        Ok(self.grad_f(param))
-    }
-}
-
-#[cfg(feature = "argmin")]
-impl<const D: usize> Hessian for QuadraticEdgeProjection<'_, D> {
-    type Param = nalgebra::Vector1<f64>;
-    type Hessian = nalgebra::Matrix1<f64>;
-
-    fn hessian(&self, param: &Self::Param) -> Result<Self::Hessian, argmin::core::Error> {
-        Ok(self.hess_f(param))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use rand::{RngExt, SeedableRng, rngs::StdRng};
 
     use crate::{
-        Vert2d, Vert3d, assert_delta,
-        mesh::{
-            GEdge, GSimplex, QuadraticGEdge,
-            elements::{ho_simplex::HOType, quadratic_edge::QuadraticEdgeProjection},
-        },
+        Vert2d, assert_delta,
+        mesh::{GEdge, GSimplex, QuadraticGEdge, elements::ho_simplex::HOType},
     };
-
-    #[test]
-    fn test_projection() {
-        let mut rng = StdRng::seed_from_u64(1234);
-
-        for _ in 0..10000 {
-            let p0 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
-            let p1 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
-            let p2 = Vert2d::from_fn(|_, _| rng.random::<f64>() - 0.5);
-            let ge = QuadraticGEdge::new(&p0, &p1, &p2, HOType::Lagrange);
-            let v = Vert2d::from_fn(|_, _| 10.0 * (rng.random::<f64>() - 0.5));
-            let proj = QuadraticEdgeProjection { v: &v, ge: &ge };
-
-            let x = rng.random::<f64>();
-            let g = proj.grad_f(&[x].into())[0];
-            let h = proj.hess_f(&[x].into())[0];
-
-            let eps = 1e-6;
-            let g2 = (proj.f(&[x + eps].into()) - proj.f(&[x - eps].into())) / (2.0 * eps);
-            let h3 = (proj.grad_f(&[x + eps].into())[0] - proj.grad_f(&[x - eps].into())[0])
-                / (2.0 * eps);
-            assert_delta!(g, g2, 1e-6);
-            assert_delta!(h, h3, 1e-6);
-        }
-
-        for _ in 0..10000 {
-            let p0 = Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5);
-            let p1 = Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5);
-            let p2 = Vert3d::from_fn(|_, _| rng.random::<f64>() - 0.5);
-            let ge = QuadraticGEdge::new(&p0, &p1, &p2, HOType::Lagrange);
-            let v = Vert3d::from_fn(|_, _| 10.0 * (rng.random::<f64>() - 0.5));
-            let proj = QuadraticEdgeProjection { v: &v, ge: &ge };
-
-            let x = rng.random::<f64>();
-            let g = proj.grad_f(&[x].into())[0];
-            let h = proj.hess_f(&[x].into())[0];
-
-            let eps = 1e-6;
-            let g2 = (proj.f(&[x + eps].into()) - proj.f(&[x - eps].into())) / (2.0 * eps);
-            let h3 = (proj.grad_f(&[x + eps].into())[0] - proj.grad_f(&[x - eps].into())[0])
-                / (2.0 * eps);
-            assert_delta!(g, g2, 1e-6);
-            assert_delta!(h, h3, 1e-6);
-        }
-    }
 
     #[test]
     fn test_projection_concave_side() {
