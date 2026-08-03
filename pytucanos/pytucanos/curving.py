@@ -30,16 +30,13 @@ pytucanos[curving]`.
 
 import numpy as np
 
-from . import (
-    Idx,
-    LinearGeometry2d,
-    Mesh2d,
-    QuadraticBoundaryMesh2d,
-    QuadraticGeometry2d,
-    QuadraticMesh2d,
-)
+from . import Idx
 from .cgns_io import load_cgns
 from .mesh import calibrate_mid_edge_columns
+from .pytucanos import LinearGeometry2d, QuadraticGeometry2d
+from .pytucanos import PyMesh2d as Mesh2d
+from .pytucanos import PyQuadraticBoundaryMesh2d as QuadraticBoundaryMesh2d
+from .pytucanos import PyQuadraticMesh2d as QuadraticMesh2d
 
 try:
     from ferreus_rbf import RBFInterpolator
