@@ -2,7 +2,7 @@ use crate::{
     Idx,
     mesh::{
         PyBoundaryMesh2d, PyBoundaryMesh3d, PyMesh2d, PyMesh3d, PyQuadraticBoundaryMesh2d,
-        PyQuadraticBoundaryMesh3d,
+        PyQuadraticBoundaryMesh3d, PyQuadraticMesh2d, PyQuadraticMesh3d,
     },
     to_numpy_1d, to_numpy_2d,
 };
@@ -129,5 +129,19 @@ create_geometry!(
     2,
     QuadraticEdge,
     PyMesh2d,
+    PyQuadraticBoundaryMesh2d
+);
+create_geometry!(
+    QuadraticGeometry3dQMesh,
+    3,
+    QuadraticTriangle,
+    PyQuadraticMesh3d,
+    PyQuadraticBoundaryMesh3d
+);
+create_geometry!(
+    QuadraticGeometry2dQMesh,
+    2,
+    QuadraticEdge,
+    PyQuadraticMesh2d,
     PyQuadraticBoundaryMesh2d
 );
