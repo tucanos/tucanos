@@ -174,6 +174,175 @@ impl<const D: usize> QuadraticGTriangle<D> {
             HOType::Bezier => *self,
         }
     }
+
+    /// Extracts algebraic surface coefficients based on the barycentric substitution w = 1 - u - v
+    fn scaled_surface_coeffs(&self, p: &Vertex<D>) -> [Vertex<D>; 6] {
+        let p0 = self[0];
+        let p1 = self[1];
+        let p2 = self[2];
+        let p3 = self[3];
+        let p4 = self[4];
+        let p5 = self[5];
+
+        let a = 2.0 * p0 + 2.0 * p2 - 4.0 * p5;
+        let b = 2.0 * p1 + 2.0 * p2 - 4.0 * p4;
+        let c = 4.0 * p2 + 4.0 * p3 - 4.0 * p4 - 4.0 * p5;
+        let d = -1.0 * p0 - 3.0 * p2 + 4.0 * p5;
+        let e = -1.0 * p1 - 3.0 * p2 + 4.0 * p4;
+        let f = p2 - p;
+
+        // Find the maximum magnitude to normalize the space
+        let max_norm = a
+            .norm()
+            .max(b.norm())
+            .max(c.norm())
+            .max(d.norm())
+            .max(e.norm())
+            .max(f.norm());
+
+        // If max_norm is tiny, prevent division by zero
+        let scale = if max_norm > 1e-12 {
+            1.0 / max_norm
+        } else {
+            1.0
+        };
+
+        [
+            a * scale,
+            b * scale,
+            c * scale,
+            d * scale,
+            e * scale,
+            f * scale,
+        ]
+    }
+
+    fn sylvester_determinant(coeffs: [Vertex<D>; 6], u: f64) -> (f64, [f64; 4]) {
+        let [a_s, b_s, c_s, d_s, e_s, f_s] = coeffs;
+
+        let cu_e = c_s * u + e_s;
+        let au2_du_fp = a_s * (u * u) + d_s * u + f_s;
+        let two_au_d = a_s * (2.0 * u) + d_s;
+
+        let a3 = c_s.dot(&b_s);
+        let a2 = c_s.dot(&cu_e) + two_au_d.dot(&b_s);
+        let a1 = c_s.dot(&au2_du_fp) + two_au_d.dot(&cu_e);
+        let a0 = two_au_d.dot(&au2_du_fp);
+
+        let b3 = 2.0 * b_s.dot(&b_s);
+        let b2 = 3.0 * b_s.dot(&cu_e);
+        let b1 = 2.0 * b_s.dot(&au2_du_fp) + cu_e.dot(&cu_e); // Note: cu_e dot cu_e, NOT scaled by anything else
+        let b0 = cu_e.dot(&au2_du_fp);
+
+        let mat = SMatrix::<f64, 6, 6>::from_row_slice(&[
+            a3, a2, a1, a0, 0.0, 0.0, 0.0, a3, a2, a1, a0, 0.0, 0.0, 0.0, a3, a2, a1, a0, b3, b2,
+            b1, b0, 0.0, 0.0, 0.0, b3, b2, b1, b0, 0.0, 0.0, 0.0, b3, b2, b1, b0,
+        ]);
+
+        (mat.determinant(), [a0, a1, a2, a3])
+    }
+
+    fn build_vandermonde(coeffs: [Vertex<D>; 6]) -> (SMatrix<f64, 10, 10>, SVector<f64, 10>) {
+        // 2. Solve the Interior System via Resultants
+        let mut y_vals = SVector::<f64, 10>::zeros();
+        let mut vander = SMatrix::<f64, 10, 10>::zeros();
+
+        for i in 0..10 {
+            let u = (i as f64) / 9.0;
+            let (det, _) = Self::sylvester_determinant(coeffs, u);
+
+            y_vals[i] = det;
+            let mut u_pow = 1.0;
+            for j in 0..10 {
+                vander[(i, j)] = u_pow;
+                u_pow *= u;
+            }
+        }
+        (vander, y_vals)
+    }
+
+    /// Projects the target point exactly, returning the barycentric coordinates of the closest point and the squared distance to the target point
+    #[must_use]
+    pub fn bcoords_algebraic(&self, p: &Vertex<D>) -> <Self as GSimplex<D>>::BCOORDS {
+        // let d0 = (self[3] - 0.5 * (self[0] + self[1])).norm_squared()
+        //     + (self[4] - 0.5 * (self[1] + self[2])).norm_squared()
+        //     + (self[5] - 0.5 * (self[2] + self[0])).norm_squared();
+        // let d1 = (self[0] - self[1]).norm_squared()
+        //     + (self[1] - self[2]).norm_squared()
+        //     + (self[2] - self[0]).norm_squared();
+        // let is_linear = d0 / d1;
+        // println!("is_linear: {is_linear:.3e}");
+        // if is_linear < 1e-6 {
+        //     return self.linear().bcoords(p);
+        // }
+
+        let coeffs = self.scaled_surface_coeffs(p);
+        let (vander, y_vals) = Self::build_vandermonde(coeffs);
+
+        let mut best_bcoords = [1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0];
+        let mut min_dist_sq = f64::MAX;
+
+        if let Some(mut r_coeffs) = vander.lu().solve(&y_vals) {
+            // Find the maximum absolute coefficient to determine the numerical scale
+            let scale = r_coeffs
+                .iter()
+                .copied()
+                .fold(0.0_f64, |a, b| a.max(b.abs()));
+            println!("scale: {scale:.3e}, r_coeffs: {r_coeffs:?}");
+            // If the scale is extremely small, the determinant identically vanishes (e.g. flat edge).
+            // This means the resultant is 0 and yields no distinct interior critical points.
+            if scale > 0.0 {
+                r_coeffs /= scale;
+
+                // Find the actual mathematical degree of the polynomial by skipping near-zero leading coefficients
+                let mut degree = 9;
+                while degree > 0 && r_coeffs[degree].abs() < 1e-8 {
+                    degree -= 1;
+                }
+
+                if degree > 0 {
+                    // Build a dynamically sized companion matrix based on the true degree
+                    let mut companion = nalgebra::DMatrix::<f64>::zeros(degree, degree);
+                    for i in 1..degree {
+                        companion[(i, i - 1)] = 1.0;
+                    }
+                    for i in 0..degree {
+                        companion[(i, degree - 1)] = -r_coeffs[i] / r_coeffs[degree];
+                    }
+
+                    let eig = companion.complex_eigenvalues();
+                    for val in eig.iter() {
+                        if val.im.abs() < 1e-6 {
+                            let u = val.re;
+                            let (_, a) = Self::sylvester_determinant(coeffs, u);
+
+                            let (v_roots, n_roots) =
+                                super::quadratic_edge::real_cubic_roots(a[3], a[2], a[1], a[0]);
+
+                            for v in v_roots.into_iter().take(n_roots) {
+                                let b = [u, v, 1.0 - u - v];
+                                let mapped_p = self.mapping(&b);
+                                let dist_sq = (mapped_p - p).norm_squared();
+                                if dist_sq < min_dist_sq {
+                                    min_dist_sq = dist_sq;
+                                    best_bcoords = b;
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    panic!(
+                        "Polynomial degree is zero, but scale = {scale:.3e}, r_coeffs = {r_coeffs:?}"
+                    );
+                }
+            } else {
+                panic!("Poor scaling: scale = {scale:.3e}, r_coeffs = {r_coeffs:?}");
+            }
+        } else {
+            panic!("Failed to solve Vandermonde system for Sylvester polynomial coefficients");
+        }
+        best_bcoords
+    }
 }
 
 impl<const D: usize> Index<usize> for QuadraticGTriangle<D> {
