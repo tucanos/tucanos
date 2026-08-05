@@ -299,7 +299,7 @@ impl<const D: usize> GSimplex<D> for QuadraticGEdge<D> {
 /// Real roots of `c3 x^3 + c2 x^2 + c1 x + c0`, gracefully degrading to the
 /// quadratic / linear case when the leading coefficients vanish (e.g. the
 /// stationary points of the distance to a straight quadratic edge).
-fn real_cubic_roots(c3: f64, c2: f64, c1: f64, c0: f64) -> ([f64; 3], usize) {
+pub(super) fn real_cubic_roots(c3: f64, c2: f64, c1: f64, c0: f64) -> ([f64; 3], usize) {
     let mut roots = [0.0; 3];
     let scale = c3.abs().max(c2.abs()).max(c1.abs()).max(c0.abs());
     if scale == 0.0 {
