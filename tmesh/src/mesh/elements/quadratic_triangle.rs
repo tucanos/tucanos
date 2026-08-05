@@ -63,7 +63,8 @@ impl<const D: usize> QuadraticGTriangle<D> {
         Self([*v0, *v1, *v2, *v3, *v4, *v5], etype)
     }
 
-    fn linear(&self) -> GTriangle<D> {
+    #[must_use]
+    pub fn linear(&self) -> GTriangle<D> {
         GTriangle::new(&self[0], &self[1], &self[2])
     }
 

@@ -21,6 +21,10 @@ impl<T: Idx> QuadraticEdge<T> {
             i2.try_into().unwrap(),
         ])
     }
+
+    pub fn linear(&self) -> Edge<T> {
+        Edge::new(self.0[0].try_into().unwrap(), self.0[1].try_into().unwrap())
+    }
 }
 
 impl<T: Idx> IntoIterator for QuadraticEdge<T> {
@@ -41,8 +45,8 @@ impl<const D: usize> QuadraticGEdge<D> {
         Self([*v0, *v1, *v2], etype)
     }
 
-    #[allow(dead_code)]
-    fn linear(&self) -> GEdge<D> {
+    #[must_use]
+    pub fn linear(&self) -> GEdge<D> {
         GEdge::new(&self[0], &self[1])
     }
 
