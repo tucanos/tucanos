@@ -4,7 +4,7 @@ use crate::{
     Vertex,
     mesh::{
         Edge, GEdge, GSimplex, Idx, Mesh, QuadraticGTriangle, QuadraticTriangle, Simplex,
-        elements::ho_simplex::HOType,
+        Tetrahedron, elements::ho_simplex::HOType,
     },
 };
 use std::fmt::Debug;
@@ -41,6 +41,15 @@ impl<T: Idx> QuadraticTetrahedron<T> {
             i8.try_into().unwrap(),
             i9.try_into().unwrap(),
         ])
+    }
+
+    pub fn linear(&self) -> Tetrahedron<T> {
+        Tetrahedron::new(
+            self.0[0].try_into().unwrap(),
+            self.0[1].try_into().unwrap(),
+            self.0[2].try_into().unwrap(),
+            self.0[3].try_into().unwrap(),
+        )
     }
 }
 
