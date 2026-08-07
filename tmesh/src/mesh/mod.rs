@@ -50,9 +50,9 @@ pub use elements::{
     node::{GNode, Node},
     quadratic_edge::{QuadraticEdge, QuadraticGEdge},
     quadratic_tetrahedron::{
-        AdativeBoundsQuadraticTetrahedron, QuadraticGTetrahedron, QuadraticTetrahedron,
+        AdaptiveBoundsQuadraticTetrahedron, QuadraticGTetrahedron, QuadraticTetrahedron,
     },
-    quadratic_triangle::{AdativeBoundsQuadraticTriangle, QuadraticGTriangle, QuadraticTriangle},
+    quadratic_triangle::{AdaptiveBoundsQuadraticTriangle, QuadraticGTriangle, QuadraticTriangle},
     simplex::{GSimplex, Simplex, get_face_to_elem},
     tetrahedron::{GTetrahedron, Tetrahedron},
     to_simplices::{hex2tets, pri2tets, pyr2tets, qua2tris},
@@ -950,6 +950,13 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
             }
             2 => {
                 match <Self::C as Simplex>::N_VERTS {
+                    10 => {
+                        if let Ok(iter) = reader.read_quadratic_tetrahedra() {
+                            res.add_elems_and_tags(
+                                iter.map(|(e, t)| (<Self::C as Simplex>::from_iter(e), t as Tag)),
+                            );
+                        }
+                    }
                     6 => {
                         if let Ok(iter) = reader.read_quadratic_triangles() {
                             res.add_elems_and_tags(
@@ -968,6 +975,13 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                 }
 
                 match <Self::C as Simplex>::FACE::N_VERTS {
+                    6 => {
+                        if let Ok(iter) = reader.read_quadratic_triangles() {
+                            res.add_faces_and_tags(iter.map(|(e, t)| {
+                                (<Self::C as Simplex>::FACE::from_iter(e), t as Tag)
+                            }));
+                        }
+                    }
                     3 => {
                         if let Ok(iter) = reader.read_quadratic_edges() {
                             res.add_faces_and_tags(iter.map(|(e, t)| {

@@ -125,7 +125,7 @@ mod tests {
     use crate::{
         Vert2d, assert_delta,
         mesh::{
-            AdativeBoundsQuadraticTriangle, BoundaryMesh2d, Edge, GSimplex, GradientMethod, Mesh,
+            AdaptiveBoundsQuadraticTriangle, BoundaryMesh2d, Edge, GSimplex, GradientMethod, Mesh,
             Mesh2d, QuadraticMesh2d, bandwidth, disk_mesh, quadratic_disk_mesh, rectangle_mesh,
         },
     };
@@ -502,7 +502,7 @@ mod tests {
         msh.check(&faces).unwrap();
         assert_delta!(msh.vol(), 0.25 * std::f64::consts::PI, 3e-6);
 
-        let d = AdativeBoundsQuadraticTriangle::element_distortion(&msh);
+        let d = AdaptiveBoundsQuadraticTriangle::element_distortion(&msh);
         let dmax = d.iter().copied().fold(f64::NEG_INFINITY, f64::max);
         // Value computed with gmsh
         assert_delta!(dmax, 1.0 / 0.00122, 0.1);
