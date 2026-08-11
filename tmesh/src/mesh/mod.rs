@@ -47,6 +47,7 @@ pub use boundary_mesh_3d::{
 pub use elements::{
     Hexahedron, Idx, Prism, Pyramid, Quadrangle,
     edge::{Edge, GEdge},
+    ho_simplex::HOType,
     node::{GNode, Node},
     quadratic_edge::{QuadraticEdge, QuadraticGEdge},
     quadratic_tetrahedron::{

@@ -3,8 +3,8 @@ use nalgebra::{Const, LU, SMatrix, SVector};
 use crate::{
     Vertex,
     mesh::{
-        Edge, GEdge, GSimplex, Idx, Mesh, QuadraticGTriangle, QuadraticTriangle, Simplex,
-        Tetrahedron, elements::ho_simplex::HOType,
+        Edge, GEdge, GSimplex, GTetrahedron, Idx, Mesh, QuadraticGTriangle, QuadraticTriangle,
+        Simplex, Tetrahedron, elements::ho_simplex::HOType,
     },
 };
 use std::fmt::Debug;
@@ -84,10 +84,25 @@ impl<const D: usize> QuadraticGTetrahedron<D> {
         Self([*v0, *v1, *v2, *v3, *v4, *v5, *v6, *v7, *v8, *v9], etype)
     }
 
-    // fn linear(&self) -> GTetrahedron<D> {
-    //     GTetrahedron::new(&self[0], &self[1], &self[2], &self[3])
-    // }
+    #[must_use]
+    pub fn linear(&self) -> GTetrahedron<D> {
+        GTetrahedron::new(&self[0], &self[1], &self[2], &self[3])
+    }
 
+    #[must_use]
+    pub fn flatten(&self) -> Self {
+        let p4 = 0.5 * (self[0] + self[1]);
+        let p5 = 0.5 * (self[1] + self[2]);
+        let p6 = 0.5 * (self[2] + self[0]);
+        let p7 = 0.5 * (self[0] + self[3]);
+        let p8 = 0.5 * (self[1] + self[3]);
+        let p9 = 0.5 * (self[2] + self[3]);
+        Self(
+            [self[0], self[1], self[2], self[3], p4, p5, p6, p7, p8, p9],
+            HOType::Lagrange,
+        )
+    }
+    
     fn mapping(&self, bcoords: &[f64; 4]) -> Vertex<D> {
         let [u, v, w, t] = bcoords;
         2.0 * u * (u - 0.5) * self[0]

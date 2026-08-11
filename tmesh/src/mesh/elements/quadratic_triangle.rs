@@ -68,7 +68,8 @@ impl<const D: usize> QuadraticGTriangle<D> {
         GTriangle::new(&self[0], &self[1], &self[2])
     }
 
-    fn mapping(&self, bcoords: &[f64; 3]) -> Vertex<D> {
+    #[must_use]
+    pub fn mapping(&self, bcoords: &[f64; 3]) -> Vertex<D> {
         let [u, v, w] = bcoords;
         2.0 * u * (u - 0.5) * self[0]
             + 2.0 * v * (v - 0.5) * self[1]
@@ -355,7 +356,7 @@ impl<const D: usize> GSimplex<D> for QuadraticGTriangle<D> {
         let proj = QuadraticTriangleProjection { v, ge: self };
         #[cfg(not(feature = "argmin"))]
         {
-            use crate::mesh::elements::newton_cg;
+            use super::newton_cg;
             let start: Vector2<f64> = if uvw.into_iter().all(|x| x > 0.0) {
                 [uvw[1], uvw[2]].into()
             } else {
