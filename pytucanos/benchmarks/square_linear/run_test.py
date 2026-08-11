@@ -4,6 +4,7 @@ from time import time
 
 import matplotlib.pyplot as plt
 import numpy as np
+
 from pytucanos.mesh import Mesh22, get_square
 from pytucanos.quality import qualities_and_lengths
 from pytucanos.remesh import remesh, remesh_mmg

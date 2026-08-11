@@ -4,7 +4,6 @@ import sys
 import gmsh
 import matplotlib.pyplot as plt
 import numpy as np
-from pytucanos.mesh import plot_mesh
 
 from pytucanos import (
     BoundaryMesh2d,
@@ -16,6 +15,7 @@ from pytucanos import (
     curvature_metric,
     implied_metric,
 )
+from pytucanos.mesh import plot_mesh
 
 
 def naca_profile(

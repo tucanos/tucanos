@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from pytucanos.mesh import get_square
 
 from pytucanos import (
     LinearGeometry2d,
@@ -9,6 +8,7 @@ from pytucanos import (
     ParallelRemesherParams,
     RemesherParams,
 )
+from pytucanos.mesh import get_square
 
 
 def get_h(msh):

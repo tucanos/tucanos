@@ -4,6 +4,7 @@ from time import time
 
 import matplotlib.pyplot as plt
 import numpy as np
+
 from pytucanos.mesh import Mesh33, get_cube
 from pytucanos.quality import qualities_and_lengths
 from pytucanos.remesh import (

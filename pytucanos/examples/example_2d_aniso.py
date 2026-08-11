@@ -1,15 +1,15 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from pytucanos.mesh import (
-    get_square,
-    plot_mesh,
-)
 
 from pytucanos import (
     LinearGeometry2d,
     Mesh2d,
     Remesher2dAniso,
     RemesherParams,
+)
+from pytucanos.mesh import (
+    get_square,
+    plot_mesh,
 )
 
 

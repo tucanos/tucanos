@@ -1,9 +1,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from pytucanos.mesh import get_square, plot_mesh
-from pytucanos.metric import plot_metric
 
 from pytucanos import Mesh2d, implied_metric
+from pytucanos.mesh import get_square, plot_mesh
+from pytucanos.metric import plot_metric
 
 
 def get_m(msh):

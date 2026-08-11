@@ -5,6 +5,7 @@ from time import time
 
 import matplotlib.pyplot as plt
 import numpy as np
+
 from pytucanos.mesh import Mesh32, Mesh33
 from pytucanos.quality import qualities_and_lengths
 from pytucanos.remesh import (
