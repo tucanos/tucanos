@@ -376,17 +376,29 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
     /// Create a `SimplexMesh`
     #[must_use]
     pub fn to_mesh(&self, only_bdy_faces: bool) -> GenericMesh<D, C> {
+        self.to_mesh_impl(only_bdy_faces, self.verts.iter())
+    }
+
+    /// Create a `SimplexMesh` with vertices ordered according to internal vertex IDs
+    /// (insertion order).
+    #[must_use]
+    pub fn to_mesh_ordered_verts(&self, only_bdy_faces: bool) -> GenericMesh<D, C> {
+        let mut sorted_verts: Vec<(&usize, _)> = self.verts.iter().collect();
+        sorted_verts.sort_unstable_by_key(|&(k, _)| k);
+        self.to_mesh_impl(only_bdy_faces, sorted_verts)
+    }
+
+    fn to_mesh_impl<'a>(
+        &'a self,
+        only_bdy_faces: bool,
+        it: impl IntoIterator<Item = (&'a usize, &'a VtxInfo<D, M>)>,
+    ) -> GenericMesh<D, C> {
         debug!("Build a mesh");
-
-        let vidx: FxHashMap<usize, usize> = self
-            .verts
-            .iter()
+        let (vidx, verts): (FxHashMap<_, _>, _) = it
+            .into_iter()
             .enumerate()
-            .map(|(i, (k, _v))| (*k, i))
-            .collect();
-
-        let verts = self.verts.values().map(|v| v.vx).collect();
-
+            .map(|(i, (k, v))| ((*k, i), v.vx))
+            .unzip();
         let mut elems = Vec::with_capacity(self.n_elems());
         let mut etags = Vec::with_capacity(self.n_elems());
         for e in self.elems.values() {
