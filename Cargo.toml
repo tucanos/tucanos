@@ -12,9 +12,15 @@ nalgebra = "0.35.0"
 log = "0.4.33"
 libm = "0.2.16"
 rand = "0.10.1"
-rayon = "1.12.0"
+rayon = "1.11.0"
 rustc-hash = "2.1.2"
 minimeshb = { git = "https://github.com/tucanos/minimeshb.git", tag = "0.2.0" }
+
+[patch.crates-io]
+ferreus_rbf = { path = "../ferreus_rbf_rs/ferreus_rbf" }
+ferreus_bbfmm = { path = "../ferreus_rbf_rs/ferreus_bbfmm" }
+ferreus_rbf_utils = { path = "../ferreus_rbf_rs/ferreus_rbf_utils" }
+ferreus_rmt = { path = "../ferreus_rbf_rs/ferreus_rmt" }
 
 [workspace.lints.rust]
 unused = "deny"
