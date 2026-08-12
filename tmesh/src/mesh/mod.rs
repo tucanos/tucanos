@@ -950,6 +950,13 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
             }
             2 => {
                 match <Self::C as Simplex>::N_VERTS {
+                    10 => {
+                        if let Ok(iter) = reader.read_quadratic_tetrahedra() {
+                            res.add_elems_and_tags(
+                                iter.map(|(e, t)| (<Self::C as Simplex>::from_iter(e), t as Tag)),
+                            );
+                        }
+                    }
                     6 => {
                         if let Ok(iter) = reader.read_quadratic_triangles() {
                             res.add_elems_and_tags(
@@ -968,6 +975,13 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                 }
 
                 match <Self::C as Simplex>::FACE::N_VERTS {
+                    6 => {
+                        if let Ok(iter) = reader.read_quadratic_triangles() {
+                            res.add_faces_and_tags(iter.map(|(e, t)| {
+                                (<Self::C as Simplex>::FACE::from_iter(e), t as Tag)
+                            }));
+                        }
+                    }
                     3 => {
                         if let Ok(iter) = reader.read_quadratic_edges() {
                             res.add_faces_and_tags(iter.map(|(e, t)| {
