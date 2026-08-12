@@ -50,9 +50,9 @@ pub use elements::{
     node::{GNode, Node},
     quadratic_edge::{QuadraticEdge, QuadraticGEdge},
     quadratic_tetrahedron::{
-        AdativeBoundsQuadraticTetrahedron, QuadraticGTetrahedron, QuadraticTetrahedron,
+        AdaptiveBoundsQuadraticTetrahedron, QuadraticGTetrahedron, QuadraticTetrahedron,
     },
-    quadratic_triangle::{AdativeBoundsQuadraticTriangle, QuadraticGTriangle, QuadraticTriangle},
+    quadratic_triangle::{AdaptiveBoundsQuadraticTriangle, QuadraticGTriangle, QuadraticTriangle},
     simplex::{GSimplex, Simplex, get_face_to_elem},
     tetrahedron::{GTetrahedron, Tetrahedron},
     to_simplices::{hex2tets, pri2tets, pyr2tets, qua2tris},

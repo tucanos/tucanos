@@ -305,7 +305,7 @@ impl<const D: usize> GSimplex<D> for QuadraticGTetrahedron<D> {
 
 /// Adaptive computation of the bounds of the determinant of the jacobian
 /// for quadratic Tetrahedrons
-pub struct AdativeBoundsQuadraticTetrahedron<'a> {
+pub struct AdaptiveBoundsQuadraticTetrahedron<'a> {
     c0: SVector<f64, 4>,
     c1: SVector<f64, 4>,
     c2: SVector<f64, 4>,
@@ -316,7 +316,7 @@ pub struct AdativeBoundsQuadraticTetrahedron<'a> {
     lu: &'a LU<f64, Const<20>, Const<20>>,
 }
 
-impl<'a> AdativeBoundsQuadraticTetrahedron<'a> {
+impl<'a> AdaptiveBoundsQuadraticTetrahedron<'a> {
     fn midpoints(
         c0: &SVector<f64, 4>,
         c1: &SVector<f64, 4>,
@@ -413,7 +413,7 @@ impl<'a> AdativeBoundsQuadraticTetrahedron<'a> {
         msh.gelems()
             .map(|ge| {
                 let (_, (min, max)) =
-                    AdativeBoundsQuadraticTetrahedron::new(&ge, &lu).compute_bounds(None);
+                    AdaptiveBoundsQuadraticTetrahedron::new(&ge, &lu).compute_bounds(None);
                 max / min
             })
             .collect()
@@ -467,20 +467,20 @@ impl<'a> AdativeBoundsQuadraticTetrahedron<'a> {
     fn subdivide(&mut self) {
         let [c4, c5, c6, c7, c8, c9] = Self::midpoints(&self.c0, &self.c1, &self.c2, &self.c3);
         self.children = Some(Box::new([
-            AdativeBoundsQuadraticTetrahedron::new_with_corners(
+            AdaptiveBoundsQuadraticTetrahedron::new_with_corners(
                 self.tet, self.lu, self.c0, c4, c6, c7,
             ),
-            AdativeBoundsQuadraticTetrahedron::new_with_corners(
+            AdaptiveBoundsQuadraticTetrahedron::new_with_corners(
                 self.tet, self.lu, c4, self.c1, c5, c8,
             ),
-            AdativeBoundsQuadraticTetrahedron::new_with_corners(self.tet, self.lu, c4, c5, c6, c7),
-            AdativeBoundsQuadraticTetrahedron::new_with_corners(self.tet, self.lu, c4, c5, c7, c8),
-            AdativeBoundsQuadraticTetrahedron::new_with_corners(self.tet, self.lu, c8, c5, c7, c9),
-            AdativeBoundsQuadraticTetrahedron::new_with_corners(self.tet, self.lu, c6, c5, c9, c7),
-            AdativeBoundsQuadraticTetrahedron::new_with_corners(
+            AdaptiveBoundsQuadraticTetrahedron::new_with_corners(self.tet, self.lu, c4, c5, c6, c7),
+            AdaptiveBoundsQuadraticTetrahedron::new_with_corners(self.tet, self.lu, c4, c5, c7, c8),
+            AdaptiveBoundsQuadraticTetrahedron::new_with_corners(self.tet, self.lu, c8, c5, c7, c9),
+            AdaptiveBoundsQuadraticTetrahedron::new_with_corners(self.tet, self.lu, c6, c5, c9, c7),
+            AdaptiveBoundsQuadraticTetrahedron::new_with_corners(
                 self.tet, self.lu, c7, c8, c9, self.c3,
             ),
-            AdativeBoundsQuadraticTetrahedron::new_with_corners(
+            AdaptiveBoundsQuadraticTetrahedron::new_with_corners(
                 self.tet, self.lu, c6, c5, self.c2, c9,
             ),
         ]));
@@ -584,7 +584,7 @@ mod tests {
         mesh::{
             QuadraticGTetrahedron,
             elements::{
-                ho_simplex::HOType, quadratic_tetrahedron::AdativeBoundsQuadraticTetrahedron,
+                ho_simplex::HOType, quadratic_tetrahedron::AdaptiveBoundsQuadraticTetrahedron,
             },
         },
     };
@@ -649,8 +649,8 @@ mod tests {
     #[test]
     fn test_bounds_curved_tetrahedron() {
         let tet = curved_tet();
-        let lu = AdativeBoundsQuadraticTetrahedron::lagrange_to_bezier();
-        let mut adb = AdativeBoundsQuadraticTetrahedron::new(&tet, &lu);
+        let lu = AdaptiveBoundsQuadraticTetrahedron::lagrange_to_bezier();
+        let mut adb = AdaptiveBoundsQuadraticTetrahedron::new(&tet, &lu);
         let (_is_invalid, (min, max)) = adb.compute_bounds(Some(1e-6));
 
         assert!(min.is_finite());
