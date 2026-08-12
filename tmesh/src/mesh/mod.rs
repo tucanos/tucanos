@@ -16,7 +16,9 @@ pub mod partition;
 
 pub mod gradient;
 
-pub mod to_quadratic;
+pub mod quadratic;
+
+pub use quadratic::to_quadratic;
 
 mod vector;
 
@@ -1744,6 +1746,9 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     /// Sequential iterator over the vertices
     fn verts_mut(&mut self) -> impl ExactSizeIterator<Item = &mut Vertex<D>> + '_;
 
+    /// Set the coordinates of the i-th vertex
+    fn set_vert(&mut self, i: usize, v: Vertex<D>);
+
     /// Sequential iterator over the mesh elements
     fn elems_mut<'a>(&'a mut self) -> impl ExactSizeIterator<Item = &'a mut Self::C> + 'a
     where
@@ -1956,6 +1961,10 @@ impl<const D: usize, C: Simplex> Mesh<D> for GenericMesh<D, C> {
 
     fn verts_mut(&mut self) -> impl ExactSizeIterator<Item = &mut Vertex<D>> + '_ {
         self.verts.iter_mut()
+    }
+
+    fn set_vert(&mut self, i: usize, v: Vertex<D>) {
+        *self.verts.index_mut(i) = v;
     }
 
     fn elems_mut<'a>(&'a mut self) -> impl ExactSizeIterator<Item = &'a mut C> + 'a
