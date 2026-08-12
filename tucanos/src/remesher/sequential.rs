@@ -2019,16 +2019,8 @@ mod tests {
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
 
             if iter == 1 {
-                #[cfg(not(feature = "argmin"))]
-                {
-                    assert_delta!(mini, 0.42, 0.01);
-                    assert_delta!(maxi, 1.51, 0.01);
-                }
-                #[cfg(feature = "argmin")]
-                {
-                    assert_delta!(mini, 0.46, 0.01);
-                    assert_delta!(maxi, 1.62, 0.01);
-                }
+                assert_delta!(mini, 0.42, 0.01);
+                assert_delta!(maxi, 1.51, 0.01);
             }
 
             // let fname = format!("sphere_{}.vtu", iter + 1);

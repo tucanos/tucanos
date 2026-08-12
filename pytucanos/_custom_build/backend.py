@@ -4,7 +4,7 @@ import sys
 
 from setuptools.build_meta import build_editable, build_wheel
 
-FEATURES = ["metis", "32bit-ints", "coupe", "argmin"]
+FEATURES = ["metis", "32bit-ints", "coupe"]
 
 
 def update_argv(config_settings):

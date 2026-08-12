@@ -1,3 +1,4 @@
+use super::newton_cg;
 use crate::{
     Vertex,
     mesh::{
@@ -5,8 +6,6 @@ use crate::{
         Triangle, elements::ho_simplex::HOType,
     },
 };
-#[cfg(feature = "argmin")]
-use argmin::core::{CostFunction, Executor, Gradient, Hessian};
 use nalgebra::{Const, LU, Matrix2, SMatrix, SVector, Vector2};
 use std::fmt::Debug;
 use std::ops::Index;
@@ -362,47 +361,24 @@ impl<const D: usize> GSimplex<D> for QuadraticGTriangle<D> {
     fn bcoords(&self, v: &Vertex<D>) -> Self::BCOORDS {
         let uvw = self.linear().bcoords(v);
         let proj = QuadraticTriangleProjection { v, ge: self };
-        #[cfg(not(feature = "argmin"))]
-        {
-            use super::newton_cg;
-            let start = [uvw[1], uvw[2]].into();
+        let start = [uvw[1], uvw[2]].into();
 
-            let (x, reason) = newton_cg::newton_cg_minimize(
-                start,
-                |x| proj.f(x),
-                |x| proj.grad_f(x),
-                |x| proj.hess_f(x),
-                1e-12,
-                20,
+        let (x, reason) = newton_cg::newton_cg_minimize(
+            start,
+            |x| proj.f(x),
+            |x| proj.grad_f(x),
+            |x| proj.hess_f(x),
+            1e-12,
+            20,
+        );
+        if matches!(reason, newton_cg::ConvergenceStatus::NotConverged) {
+            assert!(
+                x[0] < 0.0 || x[1] < 0.0 || 1.0 - x[0] - x[1] < 0.0,
+                "Not converged but x = {x:?}",
             );
-            if matches!(reason, newton_cg::ConvergenceStatus::NotConverged) {
-                assert!(
-                    x[0] < 0.0 || x[1] < 0.0 || 1.0 - x[0] - x[1] < 0.0,
-                    "Not converged but x = {x:?}",
-                );
-            }
-
-            [1.0 - x[0] - x[1], x[0], x[1]]
         }
 
-        #[cfg(feature = "argmin")]
-        {
-            let linesearch = argmin::solver::linesearch::MoreThuenteLineSearch::new();
-            let solver = argmin::solver::newton::NewtonCG::new(linesearch)
-                .with_tolerance(1e-10)
-                .unwrap();
-
-            let res = Executor::new(proj, solver)
-                .configure(|state| state.param([uvw[1], uvw[2]].into()).max_iters(100))
-                // .add_observer(
-                //     argmin_observer_slog::SlogLogger::term(),
-                //     argmin::core::observers::ObserverMode::Always,
-                // )
-                .run()
-                .unwrap();
-            let res = res.state.best_param.unwrap();
-            [1.0 - res[0] - res[1], res[0], res[1]]
-        }
+        [1.0 - x[0] - x[1], x[0], x[1]]
     }
 
     /// Vertex from barycentric coordinates
@@ -467,37 +443,6 @@ impl<const D: usize> QuadraticTriangleProjection<'_, D> {
             ],
         ]
         .into()
-    }
-}
-
-#[cfg(feature = "argmin")]
-impl<const D: usize> CostFunction for QuadraticTriangleProjection<'_, D> {
-    type Param = nalgebra::Vector2<f64>;
-    type Output = f64;
-
-    fn cost(&self, param: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
-        Ok(self.f(param))
-    }
-}
-
-#[cfg(feature = "argmin")]
-
-impl<const D: usize> Gradient for QuadraticTriangleProjection<'_, D> {
-    type Param = nalgebra::Vector2<f64>;
-    type Gradient = nalgebra::Vector2<f64>;
-
-    fn gradient(&self, param: &Self::Param) -> Result<Self::Gradient, argmin::core::Error> {
-        Ok(self.grad_f(param))
-    }
-}
-
-#[cfg(feature = "argmin")]
-impl<const D: usize> Hessian for QuadraticTriangleProjection<'_, D> {
-    type Param = nalgebra::Vector2<f64>;
-    type Hessian = nalgebra::Matrix2<f64>;
-
-    fn hessian(&self, param: &Self::Param) -> Result<Self::Hessian, argmin::core::Error> {
-        Ok(self.hess_f(param))
     }
 }
 

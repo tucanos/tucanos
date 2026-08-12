@@ -25,7 +25,6 @@ faer = "0.24.4"
 64bit-tags = ["tmesh/64bit-tags"]
 metis = ["tmesh/metis"]
 coupe = ["tmesh/coupe"]
-argmin = ["tmesh/argmin"]
 
 trace_edges = []
 
