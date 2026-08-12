@@ -25,11 +25,13 @@ use tmesh::{
     mesh::{
         AdaptiveBoundsQuadraticTetrahedron, AdaptiveBoundsQuadraticTriangle, Edge, GSimplex,
         GenericMesh, GradientMethod, Mesh, QuadraticEdge, QuadraticTetrahedron, QuadraticTriangle,
-        Simplex, SolutionLocation, Tetrahedron, Triangle, ball_mesh, circle_mesh,
+        Simplex, SolutionLocation, SubMesh, Tetrahedron, Triangle, ball_mesh, circle_mesh,
         nonuniform_box_mesh, nonuniform_rectangle_mesh,
         partition::{HilbertPartitioner, RCMPartitioner},
         quadratic_circle_mesh, quadratic_sphere_mesh, read_stl, sphere_mesh,
-        to_quadratic::{to_quadratic_tetrahedron_mesh, to_quadratic_triangle_mesh},
+        to_quadratic::{
+            to_quadratic_edge_mesh, to_quadratic_tetrahedron_mesh, to_quadratic_triangle_mesh,
+        },
     },
 };
 use tucanos::geometry::orient_geometry;
@@ -822,6 +824,18 @@ impl PyMesh2d {
     fn to_quadratic(&self) -> PyQuadraticMesh2d {
         PyQuadraticMesh2d(to_quadratic_triangle_mesh(&self.0))
     }
+
+    #[classmethod]
+    fn from_quadratic(_cls: &Bound<'_, PyType>, mesh: &PyQuadraticMesh2d) -> Self {
+        let mut msh = GenericMesh::empty();
+        msh.add_verts(mesh.0.verts());
+        msh.add_elems(mesh.0.elems().map(|e| e.linear()), mesh.0.etags());
+        msh.add_faces(mesh.0.faces().map(|e| e.linear()), mesh.0.ftags());
+
+        // remove the unused vertices
+        let submesh = SubMesh::new(&msh, |_| true);
+        Self(submesh.mesh)
+    }
 }
 
 #[pymethods]
@@ -852,6 +866,22 @@ impl PyBoundaryMesh2d {
 
     fn fix_orientation(&mut self, mesh: &PyMesh2d) -> (usize, f64) {
         orient_geometry(&mesh.0, &mut self.0)
+    }
+
+    fn to_quadratic(&self) -> PyQuadraticBoundaryMesh2d {
+        PyQuadraticBoundaryMesh2d(to_quadratic_edge_mesh(&self.0))
+    }
+
+    #[classmethod]
+    fn from_quadratic(_cls: &Bound<'_, PyType>, mesh: &PyQuadraticBoundaryMesh2d) -> Self {
+        let mut msh = GenericMesh::empty();
+        msh.add_verts(mesh.0.verts());
+        msh.add_elems(mesh.0.elems().map(|e| e.linear()), mesh.0.etags());
+        // msh.add_faces(mesh.0.faces().map(|e| e.linear()), mesh.0.ftags());
+
+        // remove the unused vertices
+        let submesh = SubMesh::new(&msh, |_| true);
+        Self(submesh.mesh)
     }
 }
 
@@ -884,6 +914,22 @@ impl PyBoundaryMesh3d {
 
     fn fix_orientation(&mut self, mesh: &PyMesh3d) -> (usize, f64) {
         orient_geometry(&mesh.0, &mut self.0)
+    }
+
+    fn to_quadratic(&self) -> PyQuadraticBoundaryMesh3d {
+        PyQuadraticBoundaryMesh3d(to_quadratic_triangle_mesh(&self.0))
+    }
+
+    #[classmethod]
+    fn from_quadratic(_cls: &Bound<'_, PyType>, mesh: &PyQuadraticBoundaryMesh3d) -> Self {
+        let mut msh = GenericMesh::empty();
+        msh.add_verts(mesh.0.verts());
+        msh.add_elems(mesh.0.elems().map(|e| e.linear()), mesh.0.etags());
+        msh.add_faces(mesh.0.faces().map(|e| e.linear()), mesh.0.ftags());
+
+        // remove the unused vertices
+        let submesh = SubMesh::new(&msh, |_| true);
+        Self(submesh.mesh)
     }
 }
 
@@ -933,6 +979,18 @@ impl PyMesh3d {
 
     fn to_quadratic(&self) -> PyQuadraticMesh3d {
         PyQuadraticMesh3d(to_quadratic_tetrahedron_mesh(&self.0))
+    }
+
+    #[classmethod]
+    fn from_quadratic(_cls: &Bound<'_, PyType>, mesh: &PyQuadraticMesh3d) -> Self {
+        let mut msh = GenericMesh::empty();
+        msh.add_verts(mesh.0.verts());
+        msh.add_elems(mesh.0.elems().map(|e| e.linear()), mesh.0.etags());
+        msh.add_faces(mesh.0.faces().map(|e| e.linear()), mesh.0.ftags());
+
+        // remove the unused vertices
+        let submesh = SubMesh::new(&msh, |_| true);
+        Self(submesh.mesh)
     }
 }
 
