@@ -11,11 +11,12 @@ use ferreus_rbf::{
 use tmesh::{
     Result,
     mesh::{
-        AdaptiveBoundsQuadraticTetrahedron, GSimplex, Mesh, Mesh3d, QuadraticBoundaryMesh3d,
-        QuadraticMesh3d, Simplex, SubMesh, to_quadratic::to_quadratic_tetrahedron_mesh,
+        AdaptiveBoundsQuadraticTetrahedron, Mesh, Mesh3d, QuadraticBoundaryMesh3d, QuadraticMesh3d,
+        SubMesh, to_quadratic::to_quadratic_tetrahedron_mesh,
     },
 };
 use tucanos::{
+    TopoTag,
     geometry::{Geometry, MeshedGeometry},
     mesh::MeshTopology,
 };
@@ -76,14 +77,9 @@ fn get_callback_sink() -> Arc<dyn ProgressSink> {
 
 fn linear_to_quadratic_mesh(
     msh: &Mesh3d,
-    bdy: &QuadraticBoundaryMesh3d,
-) -> Result<(MeshTopology, QuadraticMesh3d)> {
+    geom: &MeshedGeometry<3, impl Mesh<3>>,
+) -> (QuadraticMesh3d, Vec<TopoTag>) {
     let mut msh: QuadraticMesh3d = to_quadratic_tetrahedron_mesh(msh);
-
-    let topo = MeshTopology::new(&msh);
-
-    let mut geom = MeshedGeometry::new(bdy)?;
-    geom.set_topo_map(topo.topo());
 
     // Define the RBF kernel to use
     let kernel_type = RBFKernelType::Linear;
@@ -103,6 +99,7 @@ fn linear_to_quadratic_mesh(
     // Create a callback to receive progress updates from the RBFInterpolator
     let callback = get_callback_sink();
 
+    let topo = MeshTopology::new(&msh);
     let vtags = topo.vtags();
     // Get the number of boundary vertices in the mesh
     let n = vtags.iter().filter(|tag| tag.0 < 3).count();
@@ -151,7 +148,58 @@ fn linear_to_quadratic_mesh(
         }
     }
 
-    Ok((topo, msh))
+    (msh, vtags.to_vec())
+}
+
+fn optimize_quadratic_mesh(
+    msh: &mut QuadraticMesh3d,
+    _vtags: &[TopoTag],
+    _geom: &MeshedGeometry<3, impl Mesh<3>>,
+) {
+    // Compute the min and max of J for each element in the mesh
+    let min_max_j = |msh: &QuadraticMesh3d| {
+        let lu = AdaptiveBoundsQuadraticTetrahedron::lagrange_to_bezier();
+        msh.gelems()
+            .map(|ge| {
+                let (_, (min, max)) =
+                    AdaptiveBoundsQuadraticTetrahedron::new(&ge, &lu).compute_bounds(None);
+                (min, max)
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let res = min_max_j(msh);
+    let threshold = 0.0;
+
+    // flag vertices that belong to elements with min J < threshold * max J
+    let mut flg = vec![false; msh.n_verts()];
+    let mut count = 0;
+    msh.elems().zip(res).for_each(|(e, (min, max))| {
+        assert!(max > 0.0, "Element has non-positive max J: {max}");
+        if min < threshold * max {
+            e.into_iter().for_each(|i| flg[i] = true);
+            count += 1;
+        }
+    });
+    println!("Flagged {count} elements with min J < {threshold} * max J");
+
+    // flag the elemts that have at least one flagged vertex
+    let etags = msh
+        .elems()
+        .map(|e| if e.into_iter().any(|i| flg[i]) { 2 } else { 1 })
+        .collect::<Vec<_>>();
+
+    msh.etags_mut().zip(etags).for_each(|(x, y)| *x = y);
+
+    // Extract a submesh with the bad elements
+    let submsh = SubMesh::new(msh, |t| t == 2);
+    let msh_loc = &submsh.mesh;
+    println!(
+        "Submesh has {} elems, {} faces, {} verts",
+        msh_loc.n_elems(),
+        msh_loc.n_faces(),
+        msh_loc.n_verts()
+    );
 }
 
 fn main() -> Result<()> {
@@ -165,51 +213,37 @@ fn main() -> Result<()> {
         geom.n_verts()
     );
 
-    let fname = "ForXavier/1_p1_p2_curving_no_coda/qm_deformed_folded.meshb";
-    let msh = QuadraticMesh3d::from_meshb(fname)?;
-    println!(
-        "Read mesh from {}: {} elems, {} faces, {} verts",
-        fname,
-        msh.n_elems(),
-        msh.n_faces(),
-        msh.n_verts()
-    );
+    let compute_qmesh = false;
+    let (mut quad_msh, geom, vtags) = if compute_qmesh {
+        let fname = "ForXavier/1_p1_p2_curving_no_coda/qm_deformed_folded.meshb";
+        let msh = QuadraticMesh3d::from_meshb(fname)?;
+        println!(
+            "Read mesh from {}: {} elems, {} faces, {} verts",
+            fname,
+            msh.n_elems(),
+            msh.n_faces(),
+            msh.n_verts()
+        );
 
-    let lin_msh = quadratic_to_linear_mesh(&msh);
+        let lin_msh = quadratic_to_linear_mesh(&msh);
 
-    let (topo, quad_msh) = linear_to_quadratic_mesh(&lin_msh, &geom)?;
-    let vtags = topo.vtags();
+        let topo = MeshTopology::new(&msh);
+        let mut geom = MeshedGeometry::new(&geom)?;
+        geom.set_topo_map(topo.topo());
 
-    let lu = AdaptiveBoundsQuadraticTetrahedron::lagrange_to_bezier();
+        let (quad_msh, vtags) = linear_to_quadratic_mesh(&lin_msh, &geom);
+        quad_msh.write_meshb("qmesh.meshb")?;
+        (quad_msh, geom, vtags)
+    } else {
+        let quad_msh = QuadraticMesh3d::from_meshb("qmesh.meshb")?;
+        let topo = MeshTopology::new(&quad_msh);
+        let mut geom = MeshedGeometry::new(&geom)?;
+        geom.set_topo_map(topo.topo());
+        let vtags = topo.vtags();
+        (quad_msh, geom, vtags.to_vec())
+    };
 
-    let mut count = 0;
-    for (i, ge) in quad_msh.gelems().enumerate() {
-        // let ge = ge.flatten();
-        let (_, (min, max)) =
-            AdaptiveBoundsQuadraticTetrahedron::new(&ge, &lu).compute_bounds(None);
-        let d = max / min;
-        if d < 0.0 {
-            let vol = ge.vol() * 6.0;
-            let res = ge.linear().vol() * 6.0;
-            println!(
-                "Elem {i}: d = {d:.3e}, min = {min:.3e}, max = {max:.3e}, linear = {res:.3e}, vol = {vol:.3e}"
-            );
-            let flat = ge.flatten();
-            let lin = ge.linear();
-            let r = lin.radius();
-            println!("  Linear radius = {r:.3e}");
-            let e = quad_msh.elem(i);
-            for i in 4..10 {
-                let d = ge[i] - flat[i];
-                let dist = d.norm();
-                let i_vert = e.get(i);
-                let tag = vtags[i_vert];
-                println!("  Node {i}: dist = {dist:.3e}, i_vert = {i_vert}, tag = {tag:?}");
-            }
-            count += 1;
-        }
-    }
-    println!("Found {count} elements with negative distortion");
+    optimize_quadratic_mesh(&mut quad_msh, &vtags, &geom);
 
     // let mut geom = MeshedGeometry::new(&geom)?;
     // let topo = MeshTopology::new(&msh);
