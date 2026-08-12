@@ -192,9 +192,9 @@ impl<const D: usize> Default for QuadraticGTriangle<D> {
 const QUADRATICTRIANGLE2EDGE: [Edge<usize>; 3] = [Edge([0, 1]), Edge([1, 2]), Edge([2, 0])];
 
 const QUADRATICTRIANGLE2FACE: [QuadraticEdge<usize>; 3] = [
-    QuadraticEdge([0, 1, 3]),
     QuadraticEdge([1, 2, 4]),
     QuadraticEdge([2, 0, 5]),
+    QuadraticEdge([0, 1, 3]),
 ];
 
 impl<T: Idx> Simplex for QuadraticTriangle<T> {
