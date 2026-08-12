@@ -11,8 +11,8 @@ use ferreus_rbf::{
 use tmesh::{
     Result,
     mesh::{
-        AdaptiveBoundsQuadraticTetrahedron, Mesh, Mesh3d, QuadraticBoundaryMesh3d, QuadraticMesh3d,
-        SubMesh, to_quadratic::to_quadratic_tetrahedron_mesh,
+        Mesh, Mesh3d, QuadraticBoundaryMesh3d, QuadraticMesh3d, SubMesh,
+        quadratic::optimize_quadratic_mesh, to_quadratic::to_quadratic_tetrahedron_mesh,
     },
 };
 use tucanos::{
@@ -20,10 +20,6 @@ use tucanos::{
     geometry::{Geometry, MeshedGeometry},
     mesh::MeshTopology,
 };
-// use tucanos::{
-//     geometry::{Geometry, MeshedGeometry},
-//     mesh::MeshTopology,
-// };
 
 fn quadratic_to_linear_mesh(msh: &QuadraticMesh3d) -> Mesh3d {
     let mut new_msh = Mesh3d::empty();
@@ -151,57 +147,6 @@ fn linear_to_quadratic_mesh(
     (msh, vtags.to_vec())
 }
 
-fn optimize_quadratic_mesh(
-    msh: &mut QuadraticMesh3d,
-    _vtags: &[TopoTag],
-    _geom: &MeshedGeometry<3, impl Mesh<3>>,
-) {
-    // Compute the min and max of J for each element in the mesh
-    let min_max_j = |msh: &QuadraticMesh3d| {
-        let lu = AdaptiveBoundsQuadraticTetrahedron::lagrange_to_bezier();
-        msh.gelems()
-            .map(|ge| {
-                let (_, (min, max)) =
-                    AdaptiveBoundsQuadraticTetrahedron::new(&ge, &lu).compute_bounds(None);
-                (min, max)
-            })
-            .collect::<Vec<_>>()
-    };
-
-    let res = min_max_j(msh);
-    let threshold = 0.0;
-
-    // flag vertices that belong to elements with min J < threshold * max J
-    let mut flg = vec![false; msh.n_verts()];
-    let mut count = 0;
-    msh.elems().zip(res).for_each(|(e, (min, max))| {
-        assert!(max > 0.0, "Element has non-positive max J: {max}");
-        if min < threshold * max {
-            e.into_iter().for_each(|i| flg[i] = true);
-            count += 1;
-        }
-    });
-    println!("Flagged {count} elements with min J < {threshold} * max J");
-
-    // flag the elemts that have at least one flagged vertex
-    let etags = msh
-        .elems()
-        .map(|e| if e.into_iter().any(|i| flg[i]) { 2 } else { 1 })
-        .collect::<Vec<_>>();
-
-    msh.etags_mut().zip(etags).for_each(|(x, y)| *x = y);
-
-    // Extract a submesh with the bad elements
-    let submsh = SubMesh::new(msh, |t| t == 2);
-    let msh_loc = &submsh.mesh;
-    println!(
-        "Submesh has {} elems, {} faces, {} verts",
-        msh_loc.n_elems(),
-        msh_loc.n_faces(),
-        msh_loc.n_verts()
-    );
-}
-
 fn main() -> Result<()> {
     let fname = "ForXavier/1_p1_p2_curving_no_coda/geom.meshb";
     let geom = QuadraticBoundaryMesh3d::from_meshb(fname)?;
@@ -214,7 +159,7 @@ fn main() -> Result<()> {
     );
 
     let compute_qmesh = false;
-    let (mut quad_msh, geom, vtags) = if compute_qmesh {
+    let (mut quad_msh, vtags) = if compute_qmesh {
         let fname = "ForXavier/1_p1_p2_curving_no_coda/qm_deformed_folded.meshb";
         let msh = QuadraticMesh3d::from_meshb(fname)?;
         println!(
@@ -233,17 +178,18 @@ fn main() -> Result<()> {
 
         let (quad_msh, vtags) = linear_to_quadratic_mesh(&lin_msh, &geom);
         quad_msh.write_meshb("qmesh.meshb")?;
-        (quad_msh, geom, vtags)
+        (quad_msh, vtags)
     } else {
         let quad_msh = QuadraticMesh3d::from_meshb("qmesh.meshb")?;
         let topo = MeshTopology::new(&quad_msh);
         let mut geom = MeshedGeometry::new(&geom)?;
         geom.set_topo_map(topo.topo());
         let vtags = topo.vtags();
-        (quad_msh, geom, vtags.to_vec())
+        (quad_msh, vtags.to_vec())
     };
 
-    optimize_quadratic_mesh(&mut quad_msh, &vtags, &geom);
+    let is_fixed_vertex = vtags.iter().map(|x| x.0 < 3).collect::<Vec<_>>();
+    optimize_quadratic_mesh(&mut quad_msh, &is_fixed_vertex);
 
     // let mut geom = MeshedGeometry::new(&geom)?;
     // let topo = MeshTopology::new(&msh);
