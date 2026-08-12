@@ -43,15 +43,14 @@ fn truncated_cg<const N: usize>(
         let beta = r_sq_new / r_sq_old;
         d = r + beta * d;
     }
-
     p
 }
 
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum ConvergenceStatus {
-    Converged(usize),
-
+    ConvergedGradNorm(usize),
+    ConvergedStepNorm(usize),
     NotConverged,
 }
 
@@ -78,14 +77,13 @@ where
     for iter in 0..max_iter {
         let grad = df(&x);
         if grad.norm() < tol {
-            return (x, ConvergenceStatus::Converged(iter));
+            return (x, ConvergenceStatus::ConvergedGradNorm(iter));
         }
 
         let hessian = ddf(&x);
 
         // 1. Compute approximate search direction via Truncated CG
         let step_dir = truncated_cg(&grad, &hessian, max_cg_iter);
-        // let step_dir = -hessian.lu().solve(&grad).unwrap();
 
         // 2. Backtracking Line Search (Armijo condition)
         let f_val = f(&x);
@@ -106,7 +104,7 @@ where
 
         // Convergence check
         if step.norm() < tol {
-            return (x, ConvergenceStatus::Converged(iter + 1000));
+            return (x, ConvergenceStatus::ConvergedStepNorm(iter));
         }
     }
 
