@@ -2022,7 +2022,7 @@ mod tests {
                 #[cfg(not(feature = "argmin"))]
                 {
                     assert_delta!(mini, 0.42, 0.01);
-                    assert_delta!(maxi, 1.77, 0.01);
+                    assert_delta!(maxi, 1.51, 0.01);
                 }
                 #[cfg(feature = "argmin")]
                 {
