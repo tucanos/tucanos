@@ -8,8 +8,10 @@ use std::{
     mem::size_of,
 };
 
+mod hypertreegrid;
 mod polydata;
 mod unstructuredgrid;
+pub use hypertreegrid::HyperTreeGridWriter;
 pub use polydata::PolyDataWriter;
 pub use unstructuredgrid::UnstructuredGridWriter;
 
@@ -36,37 +38,38 @@ impl<T: FileType + Default> Default for AppendedWriter<'_, T> {
 }
 
 impl<'a, T: FileType> AppendedWriter<'a, T> {
-    fn write(mut self, writer: &mut impl Write) -> Result<()> {
+    fn write<const WITH_PIECE: bool>(mut self, writer: &mut impl Write) -> Result<()> {
         let typ = T::NAME;
         let endianness = if cfg!(target_endian = "little") {
             "LittleEndian"
         } else {
             "BigEndian"
         };
-        write!(
-            writer,
-            r#"<VTKFile type="{typ}" version="{}" byte_order="{endianness}""#,
-            self.version
-        )?;
         writeln!(
             writer,
-            r#" header_type="UInt32">
-  <{typ}>
-    <Piece "#
+            r#"<VTKFile type="{typ}" version="{}" byte_order="{endianness}" header_type="UInt32">"#,
+            self.version
         )?;
+        let indent = if WITH_PIECE {
+            writeln!(writer, "  <{typ}>")?;
+            write!(writer, "    <Piece ")?;
+            "      "
+        } else {
+            write!(writer, "  <{typ} ")?;
+            "    "
+        };
         self.file_type.write_piece_attributes(writer)?;
         writeln!(writer, ">")?;
-
         let mut offset = 0;
 
         let mut write_section = |name: &str, arrays: &[DataArray<'a>]| -> Result<()> {
             if !arrays.is_empty() {
-                writeln!(writer, "      <{name}>")?;
+                writeln!(writer, "{indent}<{name}>")?;
                 for a in arrays {
-                    writeln!(writer, "        {}", a.to_xml_tag(offset))?;
+                    writeln!(writer, "{indent}  {}", a.to_xml_tag(offset))?;
                     offset += size_of::<u32>() + a.byte_len;
                 }
-                writeln!(writer, "      </{name}>")?;
+                writeln!(writer, "{indent}</{name}>")?;
             }
             Ok(())
         };
@@ -74,9 +77,12 @@ impl<'a, T: FileType> AppendedWriter<'a, T> {
         for (name, arrays) in &self.sections {
             write_section(name, arrays)?;
         }
+        if WITH_PIECE {
+            writeln!(writer, "    </Piece>")?;
+        }
         write!(
             writer,
-            "    </Piece>\n  </{typ}>\n  <AppendedData encoding=\"raw\">\n   _"
+            "  </{typ}>\n  <AppendedData encoding=\"raw\">\n   _"
         )?;
         for section in self.sections.values_mut() {
             for array in section {
@@ -90,6 +96,7 @@ impl<'a, T: FileType> AppendedWriter<'a, T> {
 struct DataArray<'a> {
     data_type: &'static str,
     name: String,
+    number_of_tuples: usize,
     number_of_components: usize,
     byte_len: usize,
     data: Box<dyn WriteableIter + 'a>,
@@ -211,14 +218,36 @@ where
 }
 
 impl<'a> DataArray<'a> {
+    /// Creates a new bit-packed `DataArray` (`Bits` type).
+    ///
+    /// The input length `len` specifies the total number of bits, and total byte length
+    /// is calculated as `ceil(len / 8)`.
+    fn new_bits<IT>(name: &str, number_of_components: usize, len: usize, data: IT) -> Self
+    where
+        IT: IntoIterator + 'a,
+        IT::Item: Scalar,
+    {
+        let number_of_tuples = len / number_of_components;
+        Self {
+            data_type: "Bit",
+            name: name.to_string(),
+            number_of_tuples,
+            number_of_components,
+            data: Box::new(data.into_iter()),
+            byte_len: len.div_ceil(8),
+        }
+    }
+
     fn new<IT>(name: &str, number_of_components: usize, len: usize, data: IT) -> Self
     where
         IT: IntoIterator + 'a,
         IT::Item: Scalar,
     {
+        let number_of_tuples = len / number_of_components;
         Self {
             data_type: <IT::Item as Scalar>::TYPE_NAME,
             name: name.to_string(),
+            number_of_tuples,
             number_of_components,
             data: Box::new(data.into_iter()),
             byte_len: len * std::mem::size_of::<IT::Item>(),
@@ -227,12 +256,18 @@ impl<'a> DataArray<'a> {
 
     #[must_use]
     fn to_xml_tag(&self, offset: usize) -> String {
+        let comp_str = if self.number_of_components == 1 {
+            String::new()
+        } else {
+            format!(r#" NumberOfComponents="{}""#, self.number_of_components)
+        };
+
         format!(
             concat!(
-                r#"<DataArray type="{}" Name="{}" NumberOfComponents="{}" "#,
-                r#"format="appended" offset="{}"/>"#
+                r#"<DataArray type="{}" Name="{}"{} "#,
+                r#"NumberOfTuples="{}" format="appended" offset="{}"/>"#
             ),
-            self.data_type, self.name, self.number_of_components, offset
+            self.data_type, self.name, comp_str, self.number_of_tuples, offset,
         )
     }
 
