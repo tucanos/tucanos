@@ -160,7 +160,7 @@ impl<'a> UnstructuredGridWriter<'a> {
     }
 
     pub fn write(self, writer: &mut impl Write) -> Result<()> {
-        self.0.write(writer)
+        self.0.write::<true>(writer)
     }
 }
 
