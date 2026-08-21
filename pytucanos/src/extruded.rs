@@ -25,7 +25,6 @@ impl PyExtrudedMesh2d {
     /// Create a new mesh from coordinates, connectivities and tags
     #[new]
     #[allow(clippy::needless_pass_by_value)]
-    #[allow(clippy::from_iter_instead_of_collect)]
     #[allow(clippy::useless_conversion)]
     fn new(
         coords: PyReadonlyArray2<f64>,

@@ -176,7 +176,7 @@ impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
 
             // bisection
             for iter in 0..max_iter {
-                scale = 0.5 * (scale_low + scale_high);
+                scale = f64::midpoint(scale_low, scale_high);
                 let tmp_m = m_iter(scale);
                 let c = self.complexity_iter(tmp_m, h_min, h_max);
                 debug!("Iteration {iter}: scale = {scale:.2e}, complexity = {c:.2e}");

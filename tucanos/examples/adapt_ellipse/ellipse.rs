@@ -21,7 +21,7 @@ impl EllipseProjection {
 
         #[allow(clippy::while_float)]
         while (end - start).abs() > Self::TOL {
-            let mid = 0.5 * (start + end);
+            let mid = f64::midpoint(start, end);
             let f_mid = self.f(mid, x, y);
             if f_mid * f_start > 0.0 {
                 start = mid;
@@ -35,7 +35,7 @@ impl EllipseProjection {
                 unreachable!("{x} {y} {start} {f_start} {end} {f_end} {f_mid}");
             }
         }
-        0.5 * (start + end)
+        f64::midpoint(start, end)
     }
 
     pub fn project(&self, x: f64, y: f64) -> (f64, f64) {
