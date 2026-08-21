@@ -103,7 +103,7 @@ fn validate_tags_length(tags_len: usize, expected: usize, name: &str) -> PyResul
 fn coords_to_vertices<const D: usize>(
     coords: &[f64],
 ) -> impl ExactSizeIterator<Item = Vertex<D>> + '_ {
-    coords.chunks_exact(D).map(|p| {
+    coords.as_chunks::<D>().0.iter().map(|p| {
         let mut vx = Vertex::<D>::zeros();
         vx.copy_from_slice(p);
         vx
@@ -118,6 +118,8 @@ where
         return Err(PyValueError::new_err("Invalid array length"));
     }
 
+    // https://github.com/rust-lang/rust-clippy/issues/17314
+    #[allow(clippy::chunks_exact_to_as_chunks)]
     let iter = indices
         .chunks_exact(C::N_VERTS)
         .map(|x| C::from_slice(x).unwrap());

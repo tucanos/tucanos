@@ -143,7 +143,7 @@ mod tests {
         let f_other = interp.interpolate(&f, other.verts());
 
         for (a, b) in other.verts().map(fun).zip(f_other.iter().copied()) {
-            assert!(f64::abs(b - a) < 0.5 * (1.0 + 2.0) / 16.0 + 1e-6);
+            assert!(f64::abs(b - a) < f64::midpoint(1.0, 2.0) / 16.0 + 1e-6);
         }
     }
 
