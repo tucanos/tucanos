@@ -15,7 +15,7 @@ const S_MAX: f64 = 1. / (H_MIN * H_MIN);
 const S_RATIO_MAX: f64 = ANISO_MAX * ANISO_MAX;
 
 // Errors
-pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync + 'static>>;
 #[derive(Debug)]
 pub struct Error(String);
 
