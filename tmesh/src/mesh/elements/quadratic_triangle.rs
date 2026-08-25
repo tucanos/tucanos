@@ -69,6 +69,14 @@ impl<const D: usize> QuadraticGTriangle<D> {
     }
 
     #[must_use]
+    pub fn flatten(&self) -> Self {
+        let p3 = 0.5 * (self[0] + self[1]);
+        let p4 = 0.5 * (self[1] + self[2]);
+        let p5 = 0.5 * (self[2] + self[0]);
+        Self([self[0], self[1], self[2], p3, p4, p5], HOType::Lagrange)
+    }
+
+    #[must_use]
     pub fn mapping(&self, bcoords: &[f64; 3]) -> Vertex<D> {
         let [u, v, w] = bcoords;
         2.0 * u * (u - 0.5) * self[0]
@@ -357,11 +365,7 @@ impl<const D: usize> GSimplex<D> for QuadraticGTriangle<D> {
         #[cfg(not(feature = "argmin"))]
         {
             use super::newton_cg;
-            let start: Vector2<f64> = if uvw.into_iter().all(|x| x > 0.0) {
-                [uvw[1], uvw[2]].into()
-            } else {
-                [0.333, 0.333].into()
-            };
+            let start = [uvw[1], uvw[2]].into();
 
             let (x, reason) = newton_cg::newton_cg_minimize(
                 start,
