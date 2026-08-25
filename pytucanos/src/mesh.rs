@@ -771,6 +771,49 @@ macro_rules! impl_mesh {
             pub fn check(&self) -> PyResult<()> {
                 to_py_err(self.0.check(&self.0.all_faces()))
             }
+
+            /// Extract a submesh from the mesh using a boolean mask on the elements
+            /// Returns the submesh and the parent vertex, element and face ids
+            pub fn submesh<'py>(
+                &mut self,
+                py: Python<'py>,
+                mask: PyReadonlyArray1<bool>,
+            ) -> PyResult<(
+                Self,
+                Bound<'py, PyArray1<Idx>>,
+                Bound<'py, PyArray1<Idx>>,
+                Bound<'py, PyArray1<Idx>>,
+            )> {
+                let mask = mask.as_slice()?;
+                if mask.len() != self.0.n_elems() {
+                    return Err(PyValueError::new_err(format!(
+                        "Invalid dimension 0 for mask (expecting {}, got {})",
+                        self.0.n_elems(),
+                        mask.len()
+                    )));
+                }
+                // temporary change of the etags
+                let etags = self.0.etags().collect::<Vec<_>>();
+                self.0.etags_mut().zip(mask).for_each(|(etag, &m)| {
+                    if m {
+                        *etag = 1;
+                    } else {
+                        *etag = 0;
+                    }
+                });
+                let res = SubMesh::new(&self.0, |t| t == 1);
+                // restore the etags
+                self.0
+                    .etags_mut()
+                    .zip(etags)
+                    .for_each(|(etag, old)| *etag = old);
+                Ok((
+                    Self(res.mesh),
+                    PyArray1::from_vec(py, res.parent_vert_ids),
+                    PyArray1::from_vec(py, res.parent_elem_ids),
+                    PyArray1::from_vec(py, res.parent_face_ids),
+                ))
+            }
         }
     };
 }
