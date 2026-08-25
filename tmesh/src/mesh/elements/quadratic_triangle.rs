@@ -278,7 +278,7 @@ impl<T: Idx> Simplex for QuadraticTriangle<T> {
     }
 
     fn from_slice(slice: &[Self::T]) -> Result<Self, std::array::TryFromSliceError> {
-        slice.try_into().map(|x| Self(x))
+        slice.try_into().map(Self)
     }
 }
 
@@ -470,7 +470,7 @@ impl<const D: usize> CostFunction for QuadraticTriangleProjection<'_, D> {
     type Output = f64;
 
     fn cost(&self, param: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
-        Ok(self.f(params))
+        Ok(self.f(param))
     }
 }
 
@@ -481,7 +481,7 @@ impl<const D: usize> Gradient for QuadraticTriangleProjection<'_, D> {
     type Gradient = nalgebra::Vector2<f64>;
 
     fn gradient(&self, param: &Self::Param) -> Result<Self::Gradient, argmin::core::Error> {
-        Ok(self.grad_f(params))
+        Ok(self.grad_f(param))
     }
 }
 
@@ -491,13 +491,13 @@ impl<const D: usize> Hessian for QuadraticTriangleProjection<'_, D> {
     type Hessian = nalgebra::Matrix2<f64>;
 
     fn hessian(&self, param: &Self::Param) -> Result<Self::Hessian, argmin::core::Error> {
-        Ok(self.hess_f(params))
+        Ok(self.hess_f(param))
     }
 }
 
 /// Adaptive computation of the bounds of the determinant of the jacobian
 /// for quadratic triangles
-pub struct AdativeBoundsQuadraticTriangle<'a> {
+pub struct AdaptiveBoundsQuadraticTriangle<'a> {
     c0: SVector<f64, 3>,
     c1: SVector<f64, 3>,
     c2: SVector<f64, 3>,
@@ -507,7 +507,7 @@ pub struct AdativeBoundsQuadraticTriangle<'a> {
     lu: &'a LU<f64, Const<6>, Const<6>>,
 }
 
-impl<'a> AdativeBoundsQuadraticTriangle<'a> {
+impl<'a> AdaptiveBoundsQuadraticTriangle<'a> {
     fn midpoints(
         c0: &SVector<f64, 3>,
         c1: &SVector<f64, 3>,
@@ -548,7 +548,7 @@ impl<'a> AdativeBoundsQuadraticTriangle<'a> {
         msh.gelems()
             .map(|ge| {
                 let (_, (min, max)) =
-                    AdativeBoundsQuadraticTriangle::new(&ge, &lu).compute_bounds(None);
+                    AdaptiveBoundsQuadraticTriangle::new(&ge, &lu).compute_bounds(None);
                 max / min
             })
             .collect()
@@ -597,10 +597,10 @@ impl<'a> AdativeBoundsQuadraticTriangle<'a> {
     fn subdivide(&mut self) {
         let (c4, c5, c6) = Self::midpoints(&self.c0, &self.c1, &self.c2);
         self.children = Some(Box::new([
-            AdativeBoundsQuadraticTriangle::new_with_corners(self.tri, self.lu, self.c0, c4, c6),
-            AdativeBoundsQuadraticTriangle::new_with_corners(self.tri, self.lu, c4, self.c1, c5),
-            AdativeBoundsQuadraticTriangle::new_with_corners(self.tri, self.lu, c6, c5, self.c2),
-            AdativeBoundsQuadraticTriangle::new_with_corners(self.tri, self.lu, c4, c5, c6),
+            AdaptiveBoundsQuadraticTriangle::new_with_corners(self.tri, self.lu, self.c0, c4, c6),
+            AdaptiveBoundsQuadraticTriangle::new_with_corners(self.tri, self.lu, c4, self.c1, c5),
+            AdaptiveBoundsQuadraticTriangle::new_with_corners(self.tri, self.lu, c6, c5, self.c2),
+            AdaptiveBoundsQuadraticTriangle::new_with_corners(self.tri, self.lu, c4, c5, c6),
         ]));
     }
 
@@ -700,7 +700,7 @@ mod tests {
         Vert2d, Vert3d, assert_delta,
         mesh::{
             BoundaryMesh3d, GSimplex, GTriangle, Mesh, QuadraticGTriangle, Triangle,
-            elements::{ho_simplex::HOType, quadratic_triangle::AdativeBoundsQuadraticTriangle},
+            elements::{ho_simplex::HOType, quadratic_triangle::AdaptiveBoundsQuadraticTriangle},
         },
     };
 
@@ -833,8 +833,8 @@ mod tests {
 
         let tri = QuadraticGTriangle::new(&p0, &p1, &p2, &p3, &p4, &p5, HOType::Lagrange);
 
-        let lu = AdativeBoundsQuadraticTriangle::lagrange_to_bezier();
-        let mut adb = AdativeBoundsQuadraticTriangle::new(&tri, &lu);
+        let lu = AdaptiveBoundsQuadraticTriangle::lagrange_to_bezier();
+        let mut adb = AdaptiveBoundsQuadraticTriangle::new(&tri, &lu);
 
         let (is_invalid, (min, max)) = adb.compute_bounds(Some(1e-6));
         assert!(is_invalid);
@@ -853,8 +853,8 @@ mod tests {
 
         let tri = QuadraticGTriangle::new(&p0, &p1, &p2, &p3, &p4, &p5, HOType::Lagrange);
 
-        let lu = AdativeBoundsQuadraticTriangle::lagrange_to_bezier();
-        let mut adb = AdativeBoundsQuadraticTriangle::new(&tri, &lu);
+        let lu = AdaptiveBoundsQuadraticTriangle::lagrange_to_bezier();
+        let mut adb = AdaptiveBoundsQuadraticTriangle::new(&tri, &lu);
 
         let (is_invalid, (min, max)) = adb.compute_bounds(Some(1e-6));
         assert!(!is_invalid);

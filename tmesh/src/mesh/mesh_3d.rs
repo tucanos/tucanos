@@ -236,7 +236,7 @@ mod tests {
     use crate::{
         Vert3d, assert_delta,
         mesh::{
-            AdativeBoundsQuadraticTetrahedron, BoundaryMesh3d, GSimplex, GradientMethod, Mesh,
+            AdaptiveBoundsQuadraticTetrahedron, BoundaryMesh3d, GSimplex, GradientMethod, Mesh,
             Mesh3d, QuadraticBoundaryMesh3d, QuadraticMesh3d, bandwidth, box_mesh,
             mesh_3d::ball_mesh,
             partition::{HilbertPartitioner, RCMPartitioner},
@@ -712,7 +712,7 @@ mod tests {
         let faces = msh.all_faces();
         msh.check(&faces).unwrap();
 
-        let d = AdativeBoundsQuadraticTetrahedron::element_distortion(&msh);
+        let d = AdaptiveBoundsQuadraticTetrahedron::element_distortion(&msh);
 
         let dmax = d.iter().copied().fold(f64::NEG_INFINITY, f64::max);
         // Value computed with gmsh
