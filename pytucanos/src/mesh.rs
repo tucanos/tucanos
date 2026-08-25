@@ -220,6 +220,16 @@ macro_rules! impl_mesh {
                 Ok(PyArray::from_vec(py, self.0.etags().collect()))
             }
 
+            /// Set the element tags
+            fn set_etags(&mut self, etags: PyReadonlyArray1<Tag>) -> PyResult<()> {
+                validate_tags_length(etags.shape()[0], self.n_elems(), "etags")?;
+                self.0
+                    .etags_mut()
+                    .zip(etags.as_slice()?.iter().copied())
+                    .for_each(|(e, t)| *e = t);
+                Ok(())
+            }
+
             /// Number of faces
             fn n_faces(&self) -> usize {
                 self.0.n_faces()
@@ -233,6 +243,16 @@ macro_rules! impl_mesh {
             /// Get a copy of the face tags
             fn get_ftags<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<Tag>>> {
                 Ok(PyArray::from_vec(py, self.0.ftags().collect()))
+            }
+
+            /// Set the face tags
+            fn set_ftags(&mut self, ftags: PyReadonlyArray1<Tag>) -> PyResult<()> {
+                validate_tags_length(ftags.shape()[0], self.n_faces(), "ftags")?;
+                self.0
+                    .ftags_mut()
+                    .zip(ftags.as_slice()?.iter().copied())
+                    .for_each(|(f, t)| *f = t);
+                Ok(())
             }
 
             /// Fix the element & face orientation (if possible) and tag internal faces (if needed)
