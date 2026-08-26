@@ -131,8 +131,10 @@ pub fn pytucanos(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(metric::intersect_aniso_metric_2d, m)?)?;
     m.add_class::<geometry::LinearGeometry2d>()?;
     m.add_class::<geometry::QuadraticGeometry2d>()?;
+    m.add_class::<geometry::QuadraticGeometry2dQMesh>()?;
     m.add_class::<geometry::LinearGeometry3d>()?;
     m.add_class::<geometry::QuadraticGeometry3d>()?;
+    m.add_class::<geometry::QuadraticGeometry3dQMesh>()?;
     m.add_class::<remesher::PyCollapseParams>()?;
     m.add_class::<remesher::PySplitParams>()?;
     m.add_class::<remesher::PySwapParams>()?;

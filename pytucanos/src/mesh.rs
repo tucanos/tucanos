@@ -23,13 +23,15 @@ use tmesh::{
     interpolate::{InterpolationMethod, Interpolator},
     io::VTUFile,
     mesh::{
-        AdativeBoundsQuadraticTetrahedron, AdativeBoundsQuadraticTriangle, Edge, GSimplex,
+        AdaptiveBoundsQuadraticTetrahedron, AdaptiveBoundsQuadraticTriangle, Edge, GSimplex,
         GenericMesh, GradientMethod, Mesh, QuadraticEdge, QuadraticTetrahedron, QuadraticTriangle,
-        Simplex, SolutionLocation, Tetrahedron, Triangle, ball_mesh, circle_mesh,
+        Simplex, SolutionLocation, SubMesh, Tetrahedron, Triangle, ball_mesh, circle_mesh,
         nonuniform_box_mesh, nonuniform_rectangle_mesh,
         partition::{HilbertPartitioner, RCMPartitioner},
         quadratic_circle_mesh, quadratic_sphere_mesh, read_stl, sphere_mesh,
-        to_quadratic::{to_quadratic_tetrahedron_mesh, to_quadratic_triangle_mesh},
+        to_quadratic::{
+            to_quadratic_edge_mesh, to_quadratic_tetrahedron_mesh, to_quadratic_triangle_mesh,
+        },
     },
 };
 use tucanos::geometry::orient_geometry;
@@ -220,6 +222,16 @@ macro_rules! impl_mesh {
                 Ok(PyArray::from_vec(py, self.0.etags().collect()))
             }
 
+            /// Set the element tags
+            fn set_etags(&mut self, etags: PyReadonlyArray1<Tag>) -> PyResult<()> {
+                validate_tags_length(etags.shape()[0], self.n_elems(), "etags")?;
+                self.0
+                    .etags_mut()
+                    .zip(etags.as_slice()?.iter().copied())
+                    .for_each(|(e, t)| *e = t);
+                Ok(())
+            }
+
             /// Number of faces
             fn n_faces(&self) -> usize {
                 self.0.n_faces()
@@ -233,6 +245,16 @@ macro_rules! impl_mesh {
             /// Get a copy of the face tags
             fn get_ftags<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<Tag>>> {
                 Ok(PyArray::from_vec(py, self.0.ftags().collect()))
+            }
+
+            /// Set the face tags
+            fn set_ftags(&mut self, ftags: PyReadonlyArray1<Tag>) -> PyResult<()> {
+                validate_tags_length(ftags.shape()[0], self.n_faces(), "ftags")?;
+                self.0
+                    .ftags_mut()
+                    .zip(ftags.as_slice()?.iter().copied())
+                    .for_each(|(f, t)| *f = t);
+                Ok(())
             }
 
             /// Fix the element & face orientation (if possible) and tag internal faces (if needed)
@@ -771,6 +793,49 @@ macro_rules! impl_mesh {
             pub fn check(&self) -> PyResult<()> {
                 to_py_err(self.0.check(&self.0.all_faces()))
             }
+
+            /// Extract a submesh from the mesh using a boolean mask on the elements
+            /// Returns the submesh and the parent vertex, element and face ids
+            pub fn submesh<'py>(
+                &mut self,
+                py: Python<'py>,
+                mask: PyReadonlyArray1<bool>,
+            ) -> PyResult<(
+                Self,
+                Bound<'py, PyArray1<Idx>>,
+                Bound<'py, PyArray1<Idx>>,
+                Bound<'py, PyArray1<Idx>>,
+            )> {
+                let mask = mask.as_slice()?;
+                if mask.len() != self.0.n_elems() {
+                    return Err(PyValueError::new_err(format!(
+                        "Invalid dimension 0 for mask (expecting {}, got {})",
+                        self.0.n_elems(),
+                        mask.len()
+                    )));
+                }
+                // temporary change of the etags
+                let etags = self.0.etags().collect::<Vec<_>>();
+                self.0.etags_mut().zip(mask).for_each(|(etag, &m)| {
+                    if m {
+                        *etag = 1;
+                    } else {
+                        *etag = 0;
+                    }
+                });
+                let res = SubMesh::new(&self.0, |t| t == 1);
+                // restore the etags
+                self.0
+                    .etags_mut()
+                    .zip(etags)
+                    .for_each(|(etag, old)| *etag = old);
+                Ok((
+                    Self(res.mesh),
+                    PyArray1::from_vec(py, res.parent_vert_ids),
+                    PyArray1::from_vec(py, res.parent_elem_ids),
+                    PyArray1::from_vec(py, res.parent_face_ids),
+                ))
+            }
         }
     };
 }
@@ -824,6 +889,18 @@ impl PyMesh2d {
     fn to_quadratic(&self) -> PyQuadraticMesh2d {
         PyQuadraticMesh2d(to_quadratic_triangle_mesh(&self.0))
     }
+
+    #[classmethod]
+    fn from_quadratic(_cls: &Bound<'_, PyType>, mesh: &PyQuadraticMesh2d) -> Self {
+        let mut msh = GenericMesh::empty();
+        msh.add_verts(mesh.0.verts());
+        msh.add_elems(mesh.0.elems().map(|e| e.linear()), mesh.0.etags());
+        msh.add_faces(mesh.0.faces().map(|e| e.linear()), mesh.0.ftags());
+
+        // remove the unused vertices
+        let submesh = SubMesh::new(&msh, |_| true);
+        Self(submesh.mesh)
+    }
 }
 
 #[pymethods]
@@ -839,7 +916,7 @@ impl PyQuadraticMesh2d {
 
     /// Compute the distortion for all the elements in the mesh
     fn distortion<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
-        let d = AdativeBoundsQuadraticTriangle::element_distortion(&self.0);
+        let d = AdaptiveBoundsQuadraticTriangle::element_distortion(&self.0);
         PyArray1::from_vec(py, d)
     }
 }
@@ -854,6 +931,22 @@ impl PyBoundaryMesh2d {
 
     fn fix_orientation(&mut self, mesh: &PyMesh2d) -> (usize, f64) {
         orient_geometry(&mesh.0, &mut self.0)
+    }
+
+    fn to_quadratic(&self) -> PyQuadraticBoundaryMesh2d {
+        PyQuadraticBoundaryMesh2d(to_quadratic_edge_mesh(&self.0))
+    }
+
+    #[classmethod]
+    fn from_quadratic(_cls: &Bound<'_, PyType>, mesh: &PyQuadraticBoundaryMesh2d) -> Self {
+        let mut msh = GenericMesh::empty();
+        msh.add_verts(mesh.0.verts());
+        msh.add_elems(mesh.0.elems().map(|e| e.linear()), mesh.0.etags());
+        // msh.add_faces(mesh.0.faces().map(|e| e.linear()), mesh.0.ftags());
+
+        // remove the unused vertices
+        let submesh = SubMesh::new(&msh, |_| true);
+        Self(submesh.mesh)
     }
 }
 
@@ -886,6 +979,22 @@ impl PyBoundaryMesh3d {
 
     fn fix_orientation(&mut self, mesh: &PyMesh3d) -> (usize, f64) {
         orient_geometry(&mesh.0, &mut self.0)
+    }
+
+    fn to_quadratic(&self) -> PyQuadraticBoundaryMesh3d {
+        PyQuadraticBoundaryMesh3d(to_quadratic_triangle_mesh(&self.0))
+    }
+
+    #[classmethod]
+    fn from_quadratic(_cls: &Bound<'_, PyType>, mesh: &PyQuadraticBoundaryMesh3d) -> Self {
+        let mut msh = GenericMesh::empty();
+        msh.add_verts(mesh.0.verts());
+        msh.add_elems(mesh.0.elems().map(|e| e.linear()), mesh.0.etags());
+        msh.add_faces(mesh.0.faces().map(|e| e.linear()), mesh.0.ftags());
+
+        // remove the unused vertices
+        let submesh = SubMesh::new(&msh, |_| true);
+        Self(submesh.mesh)
     }
 }
 
@@ -936,6 +1045,18 @@ impl PyMesh3d {
     fn to_quadratic(&self) -> PyQuadraticMesh3d {
         PyQuadraticMesh3d(to_quadratic_tetrahedron_mesh(&self.0))
     }
+
+    #[classmethod]
+    fn from_quadratic(_cls: &Bound<'_, PyType>, mesh: &PyQuadraticMesh3d) -> Self {
+        let mut msh = GenericMesh::empty();
+        msh.add_verts(mesh.0.verts());
+        msh.add_elems(mesh.0.elems().map(|e| e.linear()), mesh.0.etags());
+        msh.add_faces(mesh.0.faces().map(|e| e.linear()), mesh.0.ftags());
+
+        // remove the unused vertices
+        let submesh = SubMesh::new(&msh, |_| true);
+        Self(submesh.mesh)
+    }
 }
 
 #[pymethods]
@@ -951,7 +1072,7 @@ impl PyQuadraticMesh3d {
 
     /// Compute the distortion for all the elements in the mesh
     fn distortion<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
-        let d = AdativeBoundsQuadraticTetrahedron::element_distortion(&self.0);
+        let d = AdaptiveBoundsQuadraticTetrahedron::element_distortion(&self.0);
         PyArray1::from_vec(py, d)
     }
 }
