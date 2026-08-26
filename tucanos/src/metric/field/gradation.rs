@@ -55,12 +55,33 @@ impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
         Ok((max_gradation, count as f64 / edges.len() as f64))
     }
 
-    /// Enforce a maximum gradiation on a metric field
-    /// Algorithm taken from "Size gradation control of anisotropic meshes", F. Alauzet, 2010 and
-    /// "Feature-based and goal-oriented anisotropic mesh adaptation for RANS
-    /// applications in aeronautics and aerospace", F. Alauzet & L. Frazza, 2021
+    /// Enforces a maximum gradation limit on the metric field.
     ///
-    /// and modified for parallel implementation
+    /// Controls rapid variations in mesh element sizing by limiting the growth rate ($\beta$) of
+    /// metric across adjacent vertices.
+    ///
+    /// # Arguments
+    ///
+    /// * `v2v` - Vertex-to-vertex adjacency graph in Compressed Sparse Row (CSR) format.
+    /// * `beta` - Maximum allowable metric gradation / growth rate parameter ($\beta > 1$).
+    /// * `t` - Blending parameter ($t \in [0, 1]$) between two gradation strategies:
+    ///   * `0.0`: Preserves mesh anisotropy by spanning the gradation on the metric globally.
+    ///   * `1.0`: Highly robust but tends to isotropize the mesh by spanning gradation on
+    ///     individual eigenvalues.
+    ///   * Intermediate values offer a geometric compromise between anisotropy preservation and
+    ///     numerical robustness.
+    /// * `max_iter` - Maximum number of iterations over the mesh edges.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(usize)` - Total number of vertex metric tensors updated during execution.
+    /// * `Err(Error)` - If graph topology is invalid or metric decomposition fails.
+    ///
+    /// # References
+    ///
+    /// * F. Alauzet, *"Size gradation control of anisotropic meshes"*, 2010.
+    /// * F. Alauzet & L. Frazza, *"Feature-based and goal-oriented anisotropic mesh adaptation for
+    ///   RANS applications in aeronautics and aerospace"*, 2021.
     pub fn apply_metric_gradation(
         &mut self,
         v2v: &CSRGraph,
