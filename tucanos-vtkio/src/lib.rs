@@ -114,9 +114,26 @@ struct DataArray<'a> {
     data: Box<dyn WriteableIter + 'a>,
 }
 
-pub trait Scalar: Sized + Copy {
+pub trait Scalar: Sized {
     const TYPE_NAME: &'static str;
     fn write_ne_bytes(&self, writer: &mut dyn Write) -> Result<()>;
+
+    #[must_use]
+    fn byte_len(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
+}
+
+impl Scalar for &str {
+    const TYPE_NAME: &'static str = "String";
+    fn write_ne_bytes(&self, writer: &mut dyn Write) -> Result<()> {
+        writer.write_all(self.as_bytes())?;
+        writer.write_all(b"\0")
+    }
+
+    fn byte_len(&self) -> usize {
+        (*self).len() + 1
+    }
 }
 
 #[cfg(target_pointer_width = "64")]
@@ -191,7 +208,7 @@ impl<T: Scalar> Scalar for &T {
 }
 
 trait WriteableIter {
-    fn write_to(&mut self, writer: &mut dyn Write) -> Result<()>;
+    fn write_to(&mut self, writer: &mut dyn Write) -> Result<usize>;
 }
 
 impl<I, T> WriteableIter for I
@@ -199,11 +216,13 @@ where
     I: Iterator<Item = T>,
     T: Scalar,
 {
-    fn write_to(&mut self, writer: &mut dyn Write) -> Result<()> {
+    fn write_to(&mut self, writer: &mut dyn Write) -> Result<usize> {
+        let mut size = 0;
         for item in self {
             item.write_ne_bytes(writer)?;
+            size += item.byte_len();
         }
-        Ok(())
+        Ok(size)
     }
 }
 
@@ -218,14 +237,8 @@ impl<'a> DataArray<'a> {
         IT::Item: Scalar,
     {
         let number_of_tuples = len / number_of_components;
-        Self {
-            data_type: "Bit",
-            name: name.to_string(),
-            number_of_tuples,
-            number_of_components,
-            data: Box::new(data.into_iter()),
-            byte_len: len.div_ceil(8),
-        }
+        let byte_len = len.div_ceil(8);
+        Self::with_byte_len(name, number_of_tuples, number_of_components, byte_len, data)
     }
 
     fn new<IT>(name: &str, number_of_components: usize, len: usize, data: IT) -> Self
@@ -234,13 +247,28 @@ impl<'a> DataArray<'a> {
         IT::Item: Scalar,
     {
         let number_of_tuples = len / number_of_components;
+        let byte_len = len * std::mem::size_of::<IT::Item>();
+        Self::with_byte_len(name, number_of_tuples, number_of_components, byte_len, data)
+    }
+
+    fn with_byte_len<IT>(
+        name: &str,
+        number_of_tuples: usize,
+        number_of_components: usize,
+        byte_len: usize,
+        data: IT,
+    ) -> Self
+    where
+        IT: IntoIterator + 'a,
+        IT::Item: Scalar,
+    {
         Self {
             data_type: <IT::Item as Scalar>::TYPE_NAME,
             name: name.to_string(),
             number_of_tuples,
             number_of_components,
             data: Box::new(data.into_iter()),
-            byte_len: len * std::mem::size_of::<IT::Item>(),
+            byte_len,
         }
     }
 
@@ -264,6 +292,12 @@ impl<'a> DataArray<'a> {
     fn write<W: Write>(&mut self, writer: &mut W) -> Result<()> {
         let len = self.byte_len as u32;
         writer.write_all(&len.to_ne_bytes())?;
-        self.data.write_to(writer)
+        let writen_len = self.data.write_to(writer)?;
+        assert_eq!(
+            writen_len, self.byte_len,
+            "Invalid DataArray length: name={}, number_of_tuples={}",
+            self.name, self.number_of_tuples
+        );
+        Ok(())
     }
 }

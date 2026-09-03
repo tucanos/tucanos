@@ -170,6 +170,27 @@ impl<'a> UnstructuredGridWriter<'a> {
             .push(DataArray::new(label, num_components, num_tuples, values));
     }
 
+    /// Appends string field data to the grid using a clonable iterator over scalar strings.
+    pub fn add_field_str<I>(&mut self, label: &str, num_components: usize, values: I)
+    where
+        I: IntoIterator + Clone + 'a,
+        I::Item: AsRef<str> + Scalar,
+    {
+        let total_byte_len = values
+            .clone()
+            .into_iter()
+            .map(|item| item.as_ref().len() + 1)
+            .sum();
+        let num_tuples = values.clone().into_iter().count() / num_components;
+        self.0.field_data.push(DataArray::with_byte_len(
+            label,
+            num_tuples,
+            num_components,
+            total_byte_len,
+            values,
+        ));
+    }
+
     const fn num_cells(&self) -> usize {
         self.0.file_type.number_of_cells
     }
