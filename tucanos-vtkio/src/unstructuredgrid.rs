@@ -155,6 +155,21 @@ impl<'a> UnstructuredGridWriter<'a> {
         self.0.sections.entry("PointData").or_default().push(d);
     }
 
+    pub fn add_field_data<T, IT>(
+        &mut self,
+        label: &str,
+        num_tuples: usize,
+        num_components: usize,
+        values: IT,
+    ) where
+        T: Scalar + 'a,
+        IT: IntoIterator<Item = T> + 'a,
+    {
+        self.0
+            .field_data
+            .push(DataArray::new(label, num_components, num_tuples, values));
+    }
+
     const fn num_cells(&self) -> usize {
         self.0.file_type.number_of_cells
     }

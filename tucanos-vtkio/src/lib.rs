@@ -25,6 +25,7 @@ struct AppendedWriter<'a, T: FileType> {
     file_type: T,
     version: &'static str,
     sections: BTreeMap<&'a str, Vec<DataArray<'a>>>,
+    field_data: Vec<DataArray<'a>>,
 }
 
 impl<T: FileType + Default> Default for AppendedWriter<'_, T> {
@@ -33,11 +34,29 @@ impl<T: FileType + Default> Default for AppendedWriter<'_, T> {
             file_type: T::default(),
             version: "1.0",
             sections: BTreeMap::default(),
+            field_data: Vec::default(),
         }
     }
 }
 
 impl<'a, T: FileType> AppendedWriter<'a, T> {
+    fn write_section(
+        writer: &mut impl Write,
+        indent: &str,
+        name: &str,
+        arrays: &[DataArray<'a>],
+        mut offset: usize,
+    ) -> Result<usize> {
+        if !arrays.is_empty() {
+            writeln!(writer, "{indent}<{name}>")?;
+            for a in arrays {
+                writeln!(writer, "{indent}  {}", a.to_xml_tag(offset))?;
+                offset += size_of::<u32>() + a.byte_len;
+            }
+            writeln!(writer, "{indent}</{name}>")?;
+        }
+        Ok(offset)
+    }
     fn write<const WITH_PIECE: bool>(mut self, writer: &mut impl Write) -> Result<()> {
         let typ = T::NAME;
         let endianness = if cfg!(target_endian = "little") {
@@ -61,24 +80,14 @@ impl<'a, T: FileType> AppendedWriter<'a, T> {
         self.file_type.write_piece_attributes(writer)?;
         writeln!(writer, ">")?;
         let mut offset = 0;
-
-        let mut write_section = |name: &str, arrays: &[DataArray<'a>]| -> Result<()> {
-            if !arrays.is_empty() {
-                writeln!(writer, "{indent}<{name}>")?;
-                for a in arrays {
-                    writeln!(writer, "{indent}  {}", a.to_xml_tag(offset))?;
-                    offset += size_of::<u32>() + a.byte_len;
-                }
-                writeln!(writer, "{indent}</{name}>")?;
-            }
-            Ok(())
-        };
-
         for (name, arrays) in &self.sections {
-            write_section(name, arrays)?;
+            offset = Self::write_section(writer, indent, name, arrays, offset)?;
         }
         if WITH_PIECE {
             writeln!(writer, "    </Piece>")?;
+        }
+        if !self.field_data.is_empty() {
+            Self::write_section(writer, "    ", "FieldData", &self.field_data, offset)?;
         }
         write!(
             writer,
@@ -88,6 +97,9 @@ impl<'a, T: FileType> AppendedWriter<'a, T> {
             for array in section {
                 array.write(writer)?;
             }
+        }
+        for array in &mut self.field_data {
+            array.write(writer)?;
         }
         writeln!(writer, "\n  </AppendedData>\n</VTKFile>")
     }
