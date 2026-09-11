@@ -21,7 +21,7 @@ impl<'a> UnstructuredGridWriter<'a> {
             vec![DataArray::new(
                 "Points",
                 3,
-                self.0.file_type.number_of_points,
+                self.0.file_type.number_of_points * 3,
                 iterator,
             )],
         );

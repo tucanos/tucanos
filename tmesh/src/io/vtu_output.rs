@@ -17,8 +17,8 @@ where
     IT: Iterator<Item = Vertex<D>> + 'a,
 {
     match D {
-        3 => writer.add_points(verts.map(|v| v.data.0[0])),
-        2 => writer.add_points(verts.map(|x| [x[0], x[1], 0.0])),
+        3 => writer.add_points(verts.flat_map(|v| v.data.0[0])),
+        2 => writer.add_points(verts.flat_map(|x| [x[0], x[1], 0.0])),
         _ => unimplemented!(),
     }
 }

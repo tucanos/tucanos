@@ -171,28 +171,6 @@ impl Scalar for f64 {
     }
 }
 
-impl<const D: usize> Scalar for [f32; D] {
-    const TYPE_NAME: &'static str = "Float32";
-
-    fn write_ne_bytes(&self, writer: &mut dyn Write) -> Result<()> {
-        for val in self {
-            writer.write_all(&val.to_ne_bytes())?;
-        }
-        Ok(())
-    }
-}
-
-impl<const D: usize> Scalar for [f64; D] {
-    const TYPE_NAME: &'static str = "Float64";
-
-    fn write_ne_bytes(&self, writer: &mut dyn Write) -> Result<()> {
-        for val in self {
-            writer.write_all(&val.to_ne_bytes())?;
-        }
-        Ok(())
-    }
-}
-
 impl<T: Scalar> Scalar for &T {
     const TYPE_NAME: &'static str = T::TYPE_NAME;
     fn write_ne_bytes(&self, writer: &mut dyn Write) -> Result<()> {
