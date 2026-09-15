@@ -234,16 +234,18 @@ pub type QuadraticMesh3d = GenericMesh<3, QuadraticTetrahedron<usize>>;
 #[cfg(test)]
 mod tests {
     use crate::{
-        Vert3d, assert_delta,
+        Tag, Vert3d, assert_delta,
         mesh::{
             AdativeBoundsQuadraticTetrahedron, BoundaryMesh3d, GSimplex, GradientMethod, Mesh,
-            Mesh3d, QuadraticBoundaryMesh3d, QuadraticMesh3d, bandwidth, box_mesh,
+            Mesh3d, QuadraticBoundaryMesh3d, QuadraticMesh3d, Simplex, SubMesh, bandwidth,
+            box_mesh,
             mesh_3d::ball_mesh,
             partition::{HilbertPartitioner, RCMPartitioner},
             quadratic_ball_mesh,
         },
     };
     use rayon::iter::ParallelIterator;
+    use rustc_hash::FxHashSet;
     use std::f64::consts::PI;
 
     #[test]
@@ -721,5 +723,116 @@ mod tests {
         // let mut writer = crate::io::VTUFile::from_mesh(&msh);
         // writer.add_cell_data("distorsion", 1, d.iter().copied());
         // writer.export("qball.vtu").unwrap();
+    }
+
+    #[test]
+    fn test_isosurface() {
+        let msh: Mesh3d = box_mesh::<Mesh3d>(1.0, 20, 1.0, 20, 1.0, 20).random_shuffle();
+        let f = msh
+            .verts()
+            .map(|p| {
+                let r0 = (p[0] - 0.5).hypot(p[1] - 0.5);
+                let r1 = (p[0]).hypot(p[1]);
+                (r0 - 0.25) * (r1 - 0.25)
+            })
+            .collect::<Vec<f64>>();
+        let (res, split_edgs): (Mesh3d, _) = msh.split_isosurface(&f);
+
+        res.check(&res.all_faces()).unwrap();
+
+        // Validate that each tetrahedron tag matches its side of the interface:
+        // split-edge vertices lie on the interface (0), and each output tetra
+        // must contain only one non-zero side (+ or -) among its vertices.
+        let mut f_res = vec![0.0; res.n_verts()];
+        for (i, &v) in f.iter().enumerate() {
+            f_res[i] = if v == 0.0 { 1e-12 } else { v };
+        }
+        let split_verts = split_edgs.values().copied().collect::<FxHashSet<usize>>();
+        for (elem, tag) in res.elems().zip(res.etags()) {
+            let (mut n_pos, mut n_neg) = (0_usize, 0_usize);
+            for i in elem {
+                if split_verts.contains(&i) {
+                    continue;
+                }
+                if f_res[i] > 0.0 {
+                    n_pos += 1;
+                } else if f_res[i] < 0.0 {
+                    n_neg += 1;
+                }
+            }
+            assert!(!(n_pos > 0 && n_neg > 0));
+            if n_pos > 0 {
+                assert_eq!(tag, 1);
+            } else if n_neg > 0 {
+                assert_eq!(tag, -1);
+            } else {
+                panic!("tetrahedron has only interface vertices");
+            }
+        }
+
+        let all_faces = res.all_faces();
+        for (face, tag) in res.faces().zip(res.ftags()) {
+            if tag != Tag::MAX {
+                continue;
+            }
+            let (_, ids) = all_faces.get(&face.sorted()).unwrap();
+            assert_eq!(ids.len(), 2);
+            let (i0, i1) = (ids[0], ids[1]);
+            assert!(
+                res.etag(i0) == 1 && res.etag(i1) == -1 || res.etag(i0) == -1 && res.etag(i1) == 1
+            );
+        }
+
+        let msh_pos = SubMesh::new(&res, |t| t == 1).mesh;
+        let msh_neg = SubMesh::new(&res, |t| t == -1).mesh;
+        assert_delta!(msh_pos.vol() + msh_neg.vol(), msh.vol(), 1e-6);
+
+        let (bdy, _) = msh.boundary::<BoundaryMesh3d>();
+        let (bdy2, _) = res.boundary::<BoundaryMesh3d>();
+
+        let tags = msh.ftags().collect::<FxHashSet<_>>();
+        for tag in tags {
+            let tmp = SubMesh::new(&bdy, |t| t == tag).mesh;
+            let tmp2 = SubMesh::new(&bdy2, |t| t == tag).mesh;
+            let tmp3 = SubMesh::new(&bdy2, |t| t == -tag).mesh;
+            assert_delta!(tmp2.vol() + tmp3.vol(), tmp.vol(), 1e-6);
+        }
+
+        //res.write_meshb("iso.meshb").unwrap();
+        res.check(&res.all_faces()).unwrap();
+    }
+
+    #[test]
+    fn test_nonmanifold() {
+        let msh: Mesh3d = box_mesh::<Mesh3d>(1.0, 21, 1.0, 21, 1.0, 21).random_shuffle();
+        let mut msh2 = Mesh3d::empty();
+        msh2.add_verts(msh.verts());
+        let etags = msh
+            .gelems()
+            .zip(msh.etags())
+            .map(|(ge, t)| if ge.center()[0] < 0.5 { -t } else { t });
+        msh2.add_elems(msh.elems(), etags);
+        let ftags = msh
+            .gfaces()
+            .zip(msh.ftags())
+            .map(|(ge, t)| if ge.center()[0] < 0.5 { -t } else { t });
+        msh2.add_faces(msh.faces(), ftags);
+
+        let (bdy_tags, ifc_tags) = msh2.fix().unwrap();
+        assert!(bdy_tags.is_empty());
+        assert_eq!(ifc_tags.len(), 1);
+
+        let all_faces = msh2.all_faces();
+        msh2.check(&all_faces).unwrap();
+
+        let (mut bdy, _) = msh2.boundary::<BoundaryMesh3d>();
+        let (bdy_tags, ifc_tags) = bdy.fix().unwrap();
+        assert!(bdy_tags.is_empty());
+        assert_eq!(ifc_tags.iter().filter(|(_, v)| v.len() == 2).count(), 16);
+        assert_eq!(ifc_tags.iter().filter(|(_, v)| v.len() == 3).count(), 4);
+        assert_eq!(ifc_tags.len(), 20);
+
+        let all_faces = bdy.all_faces();
+        bdy.check(&all_faces).unwrap();
     }
 }

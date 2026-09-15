@@ -165,7 +165,7 @@ impl<T: Idx> DualMesh3d<T> {
         }
 
         let mut vert_idx_face = vec![usize::MAX; n_faces];
-        for (f, &(i_face, _, _)) in all_faces {
+        for (f, &(i_face, _)) in all_faces {
             match Self::get_tri_center(&msh.gface(f), t) {
                 DualCellCenter::Vertex(center) => {
                     vert_idx_face[i_face] = verts.len();

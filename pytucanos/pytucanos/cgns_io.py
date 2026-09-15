@@ -188,6 +188,9 @@ def load_cgns(fname, cls=None):
 
             for els in CGU.hasChildType(zone, CGK.Elements_ts):
                 etype, _ = CGU.getValue(els)
+                if etype == CGK.MIXED:
+                    print([x[0] for x in els[3]])
+                    quit()
                 if etype not in [
                     CGK.BAR_2,
                     CGK.BAR_3,
@@ -285,7 +288,7 @@ def load_cgns(fname, cls=None):
             for i in bdy.values():
                 logger.debug(f"Tagging untagged faces with {i}")
                 tags_to_be_removed.append(i)
-            for (t0, t1), i in ifc.items():
+            for i, (t0, t1) in ifc.items():
                 logger.info(f"Tagging faces between {t0} and {t1} with {i}")
             #     tags_to_be_removed.append(i)
 

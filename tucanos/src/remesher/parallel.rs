@@ -150,12 +150,12 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
         let partition_time = now.elapsed().as_secs_f64();
 
         // Get the partition interfaces
-        let (bdy_tags, ifc_tags) = mesh.fix().unwrap();
-        assert!(bdy_tags.is_empty());
+        let all_faces = mesh.all_faces();
+        let ifc_tags = mesh.tag_internal_faces(&all_faces);
 
         let partition_tags = mesh.etags().collect::<FxHashSet<_>>();
         let partition_tags = partition_tags.iter().copied().collect::<Vec<_>>();
-        let partition_bdy_tags = ifc_tags.values().copied().collect::<Vec<_>>();
+        let partition_bdy_tags = ifc_tags.keys().copied().collect::<Vec<_>>();
         debug!("Partition tags: {partition_tags:?}");
 
         // Use negative tags for interfaces
@@ -170,7 +170,7 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
             topo,
             partition_tags,
             n_parts,
-            partition_bdy_tags: ifc_tags.values().copied().collect::<Vec<_>>(),
+            partition_bdy_tags: ifc_tags.keys().copied().collect::<Vec<_>>(),
             interface_bdy_tag: Tag::MIN,
             partition_time,
             partition_quality,
@@ -329,15 +329,15 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
                     .etags_mut()
                     .zip(new_etags.iter())
                     .for_each(|(t0, t1)| *t0 = *t1);
-                let (bdy_tags, interface_tags) = local_mesh.fix().unwrap();
-                assert!(bdy_tags.is_empty());
+                let all_faces = local_mesh.all_faces();
+                let interface_tags = local_mesh.tag_internal_faces(&all_faces);
 
                 // Flag the faces between elements tagged 1 and 2 as self.interface_bdy_tag
                 if interface_tags.is_empty() {
                     warn!("All the elements are in the interface");
                 } else {
                     assert_eq!(interface_tags.len(), 1);
-                    let tag = interface_tags.values().next().unwrap();
+                    let tag = interface_tags.keys().next().unwrap();
                     local_mesh.ftags_mut().for_each(|t| {
                         if *t == *tag {
                             *t = self.interface_bdy_tag;

@@ -2,14 +2,14 @@
 #![allow(clippy::borrow_as_ptr)]
 #![allow(clippy::ref_as_ptr)]
 //! Python bindings for simplex meshes
-use super::Idx;
+use super::{Idx, to_py_err};
 use numpy::{
     PyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2,
     PyUntypedArrayMethods,
 };
 use pyo3::{
     Bound, PyResult, Python,
-    exceptions::{PyRuntimeError, PyValueError},
+    exceptions::PyValueError,
     pyclass, pymethods,
     types::{PyDict, PyDictMethods, PyType},
 };
@@ -150,11 +150,6 @@ fn simplex_to_pyarray<C: Simplex<T = Idx>>(
     r.reshape([r.len() / C::N_VERTS, C::N_VERTS])
 }
 
-/// Map Result error to PyRuntimeError
-fn to_py_err<T>(result: Result<T, impl std::fmt::Display>) -> PyResult<T> {
-    result.map_err(|e| PyRuntimeError::new_err(e.to_string()))
-}
-
 macro_rules! create_mesh {
     ($pyname: ident, $dim: expr, $cell: ident) => {
         #[doc = concat!("Python binding for ", stringify!($pyname))]
@@ -267,7 +262,8 @@ macro_rules! impl_mesh {
                 }
                 let dict_ifc = PyDict::new(py);
                 for (k, v) in ifc.iter() {
-                    dict_ifc.set_item((k[0], k[1]), v)?;
+                    let v = v.iter().copied().collect::<Vec<_>>();
+                    dict_ifc.set_item(k, v)?;
                 }
 
                 Ok((dict_bdy, dict_ifc))
