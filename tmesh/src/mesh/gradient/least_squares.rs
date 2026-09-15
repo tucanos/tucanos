@@ -1,6 +1,6 @@
 //! Weighted least square gradient computation
 use crate::{Error, Result, graph::CSRGraph, mesh::Mesh};
-use nalgebra::{Const, DMatrix, DVector, Dim, Dyn, OMatrix, QR, SVector};
+use nalgebra::{Const, DMatrix, DVector, Dim, Dyn, OMatrix, QR, SMatrix, SVector};
 use rayon::{
     iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
     slice::ParallelSliceMut,
@@ -38,14 +38,14 @@ use rustc_hash::FxHashSet;
 ///
 /// If the number of neighbors is not sufficient for this problem to be solved, or if the problem is
 /// too ill-conditioned, None is returned
-pub struct LeastSquaresGradient<const D: usize> {
+pub struct LeastSquaresGradientQR<const D: usize> {
     qr: QR<f64, Dyn, Dyn>,
     r: DMatrix<f64>,
     weights: Vec<f64>,
     order: i32,
 }
 
-impl<const D: usize> LeastSquaresGradient<D> {
+impl<const D: usize> LeastSquaresGradientQR<D> {
     /// Initialize the WLS computation
     pub fn new(
         order: i32,
@@ -174,6 +174,246 @@ impl<const D: usize> LeastSquaresGradient<D> {
     }
 }
 
+/// SVD-Preconditioned Least Squares utilizing fast Normal Equations
+pub struct PreconditionedLeastSquares<const D: usize> {
+    cholesky: nalgebra::Cholesky<f64, Dyn>,
+    b_mat: DMatrix<f64>, // M x N matrix caching weights for rapid RHS assembly
+    t_inv: SMatrix<f64, D, D>,
+}
+
+impl<const D: usize> PreconditionedLeastSquares<D> {
+    pub fn new(
+        order: i32,
+        weight_exp: i32,
+        dx_iter: impl ExactSizeIterator<Item = SVector<f64, D>>,
+    ) -> Result<Self> {
+        let dx: Vec<_> = dx_iter.collect();
+        let n_neighbors = dx.len();
+        let n_cols = if order == 1 {
+            D + 1
+        } else {
+            D + 1 + D * (D + 1) / 2
+        };
+
+        let mut weights = vec![0.0; n_neighbors];
+        let mut w_max = 0.0;
+
+        for (i, dp) in dx.iter().enumerate() {
+            let w = 1.0 / dp.norm().powi(weight_exp);
+            weights[i] = w;
+            w_max = f64::max(w_max, w);
+        }
+
+        for w in &mut weights {
+            *w /= w_max;
+        }
+        w_max = 1.0;
+
+        // 1. Whitening Transformation via SVD on Weighted Coordinates
+        let mut x_w = OMatrix::<f64, Dyn, Const<D>>::zeros(n_neighbors);
+        for (i, dp) in dx.iter().enumerate() {
+            for j in 0..D {
+                x_w[(i, j)] = weights[i] * dp[j];
+            }
+        }
+
+        let svd = x_w.svd(false, true);
+        let v_t = svd.v_t.unwrap();
+        let v = v_t.transpose();
+
+        let mut inv_sv = SVector::<f64, D>::zeros();
+        // println!("singular values: {:?}", svd.singular_values);
+        let max_sv = svd.singular_values[0].max(1e-20);
+        let min_sv = max_sv * 1e-14;
+
+        for i in 0..D {
+            let sv = svd.singular_values[i];
+            inv_sv[i] = 1.0 / sv.max(min_sv); // Clamp numerical noise without exploding
+        }
+
+        let p_mat = SMatrix::<f64, D, D>::from_diagonal(&inv_sv) * v_t;
+        let t_inv = v * SMatrix::<f64, D, D>::from_diagonal(&inv_sv);
+
+        // 2. Direct Assembly of Normal Matrix and RHS Projection Matrix
+        let mut n_mat = DMatrix::<f64>::zeros(n_cols, n_cols);
+        n_mat[(0, 0)] = 2.0 * w_max * w_max; // Central node constraint squared
+
+        let mut b_mat = DMatrix::<f64>::zeros(n_cols, n_neighbors);
+        let mut basis = vec![0.0; n_cols]; // Pre-allocate small buffer for basis evaluation
+
+        for (i, dp_orig) in dx.iter().enumerate() {
+            let w = weights[i];
+            let dp = p_mat * dp_orig;
+
+            // Evaluate the unweighted polynomial basis
+            basis[0] = 1.0;
+            for j in 0..D {
+                basis[j + 1] = dp[j];
+            }
+
+            if order == 2 {
+                if D == 2 {
+                    basis[3] = 0.5 * dp[0] * dp[0];
+                    basis[4] = 0.5 * dp[1] * dp[1];
+                    basis[5] = dp[0] * dp[1];
+                } else if D == 3 {
+                    basis[4] = 0.5 * dp[0] * dp[0];
+                    basis[5] = 0.5 * dp[1] * dp[1];
+                    basis[6] = 0.5 * dp[2] * dp[2];
+                    basis[7] = dp[0] * dp[1];
+                    basis[8] = dp[1] * dp[2];
+                    basis[9] = dp[0] * dp[2];
+                }
+            }
+
+            // Both N_mat and B_mat scale by w^2 (since tilde_a already includes a weight factor)
+            let w2 = w * w;
+
+            // Accumulate RHS Projection Matrix (B = A^T * W)
+            for j in 0..n_cols {
+                b_mat[(j, i)] = w2 * basis[j];
+            }
+
+            // Accumulate Symmetric Normal Matrix (N = A^T * A)
+            for row in 0..n_cols {
+                let row_val = w2 * basis[row];
+                for col in 0..n_cols {
+                    n_mat[(row, col)] += row_val * basis[col];
+                }
+            }
+        }
+
+        // 3. Fast Square Inversion
+        let cholesky = nalgebra::Cholesky::new(n_mat)
+            .ok_or_else(|| Error::from("Failed Cholesky decomposition of normal equations"))?;
+
+        Ok(Self {
+            cholesky,
+            b_mat,
+            t_inv,
+        })
+    }
+
+    fn compute(&self, df: impl ExactSizeIterator<Item = f64>) -> DVector<f64> {
+        let df_vec = DVector::from_iterator(df.len(), df);
+        let rhs = &self.b_mat * df_vec;
+        self.cholesky.solve(&rhs)
+    }
+
+    pub fn smooth(&self, df: impl ExactSizeIterator<Item = f64>) -> f64 {
+        self.compute(df)[0]
+    }
+
+    pub fn gradient(&self, df: impl ExactSizeIterator<Item = f64>) -> SVector<f64, D> {
+        let x = self.compute(df);
+        let g = x.fixed_view::<D, 1>(1, 0).into_owned();
+        self.t_inv * g // Recover physical gradient
+    }
+
+    pub fn hessian(&self, df: impl ExactSizeIterator<Item = f64>, res: &mut [f64]) {
+        let rhs = self.compute(df);
+        let mut h_prime = SMatrix::<f64, D, D>::zeros();
+
+        if D == 2 {
+            h_prime[(0, 0)] = rhs[3];
+            h_prime[(1, 1)] = rhs[4];
+            h_prime[(0, 1)] = rhs[5];
+            h_prime[(1, 0)] = rhs[5];
+        } else if D == 3 {
+            h_prime[(0, 0)] = rhs[4];
+            h_prime[(1, 1)] = rhs[5];
+            h_prime[(2, 2)] = rhs[6];
+            h_prime[(0, 1)] = rhs[7];
+            h_prime[(1, 0)] = rhs[7];
+            h_prime[(1, 2)] = rhs[8];
+            h_prime[(2, 1)] = rhs[8];
+            h_prime[(0, 2)] = rhs[9];
+            h_prime[(2, 0)] = rhs[9];
+        }
+
+        // Recover physical Hessian
+        let h = self.t_inv * h_prime * self.t_inv.transpose();
+
+        if D == 2 {
+            res[0] = h[(0, 0)];
+            res[1] = h[(1, 1)];
+            res[2] = h[(0, 1)];
+        } else if D == 3 {
+            res[0] = h[(0, 0)];
+            res[1] = h[(1, 1)];
+            res[2] = h[(2, 2)];
+            res[3] = h[(0, 1)];
+            res[4] = h[(1, 2)];
+            res[5] = h[(0, 2)];
+        }
+    }
+
+    #[must_use]
+    pub fn gradient_weights(&self) -> impl ExactSizeIterator<Item = SVector<f64, D>> + '_ {
+        // Solves the matrix W directly via normal equations for all neighbors at once
+        let w_mat = self.cholesky.solve(&self.b_mat);
+
+        (0..self.b_mat.ncols()).map(move |i| {
+            let g = w_mat.fixed_view::<D, 1>(1, i).into_owned();
+            self.t_inv * g
+        })
+    }
+}
+
+/// Unified Interface mapping to the standard or preconditioned solver
+pub enum LeastSquaresGradient<const D: usize> {
+    Standard(LeastSquaresGradientQR<D>),
+    Preconditioned(PreconditionedLeastSquares<D>),
+}
+
+impl<const D: usize> LeastSquaresGradient<D> {
+    pub fn new(
+        order: i32,
+        weight_exp: i32,
+        preconditioned: bool,
+        dx_iter: impl ExactSizeIterator<Item = SVector<f64, D>> + Clone,
+    ) -> Result<Self> {
+        if preconditioned {
+            Ok(Self::Preconditioned(PreconditionedLeastSquares::new(
+                order, weight_exp, dx_iter,
+            )?))
+        } else {
+            Ok(Self::Standard(LeastSquaresGradientQR::new(
+                order, weight_exp, dx_iter,
+            )?))
+        }
+    }
+
+    pub fn smooth(&self, df: impl ExactSizeIterator<Item = f64>) -> f64 {
+        match self {
+            Self::Standard(ls) => ls.smooth(df),
+            Self::Preconditioned(ls) => ls.smooth(df),
+        }
+    }
+
+    pub fn gradient(&self, df: impl ExactSizeIterator<Item = f64>) -> SVector<f64, D> {
+        match self {
+            Self::Standard(ls) => ls.gradient(df),
+            Self::Preconditioned(ls) => ls.gradient(df),
+        }
+    }
+
+    pub fn hessian(&self, df: impl ExactSizeIterator<Item = f64>, res: &mut [f64]) {
+        match self {
+            Self::Standard(ls) => ls.hessian(df, res),
+            Self::Preconditioned(ls) => ls.hessian(df, res),
+        }
+    }
+
+    #[must_use]
+    pub fn gradient_weights(&self) -> Box<dyn ExactSizeIterator<Item = SVector<f64, D>> + '_> {
+        match self {
+            Self::Standard(ls) => Box::new(ls.gradient_weights()),
+            Self::Preconditioned(ls) => Box::new(ls.gradient_weights()),
+        }
+    }
+}
+
 /// For vertices for which a least square approximation could not be computed, use the average over valid neighbors
 /// res: The result from the least square approximation
 /// failed: Flag that indicates if not valid approximation has been computed
@@ -221,6 +461,7 @@ pub fn gradient<const D: usize, M: Mesh<D>>(
     v2v: &CSRGraph,
     order: i32,
     weight: i32,
+    preconditioned: bool,
     f: &[f64],
 ) -> Result<Vec<f64>>
 where
@@ -250,7 +491,7 @@ where
                     neighbors.remove(&i);
                 }
                 let dx = neighbors.iter().map(|&j| msh.vert(j) - x);
-                if let Ok(ls) = LeastSquaresGradient::new(order, weight, dx) {
+                if let Ok(ls) = LeastSquaresGradient::new(order, weight, preconditioned, dx) {
                     let df = neighbors.iter().map(|&j| f[j] - f[i]);
                     grad.iter_mut()
                         .zip(ls.gradient(df).as_slice())
@@ -277,6 +518,7 @@ pub fn hessian<const D: usize, M: Mesh<D>>(
     msh: &M,
     v2v: &CSRGraph,
     weight: i32,
+    preconditioned: bool,
     f: &[f64],
 ) -> Result<Vec<f64>>
 where
@@ -304,7 +546,7 @@ where
                 }
                 neighbors.remove(&i);
                 let dx = neighbors.iter().map(|&j| msh.vert(j) - x);
-                if let Ok(ls) = LeastSquaresGradient::new(2, weight, dx) {
+                if let Ok(ls) = LeastSquaresGradient::new(2, weight, preconditioned, dx) {
                     let df = neighbors.iter().map(|&j| f[j] - f[i]);
                     ls.hessian(df, hess);
                 } else {
@@ -330,6 +572,7 @@ pub fn smooth<const D: usize, M: Mesh<D>>(
     v2v: &CSRGraph,
     order: i32,
     weight: i32,
+    preconditioned: bool,
     f: &[f64],
 ) -> Vec<f64>
 where
@@ -354,7 +597,7 @@ where
                 neighbors.remove(&i);
             }
             let dx = neighbors.iter().map(|&j| msh.vert(j) - x);
-            if let Ok(ls) = LeastSquaresGradient::new(order, weight, dx) {
+            if let Ok(ls) = LeastSquaresGradient::new(order, weight, preconditioned, dx) {
                 let df = neighbors.iter().map(|&j| f[j] - f[i]);
                 *f_new += ls.smooth(df);
             }
@@ -367,54 +610,139 @@ where
 #[cfg(test)]
 mod tests {
     use super::LeastSquaresGradient;
-    use nalgebra::SVector;
+    use nalgebra::{SMatrix, SVector};
     use rand::{RngExt, SeedableRng, rngs::StdRng};
 
     #[test]
     fn test_ls_2d() {
-        let n_neighbors = 10;
-        let grad = SVector::<f64, 2>::new(1.2, 2.3);
+        let test = |n_neighbors: i32, aniso: f64, weight: i32, order: i32, tol: f64| {
+            let mut rng = StdRng::seed_from_u64(1234);
+            let h = [1.0, aniso];
+            let a = 10.0_f64.to_radians();
+            let (s, c) = a.sin_cos();
+            let rot = SMatrix::<f64, 2, 2>::new(c, s, -s, c);
+            let dx = (0..n_neighbors)
+                .map(|_| {
+                    rot * SVector::<f64, 2>::from_fn(|i, _| h[i] * (rng.random::<f64>() - 0.5))
+                })
+                .collect::<Vec<_>>();
+            // the gradient is not exactly aligned with the mesh anisotropy
+            let grad = SVector::<f64, 2>::new(1.2 / h[0], 2.3 / h[1]);
 
-        let mut rng = StdRng::seed_from_u64(1234);
+            for pc in [false, true] {
+                let df = dx.iter().map(|dx| grad.dot(dx)).collect::<Vec<_>>();
+                if let Ok(ls) = LeastSquaresGradient::new(order, weight, pc, dx.iter().copied()) {
+                    let grad_1 = ls.gradient(df.iter().copied());
+                    let err = (grad - grad_1).norm() / grad.norm();
+                    println!("pc = {pc}, err = {err:.2e}");
+                    assert!(err < tol);
 
-        let dx = (0..n_neighbors)
-            .map(|_| SVector::<f64, 2>::from_fn(|_, _| rng.random::<f64>() - 0.5))
-            .collect::<Vec<_>>();
-        let df = dx.iter().map(|dx| grad.dot(dx)).collect::<Vec<_>>();
+                    let mut grad_2 = SVector::<f64, 2>::zeros();
+                    for (g, df) in ls.gradient_weights().zip(df) {
+                        grad_2 += df * g;
+                    }
+                    let err_2 = (grad_2 - grad_1).norm() / grad.norm();
+                    // println!("pc = {pc}, err = {err_2:.2e}");
+                    assert!(err_2 < tol);
+                } else {
+                    assert!(!pc);
+                    println!("pc = {pc}, LeastSquaresGradient fails");
+                }
+            }
+        };
 
-        let ls = LeastSquaresGradient::new(1, 2, dx.iter().copied()).unwrap();
-        let grad_1 = ls.gradient(df.iter().copied());
-        assert!((grad - grad_1).norm() < 1e-12);
+        // isotropic
+        println!("iso / linear");
+        test(10, 1.0, 0, 1, 1e-14);
+        test(10, 1.0, 1, 1, 1e-14);
+        test(10, 1.0, 2, 1, 1e-14);
 
-        let mut grad_2 = SVector::<f64, 2>::zeros();
-        for (g, df) in ls.gradient_weights().zip(df) {
-            grad_2 += df * g;
-        }
+        // isotropic + quadratic
+        println!("iso / quadratic");
+        test(10, 1.0, 0, 2, 1e-14);
+        test(10, 1.0, 1, 2, 1e-14);
+        test(10, 1.0, 2, 2, 1e-14);
 
-        assert!((grad - grad_2).norm() < 1e-12);
+        // anisotropic
+        println!("aniso / linear");
+        test(10, 1e-6, 0, 1, 1e-10);
+        test(10, 1e-6, 1, 1, 1e-10);
+        test(10, 1e-6, 2, 1, 1e-10);
+
+        // anisotropic
+        println!("aniso / quadratic");
+        test(10, 1e-6, 0, 2, 1e-10);
+        test(10, 1e-6, 1, 2, 1e-10);
+        test(10, 1e-6, 2, 2, 1e-10);
     }
 
     #[test]
     fn test_ls_3d() {
-        let n_neighbors = 10;
-        let grad = SVector::<f64, 3>::new(1.2, 2.3, 3.4);
+        let test = |n_neighbors: i32, aniso: f64, weight: i32, order: i32, tol: f64| {
+            let mut rng = StdRng::seed_from_u64(1234);
+            let h = [1.0, aniso.sqrt(), aniso];
+            let a = 10.0_f64.to_radians();
+            let (s, c) = a.sin_cos();
+            // Rotation around X axis
+            let rot_x = SMatrix::<f64, 3, 3>::new(1.0, 0.0, 0.0, 0.0, c, s, 0.0, -s, c);
 
-        let mut rng = StdRng::seed_from_u64(1234);
+            // Rotation around Y axis
+            let rot_y = SMatrix::<f64, 3, 3>::new(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c);
 
-        let dx = (0..n_neighbors)
-            .map(|_| SVector::<f64, 3>::from_fn(|_, _| rng.random::<f64>() - 0.5))
-            .collect::<Vec<_>>();
-        let df = dx.iter().map(|dx| grad.dot(dx)).collect::<Vec<_>>();
+            // Compound rotation matrix
+            let rot = rot_y * rot_x;
+            let dx = (0..n_neighbors)
+                .map(|_| {
+                    rot * SVector::<f64, 3>::from_fn(|i, _| h[i] * (rng.random::<f64>() - 0.5))
+                })
+                .collect::<Vec<_>>();
+            // the gradient is not exactly aligned with the mesh anisotropy
+            let grad = SVector::<f64, 3>::new(1.2 / h[0], 2.3 / h[1], 3.4 / h[2]);
 
-        let ls = LeastSquaresGradient::new(1, 2, dx.iter().copied()).unwrap();
-        let grad_1 = ls.gradient(df.iter().copied());
-        assert!((grad - grad_1).norm() < 1e-12);
+            for pc in [false, true] {
+                let df = dx.iter().map(|dx| grad.dot(dx)).collect::<Vec<_>>();
+                if let Ok(ls) = LeastSquaresGradient::new(order, weight, pc, dx.iter().copied()) {
+                    let grad_1 = ls.gradient(df.iter().copied());
+                    let err = (grad - grad_1).norm() / grad.norm();
+                    println!("pc = {pc}, err = {err:.2e}");
+                    assert!(err < tol);
 
-        let mut grad_2 = SVector::<f64, 3>::zeros();
-        for (g, df) in ls.gradient_weights().zip(df) {
-            grad_2 += df * g;
-        }
+                    let mut grad_2 = SVector::<f64, 3>::zeros();
+                    for (g, df) in ls.gradient_weights().zip(df) {
+                        grad_2 += df * g;
+                    }
+                    let err_2 = (grad_2 - grad_1).norm() / grad.norm();
+                    // println!("pc = {pc}, err = {err_2:.2e}");
+                    assert!(err_2 < tol);
+                } else {
+                    assert!(!pc);
+                    println!("pc = {pc}, LeastSquaresGradient fails");
+                }
+            }
+        };
 
-        assert!((grad - grad_2).norm() < 1e-12);
+        // isotropic
+        println!("iso / linear");
+        test(30, 1.0, 0, 1, 1e-14);
+        test(30, 1.0, 1, 1, 1e-14);
+        test(30, 1.0, 2, 1, 1e-14);
+
+        // isotropic + quadratic
+        println!("iso / quadratic");
+        test(30, 1.0, 0, 2, 1e-14);
+        test(30, 1.0, 1, 2, 1e-14);
+        test(30, 1.0, 2, 2, 1e-14);
+
+        // anisotropic
+        println!("aniso / linear");
+        test(30, 1e-6, 0, 1, 1e-10);
+        test(30, 1e-6, 1, 1, 1e-10);
+        test(30, 1e-6, 2, 1, 1e-10);
+
+        // anisotropic
+        println!("aniso / quadratic");
+        test(30, 1e-6, 0, 2, 1e-10);
+        test(30, 1e-6, 1, 2, 1e-10);
+        test(30, 1e-6, 2, 2, 1e-10);
     }
 }
