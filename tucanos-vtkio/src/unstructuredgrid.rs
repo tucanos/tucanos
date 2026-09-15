@@ -194,8 +194,12 @@ impl<'a> UnstructuredGridWriter<'a> {
     const fn num_cells(&self) -> usize {
         self.0.file_type.number_of_cells
     }
+}
 
-    pub fn write(self, writer: &mut impl Write) -> Result<()> {
+impl crate::Writer for UnstructuredGridWriter<'_> {
+    const FILE_EXTENSION: &'static str = "vtu";
+
+    fn write(self, writer: &mut impl Write) -> Result<()> {
         self.0.write::<true>(writer)
     }
 }

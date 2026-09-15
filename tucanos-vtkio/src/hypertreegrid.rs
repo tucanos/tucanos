@@ -114,8 +114,12 @@ impl<'a> HyperTreeGridWriter<'a> {
                 values,
             ));
     }
+}
 
-    pub fn write(self, writer: &mut impl Write) -> Result<()> {
+impl crate::Writer for HyperTreeGridWriter<'_> {
+    const FILE_EXTENSION: &'static str = "htg";
+
+    fn write(self, writer: &mut impl Write) -> Result<()> {
         self.0.write::<false>(writer)
     }
 }

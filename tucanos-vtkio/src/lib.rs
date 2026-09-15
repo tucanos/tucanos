@@ -9,11 +9,26 @@ use std::{
 };
 
 mod hypertreegrid;
+mod multiblock;
 mod polydata;
 mod unstructuredgrid;
 pub use hypertreegrid::HyperTreeGridWriter;
+pub use multiblock::MultiBlockWriter;
 pub use polydata::PolyDataWriter;
 pub use unstructuredgrid::UnstructuredGridWriter;
+
+/// Trait implemented by VTK file writers capable of exporting data to VTK XML format.
+pub trait Writer {
+    /// Associated file extension for the specific VTK dataset format (e.g., "vtu", "vtp", "vtm").
+    const FILE_EXTENSION: &'static str;
+
+    /// Writes the dataset content to the provided writer output stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`std::io::Error`] if writing to the output stream fails.
+    fn write(self, writer: &mut impl Write) -> Result<()>;
+}
 
 /// Trait implemented by specific VTK file structures (e.g., `PolyData`, `UnstructuredGrid`)
 trait FileType {
@@ -57,7 +72,9 @@ impl<'a, T: FileType> AppendedWriter<'a, T> {
         }
         Ok(offset)
     }
-    fn write<const WITH_PIECE: bool>(mut self, writer: &mut impl Write) -> Result<()> {
+
+    /// Writes the opening XML declaration and `<VTKFile>` root element header.
+    fn write_header(&self, writer: &mut impl Write) -> Result<()> {
         let typ = T::NAME;
         let endianness = if cfg!(target_endian = "little") {
             "LittleEndian"
@@ -68,7 +85,40 @@ impl<'a, T: FileType> AppendedWriter<'a, T> {
             writer,
             r#"<VTKFile type="{typ}" version="{}" byte_order="{endianness}" header_type="UInt32">"#,
             self.version
-        )?;
+        )
+    }
+
+    /// Appends the raw binary data section and closes the root `<VTKFile>` tag.
+    fn write_appended_data(&mut self, writer: &mut impl Write) -> Result<()> {
+        write!(writer, "  <AppendedData encoding=\"raw\">\n   _")?;
+        for section in self.sections.values_mut() {
+            for array in section {
+                array.write(writer)?;
+            }
+        }
+        for array in &mut self.field_data {
+            array.write(writer)?;
+        }
+        writeln!(writer, "\n  </AppendedData>\n</VTKFile>")
+    }
+
+    /// Writes optional field data arrays at the given indentation level.
+    fn write_field_data(&self, indent: &str, writer: &mut impl Write, offset: usize) -> Result<()> {
+        if !self.field_data.is_empty() {
+            Self::write_section(
+                writer,
+                &format!("{indent}  "),
+                "FieldData",
+                &self.field_data,
+                offset,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn write<const WITH_PIECE: bool>(mut self, writer: &mut impl Write) -> Result<()> {
+        let typ = T::NAME;
+        self.write_header(writer)?;
         let indent = if WITH_PIECE {
             writeln!(writer, "  <{typ}>")?;
             write!(writer, "    <Piece ")?;
@@ -86,22 +136,9 @@ impl<'a, T: FileType> AppendedWriter<'a, T> {
         if WITH_PIECE {
             writeln!(writer, "    </Piece>")?;
         }
-        if !self.field_data.is_empty() {
-            Self::write_section(writer, "    ", "FieldData", &self.field_data, offset)?;
-        }
-        write!(
-            writer,
-            "  </{typ}>\n  <AppendedData encoding=\"raw\">\n   _"
-        )?;
-        for section in self.sections.values_mut() {
-            for array in section {
-                array.write(writer)?;
-            }
-        }
-        for array in &mut self.field_data {
-            array.write(writer)?;
-        }
-        writeln!(writer, "\n  </AppendedData>\n</VTKFile>")
+        self.write_field_data("  ", writer, offset)?;
+        writeln!(writer, "  </{typ}>")?;
+        self.write_appended_data(writer)
     }
 }
 
