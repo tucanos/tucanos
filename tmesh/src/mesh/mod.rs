@@ -9,6 +9,7 @@ mod elements;
 mod mesh_2d;
 mod mesh_3d;
 
+mod iso;
 mod split;
 
 mod hilbert;
@@ -35,7 +36,10 @@ use crate::{
     Error, Result, Tag, Vertex,
     graph::CSRGraph,
     io::VTUFile,
-    mesh::gradient::{l2proj, least_squares},
+    mesh::{
+        gradient::{l2proj, least_squares},
+        iso::SplitEdgeData,
+    },
     spatialindex::PointIndex,
 };
 pub use boundary_mesh_2d::{
@@ -1746,6 +1750,16 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
 
     /// Sequential iterator over the mesh faces
     fn ftags_mut(&mut self) -> impl ExactSizeIterator<Item = &mut Tag> + '_;
+
+    /// Split the mesh along the 0.0 isosurface of a field defined on the edges
+    /// The input mesh should have element tag 1, and >0 face tags
+    /// The output mesh will have tag 1 in the >0 region, -1 in the <0 region. Interface faces will be tagged with Tag::MAX
+    fn split_isosurface<M: Mesh<D, C = Self::C>>(
+        &self,
+        f: &[f64],
+    ) -> (M, SplitEdgeData<<Self::C as Simplex>::T>) {
+        iso::split_isosurface(self, f)
+    }
 }
 
 /// Generic meshes implemented with Vecs
