@@ -161,8 +161,12 @@ impl<'a> PolyDataWriter<'a> {
     const fn num_cells(&self) -> usize {
         self.0.file_type.verts + self.0.file_type.lines
     }
+}
 
-    pub fn write(self, writer: &mut impl Write) -> Result<()> {
+impl crate::Writer for PolyDataWriter<'_> {
+    const FILE_EXTENSION: &'static str = "vtp";
+
+    fn write(self, writer: &mut impl Write) -> Result<()> {
         self.0.write::<true>(writer)
     }
 }

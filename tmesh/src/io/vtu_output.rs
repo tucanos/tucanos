@@ -10,8 +10,7 @@ use crate::{
     mesh::{Idx, Mesh, Simplex},
 };
 use rustc_hash::{FxBuildHasher, FxHashSet};
-use tucanos_vtkio::{Scalar, UnstructuredGridWriter};
-
+use tucanos_vtkio::{Scalar, UnstructuredGridWriter, Writer as _};
 fn add_points<'a, const D: usize, IT>(writer: &mut UnstructuredGridWriter<'a>, verts: IT)
 where
     IT: Iterator<Item = Vertex<D>> + 'a,
