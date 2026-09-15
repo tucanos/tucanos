@@ -55,7 +55,7 @@ impl<'a> PolyDataWriter<'a> {
             vec![DataArray::new(
                 "Points",
                 3,
-                self.0.file_type.points,
+                self.0.file_type.points * 3,
                 iterator,
             )],
         );

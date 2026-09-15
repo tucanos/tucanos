@@ -107,7 +107,12 @@ impl<'a> HyperTreeGridWriter<'a> {
             .sections
             .entry("CellData")
             .or_default()
-            .push(DataArray::new(label, num_components, num_cells, values));
+            .push(DataArray::new(
+                label,
+                num_components,
+                num_cells * num_components,
+                values,
+            ));
     }
 
     pub fn write(self, writer: &mut impl Write) -> Result<()> {
