@@ -1,5 +1,6 @@
 mod cavity;
 mod collapse;
+mod iso;
 mod orderedhashmap;
 mod parallel;
 mod sequential;
@@ -9,6 +10,7 @@ mod stats;
 mod swap;
 
 pub use collapse::CollapseParams;
+pub use iso::remesh_isosurface;
 pub use parallel::{ParallelRemesher, ParallelRemesherParams, ParallelRemeshingInfo};
 pub use sequential::{Remesher, RemesherParams, RemeshingStep};
 pub use smooth::{SmoothParams, SmoothingMethod};
