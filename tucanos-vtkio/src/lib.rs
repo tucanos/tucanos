@@ -238,7 +238,10 @@ impl<'a> DataArray<'a> {
     {
         let number_of_tuples = len / number_of_components;
         let byte_len = len.div_ceil(8);
-        Self::with_byte_len(name, number_of_tuples, number_of_components, byte_len, data)
+        let mut r =
+            Self::with_byte_len(name, number_of_tuples, number_of_components, byte_len, data);
+        r.data_type = "Bit";
+        r
     }
 
     fn new<IT>(name: &str, number_of_components: usize, len: usize, data: IT) -> Self
