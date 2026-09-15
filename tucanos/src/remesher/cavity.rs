@@ -331,7 +331,13 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Cavity<D, C, M> {
                         elems[0]
                     };
                     let e = r.elems.get(&i_elem).unwrap();
-                    assert_eq!(tag, e.tag);
+                    if e.tag != tag {
+                        debug!(
+                            "Cannot extend from face {i_face} - {f:?} because element tag {} does not match tag {tag}",
+                            e.tag
+                        );
+                        return false;
+                    }
                     self.global_elem_ids.push(i_elem);
                     let e_local = self.add_elem(r, e);
                     trace!("Add elem {i_elem} - {e_local:?} (local)");
