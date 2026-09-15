@@ -50,6 +50,10 @@ impl<T: Copy> Vec<T> {
         Self { data: Data::One(v) }
     }
 
+    pub const fn with_pair(v: [T; 2]) -> Self {
+        Self { data: Data::Two(v) }
+    }
+
     pub fn push(&mut self, v: T) {
         match &mut self.data {
             Data::Empty() => self.data = Data::One(v),
