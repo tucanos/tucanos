@@ -441,13 +441,13 @@ mod tests {
             .verts()
             .map(|p| p[0] + 2.0 * p[1] + 3.0 * p[2])
             .collect();
-        let res = mesh.smooth(GradientMethod::LinearLeastSquares(2), &f);
+        let res = mesh.smooth(GradientMethod::LinearLeastSquares(2), true, &f);
         for i_vert in 0..mesh.n_verts() {
             assert!(f64::abs(res[i_vert] - f[i_vert]) < 1e-10);
         }
 
         let f: Vec<_> = mesh.verts().map(|p| p[0] * p[1] * p[2]).collect();
-        let res = mesh.smooth(GradientMethod::LinearLeastSquares(2), &f);
+        let res = mesh.smooth(GradientMethod::LinearLeastSquares(2), true, &f);
         for i_vert in 0..mesh.n_verts() {
             assert!(f64::abs(res[i_vert] - f[i_vert]) < 2e-2);
         }

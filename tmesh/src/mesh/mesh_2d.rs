@@ -349,13 +349,13 @@ mod tests {
         let mesh = rectangle_mesh::<Mesh2d>(1.0, 9, 1.0, 9).random_shuffle();
 
         let f: Vec<_> = mesh.verts().map(|p| p[0] + 2.0 * p[1]).collect();
-        let res = mesh.smooth(GradientMethod::LinearLeastSquares(2), &f);
+        let res = mesh.smooth(GradientMethod::LinearLeastSquares(2), true, &f);
         for i_vert in 0..mesh.n_verts() {
             assert!(f64::abs(res[i_vert] - f[i_vert]) < 1e-10);
         }
 
         let f: Vec<_> = mesh.verts().map(|p| p[0] * p[1]).collect();
-        let res = mesh.smooth(GradientMethod::LinearLeastSquares(2), &f);
+        let res = mesh.smooth(GradientMethod::LinearLeastSquares(2), true, &f);
         for i_vert in 0..mesh.n_verts() {
             assert!(f64::abs(res[i_vert] - f[i_vert]) < 1e-2);
         }
