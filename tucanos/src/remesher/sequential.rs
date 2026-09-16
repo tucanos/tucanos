@@ -634,10 +634,14 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
     pub(super) fn add_tagged_face(&mut self, face: C::FACE, tag: Tag) -> Result<()> {
         let face = face.sorted();
         if self.tagged_faces.contains_key(&face) {
-            return Err(Error::from("Tagged face already present"));
+            return Err(Error::from(&format!(
+                "Tagged face {face:?} already present"
+            )));
         }
         if face.into_iter().any(|i| !self.verts.contains_key(&i)) {
-            return Err(Error::from("At least a vertex is not in the mesh"));
+            return Err(Error::from(&format!(
+                "At least a vertex of face {face:?} is not in the mesh"
+            )));
         }
         self.tagged_faces.insert(face, tag);
         Ok(())
@@ -651,6 +655,21 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         }
         self.tagged_faces.remove(&face).unwrap();
         Ok(())
+    }
+
+    /// Get the tagged facescontaining an edge
+    pub(super) fn edge_tagged_faces(&self, v0: &VtxInfo<D, M>, edge: &Edge<usize>) -> Vec<C::FACE> {
+        let mut faces = Vec::new();
+        for i in &v0.els {
+            let e = self.elems.get(i).unwrap();
+            for f in e.el.faces() {
+                let f = f.sorted();
+                if f.contains_edge(edge) && self.tagged_faces.contains_key(&f) {
+                    faces.push(f);
+                }
+            }
+        }
+        faces
     }
 
     /// Get the tags of all the faces containing an edge
@@ -723,7 +742,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         } else {
             assert_eq!(C::DIM, 3);
             let parents = self.topo.get_from_parents(1, face_tags);
-            assert_eq!(parents.len(), 1);
+            assert_eq!(parents.len(), 1, "parents = {parents:?}, edg ={edge:?}");
             parents[0].tag
         }
     }

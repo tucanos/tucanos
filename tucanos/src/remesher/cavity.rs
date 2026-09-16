@@ -555,10 +555,48 @@ impl<'a, const D: usize, C: Simplex, M: Metric<D>> FilledCavity<'a, D, C, M> {
     pub fn check_tagged_faces(&self, r: &Remesher<D, C, M>) -> bool {
         if let FilledCavityType::ExistingVertex(i) = self.ftype {
             let i = self.cavity.local2global[i];
+            let Seed::Vertex(j) = self.cavity.seed else {
+                unreachable!()
+            };
+            let j = self.cavity.local2global[j];
             for (b, _) in self.tagged_faces_boundary_global() {
-                let f = C::FACE::from_vertex_and_face(i, &b);
-                if r.face_tag(&f).is_some() {
+                // avoid collapsing tagged faces
+                let f = C::FACE::from_vertex_and_face(i, &b).sorted();
+                if r.tagged_faces.contains_key(&f) {
+                    assert!(r.face_tag(&C::FACE::from_vertex_and_face(j, &b)).is_some());
                     return false;
+                }
+                // avoid pinching of tagged faces, i.e. creating edges that
+                // belong to more tagged faces than before collapse
+                for k in b {
+                    let vk = r.verts.get(&j).unwrap();
+                    let edg_j = Edge::new(j, k).sorted();
+                    assert!(r.edges.contains_key(&edg_j));
+                    let faces_j = r.edge_tagged_faces(vk, &edg_j);
+                    assert!(!faces_j.is_empty());
+                    let edg_i = Edge::new(i, k).sorted();
+                    if !r.edges.contains_key(&edg_i) {
+                        continue;
+                    }
+                    let faces_i = r.edge_tagged_faces(vk, &edg_i);
+                    if faces_i.is_empty() {
+                        continue;
+                    }
+                    let count_before = faces_j.len();
+                    let mut count_after = 0;
+                    for f in &faces_j {
+                        if !f.contains(i) {
+                            count_after += 1;
+                        }
+                    }
+                    for f in &faces_i {
+                        if !f.contains(j) {
+                            count_after += 1;
+                        }
+                    }
+                    if count_after > count_before {
+                        return false;
+                    }
                 }
             }
             true
