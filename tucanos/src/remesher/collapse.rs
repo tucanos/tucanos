@@ -92,16 +92,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         }
         for (b, t) in filled_cavity.tagged_faces_boundary_global() {
             assert!(!b.contains(i1));
-            // self.add_tagged_face(C::FACE::from_vertex_and_face(i1, &b), t)?;
-            if self
-                .add_tagged_face(C::FACE::from_vertex_and_face(i1, &b), t)
-                .is_err()
-            {
-                panic!(
-                    "error with face {:?}",
-                    C::FACE::from_vertex_and_face(i1, &b)
-                );
-            }
+            self.add_tagged_face(C::FACE::from_vertex_and_face(i1, &b), t)?;
         }
         Ok(())
     }
@@ -137,7 +128,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
 
             let mut n_collapses = 0;
             let mut n_fails = 0;
-            for (edg, tag, length) in edges {
+            for (edg, _, length) in edges {
                 let dbg = self.debug_edge(edg);
 
                 let mut i0 = edg.get(0);
@@ -154,10 +145,11 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                 let tag = self.edge_tag(&edg);
                 // assert_eq!(tag, tag2);
                 if length < params.l && tag.1 >= 0 {
-                    trace_if!(dbg, "Try to collapse edgs {edg:?}");
+                    trace_if!(dbg, "Try to collapse edgs {edg:?}, tag = {tag:?}");
 
                     let mut topo_0 = self.verts.get(&i0).unwrap().tag;
                     let mut topo_1 = self.verts.get(&i1).unwrap().tag;
+                    trace_if!(dbg, "topo_0 = {topo_0:?}, topo_1 = {topo_1:?}");
                     // Cannot collapse vertices with entity dim 0
                     if topo_0.0 == 0 && topo_1.0 == 0 {
                         continue;
@@ -192,7 +184,10 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                     }
 
                     if !filled_cavity.check_normals(&self.topo, geom, params.max_angle) {
-                        trace_if!(dbg, "Cannot collapse, would create a non smooth surface");
+                        trace_if!(
+                            dbg,
+                            "Cannot collapse, would create a non smooth surface on tag {tag:?}"
+                        );
                         continue;
                     }
 
@@ -200,11 +195,13 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                     // lower the min quality threshold if the min quality in the cavity increases
                     let q_min = q_min.min(params.min_q_rel * cavity.q_min);
                     let l_max = l_max.max(params.max_l_rel * cavity.l_max);
-                    if let CavityCheckStatus::Ok(_) = filled_cavity.check(0.0, l_max, q_min) {
+                    let status = filled_cavity.check(0.0, l_max, q_min);
+                    if let CavityCheckStatus::Ok(_) = status {
                         trace_if!(dbg, "Collapse edge");
                         self.perform_collapse(&cavity, &filled_cavity, i0, i1)?;
                         n_collapses += 1;
                     } else {
+                        trace_if!(dbg, "Cannot collapse, status = {status:?}");
                         n_fails += 1;
                     }
                 }
