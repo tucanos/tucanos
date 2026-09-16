@@ -546,4 +546,36 @@ mod tests {
         res.check(&res.all_faces()).unwrap();
         // res.write_meshb("iso.meshb").unwrap();
     }
+
+    #[test]
+    fn test_nonmanifold() {
+        let msh: Mesh2d = rectangle_mesh::<Mesh2d>(1.0, 21, 1.0, 20).random_shuffle();
+        let mut msh2 = Mesh2d::empty();
+        msh2.add_verts(msh.verts());
+        let etags = msh
+            .gelems()
+            .zip(msh.etags())
+            .map(|(ge, t)| if ge.center()[0] < 0.5 { -t } else { t });
+        msh2.add_elems(msh.elems(), etags);
+        let ftags = msh
+            .gfaces()
+            .zip(msh.ftags())
+            .map(|(ge, t)| if ge.center()[0] < 0.5 { -t } else { t });
+        msh2.add_faces(msh.faces(), ftags);
+
+        let (bdy_tags, ifc_tags) = msh2.fix().unwrap();
+        assert!(bdy_tags.is_empty());
+        assert_eq!(ifc_tags.len(), 1);
+
+        let all_faces = msh2.all_faces();
+        msh2.check(&all_faces).unwrap();
+
+        let (mut bdy, _) = msh2.boundary::<BoundaryMesh2d>();
+        let (bdy_tags, ifc_tags) = bdy.fix().unwrap();
+        assert!(bdy_tags.is_empty());
+        assert_eq!(ifc_tags.len(), 6);
+
+        let all_faces = bdy.all_faces();
+        bdy.check(&all_faces).unwrap();
+    }
 }
