@@ -2,14 +2,14 @@
 #![allow(clippy::borrow_as_ptr)]
 #![allow(clippy::ref_as_ptr)]
 //! Python bindings for simplex meshes
-use super::Idx;
+use super::{Idx, to_py_err};
 use numpy::{
     PyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2,
     PyUntypedArrayMethods,
 };
 use pyo3::{
     Bound, PyResult, Python,
-    exceptions::{PyRuntimeError, PyValueError},
+    exceptions::PyValueError,
     pyclass, pymethods,
     types::{PyDict, PyDictMethods, PyType},
 };
@@ -148,11 +148,6 @@ fn simplex_to_pyarray<C: Simplex<T = Idx>>(
 ) -> PyResult<Bound<'_, PyArray2<Idx>>> {
     let r = PyArray::from_vec(py, C::collect_flattened(simplices));
     r.reshape([r.len() / C::N_VERTS, C::N_VERTS])
-}
-
-/// Map Result error to PyRuntimeError
-fn to_py_err<T>(result: Result<T, impl std::fmt::Display>) -> PyResult<T> {
-    result.map_err(|e| PyRuntimeError::new_err(e.to_string()))
 }
 
 macro_rules! create_mesh {

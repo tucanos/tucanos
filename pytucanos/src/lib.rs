@@ -42,6 +42,11 @@ pub(crate) fn as_c_slice<'a, T: numpy::Element, D: Dimension>(
     arr.as_slice().map_err(Into::into)
 }
 
+/// Map Result error to PyRuntimeError
+pub(crate) fn to_py_err<T>(result: Result<T, impl std::fmt::Display>) -> PyResult<T> {
+    result.map_err(|e| PyRuntimeError::new_err(e.to_string()))
+}
+
 fn to_numpy_1d<T: numpy::Element>(py: Python<'_>, vec: Vec<T>) -> Bound<'_, PyArray1<T>> {
     PyArray::from_vec(py, vec)
 }

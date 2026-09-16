@@ -4,12 +4,15 @@ use crate::{
         PyBoundaryMesh2d, PyBoundaryMesh3d, PyMesh2d, PyMesh3d, PyQuadraticBoundaryMesh2d,
         PyQuadraticBoundaryMesh3d,
     },
-    to_numpy_1d, to_numpy_2d,
+    to_numpy_1d, to_numpy_2d, to_py_err,
 };
-use numpy::{PyArray1, PyArray2};
+use numpy::{PyArray1, PyArray2, PyReadonlyArray2};
 use pyo3::{Bound, PyResult, Python, exceptions::PyRuntimeError, pyclass, pymethods};
-use tmesh::mesh::{
-    Edge, GSimplex, GenericMesh, Mesh, QuadraticEdge, QuadraticTriangle, Simplex, Triangle,
+use tmesh::{
+    Tag, Vertex,
+    mesh::{
+        Edge, GSimplex, GenericMesh, Mesh, QuadraticEdge, QuadraticTriangle, Simplex, Triangle,
+    },
 };
 use tucanos::{
     Dim,
@@ -87,6 +90,31 @@ macro_rules! create_geometry {
                         self.geom.project(&mut pt, tag);
                     }
                     coords.extend(pt.iter().copied());
+                }
+
+                Ok(to_numpy_2d(py, coords, $dim))
+            }
+
+            /// Project vertices
+            pub fn project_vertices<'py>(
+                &self,
+                py: Python<'py>,
+                pts: PyReadonlyArray2<f64>,
+                tags: PyReadonlyArray2<Tag>,
+            ) -> PyResult<Bound<'py, PyArray2<f64>>> {
+                let pts = to_py_err(crate::as_c_slice(&pts))?;
+                let tags = to_py_err(crate::as_c_slice(&tags))?;
+
+                let mut coords = Vec::with_capacity(pts.len() * $dim);
+
+                for (pt, tag) in pts.chunks($dim).zip(tags.chunks(2)) {
+                    let mut vx = Vertex::<$dim>::zeros();
+                    vx.copy_from_slice(pt);
+                    let tag = (tag[0] as Dim, tag[1]);
+                    if tag.0 < $dim {
+                        self.geom.project(&mut vx, &tag);
+                    }
+                    coords.extend(vx.iter().copied());
                 }
 
                 Ok(to_numpy_2d(py, coords, $dim))
