@@ -16,6 +16,12 @@ impl<T: Idx> Edge<T> {
     }
 }
 
+impl<T: Idx> From<Edge<T>> for [usize; 2] {
+    fn from(val: Edge<T>) -> Self {
+        val.0.map(|x| x.try_into().unwrap())
+    }
+}
+
 impl<T: Idx> IntoIterator for Edge<T> {
     type Item = usize;
     type IntoIter = std::iter::Map<std::array::IntoIter<T, 2>, fn(T) -> usize>;
