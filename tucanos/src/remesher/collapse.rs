@@ -150,6 +150,9 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                     trace_if!(dbg, "Cannot collapse: vertex deleted");
                     continue;
                 }
+                // recompute the tag as it may have changed
+                let tag = self.edge_tag(&edg);
+                // assert_eq!(tag, tag2);
                 if length < params.l && tag.1 >= 0 {
                     trace_if!(dbg, "Try to collapse edgs {edg:?}");
 
