@@ -658,7 +658,6 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
     }
 
     /// Get the tagged facescontaining an edge
-    #[allow(dead_code)]
     pub(super) fn edge_tagged_faces(&self, v0: &VtxInfo<D, M>, edge: &Edge<usize>) -> Vec<C::FACE> {
         let mut faces = Vec::new();
         for i in &v0.els {
