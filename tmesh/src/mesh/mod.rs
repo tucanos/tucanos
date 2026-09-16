@@ -520,7 +520,6 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     }
 
     /// Compute the faces that are connected to elements with different tags and that are not already tagged
-    #[allow(clippy::too_many_lines)]
     fn tag_internal_faces(
         &mut self,
         all_faces: &FaceConnectivity<<Self::C as Simplex>::FACE>,
