@@ -4,12 +4,40 @@ use tmesh::{
 };
 
 use crate::{
-    Result,
-    geometry::MeshedGeometry,
+    Dim, Result,
+    geometry::{Geometry, MeshedGeometry},
     mesh::MeshTopology,
     metric::{ImpliedMetric, Metric, MetricField},
-    remesher::{Remesher, RemesherParams},
+    remesher::{
+        CollapseParams, Remesher, RemesherParams, RemeshingStep, SmoothParams, SmoothingMethod,
+    },
 };
+
+struct IsoGeometry<const D: usize, M: Mesh<D>> {
+    geom: MeshedGeometry<D, M>,
+}
+
+impl<const D: usize, M: Mesh<D>> Geometry<D> for IsoGeometry<D, M> {
+    fn check(&self, _topo: &crate::mesh::Topology) -> Result<()> {
+        Ok(())
+    }
+
+    fn project(&self, pt: &mut tmesh::Vertex<D>, tag: &crate::TopoTag) -> f64 {
+        if *tag == (<M::C as Simplex>::DIM as Dim, Tag::MAX) {
+            0.0
+        } else {
+            self.geom.project(pt, tag)
+        }
+    }
+
+    fn angle(&self, pt: &tmesh::Vertex<D>, n: &tmesh::Vertex<D>, tag: &crate::TopoTag) -> f64 {
+        if *tag == (<M::C as Simplex>::DIM as Dim, Tag::MAX) {
+            0.0
+        } else {
+            self.geom.angle(pt, n, tag)
+        }
+    }
+}
 
 #[allow(clippy::type_complexity)]
 pub fn remesh_isosurface<T, const D: usize, M: Mesh<D>>(
@@ -53,9 +81,37 @@ where
     bdy.fix().unwrap();
 
     let geom = MeshedGeometry::new(&bdy)?;
+    let geom = IsoGeometry { geom };
     let mut remesher = Remesher::new(&split_msh, topo, &m, &geom)?;
 
-    let params = RemesherParams::default();
+    let collapse = RemeshingStep::Collapse(CollapseParams {
+        l: 0.5,
+        max_iter: 3,
+        max_l_rel: f64::MAX,
+        max_l_abs: f64::MAX,
+        min_q_rel: 1e-6,
+        min_q_abs: 1e-6,
+        max_angle: 25.0,
+    });
+    let smooth = RemeshingStep::Smooth(SmoothParams {
+        n_iter: 3,
+        max_angle: 25.0,
+        method: SmoothingMethod::Laplacian,
+        relax: vec![1.0, 0.5, 0.25],
+        keep_local_minima: false,
+    });
+
+    let mut steps = Vec::new();
+    for _ in 0..3 {
+        steps.push(collapse.clone());
+        steps.push(smooth.clone());
+    }
+
+    // let steps = vec![collapse, smooth, collapse, smooth];
+    let params = RemesherParams {
+        steps,
+        debug: false,
+    };
     remesher.remesh(&params, &geom)?;
 
     let mut out = remesher.to_mesh(false);
@@ -72,13 +128,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use tmesh::mesh::{Mesh, Mesh3d, box_mesh};
+    use tmesh::mesh::{Mesh, Mesh2d, Mesh3d, box_mesh, rectangle_mesh};
 
     use crate::remesher::remesh_isosurface;
 
     #[test]
     fn test_3d() {
-        let msh: Mesh3d = box_mesh::<Mesh3d>(1.0, 10, 1.0, 10, 1.0, 10).random_shuffle();
+        let msh = box_mesh::<Mesh3d>(1.0, 10, 1.0, 10, 1.0, 10).random_shuffle();
 
         let f = msh
             .verts()
