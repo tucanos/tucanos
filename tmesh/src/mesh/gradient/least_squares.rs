@@ -573,6 +573,7 @@ pub fn smooth<const D: usize, M: Mesh<D>>(
     order: i32,
     weight: i32,
     preconditioned: bool,
+    boundary: bool,
     f: &[f64],
 ) -> Vec<f64>
 where
@@ -583,7 +584,7 @@ where
     let flg = msh.boundary_flag();
 
     res.par_iter_mut().enumerate().for_each(|(i, f_new)| {
-        if !flg[i] {
+        if boundary || !flg[i] {
             let x = msh.vert(i);
             let first_order_neighbors = v2v.row(i);
             let mut neighbors = first_order_neighbors

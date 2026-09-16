@@ -726,14 +726,26 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         Ok(())
     }
 
-    fn smooth(&self, method: GradientMethod, f: &[f64]) -> Vec<f64> {
+    fn smooth(&self, method: GradientMethod, boundary: bool, f: &[f64]) -> Vec<f64> {
         match method {
-            GradientMethod::LinearLeastSquares(weight) => {
-                least_squares::smooth(self, &self.vertex_to_vertices(), 1, weight, false, f)
-            }
-            GradientMethod::QuadraticLeastSquares(weight) => {
-                least_squares::smooth(self, &self.vertex_to_vertices(), 2, weight, true, f)
-            }
+            GradientMethod::LinearLeastSquares(weight) => least_squares::smooth(
+                self,
+                &self.vertex_to_vertices(),
+                1,
+                weight,
+                true,
+                boundary,
+                f,
+            ),
+            GradientMethod::QuadraticLeastSquares(weight) => least_squares::smooth(
+                self,
+                &self.vertex_to_vertices(),
+                2,
+                weight,
+                true,
+                boundary,
+                f,
+            ),
             GradientMethod::L2Projection => {
                 unreachable!("Cannot use L2Proj for smoothing")
             }

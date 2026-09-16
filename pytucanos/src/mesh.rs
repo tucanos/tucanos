@@ -642,15 +642,16 @@ macro_rules! impl_mesh {
                 PyArray::from_vec(py, res)
             }
 
-            /// Smooth a field defined at the mesh vertices using a 1st order least-square
-            /// approximation
-            #[pyo3(signature = (arr, weight_exp=2, order=1))]
+            /// Smooth a field defined at the mesh vertices using a least-square
+            /// approximation using the vertex neighbors
+            #[pyo3(signature = (arr, weight_exp=2, order=1, boundary=true))]
             pub fn smooth<'py>(
                 &self,
                 py: Python<'py>,
                 arr: PyReadonlyArray2<f64>,
                 weight_exp: i32,
                 order: i32,
+                boundary: bool,
             ) -> PyResult<Bound<'py, PyArray2<f64>>> {
                 if arr.shape()[0] != self.0.n_verts() as usize {
                     return Err(PyValueError::new_err("Invalid dimension 0"));
@@ -665,7 +666,7 @@ macro_rules! impl_mesh {
                     _ => unreachable!("Invalid order {order}"),
                 };
 
-                let res = self.0.smooth(method, $crate::as_c_slice(&arr)?);
+                let res = self.0.smooth(method, boundary, $crate::as_c_slice(&arr)?);
                 PyArray::from_vec(py, res).reshape([self.0.n_verts(), 1])
             }
 
