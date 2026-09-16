@@ -141,8 +141,8 @@ pub enum GradientMethod {
     L2Projection,
 }
 
-pub type FixedTags = (FxHashMap<Tag, Tag>, FxHashMap<[Tag; 2], Tag>);
-pub type FaceConnectivity<S> = FxHashMap<S, (usize, Option<usize>, Option<usize>)>;
+pub type FixedTags = (FxHashMap<Tag, Tag>, FxHashMap<Tag, twovec::Vec<Tag>>);
+pub type FaceConnectivity<S> = FxHashMap<S, (usize, twovec::Vec<usize>)>;
 /// D-dimensional simplex mesh
 pub trait Mesh<const D: usize>: Send + Sync + Sized {
     type C: Simplex;
@@ -350,33 +350,17 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     /// * `element_in`: The index of the element where the face orientation is flipped.
     fn all_faces(&self) -> FaceConnectivity<<Self::C as Simplex>::FACE> {
         let approx_n_faces = self.n_elems() + self.n_verts();
-        let mut res = FxHashMap::with_capacity_and_hasher(approx_n_faces, FxBuildHasher);
+        let mut res: FaceConnectivity<<Self::C as Simplex>::FACE> =
+            FxHashMap::with_capacity_and_hasher(approx_n_faces, FxBuildHasher);
 
         for (i_elem, elem) in self.elems().enumerate() {
             for f in elem.faces() {
                 let key = f.sorted();
-                let new_id = res.len();
-                let entry = res.entry(key).or_insert((new_id, None, None));
-                let slot = if <Self::C as Simplex>::FACE::N_VERTS > 1 {
-                    // Determine which slot to fill based on orientation
-                    if f.is_same(&key) {
-                        &mut entry.1
-                    } else {
-                        &mut entry.2
-                    }
+                if let Some((_, ids)) = res.get_mut(&key) {
+                    ids.push(i_elem);
                 } else {
-                    // For lower dimensions (1D/0D), fill first available slot
-                    if entry.1.is_none() {
-                        &mut entry.1
-                    } else {
-                        &mut entry.2
-                    }
-                };
-
-                if let Some(existing) = slot.replace(i_elem) {
-                    panic!(
-                        "Non-manifold mesh / invalid orientation: face {key:?} belongs to 2 elements ({existing} and {i_elem}) with incompatible orientations"
-                    );
+                    let new_id = res.len();
+                    res.insert(key, (new_id, twovec::Vec::with_single(i_elem)));
                 }
             }
         }
@@ -385,11 +369,19 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
 
     /// Compute element pairs corresponding to all the internal faces (for partitioning)
     fn element_pairs(&self, faces: &FaceConnectivity<<Self::C as Simplex>::FACE>) -> CSRGraph {
-        let e2e: Vec<_> = faces
-            .values()
-            .filter_map(|&(_, i0, i1)| i0.zip(i1))
-            .map(Into::into)
-            .collect();
+        let mut e2e = Vec::with_capacity(2 * faces.len());
+        for (_, ids) in faces.values() {
+            let n = ids.len();
+            if n == 2 {
+                e2e.push([ids[0], ids[1]]);
+            } else if n > 2 {
+                for i in 0..n {
+                    for j in i + 1..n {
+                        e2e.push([ids[i], ids[j]]);
+                    }
+                }
+            }
+        }
         CSRGraph::from_edges(e2e.into_iter(), Some(self.n_elems()))
     }
 
@@ -436,13 +428,13 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
             .faces()
             .enumerate()
             .filter_map(|(f_id, f)| {
-                let &(_, i0, i1) = all_faces
+                let (_, ids) = all_faces
                     .get(&f.sorted())
                     .unwrap_or_else(|| panic!("face {f:?} not found in all_faces"));
-                let e_id = match (i0, i1) {
-                    (Some(i), None) => i,
-                    (None, Some(i)) => i,
-                    _ => return None,
+                let e_id = if ids.len() == 1 {
+                    ids[0]
+                } else {
+                    return None;
                 };
                 let to_inv = self.elem(e_id).faces().all(|f2| !f.is_same(&f2));
                 if to_inv { Some(f_id) } else { None }
@@ -472,8 +464,6 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         &mut self,
         all_faces: &FaceConnectivity<<Self::C as Simplex>::FACE>,
     ) -> FxHashMap<Tag, Tag> {
-        let mut res = FxHashMap::with_hasher(FxBuildHasher);
-
         let tagged_faces = self
             .par_faces()
             .zip(self.par_ftags())
@@ -483,14 +473,24 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         let mut tags = self.ftags().collect();
 
         let mut n = 0;
+        let mut res = FxHashMap::with_hasher(FxBuildHasher);
+        let mut parent_tag = FxHashMap::with_hasher(FxBuildHasher);
         // add untagged boundary faces
-        for (f, &(_, i0, i1)) in all_faces {
-            let i = match (i0, i1) {
-                (Some(i), None) => i,
-                (None, Some(i)) => i,
-                _ => continue,
+        for (f, (_, ids)) in all_faces {
+            let i = if ids.len() == 1 {
+                ids[0]
+            } else {
+                continue;
             };
-            if tagged_faces.contains_key(f) {
+
+            if let Some(tag) = tagged_faces.get(f) {
+                let parent = parent_tag.entry(tag).or_insert_with(|| self.etag(i));
+                assert_eq!(
+                    *parent,
+                    self.etag(i),
+                    "Face tag {tag} belongs to elements with tags {parent} and {}",
+                    self.etag(i)
+                );
                 continue;
             }
             n += 1;
@@ -523,8 +523,8 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     fn tag_internal_faces(
         &mut self,
         all_faces: &FaceConnectivity<<Self::C as Simplex>::FACE>,
-    ) -> FxHashMap<[Tag; 2], Tag> {
-        let mut res = FxHashMap::with_hasher(FxBuildHasher);
+    ) -> FxHashMap<Tag, twovec::Vec<Tag>> {
+        let mut res: FxHashMap<Tag, twovec::Vec<Tag>> = FxHashMap::with_hasher(FxBuildHasher);
 
         let tagged_faces = self
             .par_faces()
@@ -535,16 +535,20 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         let mut used_tags = self.ftags().collect();
 
         // check tagged internal faces
-        for (f, &(_, i0, i1)) in all_faces {
-            if let (Some(i0), Some(i1)) = (i0, i1) {
-                let t0 = self.etag(i0);
-                let t1 = self.etag(i1);
-                if t0 != t1
+        for (f, (_, ids)) in all_faces {
+            if ids.len() > 1 {
+                let tags = ids.iter().map(|&i| self.etag(i)).collect::<FxHashSet<_>>();
+                if tags.len() > 1
                     && let Some(tag) = tagged_faces.get(f)
                 {
-                    let tags = if t0 < t1 { [t0, t1] } else { [t1, t0] };
-                    if let Some(tmp) = res.get(&tags) {
-                        assert_eq!(tag, tmp);
+                    let mut tmp = tags.into_iter().collect::<Vec<_>>();
+                    tmp.sort_unstable();
+                    let mut tags = twovec::Vec::new();
+                    for t in tmp {
+                        tags.push(t);
+                    }
+                    if let Some(tmp) = res.get(tag) {
+                        assert!(tmp.iter().zip(tags.iter()).all(|(&a, &b)| a == b));
                     }
                 }
             }
@@ -552,31 +556,55 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
 
         // add untagged internal faces
         let mut n = 0;
-        for (f, &(_, i0, i1)) in all_faces {
-            if let (Some(i0), Some(i1)) = (i0, i1) {
-                let t0 = self.etag(i0);
-                let t1 = self.etag(i1);
-                if t0 != t1 && !tagged_faces.contains_key(f) {
+        for (f, (_, ids)) in all_faces {
+            if ids.len() > 1 {
+                let tags = ids.iter().map(|&i| self.etag(i)).collect::<FxHashSet<_>>();
+                if (tags.len() > 1 || ids.len() > 2) && !tagged_faces.contains_key(f) {
+                    if ids.len() > 2 && ids.len() != tags.len() {
+                        unimplemented!("ids = {ids:?}, tags = {tags:?}");
+                    }
                     n += 1;
-                    let tags = if t0 < t1 { [t0, t1] } else { [t1, t0] };
-                    let i = if t0 < t1 { i0 } else { i1 };
-                    let e = self.elem(i);
+                    let mut tmp = tags.into_iter().collect::<Vec<_>>();
                     let mut f = *f;
-                    let mut ok = false;
-                    for f2 in e.faces() {
-                        if f2.sorted().is_same(&f) {
-                            f = f2;
-                            ok = true;
+                    if tmp.len() == 2 && ids.len() == 2 {
+                        // Ensure correct face orientation
+                        let i0 = ids[0];
+                        let i1 = ids[1];
+                        let i = if self.etag(i0) < self.etag(i1) {
+                            i0
+                        } else {
+                            i1
+                        };
+                        let e = self.elem(i);
+                        let mut ok = false;
+                        for f2 in e.faces() {
+                            if f2.sorted().is_same(&f) {
+                                f = f2;
+                                ok = true;
+                                break;
+                            }
+                        }
+                        assert!(ok);
+                    }
+                    tmp.sort_unstable();
+
+                    let mut tags = twovec::Vec::new();
+                    for t in tmp {
+                        tags.push(t);
+                    }
+                    let mut found = false;
+                    for (t, tmp) in &res {
+                        if tmp.len() == tags.len()
+                            && tmp.iter().zip(tags.iter()).all(|(&a, &b)| a == b)
+                        {
+                            self.add_faces(std::iter::once(f), std::iter::once(*t));
+                            found = true;
                             break;
                         }
                     }
-                    assert!(ok);
-
-                    if let Some(&tmp) = res.get(&tags) {
-                        self.add_faces(std::iter::once(f), std::iter::once(tmp));
-                    } else {
+                    if !found {
                         let tag = Self::find_tag(&mut used_tags);
-                        res.insert(tags, tag);
+                        res.insert(tag, tags);
                         self.add_faces(std::iter::once(f), std::iter::once(tag));
                     }
                 }
@@ -626,13 +654,16 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
             .map(|f| f.sorted())
             .collect::<FxHashSet<_>>();
 
-        for (f, (_, i0, i1)) in all_faces {
-            if let (Some(i0), Some(i1)) = (i0, i1) {
-                let t0 = self.etag(*i0);
-                let t1 = self.etag(*i1);
-                if t0 != t1 && !tagged_faces.contains(f) {
+        for (f, (_, ids)) in all_faces {
+            if ids.len() > 1 {
+                let same_tags = ids
+                    .iter()
+                    .skip(1)
+                    .all(|&i| self.etag(i) == self.etag(ids[0]));
+                if (!same_tags || ids.len() > 2) && !tagged_faces.contains(f) {
+                    let tags = ids.iter().map(|&i| self.etag(i)).collect::<Vec<_>>();
                     return Err(Error::from(&format!(
-                        "Internal boundary face {f:?} not tagged ({t0} / {t1})"
+                        "Internal boundary face {f:?} not tagged (elems = {ids:?}, tags = {tags:?})"
                     )));
                 }
             } else if !tagged_faces.contains(f) {
@@ -641,29 +672,31 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         }
 
         for (f, t) in self.faces().zip(self.ftags()) {
-            let (_, i0, i1) = all_faces.get(&f.sorted()).unwrap();
-            match (i0, i1) {
-                (Some(i0), Some(i1)) if self.etag(*i0) == self.etag(*i1) => {
-                    let fc = self.gface(&f).center();
-                    let msg = format!("Tagged face inside the domain: center = {fc:?}");
-                    return Err(Error::from(&msg));
-                }
-                (Some(i), None) | (None, Some(i))
-                    if Self::faces_are_oriented() && Self::C::order() == 1 =>
-                {
-                    let gf = self.gface(&f);
-                    let fc = gf.center();
-                    let ec = self.gelem(&self.elem(*i)).center();
-                    let n = gf.normal(None);
-                    if n.dot(&(fc - ec)) < 0.0 {
-                        let m = format!(
-                            "Invalid face orientation: center = {fc:?}, normal = {n:?}, \
+            let (_, ids) = all_faces.get(&f.sorted()).unwrap();
+            // boundary face : check orientation if possible
+            if ids.len() == 1 && Self::faces_are_oriented() && Self::C::order() == 1 {
+                let gf = self.gface(&f);
+                let fc = gf.center();
+                let ec = self.gelem(&self.elem(ids[0])).center();
+                let n = gf.normal(None);
+                if n.dot(&(fc - ec)) < 0.0 {
+                    let m = format!(
+                        "Invalid face orientation: center = {fc:?}, normal = {n:?}, \
                                 face = {f:?}, tag = {t}"
-                        );
-                        return Err(Error::from(&m));
-                    }
+                    );
+                    return Err(Error::from(&m));
                 }
-                _ => {}
+            }
+            // internal face : check that there are at least two tags
+            if ids.len() == 2
+                && ids
+                    .iter()
+                    .skip(1)
+                    .all(|&i| self.etag(i) == self.etag(ids[0]))
+            {
+                let fc = self.gface(&f).center();
+                let msg = format!("Tagged face inside the domain: center = {fc:?}");
+                return Err(Error::from(&msg));
             }
         }
 
@@ -674,8 +707,8 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                 .par_faces()
                 .filter(|f| {
                     let f = f.sorted();
-                    let (_, i0, i1) = all_faces.get(&f).unwrap();
-                    i0.is_none() || i1.is_none()
+                    let (_, ids) = all_faces.get(&f).unwrap();
+                    ids.len() == 1
                 })
                 .map(|f| {
                     let gf = self.gface(&f);
@@ -1468,8 +1501,10 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         &self,
         all_faces: &FaceConnectivity<<Self::C as Simplex>::FACE>,
     ) -> impl Iterator<Item = (usize, usize, f64)> {
-        all_faces.iter().filter_map(|(f, &(_, i0, i1))| {
-            let (Some(i0), Some(i1)) = (i0, i1) else {
+        all_faces.iter().filter_map(|(f, (_, ids))| {
+            let (i0, i1) = if ids.len() == 2 {
+                (ids[0], ids[1])
+            } else {
                 return None;
             };
             let fc = self.gface(f).center();

@@ -267,7 +267,8 @@ macro_rules! impl_mesh {
                 }
                 let dict_ifc = PyDict::new(py);
                 for (k, v) in ifc.iter() {
-                    dict_ifc.set_item((k[0], k[1]), v)?;
+                    let v = v.iter().copied().collect::<Vec<_>>();
+                    dict_ifc.set_item(k, v)?;
                 }
 
                 Ok((dict_bdy, dict_ifc))
