@@ -7,6 +7,9 @@ use crate::{
 
 mod parry_2d;
 mod parry_3d;
+mod self_intersections;
+
+pub use self_intersections::find_self_intersections;
 
 /// Point index based on `kdtree`
 pub struct PointIndex<const D: usize> {
@@ -32,6 +35,21 @@ impl<const D: usize> PointIndex<D> {
             .nearest(pt.as_slice(), 1, &kdtree::distance::squared_euclidean)
             .unwrap()[0];
         (*r.1, r.0)
+    }
+
+    /// Get all the vertices in a ball
+    #[must_use]
+    pub fn vertices_in_ball(&self, pt: &Vertex<D>, radius: f64) -> Vec<usize> {
+        self.tree
+            .within(
+                pt.as_slice(),
+                radius * radius,
+                &kdtree::distance::squared_euclidean,
+            )
+            .unwrap()
+            .into_iter()
+            .map(|r| *r.1)
+            .collect()
     }
 }
 
