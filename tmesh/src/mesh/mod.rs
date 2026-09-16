@@ -729,10 +729,10 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     fn smooth(&self, method: GradientMethod, f: &[f64]) -> Vec<f64> {
         match method {
             GradientMethod::LinearLeastSquares(weight) => {
-                least_squares::smooth(self, &self.vertex_to_vertices(), 1, weight, f)
+                least_squares::smooth(self, &self.vertex_to_vertices(), 1, weight, false, f)
             }
             GradientMethod::QuadraticLeastSquares(weight) => {
-                least_squares::smooth(self, &self.vertex_to_vertices(), 2, weight, f)
+                least_squares::smooth(self, &self.vertex_to_vertices(), 2, weight, true, f)
             }
             GradientMethod::L2Projection => {
                 unreachable!("Cannot use L2Proj for smoothing")
@@ -743,10 +743,12 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     fn gradient(&self, method: GradientMethod, f: &[f64]) -> Vec<f64> {
         match method {
             GradientMethod::LinearLeastSquares(weight) => {
-                least_squares::gradient(self, &self.vertex_to_vertices(), 1, weight, f).unwrap()
+                least_squares::gradient(self, &self.vertex_to_vertices(), 1, weight, false, f)
+                    .unwrap()
             }
             GradientMethod::QuadraticLeastSquares(weight) => {
-                least_squares::gradient(self, &self.vertex_to_vertices(), 2, weight, f).unwrap()
+                least_squares::gradient(self, &self.vertex_to_vertices(), 2, weight, true, f)
+                    .unwrap()
             }
             GradientMethod::L2Projection => {
                 l2proj::gradient_l2proj(self, &self.vertex_to_elems(), f)
@@ -760,7 +762,7 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                 unreachable!("Cannot use LinearLeastSquares to compute the hessian")
             }
             GradientMethod::QuadraticLeastSquares(weight) => {
-                least_squares::hessian(self, &self.vertex_to_vertices(), weight, f).unwrap()
+                least_squares::hessian(self, &self.vertex_to_vertices(), weight, true, f).unwrap()
             }
             GradientMethod::L2Projection => {
                 let v2e = self.vertex_to_elems();
