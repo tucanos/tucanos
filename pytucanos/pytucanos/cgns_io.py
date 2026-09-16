@@ -285,7 +285,7 @@ def load_cgns(fname, cls=None):
             for i in bdy.values():
                 logger.debug(f"Tagging untagged faces with {i}")
                 tags_to_be_removed.append(i)
-            for (t0, t1), i in ifc.items():
+            for i, (t0, t1) in ifc.items():
                 logger.info(f"Tagging faces between {t0} and {t1} with {i}")
             #     tags_to_be_removed.append(i)
 

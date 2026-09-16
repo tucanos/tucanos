@@ -674,46 +674,45 @@ impl<const D: usize> SimplePolyMesh<D> {
         for i_elem in 0..mesh.n_elems() {
             elem_to_face_ptr[i_elem + 1] = <M::C as Simplex>::N_VERTS * (i_elem + 1);
         }
-        for (f, &(i_face, i0, i1)) in &all_faces {
+        for (f, (i_face, ids)) in &all_faces {
             face_to_node_ptr[i_face + 1] = <M::C as Simplex>::FACE::N_VERTS * (i_face + 1);
             for k in 0..<M::C as Simplex>::FACE::N_VERTS {
                 face_to_node[<M::C as Simplex>::FACE::N_VERTS * i_face + k] = f.get(k);
             }
-            if let Some(i0) = i0 {
+            for &i_elem in ids.iter() {
+                // Get the orientation of the face within the element
+                let elem = mesh.elem(i_elem);
+                let mut orient = true;
                 let mut ok = false;
+                for f2 in elem.faces() {
+                    let f2_sorted = f2.sorted();
+                    if f.into_iter().zip(f2_sorted).all(|(a, b)| a == b) {
+                        orient = f.is_same(&f2);
+                        ok = true;
+                        break;
+                    }
+                }
+                assert!(ok);
+                // Insert the face
+                ok = false;
                 for v in elem_to_face
                     .iter_mut()
-                    .take(elem_to_face_ptr[i0 + 1])
-                    .skip(elem_to_face_ptr[i0])
+                    .take(elem_to_face_ptr[i_elem + 1])
+                    .skip(elem_to_face_ptr[i_elem])
                 {
                     if v.0 == usize::MAX {
-                        *v = (i_face, true);
+                        *v = (*i_face, orient);
                         ok = true;
                         break;
                     }
                 }
                 assert!(ok);
             }
-            if let Some(i1) = i1 {
-                let mut ok = false;
-                for v in elem_to_face
-                    .iter_mut()
-                    .take(elem_to_face_ptr[i1 + 1])
-                    .skip(elem_to_face_ptr[i1])
-                {
-                    if v.0 == usize::MAX {
-                        *v = (i_face, false);
-                        ok = true;
-                        break;
-                    }
-                }
-                assert!(ok);
-            }
-            if i0.is_none() && i1.is_none() {
-                let f = f.sorted();
-                ftags[i_face] = *tagged_faces.get(&f).unwrap();
+
+            if let Some(&tag) = tagged_faces.get(f) {
+                ftags[*i_face] = tag;
             } else {
-                ftags[i_face] = 0;
+                ftags[*i_face] = 0;
             }
         }
 

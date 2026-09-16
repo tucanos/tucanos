@@ -801,4 +801,38 @@ mod tests {
         //res.write_meshb("iso.meshb").unwrap();
         res.check(&res.all_faces()).unwrap();
     }
+
+    #[test]
+    fn test_nonmanifold() {
+        let msh: Mesh3d = box_mesh::<Mesh3d>(1.0, 21, 1.0, 21, 1.0, 21).random_shuffle();
+        let mut msh2 = Mesh3d::empty();
+        msh2.add_verts(msh.verts());
+        let etags = msh
+            .gelems()
+            .zip(msh.etags())
+            .map(|(ge, t)| if ge.center()[0] < 0.5 { -t } else { t });
+        msh2.add_elems(msh.elems(), etags);
+        let ftags = msh
+            .gfaces()
+            .zip(msh.ftags())
+            .map(|(ge, t)| if ge.center()[0] < 0.5 { -t } else { t });
+        msh2.add_faces(msh.faces(), ftags);
+
+        let (bdy_tags, ifc_tags) = msh2.fix().unwrap();
+        assert!(bdy_tags.is_empty());
+        assert_eq!(ifc_tags.len(), 1);
+
+        let all_faces = msh2.all_faces();
+        msh2.check(&all_faces).unwrap();
+
+        let (mut bdy, _) = msh2.boundary::<BoundaryMesh3d>();
+        let (bdy_tags, ifc_tags) = bdy.fix().unwrap();
+        assert!(bdy_tags.is_empty());
+        assert_eq!(ifc_tags.iter().filter(|(_, v)| v.len() == 2).count(), 16);
+        assert_eq!(ifc_tags.iter().filter(|(_, v)| v.len() == 3).count(), 4);
+        assert_eq!(ifc_tags.len(), 20);
+
+        let all_faces = bdy.all_faces();
+        bdy.check(&all_faces).unwrap();
+    }
 }
