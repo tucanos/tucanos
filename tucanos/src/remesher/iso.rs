@@ -39,11 +39,12 @@ impl<const D: usize, M: Mesh<D>> Geometry<D> for IsoGeometry<D, M> {
     }
 }
 
-#[allow(clippy::type_complexity)]
+type MeshPair<const D: usize, C> = (GenericMesh<D, C>, GenericMesh<D, C>);
+
 pub fn remesh_isosurface<T, const D: usize, M: Mesh<D>>(
     msh: &M,
     f: &[f64],
-) -> Result<(GenericMesh<D, M::C>, GenericMesh<D, M::C>)>
+) -> Result<MeshPair<D, M::C>>
 where
     T: Metric<D> + Send + Sync + Default + Clone,
     <<M as Mesh<D>>::C as Simplex>::GEOM<D>: ImpliedMetric<T>,
