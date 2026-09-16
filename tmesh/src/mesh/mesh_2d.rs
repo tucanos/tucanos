@@ -126,10 +126,12 @@ mod tests {
         Vert2d, assert_delta,
         mesh::{
             AdativeBoundsQuadraticTriangle, BoundaryMesh2d, Edge, GSimplex, GradientMethod, Mesh,
-            Mesh2d, QuadraticMesh2d, bandwidth, disk_mesh, quadratic_disk_mesh, rectangle_mesh,
+            Mesh2d, QuadraticMesh2d, SubMesh, bandwidth, disk_mesh, quadratic_disk_mesh,
+            rectangle_mesh,
         },
     };
     use rayon::iter::ParallelIterator;
+    use rustc_hash::FxHashSet;
 
     #[test]
     fn test_2d_simple_1() {
@@ -510,5 +512,38 @@ mod tests {
         // let mut writer = crate::io::VTUFile::from_mesh(&msh);
         // writer.add_cell_data("distorsion", 1, d.iter().copied());
         // writer.export("quadratic_disk.vtu").unwrap();
+    }
+
+    #[test]
+    fn test_isosurface() {
+        let msh: Mesh2d = rectangle_mesh::<Mesh2d>(1.0, 20, 1.0, 20).random_shuffle();
+        let f = msh
+            .verts()
+            .map(|p| {
+                let r0 = (p[0] - 0.5).hypot(p[1] - 0.5);
+                let r1 = (p[0]).hypot(p[1]);
+                (r0 - 0.25) * (r1 - 0.25)
+            })
+            .collect::<Vec<f64>>();
+        let (res, _): (Mesh2d, _) = msh.split_isosurface(&f);
+
+        res.check(&res.all_faces()).unwrap();
+
+        let msh_pos = SubMesh::new(&res, |t| t == 1).mesh;
+        let msh_neg = SubMesh::new(&res, |t| t == -1).mesh;
+        assert_delta!(msh_pos.vol() + msh_neg.vol(), msh.vol(), 1e-6);
+
+        let (bdy, _) = msh.boundary::<BoundaryMesh2d>();
+        let (bdy2, _) = res.boundary::<BoundaryMesh2d>();
+
+        let tags = msh.ftags().collect::<FxHashSet<_>>();
+        for tag in tags {
+            let tmp = SubMesh::new(&bdy, |t| t == tag).mesh;
+            let tmp2 = SubMesh::new(&bdy2, |t| t == tag).mesh;
+            let tmp3 = SubMesh::new(&bdy2, |t| t == -tag).mesh;
+            assert_delta!(tmp2.vol() + tmp3.vol(), tmp.vol(), 1e-6);
+        }
+        res.check(&res.all_faces()).unwrap();
+        // res.write_meshb("iso.meshb").unwrap();
     }
 }
