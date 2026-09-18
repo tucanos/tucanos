@@ -238,10 +238,7 @@ mod tests {
         mesh::{
             AdativeBoundsQuadraticTetrahedron, BoundaryMesh3d, GSimplex, GradientMethod, Mesh,
             Mesh3d, QuadraticBoundaryMesh3d, QuadraticMesh3d, Simplex, SubMesh, bandwidth,
-            box_mesh,
-            mesh_3d::ball_mesh,
-            partition::HilbertPartitioner,
-            quadratic_ball_mesh,
+            box_mesh, mesh_3d::ball_mesh, partition::HilbertPartitioner, quadratic_ball_mesh,
         },
     };
     use rayon::iter::ParallelIterator;

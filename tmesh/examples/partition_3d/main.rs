@@ -1,7 +1,9 @@
 //! Mesh partition example
 use std::{path::Path, process::Command, time::Instant};
 #[cfg(feature = "kahip")]
-use tmesh::mesh::partition::{KMinParPartitioner, KaHIPPartitioner};
+use tmesh::mesh::partition::{
+    KMinParPartitioner, KaHIPPartitioner, KaMinParDefault, KaMinParStrong, KahipEco, KahipFast,
+};
 #[cfg(feature = "metis")]
 use tmesh::mesh::partition::{MetisKWay, MetisPartitioner, MetisRecursive};
 use tmesh::{
@@ -30,7 +32,10 @@ Physical Volume("E", 16) = {1};
 "#;
 
 fn run_partition<P: Partitioner>(msh: &mut Mesh3d, n_parts: usize) -> Result<()> {
-    let name = std::any::type_name::<P>().replace("tmesh::mesh::partition::", "");
+    let name = std::any::type_name::<P>()
+        .replace("tmesh::mesh::partition::", "")
+        .replace("partition_kahip::", "")
+        .replace("partition_metis::", "");
     let start = Instant::now();
     let (quality, imbalance) = msh.partition::<P>(n_parts, None)?;
     let t = start.elapsed();
@@ -91,8 +96,12 @@ fn main() -> Result<()> {
 
     #[cfg(feature = "kahip")]
     {
-        run_partition::<KaHIPPartitioner>(&mut msh, n_parts)?;
-        run_partition::<KMinParPartitioner>(&mut msh, n_parts)?;
+        run_partition::<KaHIPPartitioner<KahipFast>>(&mut msh, n_parts)?;
+        run_partition::<KaHIPPartitioner<KahipEco>>(&mut msh, n_parts)?;
+        // run_partition::<KaHIPPartitioner<KahipStrong>>(&mut msh, n_parts)?;
+
+        run_partition::<KMinParPartitioner<KaMinParDefault>>(&mut msh, n_parts)?;
+        run_partition::<KMinParPartitioner<KaMinParStrong>>(&mut msh, n_parts)?;
     }
 
     #[cfg(feature = "metis")]
