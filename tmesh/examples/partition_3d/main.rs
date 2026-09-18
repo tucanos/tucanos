@@ -1,7 +1,5 @@
 //! Mesh partition example
 use std::{path::Path, process::Command, time::Instant};
-#[cfg(feature = "coupe")]
-use tmesh::mesh::partition::KMeansPartitioner3d;
 #[cfg(feature = "metis")]
 use tmesh::mesh::partition::{MetisKWay, MetisPartitioner, MetisRecursive};
 use tmesh::{
@@ -51,7 +49,7 @@ fn main() -> Result<()> {
         );
     }
 
-    let msh = Mesh3d::from_meshb(fname.to_str().unwrap())?;
+    let msh = Mesh3d::from_meshb(fname.to_str().unwrap())?.split().split();
 
     let (mut msh, _, _, _) = msh.reorder_rcm();
     let (bdy, _): (BoundaryMesh3d, _) = msh.boundary();
@@ -93,25 +91,6 @@ fn main() -> Result<()> {
         let cc = pmesh.vertex_to_vertices().connected_components()?;
         let n_cc = cc.iter().copied().max().unwrap_or(0) + 1;
         println!("  part {i}: {n_cc} components");
-    }
-
-    #[cfg(feature = "coupe")]
-    {
-        let start = Instant::now();
-        let (quality, imbalance) = msh.partition::<KMeansPartitioner3d>(n_parts, None)?;
-        let t = start.elapsed();
-        println!(
-            "KMeansPartitioner3d: {:.2e}s, quality={:.2e}, imbalance={:.2e}",
-            t.as_secs_f64(),
-            quality,
-            imbalance
-        );
-        for i in 0..n_parts {
-            let pmesh = msh.get_partition(i).mesh;
-            let cc = pmesh.vertex_to_vertices().connected_components()?;
-            let n_cc = cc.iter().copied().max().unwrap_or(0) + 1;
-            println!("  part {i}: {n_cc} components");
-        }
     }
 
     #[cfg(feature = "metis")]

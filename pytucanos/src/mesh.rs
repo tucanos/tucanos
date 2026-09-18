@@ -14,8 +14,6 @@ use pyo3::{
     types::{PyDict, PyDictMethods, PyType},
 };
 use std::collections::HashMap;
-#[cfg(feature = "coupe")]
-use tmesh::mesh::partition::{KMeansPartitioner2d, KMeansPartitioner3d};
 #[cfg(feature = "metis")]
 use tmesh::mesh::partition::{MetisKWay, MetisPartitioner, MetisRecursive};
 use tmesh::{
@@ -42,9 +40,6 @@ pub enum PyPartitionerType {
     /// RCM
     #[allow(clippy::upper_case_acronyms)]
     RCM,
-    #[cfg(feature = "coupe")]
-    /// KMeans
-    KMeans,
     #[cfg(feature = "metis")]
     /// Metis - Recursive
     MetisRecursive,
@@ -541,12 +536,6 @@ macro_rules! impl_mesh {
                     PyPartitionerType::RCM => {
                         to_py_err(self.0.partition::<RCMPartitioner>(n_parts, weights))
                     }
-                    #[cfg(feature = "coupe")]
-                    PyPartitionerType::KMeans => match $dim {
-                        3 => to_py_err(self.0.partition::<KMeansPartitioner3d>(n_parts, weights)),
-                        2 => to_py_err(self.0.partition::<KMeansPartitioner2d>(n_parts, weights)),
-                        _ => unimplemented!(),
-                    },
                     #[cfg(feature = "metis")]
                     PyPartitionerType::MetisRecursive => to_py_err(
                         self.0
