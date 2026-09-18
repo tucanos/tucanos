@@ -1,5 +1,7 @@
 //! Mesh partition example
 use std::{path::Path, process::Command, time::Instant};
+#[cfg(feature = "kahip")]
+use tmesh::mesh::partition::{KMinParPartitioner, KaHIPPartitioner};
 #[cfg(feature = "metis")]
 use tmesh::mesh::partition::{MetisKWay, MetisPartitioner, MetisRecursive};
 use tmesh::{
@@ -87,6 +89,12 @@ fn main() -> Result<()> {
 
     run_partition::<HilbertPartitioner>(&mut msh, n_parts)?;
     run_partition::<RCMPartitioner>(&mut msh, n_parts)?;
+
+    #[cfg(feature = "kahip")]
+    {
+        run_partition::<KaHIPPartitioner>(&mut msh, n_parts)?;
+        run_partition::<KMinParPartitioner>(&mut msh, n_parts)?;
+    }
 
     #[cfg(feature = "metis")]
     {
