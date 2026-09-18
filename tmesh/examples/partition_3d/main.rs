@@ -8,7 +8,7 @@ use tmesh::{
     Result,
     mesh::{
         BoundaryMesh3d, Mesh, Mesh3d,
-        partition::{HilbertPartitioner, Partitioner, RCMPartitioner},
+        partition::{HilbertPartitioner, Partitioner},
     },
 };
 
@@ -88,7 +88,6 @@ fn main() -> Result<()> {
     let n_parts = 4;
 
     run_partition::<HilbertPartitioner>(&mut msh, n_parts)?;
-    run_partition::<RCMPartitioner>(&mut msh, n_parts)?;
 
     #[cfg(feature = "kahip")]
     {

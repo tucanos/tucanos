@@ -240,7 +240,7 @@ mod tests {
             Mesh3d, QuadraticBoundaryMesh3d, QuadraticMesh3d, Simplex, SubMesh, bandwidth,
             box_mesh,
             mesh_3d::ball_mesh,
-            partition::{HilbertPartitioner, RCMPartitioner},
+            partition::HilbertPartitioner,
             quadratic_ball_mesh,
         },
     };
@@ -526,22 +526,6 @@ mod tests {
         }
 
         msh_rcm.check(&msh_rcm.all_faces()).unwrap();
-    }
-
-    #[test]
-    fn test_part_rcm() {
-        let mut msh = box_mesh::<Mesh3d>(1.0, 20, 1.0, 20, 1.0, 20).random_shuffle();
-        let (quality, imbalance) = msh.partition::<RCMPartitioner>(4, None).unwrap();
-
-        assert!(quality < 0.045);
-        assert!(imbalance < 0.0002);
-
-        for i in 0..4 {
-            let part = msh.get_partition(i).mesh;
-            let cc = part.vertex_to_vertices().connected_components().unwrap();
-            let n_cc = cc.iter().copied().max().unwrap() + 1;
-            assert_eq!(n_cc, 1);
-        }
     }
 
     #[test]
