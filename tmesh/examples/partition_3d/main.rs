@@ -6,7 +6,7 @@ use tmesh::{
     Result,
     mesh::{
         BoundaryMesh3d, Mesh, Mesh3d,
-        partition::{HilbertPartitioner, RCMPartitioner},
+        partition::{HilbertPartitioner, Partitioner, RCMPartitioner},
     },
 };
 
@@ -26,6 +26,30 @@ Physical Surface("sphere", 15) = {4, 5};
 Physical Volume("E", 16) = {1};
 
 "#;
+
+fn run_partition<P: Partitioner>(msh: &mut Mesh3d, n_parts: usize) -> Result<()> {
+    let name = std::any::type_name::<P>().replace("tmesh::mesh::partition::", "");
+    let start = Instant::now();
+    let (quality, imbalance) = msh.partition::<P>(n_parts, None)?;
+    let t = start.elapsed();
+    println!(
+        "{name}: {:.2e}s, quality={:.2e}, imbalance={:.2e}",
+        t.as_secs_f64(),
+        quality,
+        imbalance
+    );
+
+    for i in 0..n_parts {
+        let pmesh = msh.get_partition(i).mesh;
+        let cc = pmesh.vertex_to_vertices().connected_components()?;
+        let n_cc = cc.iter().copied().max().unwrap_or(0) + 1;
+        if n_cc > 1 {
+            println!("WARNING : part {i} has {n_cc} components");
+        }
+    }
+
+    Ok(())
+}
 
 #[allow(clippy::too_many_lines)]
 fn main() -> Result<()> {
@@ -61,72 +85,13 @@ fn main() -> Result<()> {
 
     let n_parts = 4;
 
-    let start = Instant::now();
-    let (quality, imbalance) = msh.partition::<HilbertPartitioner>(n_parts, None)?;
-    let t = start.elapsed();
-    println!(
-        "HilbertPartitioner: {:.2e}s, quality={:.2e}, imbalance={:.2e}",
-        t.as_secs_f64(),
-        quality,
-        imbalance
-    );
-    for i in 0..n_parts {
-        let pmesh = msh.get_partition(i).mesh;
-        let cc = pmesh.vertex_to_vertices().connected_components()?;
-        let n_cc = cc.iter().copied().max().unwrap_or(0) + 1;
-        println!("  part {i}: {n_cc} components");
-    }
-
-    let start = Instant::now();
-    let (quality, imbalance) = msh.partition::<RCMPartitioner>(n_parts, None)?;
-    let t = start.elapsed();
-    println!(
-        "RCMPartitioner: {:.2e}s, quality={:.2e}, imbalance={:.2e}",
-        t.as_secs_f64(),
-        quality,
-        imbalance
-    );
-    for i in 0..n_parts {
-        let pmesh = msh.get_partition(i).mesh;
-        let cc = pmesh.vertex_to_vertices().connected_components()?;
-        let n_cc = cc.iter().copied().max().unwrap_or(0) + 1;
-        println!("  part {i}: {n_cc} components");
-    }
+    run_partition::<HilbertPartitioner>(&mut msh, n_parts)?;
+    run_partition::<RCMPartitioner>(&mut msh, n_parts)?;
 
     #[cfg(feature = "metis")]
     {
-        let start = Instant::now();
-        let (quality, imbalance) =
-            msh.partition::<MetisPartitioner<MetisRecursive>>(n_parts, None)?;
-        let t = start.elapsed();
-        println!(
-            "MetisPartitioner<MetisRecursive>: {:.2e}s, quality={:.2e}, imbalance={:.2e}",
-            t.as_secs_f64(),
-            quality,
-            imbalance
-        );
-        for i in 0..n_parts {
-            let pmesh = msh.get_partition(i).mesh;
-            let cc = pmesh.vertex_to_vertices().connected_components()?;
-            let n_cc = cc.iter().copied().max().unwrap_or(0) + 1;
-            println!("  part {i}: {n_cc} components");
-        }
-
-        let start = Instant::now();
-        let (quality, imbalance) = msh.partition::<MetisPartitioner<MetisKWay>>(n_parts, None)?;
-        let t = start.elapsed();
-        println!(
-            "MetisPartitioner<MetisKWay>: {:.2e}s, quality={:.2e}, imbalance={:.2e}",
-            t.as_secs_f64(),
-            quality,
-            imbalance
-        );
-        for i in 0..n_parts {
-            let pmesh = msh.get_partition(i).mesh;
-            let cc = pmesh.vertex_to_vertices().connected_components()?;
-            let n_cc = cc.iter().copied().max().unwrap_or(0) + 1;
-            println!("  part {i}: {n_cc} components");
-        }
+        run_partition::<MetisPartitioner<MetisRecursive>>(&mut msh, n_parts)?;
+        run_partition::<MetisPartitioner<MetisKWay>>(&mut msh, n_parts)?;
     }
 
     Ok(())
