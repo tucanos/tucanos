@@ -178,8 +178,8 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                     let ftype = FilledCavityType::ExistingVertex(local_i1);
                     let filled_cavity = FilledCavity::new(&cavity, ftype);
 
-                    if !filled_cavity.check_tagged_faces(self) {
-                        trace_if!(dbg, "Cannot collapse, tagged face already present");
+                    if !filled_cavity.check_topo(self) {
+                        trace_if!(dbg, "Cannot collapse, would create an invalid topo");
                         continue;
                     }
 
