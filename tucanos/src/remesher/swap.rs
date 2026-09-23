@@ -109,7 +109,11 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
 
         trace_if!(dbg, "Try to swap edge {edg:?}");
         if C::DIM == 2 {
-            assert!(cavity.n_elems() <= 2);
+            assert!(
+                cavity.n_elems() <= 2,
+                "Cavity for edge {edg:?} has {} elements",
+                cavity.n_elems()
+            );
         }
 
         if cavity.global_elem_ids.len() == 1 {
@@ -188,11 +192,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
 
             // too difficult otherwise!
             if !cavity.tagged_faces.is_empty() {
-                assert_eq!(
-                    cavity.tagged_faces.len(),
-                    2,
-                    "{cavity:#?}, etag={edge_tag:?}"
-                );
+                assert_eq!(cavity.tagged_faces.len(), 2);
                 if !cavity.tagged_faces().any(|(f, _)| f.contains(n)) {
                     continue;
                 }
@@ -200,6 +200,11 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
 
             let filled_cavity = FilledCavity::new(cavity, FilledCavityType::ExistingVertex(n));
             if filled_cavity.is_same() {
+                continue;
+            }
+
+            if !filled_cavity.check_topo(self) {
+                trace_if!(dbg, "Cannot swap, would create an invalid topo");
                 continue;
             }
 

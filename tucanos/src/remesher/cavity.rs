@@ -7,7 +7,7 @@ use crate::{
 };
 use core::fmt;
 use log::{debug, trace};
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxBuildHasher, FxHashSet};
 use std::cmp::{Ordering, min};
 use tmesh::{
     Vertex,
@@ -551,55 +551,205 @@ impl<'a, const D: usize, C: Simplex, M: Metric<D>> FilledCavity<'a, D, C, M> {
             .map(|(b, t, _)| (self.cavity.global_elem(&b), t))
     }
 
-    /// Check that the tagged faces are not already present (useful for collapse)
-    pub fn check_tagged_faces(&self, r: &Remesher<D, C, M>) -> bool {
-        if let FilledCavityType::ExistingVertex(i) = self.ftype {
-            let i = self.cavity.local2global[i];
-            let Seed::Vertex(j) = self.cavity.seed else {
-                unreachable!()
-            };
-            let j = self.cavity.local2global[j];
-            for (b, _) in self.tagged_faces_boundary_global() {
-                // avoid collapsing tagged faces
-                let f = C::FACE::from_vertex_and_face(i, &b).sorted();
-                if r.tagged_faces.contains_key(&f) {
-                    assert!(r.face_tag(&C::FACE::from_vertex_and_face(j, &b)).is_some());
-                    return false;
-                }
-                // avoid pinching of tagged faces, i.e. creating edges that
-                // belong to more tagged faces than before collapse
-                for k in b {
-                    let vk = r.verts.get(&j).unwrap();
-                    let edg_j = Edge::new(j, k).sorted();
-                    assert!(r.edges.contains_key(&edg_j));
-                    let faces_j = r.edge_tagged_faces(vk, &edg_j);
-                    assert!(!faces_j.is_empty());
-                    let edg_i = Edge::new(i, k).sorted();
-                    if !r.edges.contains_key(&edg_i) {
-                        continue;
-                    }
-                    let faces_i = r.edge_tagged_faces(vk, &edg_i);
-                    if faces_i.is_empty() {
-                        continue;
-                    }
-                    let count_before = faces_j.len();
-                    let mut count_after = 0;
-                    for f in &faces_j {
-                        if !f.contains(i) {
-                            count_after += 1;
-                        }
-                    }
-                    for f in &faces_i {
-                        if !f.contains(j) {
-                            count_after += 1;
-                        }
-                    }
-                    if count_after > count_before {
+    fn check_tagged_faces_and_edges(&self, r: &Remesher<D, C, M>, i: usize) -> bool {
+        let mut verts = FxHashSet::with_hasher(FxBuildHasher);
+
+        for (b, _) in self.tagged_faces_boundary_global() {
+            // Avoid collapsing tagged faces.
+            let f = C::FACE::from_vertex_and_face(i, &b).sorted();
+            if r.tagged_faces.contains_key(&f) {
+                return false;
+            }
+            for k in b {
+                verts.insert(k);
+            }
+        }
+
+        // Avoid pinching tagged faces, i.e. creating edges that belong to more
+        // tagged faces than before collapse.
+        for k in verts {
+            match self.cavity.seed {
+                Seed::Vertex(j) => {
+                    if !self.check_no_tagged_face_pinch_after_collapse(r, i, j, k) {
                         return false;
                     }
                 }
+                Seed::Edge(_) => {
+                    // Swap
+                }
+                Seed::No => unreachable!(),
             }
-            true
+        }
+
+        true
+    }
+
+    fn check_no_tagged_face_pinch_after_collapse(
+        &self,
+        r: &Remesher<D, C, M>,
+        i: usize,
+        j_local: usize,
+        k: usize,
+    ) -> bool {
+        let j = self.cavity.local2global[j_local];
+        let vk = r.verts.get(&k).unwrap();
+
+        // The new edge (i, k), after collapse, will be in all the faces that
+        // previously contained (i, k) or (j, k), but that do not contain both
+        // i and j as these faces are removed.
+
+        let edg_i = Edge::new(i, k).sorted();
+        if !r.edges.contains_key(&edg_i) {
+            return true;
+        }
+        let faces_i = r.edge_tagged_faces(vk, &edg_i);
+        if faces_i.is_empty() {
+            return true;
+        }
+
+        let vk = r.verts.get(&j).unwrap();
+        let edg_j = Edge::new(j, k).sorted();
+        assert!(r.edges.contains_key(&edg_j));
+        let faces_j = r.edge_tagged_faces(vk, &edg_j);
+        assert!(!faces_j.is_empty());
+
+        let count_before = faces_j.len();
+        let mut count_after = 0;
+        for f in &faces_j {
+            if !f.contains(i) {
+                count_after += 1;
+            }
+        }
+        for f in &faces_i {
+            if !f.contains(j) {
+                count_after += 1;
+            }
+        }
+
+        count_after <= count_before
+    }
+
+    fn check_tagged_elems_and_edges(&self, r: &Remesher<D, C, M>, i: usize) -> bool {
+        let mut verts = FxHashSet::with_hasher(FxBuildHasher);
+
+        // Check that the element does not already exist.
+        for (f, _) in self.faces() {
+            let f = self.cavity.global_elem(&f);
+            for &i_el in r.vertex_elements(i) {
+                let e = r.get_elem(i_el).unwrap().el;
+                if f.into_iter().all(|j| e.contains(j)) {
+                    return false;
+                }
+            }
+            for k in f {
+                verts.insert(k);
+            }
+        }
+
+        // Avoid pinching elements, i.e. creating edges that belong to more
+        // elements than before collapse/swap.
+        for k in verts {
+            match self.cavity.seed {
+                Seed::Vertex(j) => {
+                    if !self.check_no_elem_pinch_after_collapse(r, i, j, k) {
+                        return false;
+                    }
+                }
+                Seed::Edge(_) => {
+                    if !self.check_no_elem_pinch_after_swap(r, i, k) {
+                        return false;
+                    }
+                }
+                Seed::No => unreachable!(),
+            }
+        }
+
+        true
+    }
+
+    fn check_no_elem_pinch_after_collapse(
+        &self,
+        r: &Remesher<D, C, M>,
+        i: usize,
+        j_local: usize,
+        k: usize,
+    ) -> bool {
+        let j = self.cavity.local2global[j_local];
+
+        // The new edge (i, k), after collapse, will be in all the faces that
+        // previously contained (i, k) or (j, k), but that do not contain both
+        // i and j as these faces are removed.
+        let els_k = r.vertex_elements(k);
+
+        let edg_i = Edge::new(i, k).sorted();
+        if !r.edges.contains_key(&edg_i) {
+            return true;
+        }
+        let els_i = Cavity::<D, C, M>::intersection(els_k, r.vertex_elements(i));
+        if els_i.is_empty() {
+            return true;
+        }
+
+        let edg_j = Edge::new(j, k).sorted();
+        assert!(r.edges.contains_key(&edg_j));
+        let els_j = Cavity::<D, C, M>::intersection(els_k, r.vertex_elements(j));
+        assert!(!els_j.is_empty());
+
+        let count_before = els_j.len();
+        let mut count_after = 0;
+        for &i_el in &els_j {
+            let f = r.get_elem(i_el).unwrap().el;
+            if !f.contains(i) {
+                count_after += 1;
+            }
+        }
+        for &i_el in &els_i {
+            let f = r.get_elem(i_el).unwrap().el;
+            if !f.contains(j) {
+                count_after += 1;
+            }
+        }
+
+        count_after <= count_before
+    }
+
+    fn check_no_elem_pinch_after_swap(&self, r: &Remesher<D, C, M>, i: usize, k: usize) -> bool {
+        let els_k = r.vertex_elements(k);
+
+        // If any element outside of the cavity contains (i, k), then pinching
+        // will happen as at least one element in the cavity will also contain it.
+        let edg_i = Edge::new(i, k).sorted();
+        if !r.edges.contains_key(&edg_i) {
+            return true;
+        }
+        let els_i = Cavity::<D, C, M>::intersection(els_k, r.vertex_elements(i));
+        if els_i.is_empty() {
+            return true;
+        }
+
+        !els_i
+            .iter()
+            .any(|&i_el| self.cavity.global_elem_ids.contains(&i_el))
+    }
+
+    /// Check the mesh topology
+    ///  - for surface remeshing, check
+    ///     - that duplicate elements are not created
+    ///     - that elements are not pinched along an edge
+    ///  - for volume remeshing, check
+    ///     - that duplicate tagged faces are not created
+    ///     - that tagged faces are not pinched along an edge
+    pub fn check_topo(&self, r: &Remesher<D, C, M>) -> bool {
+        if let FilledCavityType::ExistingVertex(i) = self.ftype {
+            let i = self.cavity.local2global[i];
+
+            if C::DIM == D {
+                self.check_tagged_faces_and_edges(r, i)
+            } else if C::DIM == D - 1 {
+                self.check_tagged_elems_and_edges(r, i)
+            } else {
+                unimplemented!()
+            }
         } else {
             unreachable!();
         }
