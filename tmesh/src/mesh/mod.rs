@@ -621,6 +621,20 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     ///   - element orientations
     ///   - boundary faces and faces connecting elements with different tags are present
     fn check(&self, all_faces: &FaceConnectivity<<Self::C as Simplex>::FACE>) -> Result<()> {
+        self.check_sizes()?;
+        self.check_all_vertices_used()?;
+        self.check_elem_and_face_indices(all_faces)?;
+        let tagged_faces = self
+            .par_faces()
+            .map(|f| f.sorted())
+            .collect::<FxHashSet<_>>();
+        self.check_required_tagged_faces(all_faces, &tagged_faces)?;
+        self.check_face_orientation_and_internal_tags(all_faces)?;
+        self.check_volume_consistency(all_faces)?;
+        Ok(())
+    }
+
+    fn check_sizes(&self) -> Result<()> {
         // lengths
         if self.par_elems().len() != self.par_etags().len() {
             return Err(Error::from("Inconsistent sizes (elems)"));
@@ -628,7 +642,30 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         if self.par_faces().len() != self.par_ftags().len() {
             return Err(Error::from("Inconsistent sizes (faces)"));
         }
+        Ok(())
+    }
 
+    fn check_all_vertices_used(&self) -> Result<()> {
+        // all vertices are used in at least one element
+        let mut flg = vec![false; self.n_verts()];
+        for e in self.elems() {
+            for i in e {
+                flg[i] = true;
+            }
+        }
+        let n = flg.iter().filter(|&&x| !x).count();
+        if n != 0 {
+            return Err(Error::from(&format!(
+                "{n} vertices are not used in any element"
+            )));
+        }
+        Ok(())
+    }
+
+    fn check_elem_and_face_indices(
+        &self,
+        all_faces: &FaceConnectivity<<Self::C as Simplex>::FACE>,
+    ) -> Result<()> {
         // indices & element volume
         for e in self.elems() {
             if !e.into_iter().all(|i| i < self.n_verts()) {
@@ -647,13 +684,15 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                 return Err(Error::from("Face belong to no element"));
             }
         }
+        Ok(())
+    }
 
+    fn check_required_tagged_faces(
+        &self,
+        all_faces: &FaceConnectivity<<Self::C as Simplex>::FACE>,
+        tagged_faces: &FxHashSet<<Self::C as Simplex>::FACE>,
+    ) -> Result<()> {
         // tagged faces
-        let tagged_faces = self
-            .par_faces()
-            .map(|f| f.sorted())
-            .collect::<FxHashSet<_>>();
-
         for (f, (_, ids)) in all_faces {
             if ids.len() > 1 {
                 let same_tags = ids
@@ -670,7 +709,13 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                 return Err(Error::from(&format!("Boundary face {f:?} not tagged")));
             }
         }
+        Ok(())
+    }
 
+    fn check_face_orientation_and_internal_tags(
+        &self,
+        all_faces: &FaceConnectivity<<Self::C as Simplex>::FACE>,
+    ) -> Result<()> {
         for (f, t) in self.faces().zip(self.ftags()) {
             let (_, ids) = all_faces.get(&f.sorted()).unwrap();
             // boundary face : check orientation if possible
@@ -699,7 +744,13 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                 return Err(Error::from(&msg));
             }
         }
+        Ok(())
+    }
 
+    fn check_volume_consistency(
+        &self,
+        all_faces: &FaceConnectivity<<Self::C as Simplex>::FACE>,
+    ) -> Result<()> {
         // volumes
         if Self::faces_are_oriented() && Self::C::order() == 1 {
             let vol = self.par_gelems().map(|ge| ge.vol()).sum::<f64>();
