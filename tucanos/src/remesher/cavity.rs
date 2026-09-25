@@ -714,22 +714,31 @@ impl<'a, const D: usize, C: Simplex, M: Metric<D>> FilledCavity<'a, D, C, M> {
     }
 
     fn check_no_elem_pinch_after_swap(&self, r: &Remesher<D, C, M>, i: usize, k: usize) -> bool {
-        let els_k = r.vertex_elements(k);
-
         // If any element outside of the cavity contains (i, k), then pinching
         // will happen as at least one element in the cavity will also contain it.
         let edg_i = Edge::new(i, k).sorted();
         if !r.edges.contains_key(&edg_i) {
             return true;
         }
-        let els_i = Cavity::<D, C, M>::intersection(els_k, r.vertex_elements(i));
-        if els_i.is_empty() {
-            return true;
-        }
+        let els_i = Cavity::<D, C, M>::intersection(r.vertex_elements(k), r.vertex_elements(i));
+        assert!(!els_i.is_empty());
 
-        !els_i
+        // Number of cavity elements containing (i,k)
+        let n_in = self
+            .faces()
+            .filter(|(f, _)| {
+                let f = self.cavity.global_elem(f);
+                f.contains(k)
+            })
+            .count();
+
+        // Number of elements outside the cavity containing (i,k)
+        let n_out = els_i
             .iter()
-            .any(|&i_el| self.cavity.global_elem_ids.contains(&i_el))
+            .filter(|&&i_el| !self.cavity.global_elem_ids.contains(&i_el))
+            .count();
+
+        n_in + n_out <= 2
     }
 
     /// Check the mesh topology
