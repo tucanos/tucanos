@@ -1,6 +1,10 @@
 //! Mesh partitioners
 use super::{GSimplex, Mesh, hilbert::hilbert_indices};
 use crate::{Result, graph::CSRGraph};
+#[cfg(feature = "kahip")]
+use kahip::{
+    KaHIPGraph, KaMinParGraph, KahipMode, KahipParams, KaminparOutputLevel, KaminparParams,
+};
 #[cfg(feature = "metis")]
 use std::marker::PhantomData;
 
@@ -62,6 +66,70 @@ pub trait Partitioner: Sized + Send + Sync {
     }
 }
 
+fn init_or_check_weights(weights: Option<Vec<f64>>, n: usize) -> Vec<f64> {
+    weights.map_or_else(
+        || vec![1.0; n],
+        |weights| {
+            assert_eq!(
+                weights.len(),
+                n,
+                "weights length must match number of elements"
+            );
+            weights
+        },
+    )
+}
+
+#[cfg(feature = "kahip")]
+fn scale_vertex_weights_to_kahip(weights: &[f64]) -> Vec<kahip::Idx> {
+    let max_weight = weights.iter().copied().fold(0.0_f64, f64::max);
+    if max_weight == 0.0 {
+        return vec![1; weights.len()];
+    }
+
+    let target_max = kahip::Idx::MAX as f64;
+    let scale = if max_weight > target_max {
+        target_max / max_weight
+    } else {
+        1.0
+    };
+
+    weights
+        .iter()
+        .map(|&w| {
+            assert!(w.is_finite(), "vertex weights must be finite");
+            assert!(w >= 0.0, "vertex weights must be non-negative");
+            let v = (w * scale).round().max(1.0).min(target_max);
+            v as kahip::Idx
+        })
+        .collect()
+}
+
+#[cfg(feature = "kahip")]
+fn scale_vertex_weights_to_kaminpar(weights: &[f64]) -> Vec<kahip::KaminparNodeWeight> {
+    let max_weight = weights.iter().copied().fold(0.0_f64, f64::max);
+    if max_weight == 0.0 {
+        return vec![1; weights.len()];
+    }
+
+    let target_max = kahip::KaminparNodeWeight::MAX as f64;
+    let scale = if max_weight > target_max {
+        target_max / max_weight
+    } else {
+        1.0
+    };
+
+    weights
+        .iter()
+        .map(|&w| {
+            assert!(w.is_finite(), "vertex weights must be finite");
+            assert!(w >= 0.0, "vertex weights must be non-negative");
+            let v = (w * scale).round().max(1.0).min(target_max);
+            v as kahip::KaminparNodeWeight
+        })
+        .collect()
+}
+
 /// Simple geometric partitionner based on the Hilbert indices of the element centers
 pub struct HilbertPartitioner {
     n_parts: usize,
@@ -81,7 +149,7 @@ impl Partitioner for HilbertPartitioner {
 
         let centers = msh.gelems().map(|ge| ge.center());
         let ids = hilbert_indices(centers);
-        let weights = weights.unwrap_or_else(|| vec![1.0; msh.n_elems()]);
+        let weights = init_or_check_weights(weights, msh.n_elems());
         Ok(Self {
             n_parts,
             graph,
@@ -113,18 +181,22 @@ impl Partitioner for HilbertPartitioner {
     fn graph(&self) -> &CSRGraph {
         &self.graph
     }
+
+    fn weights(&self) -> impl Iterator<Item = f64> {
+        self.weights.iter().copied()
+    }
 }
 
-/// Simple partioner based on the RCM ordering of the element-to-element
-/// connectivity
-pub struct RCMPartitioner {
+#[cfg(feature = "kahip")]
+/// KaHIP partitioner
+pub struct KaHIPPartitioner {
     n_parts: usize,
     graph: CSRGraph,
-    ids: Vec<usize>,
     weights: Vec<f64>,
 }
 
-impl Partitioner for RCMPartitioner {
+#[cfg(feature = "kahip")]
+impl Partitioner for KaHIPPartitioner {
     fn new<const D: usize, M: Mesh<D>>(
         msh: &M,
         n_parts: usize,
@@ -132,30 +204,43 @@ impl Partitioner for RCMPartitioner {
     ) -> Result<Self> {
         let faces = msh.all_faces();
         let graph = msh.element_pairs(&faces);
+        let weights = init_or_check_weights(weights, msh.n_elems());
 
-        let weights = weights.unwrap_or_else(|| vec![1.0; msh.n_elems()]);
-        let ids = graph.reverse_cuthill_mckee();
         Ok(Self {
             n_parts,
             graph,
-            ids,
             weights,
         })
     }
+
     fn compute(&self) -> Result<Vec<usize>> {
-        let target_weight = self.weights.iter().copied().sum::<f64>() / self.n_parts as f64;
-        let mut res = vec![0; self.weights.len()];
-        let mut part = 0;
-        let mut weight = 0.0;
-        for &j in &self.ids {
-            if weight > target_weight {
-                part = self.n_parts.min(part + 1);
-                weight = 0.0;
-            }
-            res[j] = part;
-            weight += self.weights[j];
+        if self.n_parts == 1 {
+            return Ok(vec![0; self.graph.n()]);
         }
-        Ok(res)
+
+        let mut xadj = Vec::<kahip::Idx>::with_capacity(self.graph.n() + 1);
+        let mut adjncy = Vec::<kahip::Idx>::with_capacity(self.graph.n_edges());
+        let mut vwgt = scale_vertex_weights_to_kahip(&self.weights);
+
+        xadj.push(0);
+        for row in self.graph.rows() {
+            for &j in row {
+                adjncy.push(j.try_into().unwrap());
+            }
+            xadj.push(adjncy.len().try_into().unwrap());
+        }
+
+        let mut kahip_graph = KaHIPGraph::new(&mut xadj, &mut adjncy).set_vwgt(&mut vwgt);
+        let (partition, _) = kahip_graph.partition(
+            self.n_parts.try_into().unwrap(),
+            KahipParams {
+                mode: KahipMode::Fast,
+                ..KahipParams::default()
+            },
+        );
+
+        let partition = partition.iter().map(|&x| x.try_into().unwrap()).collect();
+        Ok(partition)
     }
 
     fn n_parts(&self) -> usize {
@@ -164,6 +249,79 @@ impl Partitioner for RCMPartitioner {
 
     fn graph(&self) -> &CSRGraph {
         &self.graph
+    }
+
+    fn weights(&self) -> impl Iterator<Item = f64> {
+        self.weights.iter().copied()
+    }
+}
+
+#[cfg(feature = "kahip")]
+/// KaMinPar partitioner
+pub struct KMinParPartitioner {
+    n_parts: usize,
+    graph: CSRGraph,
+    weights: Vec<f64>,
+}
+
+#[cfg(feature = "kahip")]
+impl Partitioner for KMinParPartitioner {
+    fn new<const D: usize, M: Mesh<D>>(
+        msh: &M,
+        n_parts: usize,
+        weights: Option<Vec<f64>>,
+    ) -> Result<Self> {
+        let faces = msh.all_faces();
+        let graph = msh.element_pairs(&faces);
+        let weights = init_or_check_weights(weights, msh.n_elems());
+
+        Ok(Self {
+            n_parts,
+            graph,
+            weights,
+        })
+    }
+
+    fn compute(&self) -> Result<Vec<usize>> {
+        if self.n_parts == 1 {
+            return Ok(vec![0; self.graph.n()]);
+        }
+
+        let mut xadj = Vec::<kahip::KaminparEdgeId>::with_capacity(self.graph.n() + 1);
+        let mut adjncy = Vec::<kahip::KaminparNodeId>::with_capacity(self.graph.n_edges());
+        let mut vwgt = scale_vertex_weights_to_kaminpar(&self.weights);
+
+        xadj.push(0);
+        for row in self.graph.rows() {
+            for &j in row {
+                adjncy.push(j.try_into().unwrap());
+            }
+            xadj.push(adjncy.len().try_into().unwrap());
+        }
+
+        let mut kminpar_graph = KaMinParGraph::new(&mut xadj, &mut adjncy).set_vwgt(&mut vwgt);
+        let (partition, _) = kminpar_graph.partition_with_epsilon(
+            self.n_parts.try_into().unwrap(),
+            KaminparParams {
+                output_level: KaminparOutputLevel::Quiet,
+                ..KaminparParams::default()
+            },
+        );
+
+        let partition = partition.iter().map(|&x| x.try_into().unwrap()).collect();
+        Ok(partition)
+    }
+
+    fn n_parts(&self) -> usize {
+        self.n_parts
+    }
+
+    fn graph(&self) -> &CSRGraph {
+        &self.graph
+    }
+
+    fn weights(&self) -> impl Iterator<Item = f64> {
+        self.weights.iter().copied()
     }
 }
 
@@ -210,7 +368,6 @@ impl MetisPartMethod for MetisKWay {
 pub struct MetisPartitioner<T: MetisPartMethod> {
     n_parts: usize,
     graph: CSRGraph,
-    #[allow(dead_code)]
     weights: Vec<f64>,
     t: PhantomData<T>,
 }
@@ -225,7 +382,7 @@ impl<T: MetisPartMethod> Partitioner for MetisPartitioner<T> {
         let faces = msh.all_faces();
         let graph = msh.element_pairs(&faces);
 
-        let weights = weights.unwrap_or_else(|| vec![1.0; msh.n_elems()]);
+        let weights = init_or_check_weights(weights, msh.n_elems());
 
         Ok(Self {
             n_parts,
@@ -274,6 +431,10 @@ impl<T: MetisPartMethod> Partitioner for MetisPartitioner<T> {
     fn graph(&self) -> &CSRGraph {
         &self.graph
     }
+
+    fn weights(&self) -> impl Iterator<Item = f64> {
+        self.weights.iter().copied()
+    }
 }
 
 #[cfg(test)]
@@ -282,7 +443,7 @@ mod tests {
     use crate::mesh::partition::{MetisPartitioner, MetisRecursive};
     use crate::mesh::{
         Mesh, Mesh3d, box_mesh,
-        partition::{HilbertPartitioner, Partitioner, RCMPartitioner},
+        partition::{HilbertPartitioner, Partitioner},
     };
 
     #[test]
@@ -291,18 +452,6 @@ mod tests {
         let msh = msh.random_shuffle();
 
         let partitioner = HilbertPartitioner::new(&msh, 4, None).unwrap();
-        let parts = partitioner.compute().unwrap();
-
-        assert!(partitioner.partition_quality(&parts) < 0.06);
-        assert!(partitioner.partition_imbalance(&parts) < 0.002);
-    }
-
-    #[test]
-    fn test_rcm() {
-        let msh: Mesh3d = box_mesh(1.0, 10, 1.0, 15, 1.0, 20);
-        let msh = msh.random_shuffle();
-
-        let partitioner = RCMPartitioner::new(&msh, 4, None).unwrap();
         let parts = partitioner.compute().unwrap();
 
         assert!(partitioner.partition_quality(&parts) < 0.06);

@@ -25,7 +25,7 @@ use tmesh::{
         GenericMesh, GradientMethod, Mesh, QuadraticEdge, QuadraticTetrahedron, QuadraticTriangle,
         Simplex, SolutionLocation, SubMesh, Tetrahedron, Triangle, ball_mesh, circle_mesh,
         nonuniform_box_mesh, nonuniform_rectangle_mesh,
-        partition::{HilbertPartitioner, RCMPartitioner},
+        partition::HilbertPartitioner,
         quadratic_circle_mesh, quadratic_sphere_mesh, read_stl, sphere_mesh,
         to_quadratic::{to_quadratic_tetrahedron_mesh, to_quadratic_triangle_mesh},
     },
@@ -37,9 +37,6 @@ use tucanos::geometry::orient_geometry;
 pub enum PyPartitionerType {
     /// Hilbert
     Hilbert,
-    /// RCM
-    #[allow(clippy::upper_case_acronyms)]
-    RCM,
     #[cfg(feature = "metis")]
     /// Metis - Recursive
     MetisRecursive,
@@ -532,9 +529,6 @@ macro_rules! impl_mesh {
                 match method {
                     PyPartitionerType::Hilbert => {
                         to_py_err(self.0.partition::<HilbertPartitioner>(n_parts, weights))
-                    }
-                    PyPartitionerType::RCM => {
-                        to_py_err(self.0.partition::<RCMPartitioner>(n_parts, weights))
                     }
                     #[cfg(feature = "metis")]
                     PyPartitionerType::MetisRecursive => to_py_err(
