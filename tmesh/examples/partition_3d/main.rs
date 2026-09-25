@@ -95,6 +95,12 @@ fn main() -> Result<()> {
         run_partition::<KMinParPartitioner>(&mut msh, n_parts)?;
     }
 
+    #[cfg(feature = "kahip")]
+    {
+        run_partition::<KaHIPPartitioner>(&mut msh, n_parts)?;
+        run_partition::<KMinParPartitioner>(&mut msh, n_parts)?;
+    }
+
     #[cfg(feature = "metis")]
     {
         run_partition::<MetisPartitioner<MetisRecursive>>(&mut msh, n_parts)?;

@@ -187,6 +187,62 @@ impl Partitioner for HilbertPartitioner {
     }
 }
 
+/// Simple partioner based on the RCM ordering of the element-to-element
+/// connectivity
+pub struct RCMPartitioner {
+    n_parts: usize,
+    graph: CSRGraph,
+    ids: Vec<usize>,
+    weights: Vec<f64>,
+}
+
+impl Partitioner for RCMPartitioner {
+    fn new<const D: usize, M: Mesh<D>>(
+        msh: &M,
+        n_parts: usize,
+        weights: Option<Vec<f64>>,
+    ) -> Result<Self> {
+        let faces = msh.all_faces();
+        let graph = msh.element_pairs(&faces);
+
+        let weights = init_or_check_weights(weights, msh.n_elems());
+        let ids = graph.reverse_cuthill_mckee();
+        Ok(Self {
+            n_parts,
+            graph,
+            ids,
+            weights,
+        })
+    }
+    fn compute(&self) -> Result<Vec<usize>> {
+        let target_weight = self.weights.iter().copied().sum::<f64>() / self.n_parts as f64;
+        let mut res = vec![0; self.weights.len()];
+        let mut part = 0;
+        let mut weight = 0.0;
+        for &j in &self.ids {
+            if weight > target_weight {
+                part = self.n_parts.min(part + 1);
+                weight = 0.0;
+            }
+            res[j] = part;
+            weight += self.weights[j];
+        }
+        Ok(res)
+    }
+
+    fn n_parts(&self) -> usize {
+        self.n_parts
+    }
+
+    fn graph(&self) -> &CSRGraph {
+        &self.graph
+    }
+
+    fn weights(&self) -> impl Iterator<Item = f64> {
+        self.weights.iter().copied()
+    }
+}
+
 #[cfg(feature = "kahip")]
 /// KaHIP partitioner
 pub struct KaHIPPartitioner {
@@ -443,7 +499,7 @@ mod tests {
     use crate::mesh::partition::{MetisPartitioner, MetisRecursive};
     use crate::mesh::{
         Mesh, Mesh3d, box_mesh,
-        partition::{HilbertPartitioner, Partitioner},
+        partition::{HilbertPartitioner, Partitioner, RCMPartitioner},
     };
 
     #[test]
@@ -452,6 +508,18 @@ mod tests {
         let msh = msh.random_shuffle();
 
         let partitioner = HilbertPartitioner::new(&msh, 4, None).unwrap();
+        let parts = partitioner.compute().unwrap();
+
+        assert!(partitioner.partition_quality(&parts) < 0.06);
+        assert!(partitioner.partition_imbalance(&parts) < 0.002);
+    }
+
+    #[test]
+    fn test_rcm() {
+        let msh: Mesh3d = box_mesh(1.0, 10, 1.0, 15, 1.0, 20);
+        let msh = msh.random_shuffle();
+
+        let partitioner = RCMPartitioner::new(&msh, 4, None).unwrap();
         let parts = partitioner.compute().unwrap();
 
         assert!(partitioner.partition_quality(&parts) < 0.06);
