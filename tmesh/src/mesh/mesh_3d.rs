@@ -603,26 +603,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "coupe")]
-    #[ignore = "kmeans is slow"]
-    fn test_part_kmeans() {
-        use tmesh::mesh::partition::KMeansPartitioner3d;
-
-        let mut msh = box_mesh::<Mesh3d>(1.0, 6, 1.0, 5, 1.0, 5).random_shuffle();
-        let (quality, imbalance) = msh.partition::<KMeansPartitioner3d>(4, None).unwrap();
-
-        assert!(quality < 0.11);
-        assert!(imbalance < 0.04);
-
-        for i in 0..4 {
-            let part = msh.get_partition(i).mesh;
-            let cc = part.vertex_to_vertices().connected_components().unwrap();
-            let n_cc = cc.iter().copied().max().unwrap() + 1;
-            assert_eq!(n_cc, 1);
-        }
-    }
-
-    #[test]
     fn test_split() {
         let msh = box_mesh::<Mesh3d>(1.0, 2, 1.0, 2, 1.0, 2).random_shuffle();
 

@@ -26,7 +26,6 @@ shadow-rs = "2.0.0"
 [features]
 32bit-ints = []
 metis = ["tmesh/metis"]
-coupe = ["tmesh/coupe"]
 argmin = ["tmesh/argmin"]
 
 [lints]

@@ -22,7 +22,6 @@ libm.workspace = true
 32bit-tags = ["tmesh/32bit-tags"]
 64bit-tags = ["tmesh/64bit-tags"]
 metis = ["tmesh/metis"]
-coupe = ["tmesh/coupe"]
 argmin = ["tmesh/argmin"]
 
 trace_edges = []
