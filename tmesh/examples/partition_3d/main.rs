@@ -1,14 +1,16 @@
 //! Mesh partition example
 use std::{path::Path, process::Command, time::Instant};
 #[cfg(feature = "kahip")]
-use tmesh::mesh::partition::{KMinParPartitioner, KaHIPPartitioner};
+use tmesh::mesh::partition::{
+    KMinParPartitioner, KaHIPPartitioner, KaMinParDefault, KaMinParStrong, KahipEco, KahipFast,
+};
 #[cfg(feature = "metis")]
 use tmesh::mesh::partition::{MetisKWay, MetisPartitioner, MetisRecursive};
 use tmesh::{
     Result,
     mesh::{
-        BoundaryMesh3d, Mesh, Mesh3d,
-        partition::{HilbertPartitioner, Partitioner},
+        Mesh, Mesh3d,
+        partition::{BFSWRPartitionner, HilbertBallPartitioner, HilbertPartitioner, Partitioner},
     },
 };
 
@@ -29,8 +31,12 @@ Physical Volume("E", 16) = {1};
 
 "#;
 
-fn run_partition<P: Partitioner>(msh: &mut Mesh3d, n_parts: usize) -> Result<()> {
-    let name = std::any::type_name::<P>().replace("tmesh::mesh::partition::", "");
+fn run_partition<P: Partitioner>(msh: &Mesh3d, n_parts: usize) -> Result<()> {
+    let mut msh = msh.clone();
+    let name = std::any::type_name::<P>()
+        .replace("tmesh::mesh::partition::", "")
+        .replace("partition_kahip::", "")
+        .replace("partition_metis::", "");
     let start = Instant::now();
     let (quality, imbalance) = msh.partition::<P>(n_parts, None)?;
     let t = start.elapsed();
@@ -53,9 +59,30 @@ fn run_partition<P: Partitioner>(msh: &mut Mesh3d, n_parts: usize) -> Result<()>
     Ok(())
 }
 
-#[allow(clippy::too_many_lines)]
-fn main() -> Result<()> {
-    let fname = "geom3d.mesh";
+fn benchmark_partitioners(msh: &Mesh3d, n_parts: usize) -> Result<()> {
+    run_partition::<HilbertPartitioner>(msh, n_parts)?;
+    run_partition::<HilbertBallPartitioner>(msh, n_parts)?;
+    run_partition::<BFSWRPartitionner>(msh, n_parts)?;
+
+    #[cfg(feature = "kahip")]
+    {
+        run_partition::<KaHIPPartitioner<KahipFast>>(msh, n_parts)?;
+        run_partition::<KaHIPPartitioner<KahipEco>>(msh, n_parts)?;
+        // run_partition::<KaHIPPartitioner<KahipStrong>>(&mut msh, n_parts)?;
+
+        run_partition::<KMinParPartitioner<KaMinParDefault>>(msh, n_parts)?;
+        run_partition::<KMinParPartitioner<KaMinParStrong>>(msh, n_parts)?;
+    }
+
+    #[cfg(feature = "metis")]
+    {
+        run_partition::<MetisPartitioner<MetisRecursive>>(msh, n_parts)?;
+        run_partition::<MetisPartitioner<MetisKWay>>(msh, n_parts)?;
+    }
+    Ok(())
+}
+
+fn generate_mesh(fname: &str) -> Result<()> {
     let fname = Path::new(fname);
 
     if !fname.exists() {
@@ -74,38 +101,18 @@ fn main() -> Result<()> {
             String::from_utf8(output.stderr).unwrap()
         );
     }
+    Ok(())
+}
 
-    let msh = Mesh3d::from_meshb(fname.to_str().unwrap())?.split().split();
+fn main() -> Result<()> {
+    let fname = "geom3d.mesh";
 
-    let (mut msh, _, _, _) = msh.reorder_rcm();
-    let (bdy, _): (BoundaryMesh3d, _) = msh.boundary();
+    generate_mesh(fname)?;
 
-    msh.write_vtk("geom3d.vtu")?;
-    bdy.write_vtk("geom3d_bdy.vtu")?;
+    let msh = Mesh3d::from_meshb(fname)?.split().split();
+    let (msh, _, _, _) = msh.reorder_rcm();
 
-    println!("# of elements: {}", msh.n_elems());
-
-    let n_parts = 4;
-
-    run_partition::<HilbertPartitioner>(&mut msh, n_parts)?;
-
-    #[cfg(feature = "kahip")]
-    {
-        run_partition::<KaHIPPartitioner>(&mut msh, n_parts)?;
-        run_partition::<KMinParPartitioner>(&mut msh, n_parts)?;
-    }
-
-    #[cfg(feature = "kahip")]
-    {
-        run_partition::<KaHIPPartitioner>(&mut msh, n_parts)?;
-        run_partition::<KMinParPartitioner>(&mut msh, n_parts)?;
-    }
-
-    #[cfg(feature = "metis")]
-    {
-        run_partition::<MetisPartitioner<MetisRecursive>>(&mut msh, n_parts)?;
-        run_partition::<MetisPartitioner<MetisKWay>>(&mut msh, n_parts)?;
-    }
+    benchmark_partitioners(&msh, 4)?;
 
     Ok(())
 }
