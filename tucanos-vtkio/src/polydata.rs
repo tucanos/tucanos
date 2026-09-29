@@ -6,6 +6,7 @@ struct PolyData {
     points: usize,
     lines: usize,
     verts: usize,
+    polys: usize,
 }
 
 impl FileType for PolyData {
@@ -14,8 +15,8 @@ impl FileType for PolyData {
     fn write_piece_attributes(&self, writer: &mut impl Write) -> Result<()> {
         write!(
             writer,
-            r#"NumberOfPoints="{}" NumberOfVerts="{}" NumberOfLines="{}""#,
-            self.points, self.verts, self.lines
+            r#"NumberOfPoints="{}" NumberOfVerts="{}" NumberOfLines="{}" NumberOfPolys="{}""#,
+            self.points, self.verts, self.lines, self.polys
         )
     }
 }
@@ -38,6 +39,11 @@ impl<'a> PolyDataWriter<'a> {
     /// Sets the total number of vertex cells in the dataset.
     pub const fn set_num_verts(&mut self, n: usize) {
         self.0.file_type.verts = n;
+    }
+
+    /// Sets the total number of polys cells in the dataset.
+    pub const fn set_num_polys(&mut self, n: usize) {
+        self.0.file_type.polys = n;
     }
 
     /// Adds 3D point coordinates to the `.vtp` dataset.
@@ -125,6 +131,29 @@ impl<'a> PolyDataWriter<'a> {
         );
     }
 
+    /// Adds polygons elements to the `.vtp` file.
+    ///
+    /// Supports multi-segment polylines using explicit connectivity offsets.
+    ///
+    /// # Arguments
+    /// * `num_conn` - Total number of connectivity indices across all line cells.
+    /// * `connectivity` - Iterator over point indices forming the lines.
+    /// * `offsets` - Iterator yielding cumulative end-index offsets for each polyline cell.
+    pub fn add_polys<T, ITO, ITC>(&mut self, num_conn: usize, connectivity: ITC, offsets: ITO)
+    where
+        T: Scalar + 'a,
+        ITC: IntoIterator<Item = T> + 'a,
+        ITO: IntoIterator<Item = T> + 'a,
+    {
+        self.add_elems(
+            num_conn,
+            connectivity,
+            self.0.file_type.polys,
+            offsets,
+            "Polys",
+        );
+    }
+
     /// Adds a `CellData` field array to the dataset.
     ///
     /// In VTK PolyData (`.vtp`), cell attributes for all cell types are concatenated
@@ -159,7 +188,7 @@ impl<'a> PolyDataWriter<'a> {
     }
 
     const fn num_cells(&self) -> usize {
-        self.0.file_type.verts + self.0.file_type.lines
+        self.0.file_type.verts + self.0.file_type.lines + self.0.file_type.polys
     }
 }
 
