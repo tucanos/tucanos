@@ -169,7 +169,7 @@ impl<'a, T: Idx, M: Mesh<2, C = Triangle<T>>> MetricField<'a, 2, M, AnisoMetric2
 #[cfg(test)]
 mod tests {
     use crate::{
-        ANISO_MAX, Result,
+        ANISO_MAX, Result, Tag,
         geometry::MeshedGeometry,
         mesh::{MeshTopology, test_meshes::test_mesh_3d},
         metric::{AnisoMetric3d, Metric, MetricField},
@@ -180,7 +180,7 @@ mod tests {
         mesh::{BoundaryMesh3d, Mesh},
     };
 
-    fn classify_boundary_vertices(bdy: &BoundaryMesh3d, tag_in: i16, tag_out: i16) -> Vec<u8> {
+    fn classify_boundary_vertices(bdy: &BoundaryMesh3d, tag_in: Tag, tag_out: Tag) -> Vec<u8> {
         let mut bdy_flg = vec![0; bdy.n_verts()];
         bdy.elems().zip(bdy.etags()).for_each(|(f, t)| {
             if t == tag_in {
@@ -223,7 +223,7 @@ mod tests {
         }
     }
 
-    fn build_prescribed_normal_sizes(bdy: &BoundaryMesh3d, tag_in: i16, h_0: f64) -> Vec<f64> {
+    fn build_prescribed_normal_sizes(bdy: &BoundaryMesh3d, tag_in: Tag, h_0: f64) -> Vec<f64> {
         let mut h_n = vec![-1.0; bdy.n_verts()];
         bdy.elems().zip(bdy.etags()).for_each(|(f, t)| {
             if t == tag_in {
