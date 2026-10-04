@@ -136,7 +136,6 @@ impl<T: Idx> ExtrudedMesh2d<T> {
     }
 
     /// Sequential iterator over the vertices
-    #[must_use]
     pub fn verts(&self) -> impl ExactSizeIterator<Item = Vert3d> + '_ {
         self.verts.iter().copied()
     }
@@ -148,13 +147,11 @@ impl<T: Idx> ExtrudedMesh2d<T> {
     }
 
     /// Sequential iterator over the prisms
-    #[must_use]
     pub fn prisms(&self) -> impl ExactSizeIterator<Item = &Prism<T>> + '_ {
         self.prisms.iter()
     }
 
     /// Sequential iterator over the prism tags
-    #[must_use]
     pub fn prism_tags(&self) -> impl ExactSizeIterator<Item = Tag> + '_ {
         self.prism_tags.iter().copied()
     }
@@ -166,13 +163,11 @@ impl<T: Idx> ExtrudedMesh2d<T> {
     }
 
     /// Sequential iterator over the triangles
-    #[must_use]
     pub fn tris(&self) -> impl ExactSizeIterator<Item = &Triangle<T>> + '_ {
         self.tris.iter()
     }
 
     /// Sequential iterator over the triangle tags
-    #[must_use]
     pub fn tri_tags(&self) -> impl ExactSizeIterator<Item = Tag> + '_ {
         self.tri_tags.iter().copied()
     }
@@ -184,13 +179,11 @@ impl<T: Idx> ExtrudedMesh2d<T> {
     }
 
     /// Sequential iterator over the quadrangles
-    #[must_use]
     pub fn quads(&self) -> impl ExactSizeIterator<Item = &Quadrangle<T>> + '_ {
         self.quads.iter()
     }
 
     /// Sequential iterator over the quandrangle tags
-    #[must_use]
     pub fn quad_tags(&self) -> impl ExactSizeIterator<Item = Tag> + '_ {
         self.quad_tags.iter().copied()
     }

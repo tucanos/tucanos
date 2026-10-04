@@ -222,7 +222,6 @@ impl CSRGraph {
     }
 
     /// Get the indices corresponding to the `i`th vertex
-    #[must_use]
     pub fn row_ptr(&self, i: usize) -> impl ExactSizeIterator<Item = usize> {
         let start = self.ptr[i];
         let end = self.ptr[i + 1];
@@ -230,7 +229,6 @@ impl CSRGraph {
     }
 
     /// Sequential iterator over the rows
-    #[must_use]
     pub fn rows(&self) -> impl ExactSizeIterator<Item = &[usize]> {
         (0..self.n()).map(|i| self.row(i))
     }

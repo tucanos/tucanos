@@ -477,7 +477,6 @@ impl<T: Idx> DualMesh3d<T> {
         (edges, edge_normals)
     }
 
-    #[must_use]
     pub fn vols(&self) -> impl ExactSizeIterator<Item = f64> + '_ {
         <Self as PolyMesh<3>>::vols_c::<Triangle<T>>(self)
     }

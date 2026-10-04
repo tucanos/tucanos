@@ -1577,7 +1577,6 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     }
 
     /// Compute the edge ratio for all the elements in the mesh
-    #[must_use]
     fn edge_length_ratios(&self) -> impl ExactSizeIterator<Item = f64> + '_ {
         self.elems().map(move |e| {
             let mut l_min = f64::MAX;
@@ -1593,7 +1592,6 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
 
     /// Compute the ratio of inscribed radius to circumradius
     /// (normalized to be between 0 and 1) for all the elements in the mesh
-    #[must_use]
     fn elem_gammas(&self) -> impl ExactSizeIterator<Item = f64> + '_ {
         self.gelems().map(|ge| ge.gamma())
     }

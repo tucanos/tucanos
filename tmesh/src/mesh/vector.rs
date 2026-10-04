@@ -171,7 +171,6 @@ where
         self.data.len()
     }
 
-    #[must_use]
     pub fn iter(&self) -> impl ExactSizeIterator<Item = T> + Clone + '_ {
         match &self.data {
             VectorImpl::Std(x) => Iter::Std(x.iter().copied()),
@@ -182,7 +181,6 @@ where
         }
     }
 
-    #[must_use]
     pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut T> + '_ {
         match &mut self.data {
             VectorImpl::Std(x) => x.iter_mut(),
