@@ -897,7 +897,7 @@ fn try_merge_two_polygons(p0: &[usize], p1: &[usize]) -> Result<Vec<usize>> {
                     }
                 }
                 let (mut polyline, tmp) = try_merge_polylines(&[&p0, &p1]);
-                assert!(tmp.is_empty());
+                assert_eq!(tmp, [] as [&[_]; 0]);
                 let n = polyline.len();
                 assert_eq!(polyline[0], polyline[n - 1]);
                 polyline.pop().unwrap();

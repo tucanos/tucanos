@@ -156,7 +156,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Cavity<D, C, M> {
             r.vertex_elements(edg.get(1))
         );
 
-        assert!(!global_elems.is_empty());
+        assert_ne!(global_elems, [] as [usize; 0]);
         self.compute(r, &global_elems, Seed::Edge(edg));
     }
 
@@ -303,7 +303,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Cavity<D, C, M> {
             }
         }
 
-        debug_assert!(!self.faces.is_empty());
+        debug_assert_ne!(self.faces, [] as [(_, _); 0]);
     }
 
     /// Extend the cavity from a face
@@ -611,7 +611,7 @@ impl<'a, const D: usize, C: Simplex, M: Metric<D>> FilledCavity<'a, D, C, M> {
         let edg_j = Edge::new(j, k).sorted();
         assert!(r.edges.contains_key(&edg_j));
         let faces_j = r.edge_tagged_faces(vk, &edg_j);
-        assert!(!faces_j.is_empty());
+        assert_ne!(faces_j, [] as [_; 0]);
 
         let count_before = faces_j.len();
         let mut count_after = 0;
@@ -693,7 +693,7 @@ impl<'a, const D: usize, C: Simplex, M: Metric<D>> FilledCavity<'a, D, C, M> {
         let edg_j = Edge::new(j, k).sorted();
         assert!(r.edges.contains_key(&edg_j));
         let els_j = Cavity::<D, C, M>::intersection(els_k, r.vertex_elements(j));
-        assert!(!els_j.is_empty());
+        assert_ne!(els_j, [] as [usize; 0]);
 
         let count_before = els_j.len();
         let mut count_after = 0;
@@ -721,7 +721,7 @@ impl<'a, const D: usize, C: Simplex, M: Metric<D>> FilledCavity<'a, D, C, M> {
             return true;
         }
         let els_i = Cavity::<D, C, M>::intersection(r.vertex_elements(k), r.vertex_elements(i));
-        assert!(!els_i.is_empty());
+        assert_ne!(els_i, [] as [usize; 0]);
 
         // Number of cavity elements containing (i,k)
         let n_in = self
