@@ -1075,10 +1075,14 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     }
 
     /// Export the mesh to a `.meshb` file
-    #[allow(clippy::unnecessary_fallible_conversions)]
     fn write_meshb(&self, file_name: &str) -> Result<()> {
         let mut writer = MeshbWriter::new(file_name, 3, D as u8)?;
-
+        #[cfg(feature = "32bit-tags")]
+        let tag_to_i32 = |tag: Tag| -> i32 { tag };
+        #[cfg(feature = "64bit-tags")]
+        let tag_to_i32 = |tag: Tag| -> i32 { tag.try_into().unwrap() };
+        #[cfg(not(any(feature = "32bit-tags", feature = "64bit-tags")))]
+        let tag_to_i32 = |tag: Tag| -> i32 { tag.into() };
         writer.write_vertices::<D, _, _>(
             self.verts().map(|x| std::array::from_fn(|i| x[i])),
             (0..self.n_verts()).map(|_| 1),
@@ -1089,15 +1093,15 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                 match <Self::C as Simplex>::N_VERTS {
                     4 => writer.write_tetrahedra(
                         self.elems().map(|x| std::array::from_fn(|i| x.get(i))),
-                        self.etags().map(|x| x.try_into().unwrap()),
+                        self.etags().map(tag_to_i32),
                     )?,
                     3 => writer.write_triangles(
                         self.elems().map(|x| std::array::from_fn(|i| x.get(i))),
-                        self.etags().map(|x| x.try_into().unwrap()),
+                        self.etags().map(tag_to_i32),
                     )?,
                     2 => writer.write_edges(
                         self.elems().map(|x| std::array::from_fn(|i| x.get(i))),
-                        self.etags().map(|x| x.try_into().unwrap()),
+                        self.etags().map(tag_to_i32),
                     )?,
                     _ => unimplemented!(),
                 }
@@ -1105,11 +1109,11 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                 match <Self::C as Simplex>::FACE::N_VERTS {
                     3 => writer.write_triangles(
                         self.faces().map(|x| std::array::from_fn(|i| x.get(i))),
-                        self.ftags().map(|x| x.try_into().unwrap()),
+                        self.ftags().map(tag_to_i32),
                     )?,
                     2 => writer.write_edges(
                         self.faces().map(|x| std::array::from_fn(|i| x.get(i))),
-                        self.ftags().map(|x| x.try_into().unwrap()),
+                        self.ftags().map(tag_to_i32),
                     )?,
                     1 => {
                         if self.n_faces() != 0 {
@@ -1123,15 +1127,15 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                 match <Self::C as Simplex>::N_VERTS {
                     10 => writer.write_quadratic_tetrahedra(
                         self.elems().map(|x| std::array::from_fn(|i| x.get(i))),
-                        self.etags().map(|x| x.try_into().unwrap()),
+                        self.etags().map(tag_to_i32),
                     )?,
                     6 => writer.write_quadratic_triangles(
                         self.elems().map(|x| std::array::from_fn(|i| x.get(i))),
-                        self.etags().map(|x| x.try_into().unwrap()),
+                        self.etags().map(tag_to_i32),
                     )?,
                     3 => writer.write_quadratic_edges(
                         self.elems().map(|x| std::array::from_fn(|i| x.get(i))),
-                        self.etags().map(|x| x.try_into().unwrap()),
+                        self.etags().map(tag_to_i32),
                     )?,
                     _ => unimplemented!(),
                 }
@@ -1139,11 +1143,11 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                 match <Self::C as Simplex>::FACE::N_VERTS {
                     6 => writer.write_quadratic_triangles(
                         self.faces().map(|x| std::array::from_fn(|i| x.get(i))),
-                        self.ftags().map(|x| x.try_into().unwrap()),
+                        self.ftags().map(tag_to_i32),
                     )?,
                     3 => writer.write_quadratic_edges(
                         self.faces().map(|x| std::array::from_fn(|i| x.get(i))),
-                        self.ftags().map(|x| x.try_into().unwrap()),
+                        self.ftags().map(tag_to_i32),
                     )?,
                     1 => {
                         if self.n_faces() != 0 {
