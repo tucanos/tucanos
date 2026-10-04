@@ -325,7 +325,6 @@ impl<T: Idx> DualMesh2d<T> {
         (edges, edge_normals)
     }
 
-    #[must_use]
     pub fn vols(&self) -> impl ExactSizeIterator<Item = f64> + '_ {
         <Self as PolyMesh<2>>::vols_c::<Edge<T>>(self)
     }

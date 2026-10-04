@@ -608,7 +608,7 @@ impl<'a> AdativeBoundsQuadraticTriangle<'a> {
         let mut min = f64::MAX;
         let mut max = f64::MIN;
         if let Some(children) = &self.children {
-            for child in children.iter() {
+            for child in children {
                 let (cmin, cmax) = child.bounds();
                 min = min.min(cmin);
                 max = max.max(cmax);
