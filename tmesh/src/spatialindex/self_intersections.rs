@@ -56,7 +56,7 @@ pub fn find_self_intersections(msh: &BoundaryMesh3d) -> Vec<(usize, usize)> {
                 // Run the exact intersection test using nalgebra's Isometry3
                 let intersects =
                     intersection_test(&Pose3::identity(), &parry_t1, &Pose3::identity(), &parry_t2)
-                        .unwrap_or(false);
+                        .is_ok_and(|i| i.intersecting);
 
                 if intersects {
                     intersecting_pairs.push((i, j));

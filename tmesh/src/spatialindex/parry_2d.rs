@@ -47,6 +47,7 @@ impl<const D: usize, C: GSimplex<D>> PointQueryWithLocation for SimplexShape<D, 
             PointProjection {
                 is_inside,
                 point: Vector::from_slice(proj.as_slice()),
+                subshape: 0,
             },
             (),
         )
@@ -157,7 +158,7 @@ impl<const D: usize, M: Mesh<D>> PointQueryWithLocation for ObjectIndex2d<D, M> 
         point: Vector,
         solid: bool,
     ) -> (PointProjection, Self::Location) {
-        let (seg_id, (proj, loc)) = CompositeShapeRef(self)
+        let (seg_id, proj, loc) = CompositeShapeRef(self)
             .project_local_point_and_get_location(point, f64::MAX, solid)
             .unwrap();
         (proj, (seg_id, loc))
