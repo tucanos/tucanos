@@ -102,7 +102,8 @@ impl<T: Idx> Simplex for Tetrahedron<T> {
         unsafe {
             std::arch::asm!("# --- START Tetrahedron::edge ---");
         }
-        let r = Edge::from_iter(TETRA2EDGES[i].into_iter().map(|j| self.get(j)));
+        let Edge([i0, i1]) = TETRA2EDGES[i];
+        let r = Edge([self.get(i0), self.get(i1)]);
         unsafe {
             std::arch::asm!("# --- END Tetrahedron::edge ---");
         }
@@ -113,7 +114,8 @@ impl<T: Idx> Simplex for Tetrahedron<T> {
         unsafe {
             std::arch::asm!("# --- START Tetrahedron::face ---");
         }
-        let r = Self::FACE::from_iter(TETRA2FACES[i].into_iter().map(|j| self.get(j)));
+        let Triangle([i0, i1, i2]) = TETRA2FACES[i];
+        let r = Triangle([self.0[i0], self.0[i1], self.0[i2]]);
         unsafe {
             std::arch::asm!("# --- END Tetrahedron::face ---");
         }
@@ -171,7 +173,8 @@ impl<const D: usize> GSimplex<D> for GTetrahedron<D> {
         unsafe {
             std::arch::asm!("# --- START GTetrahedron::edge ---");
         }
-        let r = GEdge::from_iter(TETRA2EDGES[i].into_iter().map(|j| self[j]));
+        let Edge([i0, i1]) = TETRA2EDGES[i];
+        let r = GEdge::new(&self[i0], &self[i1]);
         unsafe {
             std::arch::asm!("# --- END GTetrahedron::edge ---");
         }
@@ -182,7 +185,8 @@ impl<const D: usize> GSimplex<D> for GTetrahedron<D> {
         unsafe {
             std::arch::asm!("# --- START GTetrahedron::face ---");
         }
-        let r = Self::FACE::from_iter(TETRA2FACES[i].into_iter().map(|j| self[j]));
+        let Triangle([i0, i1, i2]) = TETRA2FACES[i];
+        let r = GTriangle::new(&self[i0], &self[i1], &self[i2]);
         unsafe {
             std::arch::asm!("# --- END GTetrahedron::face ---");
         }
