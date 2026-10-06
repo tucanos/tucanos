@@ -7,7 +7,7 @@ use crate::Dim;
 use crate::mesh::MeshTopology;
 use crate::metric::MetricElem;
 use crate::{Error, Result, Tag, TopoTag, geometry::Geometry, mesh::Topology, metric::Metric};
-use log::{debug, info};
+use log::{Level, debug, info, log};
 use rustc_hash::FxHashMap;
 use sorted_vec::SortedVec;
 use std::{fs::File, io::Write, time::Instant};
@@ -227,7 +227,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             .zip(mesh.ftags())
             .for_each(|(f, t)| res.add_tagged_face(f, t).unwrap());
 
-        res.print_stats();
+        res.log_stats(Level::Debug);
         res.stats.push(StepStats::Init(InitStats::new(&res)));
         Ok(res)
     }
@@ -827,17 +827,17 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             }
         }
         debug!("Done in {}s", now.elapsed().as_secs_f32());
-        self.print_stats();
+        self.log_stats(Level::Debug);
         Ok(())
     }
 
     /// Print length and quality stats on the mesh / metric
-    pub fn print_stats(&self) {
+    pub fn log_stats(&self, lvl: Level) {
         let stats = Stats::new(self.lengths_iter(), &[f64::sqrt(0.5), f64::sqrt(2.0)]);
-        debug!("Length: {stats}");
+        log!(lvl, "Length: {stats}");
 
         let stats = Stats::new(self.qualities_iter(), &[0.4, 0.6, 0.8]);
-        debug!("Qualities: {stats}");
+        log!(lvl, "Qualities: {stats}");
     }
 
     /// Return the stats at each remeshing step as a json string
