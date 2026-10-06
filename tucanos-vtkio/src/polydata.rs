@@ -154,7 +154,7 @@ impl<'a> PolyDataWriter<'a> {
         );
     }
 
-    /// Adds a `CellData` field array to the dataset.
+    /// Adds a `CellData` arry to this PolyData.
     ///
     /// In VTK PolyData (`.vtp`), cell attributes for all cell types are concatenated
     /// into a single contiguous array. The values in `values` **must** be ordered
@@ -171,7 +171,7 @@ impl<'a> PolyDataWriter<'a> {
     ///
     /// # Arguments
     ///
-    /// * `label` - Name of the field array
+    /// * `label` - Name of the array
     /// * `num_components` - Number of components per cell (e.g., `1` for scalar, `3` for 3D vector).
     /// * `values` - Iterator yielding scalar values for all cells combined.
     pub fn add_cell_data<T, IT>(&mut self, label: &str, num_components: usize, values: IT)
@@ -185,6 +185,21 @@ impl<'a> PolyDataWriter<'a> {
             .entry("CellData")
             .or_default()
             .push(DataArray::new(label, num_components, num_cells, values));
+    }
+
+    /// Adds a `PointData` array to this PolyData.
+    ///
+    /// # Arguments
+    /// * `label` - Name of the array
+    /// * `num_components` - Number of scalar components per point.
+    /// * `values` - Iterator yielding scalar values for all points.
+    pub fn add_point_data<T, IT>(&mut self, label: &str, num_components: usize, values: IT)
+    where
+        T: Scalar + 'a,
+        IT: IntoIterator<Item = T> + 'a,
+    {
+        let d = DataArray::new(label, num_components, self.0.file_type.points, values);
+        self.0.sections.entry("PointData").or_default().push(d);
     }
 
     const fn num_cells(&self) -> usize {
