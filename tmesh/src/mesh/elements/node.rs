@@ -75,11 +75,13 @@ impl<T: Idx> Simplex for Node<T> {
     }
 
     fn edge(&self, i: usize) -> Edge<usize> {
-        Edge::from_iter(NODE2EDGES[i].into_iter().map(|j| self.get(j)))
+        let Edge([i0, i1]) = NODE2EDGES[i];
+        Edge([self.get(i0), self.get(i1)])
     }
 
     fn face(&self, i: usize) -> Self::FACE {
-        Self::FACE::from_iter(NODE2FACES[i].into_iter().map(|j| self.get(j)))
+        let Node([i0]) = NODE2FACES[i];
+        Self([self.0[i0]])
     }
 
     fn set(&mut self, i: usize, v: usize) {
@@ -121,11 +123,13 @@ impl<const D: usize> GSimplex<D> for GNode<D> {
     }
 
     fn edge(&self, i: usize) -> GEdge<D> {
-        GEdge::from_iter(NODE2EDGES[i].into_iter().map(|j| self[j]))
+        let Edge([i0, i1]) = NODE2EDGES[i];
+        GEdge::new(&self[i0], &self[i1])
     }
 
     fn face(&self, i: usize) -> Self::FACE {
-        Self::FACE::from_iter(NODE2FACES[i].into_iter().map(|j| self[j]))
+        let Node([i0]) = NODE2FACES[i];
+        Self::new(&self[i0])
     }
 
     fn set(&mut self, i: usize, v: Vertex<D>) {

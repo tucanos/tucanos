@@ -92,11 +92,13 @@ impl<T: Idx> Simplex for Triangle<T> {
     }
 
     fn edge(&self, i: usize) -> Edge<usize> {
-        Edge::from_iter(TRIANGLE2EDGES[i].into_iter().map(|j| self.get(j)))
+        let Edge([i0, i1]) = TRIANGLE2EDGES[i];
+        Edge([self.get(i0), self.get(i1)])
     }
 
     fn face(&self, i: usize) -> Self::FACE {
-        Self::FACE::from_iter(TRIANGLE2FACES[i].into_iter().map(|j| self.get(j)))
+        let Edge([i0, i1]) = TRIANGLE2FACES[i];
+        Edge([self.0[i0], self.0[i1]])
     }
 
     fn set(&mut self, i: usize, v: usize) {
@@ -143,11 +145,13 @@ impl<const D: usize> GSimplex<D> for GTriangle<D> {
     }
 
     fn edge(&self, i: usize) -> GEdge<D> {
-        GEdge::from_iter(TRIANGLE2EDGES[i].into_iter().map(|j| self[j]))
+        let Edge([i0, i1]) = TRIANGLE2EDGES[i];
+        GEdge::new(&self[i0], &self[i1])
     }
 
     fn face(&self, i: usize) -> Self::FACE {
-        Self::FACE::from_iter(TRIANGLE2FACES[i].into_iter().map(|j| self[j]))
+        let Edge([i0, i1]) = TRIANGLE2FACES[i];
+        GEdge::new(&self[i0], &self[i1])
     }
 
     fn set(&mut self, i: usize, v: Vertex<D>) {
