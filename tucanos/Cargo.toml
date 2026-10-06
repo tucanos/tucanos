@@ -24,6 +24,7 @@ libm.workspace = true
 metis = ["tmesh/metis"]
 coupe = ["tmesh/coupe"]
 argmin = ["tmesh/argmin"]
+fast-math-approx = []
 
 trace_edges = []
 

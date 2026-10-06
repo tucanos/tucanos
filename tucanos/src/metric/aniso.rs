@@ -1,6 +1,6 @@
 use crate::Result;
 use crate::metric::{
-    IsoMetric, Metric,
+    IsoMetric, Metric, fast_math,
     reduction::{control_step, simultaneous_reduction, step},
 };
 use crate::{S_MAX, S_MIN, S_RATIO_MAX};
@@ -171,13 +171,15 @@ where
             let mut eig = m.as_mat().symmetric_eigen();
             eig.eigenvalues
                 .iter_mut()
-                .for_each(|i| *i = w * libm::log((*i).max(S_MIN)));
+                .for_each(|i| *i = w * fast_math::fast_ln((*i).max(S_MIN)));
             assert!(eig.eigenvalues.iter().all(|&x| f64::is_finite(x)));
             mat += eig.recompose();
         }
 
         let mut eig = mat.symmetric_eigen();
-        eig.eigenvalues.iter_mut().for_each(|i| *i = libm::exp(*i));
+        eig.eigenvalues
+            .iter_mut()
+            .for_each(|i| *i = fast_math::fast_exp(*i));
         Self::bound_eigenvalues(&mut eig.eigenvalues);
         assert!(
             eig.eigenvalues.iter().all(|&x| f64::is_finite(x)),
@@ -250,10 +252,11 @@ where
         let nrm = e.norm();
         let mat = self.as_mat();
         let mut eig = mat.symmetric_eigen();
-        let eta_0 = 1. + self.length(e) * libm::log(beta);
+        let log_beta = fast_math::fast_ln(beta);
+        let eta_0 = 1. + self.length(e) * log_beta;
         let eta_0 = libm::pow(eta_0, 1.0 - t);
         eig.eigenvalues.iter_mut().for_each(|s| {
-            let eta_1 = 1.0 + libm::sqrt(*s) * nrm * libm::log(beta);
+            let eta_1 = 1.0 + libm::sqrt(*s) * nrm * log_beta;
             let eta_1 = libm::pow(eta_1, t);
             let eta = eta_0 * eta_1;
             *s /= eta * eta;
