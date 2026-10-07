@@ -99,11 +99,25 @@ impl<T: Idx> Simplex for Tetrahedron<T> {
     }
 
     fn edge(&self, i: usize) -> Edge<usize> {
-        Edge::from_iter(TETRA2EDGES[i].into_iter().map(|j| self.get(j)))
+        unsafe {
+            std::arch::asm!("# --- START Tetrahedron::edge ---");
+        }
+        let r = Edge::from_iter(TETRA2EDGES[i].into_iter().map(|j| self.get(j)));
+        unsafe {
+            std::arch::asm!("# --- END Tetrahedron::edge ---");
+        }
+        r
     }
 
     fn face(&self, i: usize) -> Self::FACE {
-        Self::FACE::from_iter(TETRA2FACES[i].into_iter().map(|j| self.get(j)))
+        unsafe {
+            std::arch::asm!("# --- START Tetrahedron::face ---");
+        }
+        let r = Self::FACE::from_iter(TETRA2FACES[i].into_iter().map(|j| self.get(j)));
+        unsafe {
+            std::arch::asm!("# --- END Tetrahedron::face ---");
+        }
+        r
     }
 
     fn set(&mut self, i: usize, v: usize) {
@@ -154,11 +168,25 @@ impl<const D: usize> GSimplex<D> for GTetrahedron<D> {
     }
 
     fn edge(&self, i: usize) -> GEdge<D> {
-        GEdge::from_iter(TETRA2EDGES[i].into_iter().map(|j| self[j]))
+        unsafe {
+            std::arch::asm!("# --- START GTetrahedron::edge ---");
+        }
+        let r = GEdge::from_iter(TETRA2EDGES[i].into_iter().map(|j| self[j]));
+        unsafe {
+            std::arch::asm!("# --- END GTetrahedron::edge ---");
+        }
+        r
     }
 
     fn face(&self, i: usize) -> Self::FACE {
-        Self::FACE::from_iter(TETRA2FACES[i].into_iter().map(|j| self[j]))
+        unsafe {
+            std::arch::asm!("# --- START GTetrahedron::face ---");
+        }
+        let r = Self::FACE::from_iter(TETRA2FACES[i].into_iter().map(|j| self[j]));
+        unsafe {
+            std::arch::asm!("# --- END GTetrahedron::face ---");
+        }
+        r
     }
 
     fn set(&mut self, i: usize, v: Vertex<D>) {

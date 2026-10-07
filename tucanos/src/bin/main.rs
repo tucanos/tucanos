@@ -16,7 +16,7 @@ fn main() -> Result<()> {
 
     // Load the mesh
     let mut msh =
-        Mesh3d::from_meshb("../M6/adapt_fv/adapt_125k_Ma0/stages/31/solution/adapt_in.meshb")?;
+        Mesh3d::from_meshb("../solution/adapt_in.meshb")?;
     msh.check(&msh.all_faces())?;
 
     let (bdy, ifc) = msh.fix()?;
@@ -25,7 +25,7 @@ fn main() -> Result<()> {
 
     // Load the solution
     let (metric, n_comp) =
-        Mesh3d::read_solb("../M6/adapt_fv/adapt_125k_Ma0/stages/31/solution/adapt_in_m.solb")?;
+        Mesh3d::read_solb("../solution/adapt_in_m.solb")?;
     assert_eq!(n_comp, 6);
     let metric = metric
         .chunks(6)
