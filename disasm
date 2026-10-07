@@ -1,0 +1,8 @@
+#! /bin/sh
+export cargo_cli="cargo asm --rust --this-workspace -p tucanos --bin main --simplify"
+$cargo_cli > disasm_func.txt
+
+awk '{print $1}' disasm_func.txt | xargs -P $(nproc) -n 1 sh -c '
+    echo "=== Disassembling Index: $1 ==="
+    $cargo_cli "$1" > "$1.asm"
+' _
