@@ -274,10 +274,11 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                 vert.m = h0_new;
             }
 
-            for (i_local, i_global) in cavity.global_elem_ids.iter().enumerate() {
-                // update the quality
-                let ge = cavity.gelem(i_local); // todo: precompute all ge
-                self.elems.get_mut(i_global).unwrap().q = ge.quality();
+            // update the quality; the cavity still holds the old vertex location
+            // and metric, so the elements are rebuilt from the updated vertices
+            for i_global in &cavity.global_elem_ids {
+                let q = self.gelem(&self.elems[i_global].el).quality();
+                self.elems.get_mut(i_global).unwrap().q = q;
             }
             n_smooth += 1;
         }
@@ -312,6 +313,45 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             self.check()?;
         }
 
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        Result,
+        geometry::NoGeometry,
+        mesh::{MeshTopology, test_meshes::test_mesh_2d},
+        metric::IsoMetric,
+        remesher::{Remesher, SmoothParams},
+    };
+    use tmesh::mesh::Mesh;
+
+    #[test]
+    fn test_smooth_updates_cached_quality() -> Result<()> {
+        let mut mesh = test_mesh_2d().split().split().split();
+        mesh.fix()?;
+
+        // perturb the interior vertices so that smoothing moves them
+        let flg = mesh.boundary_flag();
+        for (k, (v, f)) in mesh.verts_mut().zip(flg).enumerate() {
+            if !f {
+                v[0] += 0.015 * ((k * 7 % 5) as f64 - 2.0);
+                v[1] += 0.015 * ((k * 3 % 5) as f64 - 2.0);
+            }
+        }
+
+        let h = vec![IsoMetric::<2>::from(0.125); mesh.n_verts()];
+        let topo = MeshTopology::new(&mesh);
+        let geom = NoGeometry();
+        let mut remesher = Remesher::new(&mesh, &topo, &h, &geom)?;
+        remesher.smooth(&SmoothParams::default(), &geom, false)?;
+
+        for e in remesher.elems.values() {
+            let q = remesher.gelem(&e.el).quality();
+            assert!((q - e.q).abs() < 1e-12, "cached quality {} != {q}", e.q);
+        }
         Ok(())
     }
 }
