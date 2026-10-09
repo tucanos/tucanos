@@ -141,6 +141,20 @@ pub enum GradientMethod {
     L2Projection,
 }
 
+/// Convert the elements and tags read from a `.meshb` file, checking that the tags
+/// fit in `Tag`
+#[allow(clippy::useless_conversion)]
+fn meshb_elems<E: Simplex, const N: usize>(
+    iter: impl ExactSizeIterator<Item = ([usize; N], i32)>,
+) -> Result<Vec<(E, Tag)>> {
+    iter.map(|(e, t)| {
+        let tag = Tag::try_from(t)
+            .map_err(|_| Error::from(&format!("Tag {t} is too large for the tag type")))?;
+        Ok((E::from_iter(e), tag))
+    })
+    .collect()
+}
+
 pub type FixedTags = (FxHashMap<Tag, Tag>, FxHashMap<Tag, twovec::Vec<Tag>>);
 pub type FaceConnectivity<S> = FxHashMap<S, (usize, twovec::Vec<usize>)>;
 /// D-dimensional simplex mesh
@@ -343,11 +357,10 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     /// Computes the connectivity graph of the mesh faces.
     ///
     /// Returns a map where the keys are the sorted faces, and the values are a tuple:
-    /// `(face_index, element_out, element_in)`.
+    /// `(face_index, elements)`.
     ///
     /// * `face_index`: A unique, sequential index for the face.
-    /// * `element_out`: The index of the element where the face orientation matches the canonical sort.
-    /// * `element_in`: The index of the element where the face orientation is flipped.
+    /// * `elements`: The indices of the elements containing the face.
     fn all_faces(&self) -> FaceConnectivity<<Self::C as Simplex>::FACE> {
         let approx_n_faces = self.n_elems() + self.n_verts();
         let mut res: FaceConnectivity<<Self::C as Simplex>::FACE> =
@@ -1004,28 +1017,23 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                 .map(|(x, _)| Vertex::<D>::from_column_slice(&x)),
         );
 
+        // Missing sections are allowed (e.g. a mesh without faces)
         match <Self::C as Simplex>::order() {
             1 => {
                 match <Self::C as Simplex>::N_VERTS {
                     4 => {
                         if let Ok(iter) = reader.read_tetrahedra() {
-                            res.add_elems_and_tags(
-                                iter.map(|(e, t)| (<Self::C as Simplex>::from_iter(e), t as Tag)),
-                            );
+                            res.add_elems_and_tags(meshb_elems(iter)?.into_iter());
                         }
                     }
                     3 => {
                         if let Ok(iter) = reader.read_triangles() {
-                            res.add_elems_and_tags(
-                                iter.map(|(e, t)| (<Self::C as Simplex>::from_iter(e), t as Tag)),
-                            );
+                            res.add_elems_and_tags(meshb_elems(iter)?.into_iter());
                         }
                     }
                     2 => {
                         if let Ok(iter) = reader.read_edges() {
-                            res.add_elems_and_tags(
-                                iter.map(|(e, t)| (<Self::C as Simplex>::from_iter(e), t as Tag)),
-                            );
+                            res.add_elems_and_tags(meshb_elems(iter)?.into_iter());
                         }
                     }
                     _ => unimplemented!(),
@@ -1034,16 +1042,12 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                 match <Self::C as Simplex>::FACE::N_VERTS {
                     3 => {
                         if let Ok(iter) = reader.read_triangles() {
-                            res.add_faces_and_tags(iter.map(|(e, t)| {
-                                (<Self::C as Simplex>::FACE::from_iter(e), t as Tag)
-                            }));
+                            res.add_faces_and_tags(meshb_elems(iter)?.into_iter());
                         }
                     }
                     2 => {
                         if let Ok(iter) = reader.read_edges() {
-                            res.add_faces_and_tags(iter.map(|(e, t)| {
-                                (<Self::C as Simplex>::FACE::from_iter(e), t as Tag)
-                            }));
+                            res.add_faces_and_tags(meshb_elems(iter)?.into_iter());
                         }
                     }
                     1 => warn!("not reading faces when elements are edges"),
@@ -1052,29 +1056,33 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
             }
             2 => {
                 match <Self::C as Simplex>::N_VERTS {
+                    10 => {
+                        if let Ok(iter) = reader.read_quadratic_tetrahedra() {
+                            res.add_elems_and_tags(meshb_elems(iter)?.into_iter());
+                        }
+                    }
                     6 => {
                         if let Ok(iter) = reader.read_quadratic_triangles() {
-                            res.add_elems_and_tags(
-                                iter.map(|(e, t)| (<Self::C as Simplex>::from_iter(e), t as Tag)),
-                            );
+                            res.add_elems_and_tags(meshb_elems(iter)?.into_iter());
                         }
                     }
                     3 => {
                         if let Ok(iter) = reader.read_quadratic_edges() {
-                            res.add_elems_and_tags(
-                                iter.map(|(e, t)| (<Self::C as Simplex>::from_iter(e), t as Tag)),
-                            );
+                            res.add_elems_and_tags(meshb_elems(iter)?.into_iter());
                         }
                     }
                     _ => unimplemented!(),
                 }
 
                 match <Self::C as Simplex>::FACE::N_VERTS {
+                    6 => {
+                        if let Ok(iter) = reader.read_quadratic_triangles() {
+                            res.add_faces_and_tags(meshb_elems(iter)?.into_iter());
+                        }
+                    }
                     3 => {
                         if let Ok(iter) = reader.read_quadratic_edges() {
-                            res.add_faces_and_tags(iter.map(|(e, t)| {
-                                (<Self::C as Simplex>::FACE::from_iter(e), t as Tag)
-                            }));
+                            res.add_faces_and_tags(meshb_elems(iter)?.into_iter());
                         }
                     }
                     1 => warn!("not reading faces when elements are edges"),

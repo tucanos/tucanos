@@ -487,6 +487,42 @@ mod tests {
     }
 
     #[test]
+    fn test_meshb_quadratic() {
+        let msh: QuadraticMesh3d = quadratic_ball_mesh(1.0, 1);
+        assert!(msh.n_faces() > 0);
+        let fname = "qball3d.meshb";
+        msh.write_meshb(fname).unwrap();
+        let new_msh = QuadraticMesh3d::from_meshb(fname).unwrap();
+        std::fs::remove_file(fname).unwrap();
+
+        msh.check_equals(&new_msh, 1e-12).unwrap();
+    }
+
+    #[test]
+    fn test_meshb_large_tag() {
+        let fname = "large_tag.meshb";
+        let mut writer = minimeshb::writer::MeshbWriter::new(fname, 3, 3).unwrap();
+        writer
+            .write_vertices::<3, _, _>(
+                [[0., 0., 0.], [1., 0., 0.], [0., 1., 0.], [0., 0., 1.]].into_iter(),
+                [1; 4].into_iter(),
+            )
+            .unwrap();
+        writer
+            .write_tetrahedra(std::iter::once([0, 1, 2, 3]), std::iter::once(i32::MAX))
+            .unwrap();
+        writer.close();
+
+        let res = Mesh3d::from_meshb(fname);
+        std::fs::remove_file(fname).unwrap();
+        if Tag::try_from(i32::MAX).is_ok() {
+            assert_eq!(res.unwrap().etag(0), Tag::try_from(i32::MAX).unwrap());
+        } else {
+            assert!(res.is_err());
+        }
+    }
+
+    #[test]
     fn test_rcm() {
         let msh = box_mesh::<Mesh3d>(1.0, 20, 1.0, 20, 1.0, 20).random_shuffle();
         let avg_bandwidth = bandwidth(msh.elems()).1;
