@@ -26,6 +26,12 @@ pub trait Metric<const D: usize>:
     fn length_sqr(&self, e: &Vertex<D>) -> f64;
     /// Compute the length of an edge in metric space
     fn length(&self, e: &Vertex<D>) -> f64;
+    /// Compute the length of a vector `n` using the inverse metric, i.e.
+    /// ```math
+    /// \sqrt{n^T \mathcal M^{-1} n}
+    /// ```
+    /// For a unit normal `n`, this is the size prescribed by the metric in direction `n`
+    fn dual_length(&self, n: &Vertex<D>) -> f64;
     /// Compute the volume associated with the metric
     fn vol(&self) -> f64;
     /// Interpolate between different metrics to return a valid metric
@@ -113,7 +119,8 @@ pub trait Metric<const D: usize>:
     /// where
     ///  - $`|K|_{\mathcal M}`$ is the volume element in metric space. It is computed
     ///    on a discrete mesh as the ratio of the volume in physical space to the minimum
-    ///    of the volumes of the metrics at each vertex
+    ///    of the volumes of the metrics at each vertex. For elements with a normal $`n`$
+    ///    (codimension 1), it is multiplied by $`\sqrt{n^T \mathcal M^{-1} n}`$
     ///  - the sum on the denominator is performed over all the edges of the element
     ///  - $`\beta_d`$ is a normalization factor such that $`q = 1`$ of equilateral elements
     ///     - $`\beta_2 = 1 / (6\sqrt{2}) `$
@@ -134,8 +141,9 @@ pub trait Metric<const D: usize>:
         let l = l / G::TOPO::N_EDGES as f64;
 
         let fac = if G::has_normal() {
+            // |K|_M = |K| sqrt(det(M)) sqrt(n^T M^-1 n)
             let n = ge.normal(None).normalize();
-            m.length(&n)
+            1.0 / m.dual_length(&n)
         } else {
             assert_eq!(D, G::TOPO::DIM);
             1.0

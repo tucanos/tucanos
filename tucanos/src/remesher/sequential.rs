@@ -2396,14 +2396,21 @@ mod tests {
 
         let mut remesher = Remesher::new(&mesh, &topo, &m, &geom)?;
 
-        let params = RemesherParams::new(20.0, 12);
+        let mut params = RemesherParams::new(20.0, 12);
+        // splitting edges across the thin direction of the metric creates
+        // elements with a lower quality: relax the absolute threshold
+        for step in &mut params.steps {
+            if let RemeshingStep::Split(p) = step {
+                p.min_q_abs = 0.2;
+            }
+        }
 
         remesher.remesh(&params, &geom)?;
         remesher.check()?;
 
         let (mini, maxi, _) = remesher.check_edge_lengths_analytical(m_func);
-        assert_delta!(mini, 0.47, 0.01);
-        assert_delta!(maxi, 1.83, 0.01);
+        assert_delta!(mini, 0.58, 0.01);
+        assert_delta!(maxi, 1.71, 0.01);
 
         let _mesh = remesher.to_mesh(true);
         // mesh.write_vtk("sphere_surf_aniso.vtu")?;
