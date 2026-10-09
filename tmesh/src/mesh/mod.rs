@@ -1354,7 +1354,8 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         (res, vert_ids)
     }
 
-    /// Build a `Mesh<D>` mesh containing the boundary faces
+    /// Build a `Mesh<D>` mesh containing all the faces stored in the mesh (including
+    /// internal faces, if any). Use `extract_faces` to select the faces by tag.
     /// The returned mesh element type is `C::FACE`.
     fn boundary<M: Mesh<D, C = <Self::C as Simplex>::FACE>>(&self) -> (M, Vec<usize>) {
         self.extract_faces(|_| true)
