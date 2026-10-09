@@ -172,8 +172,8 @@ impl SplitStats {
 
 #[derive(Serialize, Clone)]
 pub struct SwapStats {
-    n_swaps: usize,
-    n_fails: usize,
+    pub(super) n_swaps: usize,
+    pub(super) n_fails: usize,
     r_stats: RemesherStats,
 }
 

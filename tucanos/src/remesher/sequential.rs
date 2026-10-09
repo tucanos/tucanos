@@ -1114,6 +1114,7 @@ mod tests {
             collapse::CollapseParams,
             sequential::{RemeshingStep, SmoothParams, SplitParams, SwapParams},
             smooth::SmoothingMethod,
+            stats::StepStats,
         },
     };
     use std::f64::consts::PI;
@@ -1283,6 +1284,48 @@ mod tests {
         remesher.check()?;
 
         let _mesh = remesher.to_mesh(true);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_swap_ordered_ignores_q() -> Result<()> {
+        // the quality of both elements is > 0.8 (default value of SwapParams::q),
+        // but swapping the diagonal still improves the min. quality by ~5.5%
+        let coords = vec![
+            Vert2d::new(0., 0.),
+            Vert2d::new(1., 0.),
+            Vert2d::new(1.1, 1.1),
+            Vert2d::new(0., 1.),
+        ];
+        let elems = vec![Triangle::<usize>::new(0, 1, 2), Triangle::new(0, 2, 3)];
+        let faces = vec![
+            Edge::new(0, 1),
+            Edge::new(1, 2),
+            Edge::new(2, 3),
+            Edge::new(3, 0),
+        ];
+        let mesh = GenericMesh::from_vecs(coords, elems, vec![1, 1], faces, vec![1, 2, 3, 4]);
+
+        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts()];
+        let geom = NoGeometry();
+        let topo = MeshTopology::new(&mesh);
+        let mut remesher = Remesher::new(&mesh, &topo, &h, &geom)?;
+        let q_min = remesher.qualities_iter().fold(f64::MAX, f64::min);
+        assert!(q_min > 0.8);
+
+        let params = SwapParams {
+            ordered: true,
+            ..Default::default()
+        };
+        remesher.swap(&params, &geom, true)?;
+        let q_min_new = remesher.qualities_iter().fold(f64::MAX, f64::min);
+        assert!(q_min_new > 1.05 * q_min);
+
+        let Some(StepStats::Swap(stats)) = remesher.stats.last() else {
+            unreachable!()
+        };
+        assert_eq!(stats.n_swaps, 1);
 
         Ok(())
     }

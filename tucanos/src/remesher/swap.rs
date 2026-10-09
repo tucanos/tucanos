@@ -95,7 +95,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
     ///
     /// A vertex is selected if swapping to it improves element quality and satisfies
     /// geometric constraints. Specifically:
-    /// * The current cavity quality must be below `params.q`.
+    /// * The current cavity quality must be below `params.q` (unless `params.ordered`).
     /// * The new edge length must be within [`l_min`, `l_max`].
     /// * Topology and boundary constraints must be respected.
     fn find_swap_vertex<G: Geometry<D>>(
@@ -121,7 +121,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             return TrySwapResult::BoundaryElement;
         }
 
-        if cavity.q_min > params.q {
+        if !params.ordered && cavity.q_min > params.q {
             trace_if!(
                 dbg,
                 "No need to swap, quality sufficient ({:.2})",
@@ -407,7 +407,6 @@ mod ordered {
                     None
                 }
                 TrySwapResult::CouldSwap(vertex, quality_after) => {
-                    self.num_swaps += 1;
                     Some((quality_after / quality_before, vertex))
                 }
                 _ => None,
@@ -433,6 +432,7 @@ mod ordered {
                 }
                 self.cavity.init_from_edge(edge, remesher);
                 remesher.perform_swap(&self.cavity, vertex, &edge)?;
+                self.num_swaps += 1;
                 self.collect_cavity_edges();
                 let cavity_edges = std::mem::take(&mut self.cavity_edges);
                 for &edge in &cavity_edges {
