@@ -80,6 +80,7 @@ where
 
     fn from_diagonal(s: &[f64]) -> Self;
 
+    /// Multiply the metric matrix by `s`
     fn scale_aniso(&mut self, s: f64);
 }
 
@@ -288,7 +289,8 @@ where
     }
 
     fn scale(&mut self, s: f64) {
-        self.scale_aniso(s);
+        // h <- s * h, i.e. M <- M / s^2
+        self.scale_aniso(1.0 / (s * s));
     }
 }
 
@@ -619,9 +621,32 @@ impl Index<usize> for AnisoMetric3d {
 #[cfg(test)]
 mod tests {
     use super::{AnisoMetric, AnisoMetric2d, AnisoMetric3d, Metric};
-    use crate::{Result, S_RATIO_MAX};
+    use crate::{Result, S_RATIO_MAX, metric::IsoMetric};
     use nalgebra::SMatrix;
     use tmesh::{Vert2d, Vert3d};
+
+    #[test]
+    fn test_scale_consistent_with_iso() {
+        // scaling the sizes by s gives the same result for isotropic and anisotropic metrics
+        let s = 0.5;
+        let mut iso = IsoMetric::<2>::from(0.1);
+        iso.scale(s);
+        let mut aniso = AnisoMetric2d::from_iso(&IsoMetric::<2>::from(0.1));
+        aniso.scale(s);
+        for h in aniso.sizes() {
+            assert!(f64::abs(h - iso.h()) < 1e-12, "{h} vs {}", iso.h());
+        }
+        assert!(f64::abs(aniso.vol() / iso.vol() - 1.0) < 1e-12);
+
+        let mut iso = IsoMetric::<3>::from(0.1);
+        iso.scale(s);
+        let mut aniso = AnisoMetric3d::from_iso(&IsoMetric::<3>::from(0.1));
+        aniso.scale(s);
+        for h in aniso.sizes() {
+            assert!(f64::abs(h - iso.h()) < 1e-12, "{h} vs {}", iso.h());
+        }
+        assert!(f64::abs(aniso.vol() / iso.vol() - 1.0) < 1e-12);
+    }
 
     #[test]
     fn test_differs_from_negative_coefficient() {
