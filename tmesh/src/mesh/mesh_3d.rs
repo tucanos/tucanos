@@ -773,7 +773,7 @@ mod tests {
                 (r0 - 0.25) * (r1 - 0.25)
             })
             .collect::<Vec<f64>>();
-        let (res, split_edgs): (Mesh3d, _) = msh.split_isosurface(&f);
+        let (res, split_edgs): (Mesh3d, _) = msh.split_isosurface(&f).unwrap();
 
         res.check(&res.all_faces()).unwrap();
 

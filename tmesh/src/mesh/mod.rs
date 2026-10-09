@@ -1896,10 +1896,12 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     /// Split the mesh along the 0.0 isosurface of a field defined on the edges
     /// The input mesh should have element tag 1, and >0 face tags
     /// The output mesh will have tag 1 in the >0 region, -1 in the <0 region. Interface faces will be tagged with Tag::MAX
+    /// The exact zeros of `f` are replaced by a small positive value, relative to max(|f|).
+    /// An error is returned if `f` contains non finite values or is identically zero.
     fn split_isosurface<M: Mesh<D, C = Self::C>>(
         &self,
         f: &[f64],
-    ) -> (M, SplitEdgeData<<Self::C as Simplex>::T>) {
+    ) -> Result<(M, SplitEdgeData<<Self::C as Simplex>::T>)> {
         iso::split_isosurface(self, f)
     }
 }

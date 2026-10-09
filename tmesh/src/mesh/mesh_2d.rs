@@ -596,6 +596,31 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::float_cmp)]
+    fn test_isosurface_scale() {
+        // f has exact zeros on x = 0.5
+        let msh: Mesh2d = rectangle_mesh::<Mesh2d>(1.0, 3, 1.0, 3);
+        assert!(msh.verts().any(|p| p[0] == 0.5));
+        for scale in [1.0, 1e-14] {
+            let f = msh
+                .verts()
+                .map(|p| scale * (p[0] - 0.5))
+                .collect::<Vec<_>>();
+            let (res, _): (Mesh2d, _) = msh.split_isosurface(&f).unwrap();
+            let msh_pos = SubMesh::new(&res, |t| t == 1).mesh;
+            assert_delta!(msh_pos.vol(), 0.5, 1e-10);
+        }
+
+        let mut f = msh.verts().map(|p| p[0] - 0.5).collect::<Vec<_>>();
+        f[0] = f64::NAN;
+        assert!(msh.split_isosurface::<Mesh2d>(&f).is_err());
+        assert!(
+            msh.split_isosurface::<Mesh2d>(&vec![0.0; msh.n_verts()])
+                .is_err()
+        );
+    }
+
+    #[test]
     fn test_isosurface() {
         let msh: Mesh2d = rectangle_mesh::<Mesh2d>(1.0, 20, 1.0, 20).random_shuffle();
         let f = msh
@@ -606,7 +631,7 @@ mod tests {
                 (r0 - 0.25) * (r1 - 0.25)
             })
             .collect::<Vec<f64>>();
-        let (res, _): (Mesh2d, _) = msh.split_isosurface(&f);
+        let (res, _): (Mesh2d, _) = msh.split_isosurface(&f).unwrap();
 
         res.check(&res.all_faces()).unwrap();
 
