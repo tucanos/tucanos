@@ -4,7 +4,7 @@
 #![allow(clippy::missing_safety_doc)]
 #![allow(clippy::doc_markdown)]
 use log::warn;
-use tmesh::mesh::{GenericMesh, Mesh, Simplex, Tetrahedron, Triangle};
+use tmesh::mesh::{GenericMesh, Mesh, Simplex, Tetrahedron, Triangle, Vector};
 use tucanos::{
     geometry::MeshedGeometry,
     mesh::MeshTopology,
@@ -54,6 +54,7 @@ pub type tucanos_int_t = usize;
 ///
 /// @param mesh The mesh for which the geometry is to be created
 /// @param boundary A mesh representing the boundary faces of `mesh`. This function consume and free the boundary.
+/// @return The geometry, or NULL if the boundary is invalid
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tucanos_geom3d_new(
     mesh: *mut tucanos_mesh33_t,
@@ -62,7 +63,10 @@ pub unsafe extern "C" fn tucanos_geom3d_new(
     unsafe {
         let mesh = &mut (*mesh).implem;
         let mut boundary = Box::from_raw(boundary).implem;
-        boundary.fix().unwrap();
+        if let Err(e) = boundary.fix() {
+            warn!("Invalid boundary: {e}");
+            return std::ptr::null_mut();
+        }
         let topo = MeshTopology::new(mesh);
         MeshedGeometry::new(&boundary).map_or(std::ptr::null_mut(), |mut implem| {
             implem.set_topo_map(topo.topo());
@@ -203,8 +207,13 @@ pub unsafe extern "C" fn tucanos_remesher3daniso_tomesh(
 /// The numbering convention of the elements is the one Of VTK or CGNS:
 /// - <https://docs.vtk.org/en/latest/design_documents/VTKFileFormats.html>
 /// - <https://cgns.github.io/standard/SIDS/convention.html>
+///
+/// # Safety
+///
+/// The arrays are not copied: they must be valid for the given sizes and must not
+/// be modified or freed while the mesh, or any object created from it, is in use.
 #[unsafe(no_mangle)]
-pub extern "C" fn tucanos_mesh33_new(
+pub unsafe extern "C" fn tucanos_mesh33_new(
     num_verts: usize,
     verts: *const f64,
     num_elements: usize,
@@ -214,13 +223,15 @@ pub extern "C" fn tucanos_mesh33_new(
     faces: *const tucanos_int_t,
     ftags: *const tucanos_tag_t,
 ) -> *mut tucanos_mesh33_t {
-    let implem = GenericMesh::new(
-        (verts, num_verts).into(),
-        (elems, num_elements).into(),
-        (tags, num_elements).into(),
-        (faces, num_faces).into(),
-        (ftags, num_faces).into(),
-    );
+    let implem = unsafe {
+        GenericMesh::new(
+            Vector::from_raw_parts(verts, num_verts),
+            Vector::from_raw_parts(elems, num_elements),
+            Vector::from_raw_parts(tags, num_elements),
+            Vector::from_raw_parts(faces, num_faces),
+            Vector::from_raw_parts(ftags, num_faces),
+        )
+    };
     Box::into_raw(Box::new(tucanos_mesh33_t { implem }))
 }
 
@@ -242,8 +253,12 @@ pub unsafe extern "C" fn tucanos_mesh33_verts(
     last: usize,
 ) {
     unsafe {
-        let out = std::slice::from_raw_parts_mut(out, 3 * (last - first));
         let m = &((*m).implem);
+        assert!(
+            first <= last && last <= m.n_verts(),
+            "invalid vertex range {first}..{last}"
+        );
+        let out = std::slice::from_raw_parts_mut(out, 3 * (last - first));
         let mut k = 0;
         for i in first..last {
             out[k..k + 3].copy_from_slice(m.vert(i).as_slice());
@@ -262,6 +277,10 @@ pub unsafe extern "C" fn tucanos_mesh33_elems(
 ) {
     unsafe {
         let m = &((*m).implem);
+        assert!(
+            first <= last && last <= m.n_elems(),
+            "invalid element range {first}..{last}"
+        );
         let slice_size = (last - first) * Tetrahedron::<Idx>::N_VERTS;
         let out = std::slice::from_raw_parts_mut(out, slice_size);
         let mut k = 0;

@@ -1,6 +1,6 @@
 use crate::{Idx, new_metric, tucanos_int_t, tucanos_tag_t};
 use log::warn;
-use tmesh::mesh::{Edge, GenericMesh, Mesh, Simplex, Triangle};
+use tmesh::mesh::{Edge, GenericMesh, Mesh, Simplex, Triangle, Vector};
 use tucanos::{
     geometry::MeshedGeometry,
     mesh::MeshTopology,
@@ -162,13 +162,18 @@ pub unsafe extern "C" fn tucanos_remesher2daniso_tomesh(
     }
 }
 
-/// Create a new 2D mesh containing tetrahedrons
+/// Create a new 2D mesh containing triangles
 ///
 /// The numbering convention of the elements is the one Of VTK or CGNS:
 /// - <https://docs.vtk.org/en/latest/design_documents/VTKFileFormats.html>
 /// - <https://cgns.github.io/standard/SIDS/convention.html>
+///
+/// # Safety
+///
+/// The arrays are not copied: they must be valid for the given sizes and must not
+/// be modified or freed while the mesh, or any object created from it, is in use.
 #[unsafe(no_mangle)]
-pub extern "C" fn tucanos_mesh22_new(
+pub unsafe extern "C" fn tucanos_mesh22_new(
     num_verts: usize,
     verts: *const f64,
     num_elements: usize,
@@ -178,13 +183,15 @@ pub extern "C" fn tucanos_mesh22_new(
     faces: *const tucanos_int_t,
     ftags: *const tucanos_tag_t,
 ) -> *mut tucanos_mesh22_t {
-    let implem = GenericMesh::new(
-        (verts, num_verts).into(),
-        (elems, num_elements).into(),
-        (tags, num_elements).into(),
-        (faces, num_faces).into(),
-        (ftags, num_faces).into(),
-    );
+    let implem = unsafe {
+        GenericMesh::new(
+            Vector::from_raw_parts(verts, num_verts),
+            Vector::from_raw_parts(elems, num_elements),
+            Vector::from_raw_parts(tags, num_elements),
+            Vector::from_raw_parts(faces, num_faces),
+            Vector::from_raw_parts(ftags, num_faces),
+        )
+    };
     Box::into_raw(Box::new(tucanos_mesh22_t { implem }))
 }
 
@@ -206,12 +213,16 @@ pub unsafe extern "C" fn tucanos_mesh22_verts(
     last: usize,
 ) {
     unsafe {
-        let out = std::slice::from_raw_parts_mut(out, 3 * (last - first));
         let m = &((*m).implem);
+        assert!(
+            first <= last && last <= m.n_verts(),
+            "invalid vertex range {first}..{last}"
+        );
+        let out = std::slice::from_raw_parts_mut(out, 2 * (last - first));
         let mut k = 0;
         for i in first..last {
-            out[k..k + 3].copy_from_slice(m.vert(i).as_slice());
-            k += 3;
+            out[k..k + 2].copy_from_slice(m.vert(i).as_slice());
+            k += 2;
         }
     }
 }
@@ -226,6 +237,10 @@ pub unsafe extern "C" fn tucanos_mesh22_elems(
 ) {
     unsafe {
         let m = &((*m).implem);
+        assert!(
+            first <= last && last <= m.n_elems(),
+            "invalid element range {first}..{last}"
+        );
         let slice_size = (last - first) * Triangle::<Idx>::N_VERTS;
         let out = std::slice::from_raw_parts_mut(out, slice_size);
         let mut k = 0;
