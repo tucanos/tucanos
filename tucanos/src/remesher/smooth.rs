@@ -19,11 +19,11 @@ use tmesh::{Vertex, mesh::Simplex};
 /// edge length in metric space):
 ///  - for `Laplacian`
 /// ```math
-/// \tilde v_i = v_i + \sum_{j \in N(i)} (v_j - v_i)
+/// \tilde v_i = v_i + \frac{1}{|N(i)|}\sum_{j \in N(i)} (v_j - v_i)
 /// ```
 ///  - for `Laplacian2`
 /// ```math
-/// \tilde v_i = \frac{\sum_{j \in N(i)} ||v_j - v_i||_M (v_j + v_i)}{2 \sum_{j \in N(i)} ||v_j - v_i||_M}
+/// \tilde v_i = \frac{\sum_{j \in N(i)} ||v_j - v_i||_M v_j}{\sum_{j \in N(i)} ||v_j - v_i||_M}
 /// ```
 ///  - for `Avro`
 /// ```math
