@@ -334,7 +334,7 @@ impl AnisoMetric2d {
         let n1 = s1.norm();
         let s0 = s0 / n0;
         let s1 = s1 / n1;
-        assert!(s0.dot(&s1) < 1e-12);
+        assert!(s0.dot(&s1).abs() < 1e-12, "non orthogonal vectors");
 
         let mut eigvals = SVector::<f64, 2>::new(1. / n0.powi(2), 1. / n1.powi(2));
         Self::bound_eigenvalues(&mut eigvals);
@@ -497,7 +497,7 @@ impl AnisoMetric3d {
         ]
     }
 
-    /// Create a metric from 2 orthogonal vectors
+    /// Create a metric from 3 orthogonal vectors
     /// The length of the vectors will be the characteric length along this direction
     #[must_use]
     pub fn from_sizes(s0: &Vertex<3>, s1: &Vertex<3>, s2: &Vertex<3>) -> Self {
@@ -507,9 +507,9 @@ impl AnisoMetric3d {
         let s0 = s0 / n0;
         let s1 = s1 / n1;
         let s2 = s2 / n2;
-        assert!(s0.dot(&s1) < 1e-12);
-        assert!(s0.dot(&s2) < 1e-12);
-        assert!(s1.dot(&s2) < 1e-12);
+        assert!(s0.dot(&s1).abs() < 1e-12, "non orthogonal vectors");
+        assert!(s0.dot(&s2).abs() < 1e-12, "non orthogonal vectors");
+        assert!(s1.dot(&s2).abs() < 1e-12, "non orthogonal vectors");
 
         let mut eigvals = SVector::<f64, 3>::new(1. / n0.powi(2), 1. / n1.powi(2), 1. / n2.powi(2));
         Self::bound_eigenvalues(&mut eigvals);
@@ -634,6 +634,22 @@ mod tests {
     use crate::{Result, S_RATIO_MAX, metric::IsoMetric};
     use nalgebra::SMatrix;
     use tmesh::{Vert2d, Vert3d};
+
+    #[test]
+    #[should_panic(expected = "non orthogonal vectors")]
+    fn test_from_sizes_non_orthogonal_2d() {
+        let _ = AnisoMetric2d::from_sizes(&Vert2d::new(1.0, 0.0), &Vert2d::new(-1.0, 1.0));
+    }
+
+    #[test]
+    #[should_panic(expected = "non orthogonal vectors")]
+    fn test_from_sizes_non_orthogonal_3d() {
+        let _ = AnisoMetric3d::from_sizes(
+            &Vert3d::new(1.0, 0.0, 0.0),
+            &Vert3d::new(0.0, 1.0, 0.0),
+            &Vert3d::new(-1.0, 0.0, 1.0),
+        );
+    }
 
     #[test]
     fn test_check_invalid() {
