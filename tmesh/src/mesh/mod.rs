@@ -790,32 +790,32 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         }
     }
 
-    fn gradient(&self, method: GradientMethod, f: &[f64]) -> Vec<f64> {
+    fn gradient(&self, method: GradientMethod, f: &[f64]) -> Result<Vec<f64>> {
         match method {
             GradientMethod::LinearLeastSquares(weight) => {
-                least_squares::gradient(self, &self.vertex_to_vertices(), 1, weight, f).unwrap()
+                least_squares::gradient(self, &self.vertex_to_vertices(), 1, weight, f)
             }
             GradientMethod::QuadraticLeastSquares(weight) => {
-                least_squares::gradient(self, &self.vertex_to_vertices(), 2, weight, f).unwrap()
+                least_squares::gradient(self, &self.vertex_to_vertices(), 2, weight, f)
             }
             GradientMethod::L2Projection => {
-                l2proj::gradient_l2proj(self, &self.vertex_to_elems(), f)
+                Ok(l2proj::gradient_l2proj(self, &self.vertex_to_elems(), f))
             }
         }
     }
 
-    fn hessian(&self, method: GradientMethod, f: &[f64]) -> Vec<f64> {
+    fn hessian(&self, method: GradientMethod, f: &[f64]) -> Result<Vec<f64>> {
         match method {
-            GradientMethod::LinearLeastSquares(_) => {
-                unreachable!("Cannot use LinearLeastSquares to compute the hessian")
-            }
+            GradientMethod::LinearLeastSquares(_) => Err(Error::from(
+                "Cannot use LinearLeastSquares to compute the hessian",
+            )),
             GradientMethod::QuadraticLeastSquares(weight) => {
-                least_squares::hessian(self, &self.vertex_to_vertices(), weight, f).unwrap()
+                least_squares::hessian(self, &self.vertex_to_vertices(), weight, f)
             }
             GradientMethod::L2Projection => {
                 let v2e = self.vertex_to_elems();
                 let grad = l2proj::gradient_l2proj(self, &v2e, f);
-                l2proj::hessian_l2proj(self, &v2e, &grad)
+                Ok(l2proj::hessian_l2proj(self, &v2e, &grad))
             }
         }
     }

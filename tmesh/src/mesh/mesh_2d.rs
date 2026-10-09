@@ -206,7 +206,7 @@ mod tests {
             GradientMethod::QuadraticLeastSquares(1),
             GradientMethod::L2Projection,
         ] {
-            let gradient = msh.gradient(method, &f);
+            let gradient = msh.gradient(method, &f).unwrap();
 
             for x in gradient.chunks(2) {
                 let x = Vert2d::from_row_slice(x);
@@ -227,6 +227,7 @@ mod tests {
             .collect::<Vec<_>>();
         let res = mesh
             .gradient(method, &f)
+            .unwrap()
             .chunks(2)
             .map(Vert2d::from_column_slice)
             .collect::<Vec<_>>();
@@ -271,7 +272,7 @@ mod tests {
             GradientMethod::QuadraticLeastSquares(1),
             GradientMethod::L2Projection,
         ] {
-            let res = mesh.hessian(method, &f);
+            let res = mesh.hessian(method, &f).unwrap();
             for i_vert in 0..mesh.n_verts() {
                 if matches!(method, GradientMethod::L2Projection)
                     && v2v.row(i_vert).iter().any(|&j| flg[j])
@@ -298,6 +299,27 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_hessian_quadratic_small_domain() {
+        // the result must not depend on the mesh size
+        for scale in [1.0, 1e-3, 1e-6] {
+            let mesh = rectangle_mesh::<Mesh2d>(scale, 10, scale, 10);
+            let f: Vec<_> = mesh
+                .verts()
+                .map(|p| (p[0] / scale).powi(2) + (p[0] / scale) * (p[1] / scale))
+                .collect();
+            let res = mesh
+                .hessian(GradientMethod::QuadraticLeastSquares(1), &f)
+                .unwrap();
+            let s2 = scale * scale;
+            for h in res.chunks(3) {
+                assert!(f64::abs(h[0] * s2 - 2.) < 1e-6, "scale = {scale}: {h:?}");
+                assert!(f64::abs(h[1] * s2) < 1e-6, "scale = {scale}: {h:?}");
+                assert!(f64::abs(h[2] * s2 - 1.) < 1e-6, "scale = {scale}: {h:?}");
+            }
+        }
+    }
+
     fn run_hessian(method: GradientMethod, n: u32) -> f64 {
         let n = 2_usize.pow(n) + 1;
         let mesh = rectangle_mesh::<Mesh2d>(1.0, n, 1.0, n).random_shuffle();
@@ -310,7 +332,7 @@ mod tests {
             .verts()
             .map(|p| [2.0 * p[1], 4.0 * p[0], 2.0 * p[0] + 4.0 * p[1]])
             .collect::<Vec<_>>();
-        let res = mesh.hessian(method, &f);
+        let res = mesh.hessian(method, &f).unwrap();
 
         let err = hess
             .iter()

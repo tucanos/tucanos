@@ -36,6 +36,10 @@ use rustc_hash::FxHashSet;
 ///
 /// `dx_df_w` is an iterator that yields $`(\delta^{(j)}, \widetilde{f}_{j}, W_{j})`$ for $`j \in N(i)`$
 ///
+/// The offsets $`\delta^{(j)}`$ are scaled by the mean distance to the neighbors
+/// before the factorization, so that the conditioning check does not depend on
+/// the mesh size; the coefficients are scaled back afterwards.
+///
 /// If the number of neighbors is not sufficient for this problem to be solved, or if the problem is
 /// too ill-conditioned, None is returned
 pub struct LeastSquaresGradient<const D: usize> {
@@ -43,6 +47,8 @@ pub struct LeastSquaresGradient<const D: usize> {
     r: DMatrix<f64>,
     weights: Vec<f64>,
     order: i32,
+    /// Length used to non-dimensionalize the offsets
+    scale: f64,
 }
 
 impl<const D: usize> LeastSquaresGradient<D> {
@@ -62,11 +68,18 @@ impl<const D: usize> LeastSquaresGradient<D> {
             D + 1 + D * (D + 1) / 2
         };
 
+        let dx = dx.collect::<Vec<_>>();
+        let scale = dx.iter().map(SVector::norm).sum::<f64>() / dx.len().max(1) as f64;
+        if scale <= 0.0 || !scale.is_finite() {
+            return Err(Error::from("Invalid neighborhood for least squares"));
+        }
+
         let mut mat = DMatrix::zeros(n_rows, n_cols);
         let mut weights = vec![0.0; n_rows - 1];
 
         let mut w_max = 0.0;
-        for (irow, dp) in dx.enumerate() {
+        for (irow, dp) in dx.iter().enumerate() {
+            let dp = dp / scale;
             let w = 1.0 / dp.norm().powi(weight_exp);
             weights[irow] = w;
             let irow = irow + 1;
@@ -115,6 +128,7 @@ impl<const D: usize> LeastSquaresGradient<D> {
                 r,
                 weights,
                 order,
+                scale,
             })
         }
     }
@@ -144,18 +158,19 @@ impl<const D: usize> LeastSquaresGradient<D> {
     pub fn gradient(&self, df: impl ExactSizeIterator<Item = f64>) -> SVector<f64, D> {
         let rhs = self.compute(df);
 
-        rhs.fixed_view::<D, 1>(1, 0).into()
+        rhs.fixed_view::<D, 1>(1, 0) / self.scale
     }
 
-    /// Compute the gradient
+    /// Compute the hessian
     pub fn hessian(&self, df: impl ExactSizeIterator<Item = f64>, res: &mut [f64]) {
         assert_eq!(self.order, 2);
         assert_eq!(res.len(), D * (D + 1) / 2);
 
         let rhs = self.compute(df);
+        let s2 = self.scale * self.scale;
         res.iter_mut()
             .zip(rhs.iter().skip(D + 1))
-            .for_each(|(x, y)| *x = *y);
+            .for_each(|(x, y)| *x = *y / s2);
     }
 
     /// Compute the gradient weights
@@ -168,7 +183,7 @@ impl<const D: usize> LeastSquaresGradient<D> {
             rhs[irow + 1] = w;
             self.qr.q_tr_mul(&mut rhs);
             assert!(self.r.solve_upper_triangular_mut(&mut rhs));
-            rhs.fixed_view::<D, 1>(1, 0).into()
+            rhs.fixed_view::<D, 1>(1, 0) / self.scale
         })
     }
 }

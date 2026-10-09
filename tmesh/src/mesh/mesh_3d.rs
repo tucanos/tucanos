@@ -274,7 +274,7 @@ mod tests {
             GradientMethod::QuadraticLeastSquares(1),
             GradientMethod::L2Projection,
         ] {
-            let gradient = msh.gradient(method, &f);
+            let gradient = msh.gradient(method, &f).unwrap();
 
             for x in gradient.chunks(3) {
                 let x = Vert3d::from_row_slice(x);
@@ -295,6 +295,7 @@ mod tests {
             .collect::<Vec<_>>();
         let res = mesh
             .gradient(method, &f)
+            .unwrap()
             .chunks(3)
             .map(Vert3d::from_column_slice)
             .collect::<Vec<_>>();
@@ -346,7 +347,7 @@ mod tests {
             GradientMethod::QuadraticLeastSquares(1),
             GradientMethod::L2Projection,
         ] {
-            let res = mesh.hessian(method, &f);
+            let res = mesh.hessian(method, &f).unwrap();
             for i_vert in 0..mesh.n_verts() {
                 if matches!(method, GradientMethod::L2Projection)
                     && v2v.row(i_vert).iter().any(|&j| flg[j])
@@ -393,7 +394,7 @@ mod tests {
                 ]
             })
             .collect::<Vec<_>>();
-        let res = mesh.hessian(method, &f);
+        let res = mesh.hessian(method, &f).unwrap();
 
         let err = hess
             .iter()
