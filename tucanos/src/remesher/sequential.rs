@@ -501,6 +501,10 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
 
     /// Insert a new element
     pub fn insert_elem(&mut self, el: C, tag: Tag) -> Result<()> {
+        // validate the element before modifying the remesher
+        if el.into_iter().any(|idx| !self.verts.contains_key(&idx)) {
+            return Err(Error::from(&format!("Element vertex not present: {el:?}")));
+        }
         let ge = self.gelem(&el);
         let q = ge.quality();
         if q <= 0.0 {
@@ -512,12 +516,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
 
         // update the vertex-to-element info
         for idx in el {
-            let vx = self.verts.get_mut(&idx);
-            if vx.is_none() {
-                return Err(Error::from("Element vertex not present"));
-            }
-            assert!(vx.is_some());
-            vx.unwrap().els.push(self.next_elem);
+            self.verts.get_mut(&idx).unwrap().els.push(self.next_elem);
         }
 
         // update the edges
@@ -1192,6 +1191,22 @@ mod tests {
         let mut r = new_remesher()?;
         *r.edges.values_mut().next().unwrap() += 1;
         assert!(r.check().is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_insert_elem_missing_vertex() -> Result<()> {
+        let mut mesh = test_mesh_2d();
+        mesh.fix().unwrap();
+        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts()];
+        let topo = MeshTopology::new(&mesh);
+        let mut remesher = Remesher::new(&mesh, &topo, &h, &NoGeometry())?;
+
+        assert!(remesher.insert_elem(Triangle::new(0, 1, 10), 1).is_err());
+        assert_eq!(remesher.n_elems(), 2);
+        assert_eq!(remesher.n_edges(), 5);
+        remesher.check()?;
 
         Ok(())
     }
