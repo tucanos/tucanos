@@ -1,6 +1,6 @@
 //! Mesh partitioners
 use super::{GSimplex, Mesh, hilbert::hilbert_indices};
-use crate::{Result, graph::CSRGraph};
+use crate::{Error, Result, graph::CSRGraph};
 #[cfg(feature = "coupe")]
 use coupe::{Partition, nalgebra::SVector};
 #[cfg(feature = "metis")]
@@ -64,6 +64,43 @@ pub trait Partitioner: Sized + Send + Sync {
     }
 }
 
+/// Check the partitioner inputs
+fn check_inputs(n_elems: usize, n_parts: usize, weights: Option<&[f64]>) -> Result<()> {
+    if n_parts == 0 {
+        return Err(Error::from("The number of partitions must be > 0"));
+    }
+    if let Some(weights) = weights {
+        if weights.len() != n_elems {
+            return Err(Error::from(&format!(
+                "Invalid number of weights: {} (expected {n_elems})",
+                weights.len()
+            )));
+        }
+        if weights.iter().any(|&w| !w.is_finite() || w < 0.0) {
+            return Err(Error::from("The weights must be finite and >= 0"));
+        }
+    }
+    Ok(())
+}
+
+/// Partition elements ordered by `ids` into `n_parts` contiguous chunks of similar
+/// weights: element `j` is assigned to part `floor(n_parts * w / w_tot)` where `w` is
+/// the cumulative weight up to the middle of element `j`
+fn ordered_partition(ids: &[usize], weights: &[f64], n_parts: usize) -> Vec<usize> {
+    let total = weights.iter().sum::<f64>();
+    let mut res = vec![0; weights.len()];
+    if total <= 0.0 {
+        return res;
+    }
+    let mut cumul = 0.0;
+    for &j in ids {
+        let w = cumul + 0.5 * weights[j];
+        res[j] = ((n_parts as f64 * w / total) as usize).min(n_parts - 1);
+        cumul += weights[j];
+    }
+    res
+}
+
 /// Simple geometric partitionner based on the Hilbert indices of the element centers
 pub struct HilbertPartitioner {
     n_parts: usize,
@@ -78,6 +115,7 @@ impl Partitioner for HilbertPartitioner {
         n_parts: usize,
         weights: Option<Vec<f64>>,
     ) -> Result<Self> {
+        check_inputs(msh.n_elems(), n_parts, weights.as_deref())?;
         let faces = msh.all_faces();
         let graph = msh.element_pairs(&faces);
 
@@ -93,19 +131,11 @@ impl Partitioner for HilbertPartitioner {
     }
 
     fn compute(&self) -> Result<Vec<usize>> {
-        let target_weight = self.weights.iter().copied().sum::<f64>() / self.n_parts as f64;
-        let mut res = vec![0; self.weights.len()];
-        let mut part = 0;
-        let mut weight = 0.0;
-        for &j in &self.ids {
-            if weight > target_weight {
-                part = self.n_parts.min(part + 1);
-                weight = 0.0;
-            }
-            res[j] = part;
-            weight += self.weights[j];
-        }
-        Ok(res)
+        Ok(ordered_partition(&self.ids, &self.weights, self.n_parts))
+    }
+
+    fn weights(&self) -> impl Iterator<Item = f64> {
+        self.weights.iter().copied()
     }
 
     fn n_parts(&self) -> usize {
@@ -132,6 +162,7 @@ impl Partitioner for RCMPartitioner {
         n_parts: usize,
         weights: Option<Vec<f64>>,
     ) -> Result<Self> {
+        check_inputs(msh.n_elems(), n_parts, weights.as_deref())?;
         let faces = msh.all_faces();
         let graph = msh.element_pairs(&faces);
 
@@ -145,19 +176,11 @@ impl Partitioner for RCMPartitioner {
         })
     }
     fn compute(&self) -> Result<Vec<usize>> {
-        let target_weight = self.weights.iter().copied().sum::<f64>() / self.n_parts as f64;
-        let mut res = vec![0; self.weights.len()];
-        let mut part = 0;
-        let mut weight = 0.0;
-        for &j in &self.ids {
-            if weight > target_weight {
-                part = self.n_parts.min(part + 1);
-                weight = 0.0;
-            }
-            res[j] = part;
-            weight += self.weights[j];
-        }
-        Ok(res)
+        Ok(ordered_partition(&self.ids, &self.weights, self.n_parts))
+    }
+
+    fn weights(&self) -> impl Iterator<Item = f64> {
+        self.weights.iter().copied()
     }
 
     fn n_parts(&self) -> usize {
@@ -185,6 +208,7 @@ impl Partitioner for KMeansPartitioner2d {
         n_parts: usize,
         weights: Option<Vec<f64>>,
     ) -> Result<Self> {
+        check_inputs(msh.n_elems(), n_parts, weights.as_deref())?;
         match D {
             2 => {
                 let faces = msh.all_faces();
@@ -202,7 +226,7 @@ impl Partitioner for KMeansPartitioner2d {
                     weights,
                 })
             }
-            _ => Err(crate::Error::from("Partitioner only available for D=2")),
+            _ => Err(Error::from("Partitioner only available for D=2")),
         }
     }
     fn compute(&self) -> Result<Vec<usize>> {
@@ -221,6 +245,10 @@ impl Partitioner for KMeansPartitioner2d {
         .partition(&mut partition, (self.centers.as_slice(), &self.weights))?;
 
         Ok(partition)
+    }
+
+    fn weights(&self) -> impl Iterator<Item = f64> {
+        self.weights.iter().copied()
     }
 
     fn n_parts(&self) -> usize {
@@ -248,6 +276,7 @@ impl Partitioner for KMeansPartitioner3d {
         n_parts: usize,
         weights: Option<Vec<f64>>,
     ) -> Result<Self> {
+        check_inputs(msh.n_elems(), n_parts, weights.as_deref())?;
         match D {
             3 => {
                 let faces = msh.all_faces();
@@ -265,7 +294,7 @@ impl Partitioner for KMeansPartitioner3d {
                     weights,
                 })
             }
-            _ => Err(crate::Error::from("Partitioner only available for D=2")),
+            _ => Err(Error::from("Partitioner only available for D=3")),
         }
     }
     fn compute(&self) -> Result<Vec<usize>> {
@@ -283,6 +312,10 @@ impl Partitioner for KMeansPartitioner3d {
         }
         .partition(&mut partition, (self.centers.as_slice(), &self.weights))?;
         Ok(partition)
+    }
+
+    fn weights(&self) -> impl Iterator<Item = f64> {
+        self.weights.iter().copied()
     }
 
     fn n_parts(&self) -> usize {
@@ -337,7 +370,6 @@ impl MetisPartMethod for MetisKWay {
 pub struct MetisPartitioner<T: MetisPartMethod> {
     n_parts: usize,
     graph: CSRGraph,
-    #[allow(dead_code)]
     weights: Vec<f64>,
     t: PhantomData<T>,
 }
@@ -349,6 +381,7 @@ impl<T: MetisPartMethod> Partitioner for MetisPartitioner<T> {
         n_parts: usize,
         weights: Option<Vec<f64>>,
     ) -> Result<Self> {
+        check_inputs(msh.n_elems(), n_parts, weights.as_deref())?;
         let faces = msh.all_faces();
         let graph = msh.element_pairs(&faces);
 
@@ -360,6 +393,10 @@ impl<T: MetisPartMethod> Partitioner for MetisPartitioner<T> {
             weights,
             t: PhantomData::<T>,
         })
+    }
+
+    fn weights(&self) -> impl Iterator<Item = f64> {
+        self.weights.iter().copied()
     }
     fn compute(&self) -> Result<Vec<usize>> {
         if self.n_parts == 1 {
@@ -377,8 +414,24 @@ impl<T: MetisPartMethod> Partitioner for MetisPartitioner<T> {
             xadj.push(adjncy.len().try_into().unwrap());
         }
 
-        let metis_graph =
+        // integer weights for Metis (only if the weights are not uniform)
+        let w_max = self.weights.iter().copied().fold(0.0, f64::max);
+        let w_tot = self.weights.iter().sum::<f64>();
+        let mut vwgt = if self.weights.iter().any(|&w| w < w_max) {
+            let scale = f64::min(1e6 / w_max, f64::from(i32::MAX / 2) / w_tot);
+            self.weights
+                .iter()
+                .map(|&w| (w * scale).round().max(1.0) as metis::Idx)
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+
+        let mut metis_graph =
             metis::Graph::new(1, self.n_parts.try_into().unwrap(), &mut xadj, &mut adjncy);
+        if !vwgt.is_empty() {
+            metis_graph = metis_graph.set_vwgt(&mut vwgt);
+        }
 
         let mut partition = vec![0; self.graph.n()];
 
@@ -405,18 +458,61 @@ impl<T: MetisPartMethod> Partitioner for MetisPartitioner<T> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "coupe")]
+    use crate::mesh::partition::{KMeansPartitioner2d, KMeansPartitioner3d};
     #[cfg(feature = "metis")]
     use crate::mesh::partition::{MetisPartitioner, MetisRecursive};
     use crate::mesh::{
-        Mesh, Mesh3d, box_mesh,
+        Mesh, Mesh2d, Mesh3d, box_mesh,
         partition::{HilbertPartitioner, Partitioner, RCMPartitioner},
-    };
-    #[cfg(feature = "coupe")]
-    use crate::mesh::{
-        Mesh2d,
-        partition::{KMeansPartitioner2d, KMeansPartitioner3d},
         rectangle_mesh,
     };
+
+    fn part_sizes(parts: &[usize], n_parts: usize) -> Vec<usize> {
+        let mut sizes = vec![0; n_parts];
+        for &i in parts {
+            sizes[i] += 1;
+        }
+        sizes
+    }
+
+    #[test]
+    fn test_no_empty_parts() {
+        // 8 triangles
+        let msh = rectangle_mesh::<Mesh2d>(1.0, 3, 1.0, 3);
+        for n_parts in 1..=8 {
+            let p = HilbertPartitioner::new(&msh, n_parts, None).unwrap();
+            let sizes = part_sizes(&p.compute().unwrap(), n_parts);
+            assert!(sizes.iter().all(|&n| n > 0), "Hilbert {n_parts}: {sizes:?}");
+            assert!(sizes.iter().max().unwrap() - sizes.iter().min().unwrap() <= 1);
+
+            let p = RCMPartitioner::new(&msh, n_parts, None).unwrap();
+            let sizes = part_sizes(&p.compute().unwrap(), n_parts);
+            assert!(sizes.iter().all(|&n| n > 0), "RCM {n_parts}: {sizes:?}");
+            assert!(sizes.iter().max().unwrap() - sizes.iter().min().unwrap() <= 1);
+        }
+    }
+
+    #[test]
+    fn test_partition_weights() {
+        let msh = rectangle_mesh::<Mesh2d>(1.0, 3, 1.0, 3);
+        let w = (0..8)
+            .map(|i| if i < 4 { 10.0 } else { 1.0 })
+            .collect::<Vec<_>>();
+        let p = HilbertPartitioner::new(&msh, 2, Some(w.clone())).unwrap();
+        let parts = p.compute().unwrap();
+        let mut expected = vec![0.0; 2];
+        parts.iter().zip(&w).for_each(|(&i, &w)| expected[i] += w);
+        assert_eq!(p.partition_weights(&parts), expected);
+    }
+
+    #[test]
+    fn test_invalid_inputs() {
+        let msh = rectangle_mesh::<Mesh2d>(1.0, 3, 1.0, 3);
+        assert!(HilbertPartitioner::new(&msh, 0, None).is_err());
+        assert!(RCMPartitioner::new(&msh, 0, None).is_err());
+        assert!(HilbertPartitioner::new(&msh, 2, Some(vec![1.0; 3])).is_err());
+    }
 
     #[test]
     fn test_hilbert() {
