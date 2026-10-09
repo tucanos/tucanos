@@ -388,6 +388,42 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Cavity<D, C, M> {
             .collect()
     }
 
+    /// Interpolate the metric at `p` using the barycentric coordinates in the
+    /// element of the cavity that contains `p`. If `p` lies outside of the cavity
+    /// (e.g. after a projection onto the geometry), the element with the largest
+    /// minimum barycentric coordinate is used and the negative barycentric
+    /// coordinates are clamped to 0, so that the metric is never extrapolated.
+    pub fn interpolate_metric(&self, p: &Vertex<D>) -> M {
+        let mut best = (f64::NEG_INFINITY, 0, Vec::new());
+        for i_elem in 0..self.n_elems() {
+            let x = self
+                .gelem(i_elem)
+                .ge()
+                .bcoords(p)
+                .into_iter()
+                .collect::<Vec<_>>();
+            let cmin = x.iter().copied().fold(f64::INFINITY, f64::min);
+            if cmin > best.0 {
+                best = (cmin, i_elem, x);
+                if cmin >= 0.0 {
+                    break;
+                }
+            }
+        }
+        let (cmin, i_elem, mut x) = best;
+        if cmin < 0.0 {
+            for w in &mut x {
+                *w = w.max(0.0);
+            }
+            let sum = x.iter().sum::<f64>();
+            for w in &mut x {
+                *w /= sum;
+            }
+        }
+        let metrics = self.elems[i_elem].into_iter().map(|i| &self.metrics[i]);
+        M::interpolate(x.into_iter().zip(metrics))
+    }
+
     /// Get the i-th geometrical face
     pub fn gface(&self, face: &C::FACE) -> <<C as Simplex>::GEOM<D> as GSimplex<D>>::FACE {
         <<C as Simplex>::GEOM<D> as GSimplex<D>>::FACE::from_iter(
@@ -904,5 +940,40 @@ impl<'a, const D: usize, C: Simplex, M: Metric<D>> FilledCavity<'a, D, C, M> {
             }
         }
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Cavity;
+    use crate::{
+        Result,
+        geometry::NoGeometry,
+        mesh::{MeshTopology, test_meshes::test_mesh_2d},
+        metric::IsoMetric,
+        remesher::Remesher,
+    };
+    use tmesh::{Vert2d, mesh::Mesh};
+
+    #[test]
+    fn test_interpolate_metric_outside() -> Result<()> {
+        let mut mesh = test_mesh_2d();
+        mesh.fix()?;
+        let h = [1.0, 1.0, 1.0, 0.1].map(IsoMetric::<2>::from).to_vec();
+        let topo = MeshTopology::new(&mesh);
+        let remesher = Remesher::new(&mesh, &topo, &h, &NoGeometry())?;
+
+        let mut cavity = Cavity::default();
+        cavity.init_from_vertex(0, &remesher);
+
+        // inside the cavity: linear interpolation
+        let m = cavity.interpolate_metric(&Vert2d::new(0.0, 0.5));
+        assert!(f64::abs(m.h() - 0.55) < 1e-12);
+
+        // outside the cavity: a linear extrapolation would give h = -0.35
+        let m = cavity.interpolate_metric(&Vert2d::new(-1.0, 0.5));
+        assert!(m.h() >= 0.1 && m.h() <= 1.0, "h = {}", m.h());
+
+        Ok(())
     }
 }

@@ -3,17 +3,13 @@ use crate::{
     Dim, Result,
     geometry::Geometry,
     metric::Metric,
-    min_iter,
     remesher::{
         cavity::{Cavity, CavityCheckStatus, FilledCavity, FilledCavityType, Seed},
         stats::{SmoothStats, StepStats},
     },
 };
 use log::{debug, trace};
-use tmesh::{
-    Vertex,
-    mesh::{GSimplex, Simplex},
-};
+use tmesh::{Vertex, mesh::Simplex};
 
 /// Defines available smoothing algorithms for mesh vertices.
 ///
@@ -205,7 +201,6 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             let m0 = &cavity.metrics[i0_local];
             let t0 = &cavity.tags[i0_local];
 
-            let mut h0_new = Default::default();
             let p0_smoothed = match params.method {
                 SmoothingMethod::Laplacian => Self::smooth_laplacian(cavity, &neighbors),
                 SmoothingMethod::Laplacian2 => Self::smooth_laplacian_2(cavity, &neighbors),
@@ -249,22 +244,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             }
 
             // Smoothing is valid, interpolate the metric at the new vertex location
-            let mut best = f64::NEG_INFINITY;
-            for i_elem in 0..cavity.n_elems() {
-                let ge = cavity.gelem(i_elem);
-                let x = ge.ge().bcoords(&p0_new);
-                let cmin = min_iter(x.into_iter());
-                if cmin > best {
-                    let elem = &cavity.elems[i_elem];
-                    let metrics = elem.into_iter().map(|i| &cavity.metrics[i]);
-                    let wm = x.into_iter().zip(metrics);
-                    h0_new = M::interpolate(wm);
-                    best = cmin;
-                    if best > 0.0 {
-                        break;
-                    }
-                }
-            }
+            let h0_new = cavity.interpolate_metric(&p0_new);
 
             trace!("Smooth, update vertex");
             {
