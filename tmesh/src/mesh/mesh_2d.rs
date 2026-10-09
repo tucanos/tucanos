@@ -178,6 +178,16 @@ mod tests {
     }
 
     #[test]
+    fn test_fix_inverted_element() {
+        let mut msh = rectangle_mesh::<Mesh2d>(1.0, 3, 1.0, 3);
+        msh.invert_elem(0);
+        assert!(msh.gelem(&msh.elem(0)).vol() < 0.0);
+
+        msh.fix().unwrap();
+        assert!(msh.gelems().all(|ge| ge.vol() > 0.0));
+    }
+
+    #[test]
     fn test_2d_rect() {
         let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 2.0, 15).random_shuffle();
 
