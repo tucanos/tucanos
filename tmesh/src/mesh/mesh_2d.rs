@@ -178,6 +178,18 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_faces_filter() {
+        // 2 triangles, boundary edges tagged 1 to 4
+        let msh = rectangle_mesh::<Mesh2d>(1.0, 2, 1.0, 2);
+        let (bdy, ids): (BoundaryMesh2d, _) = msh.extract_faces(|t| t == 1 || t == 3);
+        assert_eq!(bdy.n_elems(), 2);
+        assert_eq!(ids.len(), 4);
+        let mut tags = bdy.etags().collect::<Vec<_>>();
+        tags.sort_unstable();
+        assert_eq!(tags, [1, 3]);
+    }
+
+    #[test]
     fn test_fix_inverted_element() {
         let mut msh = rectangle_mesh::<Mesh2d>(1.0, 3, 1.0, 3);
         msh.invert_elem(0);

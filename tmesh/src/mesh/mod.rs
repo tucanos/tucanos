@@ -1339,7 +1339,7 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
             .for_each(|(i, &j)| verts[j] = self.vert(i));
         self.faces()
             .zip(self.ftags())
-            .filter(|(f, _)| f.into_iter().all(|i| new_ids[i] != usize::MAX))
+            .filter(|(_, t)| filter(*t))
             .for_each(|(f, t)| {
                 faces.push(<Self::C as Simplex>::FACE::from_iter(
                     f.into_iter().map(|i| new_ids[i]),
