@@ -99,6 +99,23 @@ fn validate_tags_length(tags_len: usize, expected: usize, name: &str) -> PyResul
     Ok(())
 }
 
+/// Validate that all the vertex indices are < n_verts
+fn validate_indices<T: Copy + std::fmt::Display + TryInto<usize>>(
+    indices: &[T],
+    n_verts: usize,
+    name: &str,
+) -> PyResult<()> {
+    if let Some(&i) = indices
+        .iter()
+        .find(|&&i| i.try_into().map_or(true, |i: usize| i >= n_verts))
+    {
+        return Err(PyValueError::new_err(format!(
+            "Invalid vertex index {i} in {name} (n_verts = {n_verts})"
+        )));
+    }
+    Ok(())
+}
+
 /// Convert numpy array to iterator of Vertex<D>
 fn coords_to_vertices<const D: usize>(
     coords: &[f64],
@@ -177,6 +194,10 @@ macro_rules! impl_mesh {
                 validate_tags_length(etags.shape()[0], elems.shape()[0], "etags")?;
                 validate_faces_shape::<$cell<Idx>>(faces.shape())?;
                 validate_tags_length(ftags.shape()[0], faces.shape()[0], "ftags")?;
+
+                let n_verts = coords.shape()[0];
+                validate_indices($crate::as_c_slice(&elems)?, n_verts, "elems")?;
+                validate_indices($crate::as_c_slice(&faces)?, n_verts, "faces")?;
 
                 let coords_iter = coords_to_vertices::<$dim>($crate::as_c_slice(&coords)?);
                 let elems_iter = slice_to_simplex($crate::as_c_slice(&elems)?)?;
@@ -302,26 +323,29 @@ macro_rules! impl_mesh {
 
             /// Write a solution defined at the vertices to a .sol(b) file
             pub fn write_solb(&self, fname: &str, arr: PyReadonlyArray2<f64>) -> PyResult<()> {
-                to_py_err(
-                    self.0
-                        .write_solb(&arr.to_vec()?, fname, SolutionLocation::Vertices),
-                )
+                to_py_err(self.0.write_solb(
+                    $crate::as_c_slice(&arr)?,
+                    fname,
+                    SolutionLocation::Vertices,
+                ))
             }
 
             /// Write a solution defined at the elements to a .sol(b) file
             pub fn write_elem_solb(&self, fname: &str, arr: PyReadonlyArray2<f64>) -> PyResult<()> {
-                to_py_err(
-                    self.0
-                        .write_solb(&arr.to_vec()?, fname, SolutionLocation::Elements),
-                )
+                to_py_err(self.0.write_solb(
+                    $crate::as_c_slice(&arr)?,
+                    fname,
+                    SolutionLocation::Elements,
+                ))
             }
 
             /// Write a solution defined at the faces to a .sol(b) file
             pub fn write_face_solb(&self, fname: &str, arr: PyReadonlyArray2<f64>) -> PyResult<()> {
-                to_py_err(
-                    self.0
-                        .write_solb(&arr.to_vec()?, fname, SolutionLocation::Faces),
-                )
+                to_py_err(self.0.write_solb(
+                    $crate::as_c_slice(&arr)?,
+                    fname,
+                    SolutionLocation::Faces,
+                ))
             }
 
             /// Read a `.meshb` file
@@ -382,6 +406,8 @@ macro_rules! impl_mesh {
                 ftags: PyReadonlyArray1<Tag>,
             ) -> PyResult<()> {
                 validate_faces_shape::<$cell<Idx>>(faces.shape())?;
+                validate_tags_length(ftags.shape()[0], faces.shape()[0], "ftags")?;
+                validate_indices($crate::as_c_slice(&faces)?, self.0.n_verts(), "faces")?;
                 let faces_iter = slice_to_simplex($crate::as_c_slice(&faces)?)?;
                 self.0
                     .add_faces(faces_iter, ftags.as_slice()?.iter().copied());
@@ -395,6 +421,8 @@ macro_rules! impl_mesh {
                 etags: PyReadonlyArray1<Tag>,
             ) -> PyResult<()> {
                 validate_elems_shape::<$cell<Idx>>(elems.shape())?;
+                validate_tags_length(etags.shape()[0], elems.shape()[0], "etags")?;
+                validate_indices($crate::as_c_slice(&elems)?, self.0.n_verts(), "elems")?;
                 let elems_iter = slice_to_simplex($crate::as_c_slice(&elems)?)?;
                 self.0
                     .add_elems(elems_iter, etags.as_slice()?.iter().copied());
@@ -411,6 +439,7 @@ macro_rules! impl_mesh {
                 if elems.shape()[1] != 4 {
                     return Err(PyValueError::new_err("Invalid dimension 1 for elems"));
                 }
+                validate_indices($crate::as_c_slice(&elems)?, self.0.n_verts(), "elems")?;
                 self.0.add_quadrangles(
                     $crate::as_c_slice(&elems)?
                         .chunks(4)
@@ -661,16 +690,20 @@ macro_rules! impl_mesh {
 
                 let method = match order {
                     1 => GradientMethod::LinearLeastSquares(weight_exp),
-                    2 => GradientMethod::LinearLeastSquares(weight_exp),
-                    _ => unreachable!("Invalid order {order}"),
+                    2 => GradientMethod::QuadraticLeastSquares(weight_exp),
+                    _ => {
+                        return Err(PyValueError::new_err(format!(
+                            "Invalid order {order} (expecting 1 or 2)"
+                        )));
+                    }
                 };
 
                 let res = self.0.smooth(method, $crate::as_c_slice(&arr)?);
                 PyArray::from_vec(py, res).reshape([self.0.n_verts(), 1])
             }
 
-            /// Compute the gradient of a field defined at the mesh vertices using a 1st order
-            /// least-square approximation
+            /// Compute the gradient of a field defined at the mesh vertices using a 1st
+            /// (`order=1`) or 2nd (`order=2`) order least-square approximation
             #[pyo3(signature = (arr, weight_exp=2, order=1))]
             pub fn gradient<'py>(
                 &self,
@@ -688,8 +721,12 @@ macro_rules! impl_mesh {
 
                 let method = match order {
                     1 => GradientMethod::LinearLeastSquares(weight_exp),
-                    2 => GradientMethod::LinearLeastSquares(weight_exp),
-                    _ => unreachable!("Invalid order {order}"),
+                    2 => GradientMethod::QuadraticLeastSquares(weight_exp),
+                    _ => {
+                        return Err(PyValueError::new_err(format!(
+                            "Invalid order {order} (expecting 1 or 2)"
+                        )));
+                    }
                 };
                 let res = to_py_err(self.0.gradient(method, $crate::as_c_slice(&arr)?))?;
                 PyArray::from_vec(py, res).reshape([self.0.n_verts(), $dim])
