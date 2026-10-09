@@ -126,8 +126,8 @@ mod tests {
         Vert2d, assert_delta,
         mesh::{
             AdativeBoundsQuadraticTriangle, BoundaryMesh2d, Edge, GSimplex, GradientMethod, Mesh,
-            Mesh2d, QuadraticMesh2d, SubMesh, bandwidth, disk_mesh, quadratic_disk_mesh,
-            rectangle_mesh,
+            Mesh2d, Mesh3d, QuadraticMesh2d, SolutionLocation, SubMesh, bandwidth, box_mesh,
+            disk_mesh, quadratic_disk_mesh, rectangle_mesh,
         },
     };
     use rayon::iter::ParallelIterator;
@@ -434,6 +434,43 @@ mod tests {
 
         msh.check_equals(&new_msh, 1e-12).unwrap();
 
+        std::fs::remove_file(fname).unwrap();
+    }
+
+    #[test]
+    fn test_solb_errors() {
+        let msh: Mesh2d = rectangle_mesh::<Mesh2d>(1.0, 3, 1.0, 3);
+
+        // unsupported number of components / invalid size
+        let fname = "test_solb_errors_2d.solb";
+        assert!(
+            msh.write_solb(
+                &vec![0.0; 4 * msh.n_verts()],
+                fname,
+                SolutionLocation::Vertices
+            )
+            .is_err()
+        );
+        assert!(
+            msh.write_solb(
+                &vec![0.0; msh.n_verts() + 1],
+                fname,
+                SolutionLocation::Vertices
+            )
+            .is_err()
+        );
+
+        // dimension mismatch
+        let msh3d = box_mesh::<Mesh3d>(1.0, 2, 1.0, 2, 1.0, 2);
+        let fname = "test_solb_errors_3d.solb";
+        msh3d
+            .write_solb(
+                &vec![1.0; msh3d.n_verts()],
+                fname,
+                SolutionLocation::Vertices,
+            )
+            .unwrap();
+        assert!(Mesh2d::read_solb(fname).is_err());
         std::fs::remove_file(fname).unwrap();
     }
 

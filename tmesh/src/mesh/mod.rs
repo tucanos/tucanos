@@ -1232,12 +1232,29 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     }
 
     fn write_solb(&self, arr: &[f64], file_name: &str, loc: SolutionLocation) -> Result<()> {
-        let n_comp = match loc {
-            SolutionLocation::Vertices => arr.len() / self.n_verts(),
-            SolutionLocation::Elements => arr.len() / self.n_elems(),
-            SolutionLocation::Faces => arr.len() / self.n_faces(),
-            SolutionLocation::Edges => 1, // assume scalar data for edges
+        let n = match loc {
+            SolutionLocation::Vertices => self.n_verts(),
+            SolutionLocation::Elements => self.n_elems(),
+            SolutionLocation::Faces => self.n_faces(),
+            SolutionLocation::Edges => arr.len(), // assume scalar data for edges
         };
+        if n == 0 || !arr.len().is_multiple_of(n) {
+            return Err(Error::from(&format!(
+                "Invalid solution size {} for {n} entities",
+                arr.len()
+            )));
+        }
+        let n_comp = arr.len() / n;
+        let valid = match D {
+            2 => [1, 2, 3].contains(&n_comp),
+            3 => [1, 3, 6].contains(&n_comp),
+            _ => false,
+        };
+        if !valid {
+            return Err(Error::from(&format!(
+                "Solutions with {n_comp} components are not supported in {D}D"
+            )));
+        }
         match D {
             2 => match n_comp {
                 1 => self.write_solb_it::<1, _>(arr, file_name, |x| [x[0]], loc)?,
@@ -1273,8 +1290,22 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     fn read_solb(file_name: &str) -> Result<(Vec<f64>, usize)> {
         let mut reader = MeshbReader::new(file_name)?;
         let d = reader.dimension();
-        assert_eq!(d, D as u8);
+        if d != D as u8 {
+            return Err(Error::from(&format!(
+                "Invalid dimension {d} in {file_name} (expected {D})"
+            )));
+        }
         let m = reader.get_solution_size("SolAtVertices")?;
+        let valid = match d {
+            2 => [1, 2, 3].contains(&m),
+            3 => [1, 3, 6].contains(&m),
+            _ => false,
+        };
+        if !valid {
+            return Err(Error::from(&format!(
+                "Solutions with {m} components are not supported in {d}D"
+            )));
+        }
 
         let res = match d {
             2 => match m {
