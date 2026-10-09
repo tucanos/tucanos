@@ -273,7 +273,7 @@ where
     fn differs_from(&self, other: &Self, tol: f64) -> bool {
         self.into_iter()
             .zip(*other)
-            .any(|(x, y)| f64::abs(x - y) > tol * x)
+            .any(|(x, y)| f64::abs(x - y) > tol * x.abs())
     }
 
     fn step(&self, other: &Self) -> (f64, f64) {
@@ -622,6 +622,16 @@ mod tests {
     use crate::{Result, S_RATIO_MAX};
     use nalgebra::SMatrix;
     use tmesh::{Vert2d, Vert3d};
+
+    #[test]
+    fn test_differs_from_negative_coefficient() {
+        let m = AnisoMetric2d::from_mat(SMatrix::<f64, 2, 2>::new(2.0, -0.5, -0.5, 1.0));
+        assert!(!m.differs_from(&m, 0.1));
+        let m = AnisoMetric3d::from_mat(SMatrix::<f64, 3, 3>::new(
+            2.0, -0.5, 0.0, -0.5, 1.0, -0.2, 0.0, -0.2, 3.0,
+        ));
+        assert!(!m.differs_from(&m, 0.1));
+    }
 
     #[test]
     fn test_default_vol() {
