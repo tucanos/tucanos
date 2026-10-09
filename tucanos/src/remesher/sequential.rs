@@ -343,22 +343,28 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             vert.m.check()?;
         }
 
-        for edg in self.edges.keys() {
+        for (edg, &count) in &self.edges {
             // Check that the edge vertices are ok
+            let mut verts = Vec::with_capacity(2);
             for i in edg.into_iter() {
                 // Does the vertex exist ?
-                let vert = self.verts.get(&i);
-                if vert.is_none() {
+                let Some(vert) = self.verts.get(&i) else {
                     return Err(Error::from("Invalid edge (missing vertex)"));
-                }
+                };
+                verts.push(vert);
+            }
 
-                // Do all the elements contain the edge ?
-                for i_elem in &vert.unwrap().els {
-                    let e = &self.elems.get(i_elem).unwrap().el;
-                    if !e.contains_edge(edg) && vert.is_none() {
-                        return Err(Error::from("Invalid edge"));
-                    }
-                }
+            // Is the number of elements containing the edge consistent?
+            let n = verts[0]
+                .els
+                .iter()
+                .filter(|i_elem| verts[1].els.contains(i_elem))
+                .filter(|i_elem| self.elems[i_elem].el.contains_edge(edg))
+                .count();
+            if n == 0 || i64::from(count) != n as i64 {
+                return Err(Error::from(&format!(
+                    "Invalid edge {edg:?}: counted in {count} elements, found in {n}"
+                )));
             }
         }
 
@@ -1158,6 +1164,33 @@ mod tests {
             let d = (c - p).norm();
             assert!(d < 1e-8);
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_check_edges() -> Result<()> {
+        let mut mesh = test_mesh_2d();
+        mesh.fix().unwrap();
+        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts()];
+        let topo = MeshTopology::new(&mesh);
+        let new_remesher = || Remesher::new(&mesh, &topo, &h, &NoGeometry());
+        new_remesher()?.check()?;
+
+        // an edge that is not contained in any element
+        let mut r = new_remesher()?;
+        let missing = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
+            .into_iter()
+            .map(|(i, j)| Edge::new(i, j).sorted())
+            .find(|e| !r.edges.contains_key(e))
+            .unwrap();
+        r.edges.insert(missing, 1);
+        assert!(r.check().is_err());
+
+        // an edge with a wrong element count
+        let mut r = new_remesher()?;
+        *r.edges.values_mut().next().unwrap() += 1;
+        assert!(r.check().is_err());
 
         Ok(())
     }
