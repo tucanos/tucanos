@@ -534,7 +534,9 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
 
         let mut used_tags = self.ftags().collect();
 
-        // check tagged internal faces
+        // check that the tagged internal faces with the same tag separate the
+        // same element tags
+        let mut existing: FxHashMap<Tag, twovec::Vec<Tag>> = FxHashMap::with_hasher(FxBuildHasher);
         for (f, (_, ids)) in all_faces {
             if ids.len() > 1 {
                 let tags = ids.iter().map(|&i| self.etag(i)).collect::<FxHashSet<_>>();
@@ -547,8 +549,18 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                     for t in tmp {
                         tags.push(t);
                     }
-                    if let Some(tmp) = res.get(tag) {
-                        assert!(tmp.iter().zip(tags.iter()).all(|(&a, &b)| a == b));
+                    if let Some(tmp) = existing.get(tag) {
+                        if tmp.len() != tags.len()
+                            || tmp.iter().zip(tags.iter()).any(|(&a, &b)| a != b)
+                        {
+                            warn!(
+                                "Internal faces tagged {tag} separate elements with tags {:?} and {:?}",
+                                tmp.iter().collect::<Vec<_>>(),
+                                tags.iter().collect::<Vec<_>>()
+                            );
+                        }
+                    } else {
+                        existing.insert(*tag, tags);
                     }
                 }
             }
