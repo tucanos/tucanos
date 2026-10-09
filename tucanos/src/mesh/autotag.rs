@@ -58,17 +58,21 @@ pub fn autotag<const D: usize, M: Mesh<D>>(
     Ok(new_tags)
 }
 
-/// Automatically tag the mesh faces applying `autotag` to the mesh boundary
+/// Automatically tag the mesh faces applying `autotag` to the mesh boundary, i.e.
+/// to the faces with a tag > 0. The other faces (e.g. internal faces) are unchanged.
 pub fn autotag_bdy<const D: usize, M: Mesh<D>>(
     msh: &mut M,
     angle_deg: f64,
 ) -> Result<HashMap<Tag, Vec<Tag>>> {
     assert_eq!(D, <M::C as Simplex>::DIM);
 
-    let mut bdy = msh.boundary::<GenericMesh<D, <M::C as Simplex>::FACE>>().0;
+    let mut bdy = msh
+        .extract_faces::<GenericMesh<D, <M::C as Simplex>::FACE>, _>(|t| t > 0)
+        .0;
     let new_tags = autotag(&mut bdy, angle_deg)?;
 
     msh.ftags_mut()
+        .filter(|t| **t > 0)
         .zip(bdy.etags())
         .for_each(|(t, new_t)| *t = new_t);
 
@@ -153,6 +157,29 @@ mod tests {
         assert_eq!(new_tags.len(), 2);
         assert_eq!(*new_tags.get(&1).unwrap(), vec![1, 6]);
         assert_eq!(*new_tags.get(&2).unwrap(), vec![2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn test_cube_internal_face() {
+        let mut mesh = test_mesh_3d().split().split();
+        mesh.fix().unwrap();
+        mesh.ftags_mut().for_each(|t| *t = 1);
+        let mut reference = mesh.clone();
+        autotag_bdy(&mut reference, 30.0).unwrap();
+
+        // add an internal face with a negative tag
+        let bflag = mesh.boundary_flag();
+        let all_faces = mesh.all_faces();
+        let (&internal, _) = all_faces
+            .iter()
+            .find(|(f, _)| f.into_iter().any(|i| !bflag[i]))
+            .unwrap();
+        mesh.add_faces(std::iter::once(internal), std::iter::once(-5));
+        autotag_bdy(&mut mesh, 30.0).unwrap();
+
+        let tags = mesh.ftags().collect::<Vec<_>>();
+        assert_eq!(*tags.last().unwrap(), -5);
+        assert!(reference.ftags().eq(tags[..tags.len() - 1].iter().copied()));
     }
 
     #[test]

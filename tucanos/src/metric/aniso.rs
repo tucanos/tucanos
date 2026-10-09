@@ -1,8 +1,8 @@
-use crate::Result;
 use crate::metric::{
     IsoMetric, Metric,
     reduction::{control_step, simultaneous_reduction, step},
 };
+use crate::{Error, Result};
 use crate::{S_MAX, S_MIN, S_RATIO_MAX};
 use nalgebra::allocator::Allocator;
 use nalgebra::{Const, DefaultAllocator, SMatrix, SVector};
@@ -80,6 +80,7 @@ where
 
     fn from_diagonal(s: &[f64]) -> Self;
 
+    /// Multiply the metric matrix by `s`
     fn scale_aniso(&mut self, s: f64);
 }
 
@@ -128,6 +129,11 @@ where
         AnisoMetric::length_sqr(self, e)
     }
 
+    fn dual_length(&self, n: &Vertex<D>) -> f64 {
+        let inv = self.as_mat().try_inverse().unwrap();
+        n.dot(&(inv * n)).sqrt()
+    }
+
     /// For an anisotropic metric, the volume is
     /// ```math
     /// V(\mathcal M) =  \frac{1}{\sqrt{\det(\mathcal M)}}
@@ -144,15 +150,25 @@ where
         let mut s_min: f64 = S_MAX;
 
         for s in eig.eigenvalues.iter().copied() {
-            assert!(s > (1.0 - eps) * S_MIN, "s < S_MIN");
-            assert!(s < (1.0 + eps) * S_MAX, "s > S_MAX");
+            if s <= (1.0 - eps) * S_MIN {
+                return Err(Error::from(&format!(
+                    "Invalid metric: eigenvalue {s:e} < S_MIN"
+                )));
+            }
+            if s >= (1.0 + eps) * S_MAX {
+                return Err(Error::from(&format!(
+                    "Invalid metric: eigenvalue {s:e} > S_MAX"
+                )));
+            }
             s_max = s_max.max(s);
             s_min = s_min.min(s);
         }
-        assert!(
-            s_max / s_min < (1.0 + eps) * S_RATIO_MAX,
-            "aniso > ANISO_MAX"
-        );
+        if s_max / s_min >= (1.0 + eps) * S_RATIO_MAX {
+            return Err(Error::from(&format!(
+                "Invalid metric: anisotropy ratio {:e} > S_RATIO_MAX",
+                s_max / s_min
+            )));
+        }
         Ok(())
     }
 
@@ -268,7 +284,7 @@ where
     fn differs_from(&self, other: &Self, tol: f64) -> bool {
         self.into_iter()
             .zip(*other)
-            .any(|(x, y)| f64::abs(x - y) > tol * x)
+            .any(|(x, y)| f64::abs(x - y) > tol * x.abs())
     }
 
     fn step(&self, other: &Self) -> (f64, f64) {
@@ -283,7 +299,8 @@ where
     }
 
     fn scale(&mut self, s: f64) {
-        self.scale_aniso(s);
+        // h <- s * h, i.e. M <- M / s^2
+        self.scale_aniso(1.0 / (s * s));
     }
 }
 
@@ -317,7 +334,7 @@ impl AnisoMetric2d {
         let n1 = s1.norm();
         let s0 = s0 / n0;
         let s1 = s1 / n1;
-        assert!(s0.dot(&s1) < 1e-12);
+        assert!(s0.dot(&s1).abs() < 1e-12, "non orthogonal vectors");
 
         let mut eigvals = SVector::<f64, 2>::new(1. / n0.powi(2), 1. / n1.powi(2));
         Self::bound_eigenvalues(&mut eigvals);
@@ -345,7 +362,8 @@ impl Default for AnisoMetric2d {
     fn default() -> Self {
         Self {
             m: [S_MIN, S_MIN, 0.],
-            v: (S_MIN.powi(2)),
+            // 1 / sqrt(det(M))
+            v: 1.0 / S_MIN,
         }
     }
 }
@@ -479,7 +497,7 @@ impl AnisoMetric3d {
         ]
     }
 
-    /// Create a metric from 2 orthogonal vectors
+    /// Create a metric from 3 orthogonal vectors
     /// The length of the vectors will be the characteric length along this direction
     #[must_use]
     pub fn from_sizes(s0: &Vertex<3>, s1: &Vertex<3>, s2: &Vertex<3>) -> Self {
@@ -489,9 +507,9 @@ impl AnisoMetric3d {
         let s0 = s0 / n0;
         let s1 = s1 / n1;
         let s2 = s2 / n2;
-        assert!(s0.dot(&s1) < 1e-12);
-        assert!(s0.dot(&s2) < 1e-12);
-        assert!(s1.dot(&s2) < 1e-12);
+        assert!(s0.dot(&s1).abs() < 1e-12, "non orthogonal vectors");
+        assert!(s0.dot(&s2).abs() < 1e-12, "non orthogonal vectors");
+        assert!(s1.dot(&s2).abs() < 1e-12, "non orthogonal vectors");
 
         let mut eigvals = SVector::<f64, 3>::new(1. / n0.powi(2), 1. / n1.powi(2), 1. / n2.powi(2));
         Self::bound_eigenvalues(&mut eigvals);
@@ -522,7 +540,8 @@ impl Default for AnisoMetric3d {
     fn default() -> Self {
         Self {
             m: [S_MIN, S_MIN, S_MIN, 0.0, 0.0, 0.0],
-            v: (S_MIN.powi(3)),
+            // 1 / sqrt(det(M))
+            v: 1.0 / S_MIN.powi(3).sqrt(),
         }
     }
 }
@@ -612,9 +631,109 @@ impl Index<usize> for AnisoMetric3d {
 #[cfg(test)]
 mod tests {
     use super::{AnisoMetric, AnisoMetric2d, AnisoMetric3d, Metric};
-    use crate::{Result, S_RATIO_MAX};
+    use crate::{Result, S_RATIO_MAX, metric::IsoMetric};
     use nalgebra::SMatrix;
     use tmesh::{Vert2d, Vert3d};
+
+    #[test]
+    #[should_panic(expected = "non orthogonal vectors")]
+    fn test_from_sizes_non_orthogonal_2d() {
+        let _ = AnisoMetric2d::from_sizes(&Vert2d::new(1.0, 0.0), &Vert2d::new(-1.0, 1.0));
+    }
+
+    #[test]
+    #[should_panic(expected = "non orthogonal vectors")]
+    fn test_from_sizes_non_orthogonal_3d() {
+        let _ = AnisoMetric3d::from_sizes(
+            &Vert3d::new(1.0, 0.0, 0.0),
+            &Vert3d::new(0.0, 1.0, 0.0),
+            &Vert3d::new(-1.0, 0.0, 1.0),
+        );
+    }
+
+    #[test]
+    fn test_check_invalid() {
+        let m = AnisoMetric2d::from_mat(SMatrix::<f64, 2, 2>::new(1.0, 0.0, 0.0, 2.0));
+        assert!(m.check().is_ok());
+
+        // negative eigenvalue
+        let mat = SMatrix::<f64, 2, 2>::new(1.0, 0.0, 0.0, -2.0);
+        let m = AnisoMetric2d::from_mat_and_vol(mat, 1.0);
+        assert!(m.check().is_err());
+
+        // too anisotropic
+        let mat = SMatrix::<f64, 2, 2>::new(1.0, 0.0, 0.0, 2.0 * S_RATIO_MAX);
+        let m = AnisoMetric2d::from_mat_and_vol(mat, 1.0);
+        assert!(m.check().is_err());
+    }
+
+    #[test]
+    fn test_scale_consistent_with_iso() {
+        // scaling the sizes by s gives the same result for isotropic and anisotropic metrics
+        let s = 0.5;
+        let mut iso = IsoMetric::<2>::from(0.1);
+        iso.scale(s);
+        let mut aniso = AnisoMetric2d::from_iso(&IsoMetric::<2>::from(0.1));
+        aniso.scale(s);
+        for h in aniso.sizes() {
+            assert!(f64::abs(h - iso.h()) < 1e-12, "{h} vs {}", iso.h());
+        }
+        assert!(f64::abs(aniso.vol() / iso.vol() - 1.0) < 1e-12);
+
+        let mut iso = IsoMetric::<3>::from(0.1);
+        iso.scale(s);
+        let mut aniso = AnisoMetric3d::from_iso(&IsoMetric::<3>::from(0.1));
+        aniso.scale(s);
+        for h in aniso.sizes() {
+            assert!(f64::abs(h - iso.h()) < 1e-12, "{h} vs {}", iso.h());
+        }
+        assert!(f64::abs(aniso.vol() / iso.vol() - 1.0) < 1e-12);
+    }
+
+    #[test]
+    fn test_differs_from_negative_coefficient() {
+        let m = AnisoMetric2d::from_mat(SMatrix::<f64, 2, 2>::new(2.0, -0.5, -0.5, 1.0));
+        assert!(!m.differs_from(&m, 0.1));
+        let m = AnisoMetric3d::from_mat(SMatrix::<f64, 3, 3>::new(
+            2.0, -0.5, 0.0, -0.5, 1.0, -0.2, 0.0, -0.2, 3.0,
+        ));
+        assert!(!m.differs_from(&m, 0.1));
+    }
+
+    #[test]
+    fn test_default_vol() {
+        let m = AnisoMetric2d::default();
+        let expected = 1.0 / m.as_mat().determinant().sqrt();
+        assert!(f64::abs(m.vol() / expected - 1.0) < 1e-12);
+
+        let m = AnisoMetric3d::default();
+        let expected = 1.0 / m.as_mat().determinant().sqrt();
+        assert!(f64::abs(m.vol() / expected - 1.0) < 1e-12);
+    }
+
+    #[test]
+    fn test_quality_edge_aniso_2d() {
+        use crate::metric::MetricElem;
+        use tmesh::mesh::Edge;
+
+        // edges of unit length in metric space must have a unit quality,
+        // whatever their orientation
+        let m = AnisoMetric2d::from_mat(SMatrix::<f64, 2, 2>::new(1.0, 0.0, 0.0, 100.0));
+        for t in [
+            Vert2d::new(1.0, 0.0),
+            Vert2d::new(1.0, 1.0).normalize(),
+            Vert2d::new(1.0, 3.0).normalize(),
+        ] {
+            let p1 = t / m.length(&t);
+            let me: MetricElem<2, Edge<usize>, AnisoMetric2d> =
+                [(Vert2d::zeros(), m), (p1, m)].into_iter().collect();
+            assert!(
+                f64::abs(me.quality() - 1.0) < 1e-10,
+                "{t:?}: {}",
+                me.quality()
+            );
+        }
+    }
 
     #[test]
     fn test_aniso_2d() -> Result<()> {

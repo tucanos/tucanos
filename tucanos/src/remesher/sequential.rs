@@ -343,22 +343,28 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             vert.m.check()?;
         }
 
-        for edg in self.edges.keys() {
+        for (edg, &count) in &self.edges {
             // Check that the edge vertices are ok
+            let mut verts = Vec::with_capacity(2);
             for i in edg.into_iter() {
                 // Does the vertex exist ?
-                let vert = self.verts.get(&i);
-                if vert.is_none() {
+                let Some(vert) = self.verts.get(&i) else {
                     return Err(Error::from("Invalid edge (missing vertex)"));
-                }
+                };
+                verts.push(vert);
+            }
 
-                // Do all the elements contain the edge ?
-                for i_elem in &vert.unwrap().els {
-                    let e = &self.elems.get(i_elem).unwrap().el;
-                    if !e.contains_edge(edg) && vert.is_none() {
-                        return Err(Error::from("Invalid edge"));
-                    }
-                }
+            // Is the number of elements containing the edge consistent?
+            let n = verts[0]
+                .els
+                .iter()
+                .filter(|i_elem| verts[1].els.contains(i_elem))
+                .filter(|i_elem| self.elems[i_elem].el.contains_edge(edg))
+                .count();
+            if n == 0 || i64::from(count) != n as i64 {
+                return Err(Error::from(&format!(
+                    "Invalid edge {edg:?}: counted in {count} elements, found in {n}"
+                )));
             }
         }
 
@@ -495,6 +501,10 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
 
     /// Insert a new element
     pub fn insert_elem(&mut self, el: C, tag: Tag) -> Result<()> {
+        // validate the element before modifying the remesher
+        if el.into_iter().any(|idx| !self.verts.contains_key(&idx)) {
+            return Err(Error::from(&format!("Element vertex not present: {el:?}")));
+        }
         let ge = self.gelem(&el);
         let q = ge.quality();
         if q <= 0.0 {
@@ -506,12 +516,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
 
         // update the vertex-to-element info
         for idx in el {
-            let vx = self.verts.get_mut(&idx);
-            if vx.is_none() {
-                return Err(Error::from("Element vertex not present"));
-            }
-            assert!(vx.is_some());
-            vx.unwrap().els.push(self.next_elem);
+            self.verts.get_mut(&idx).unwrap().els.push(self.next_elem);
         }
 
         // update the edges
@@ -1108,6 +1113,7 @@ mod tests {
             collapse::CollapseParams,
             sequential::{RemeshingStep, SmoothParams, SplitParams, SwapParams},
             smooth::SmoothingMethod,
+            stats::StepStats,
         },
     };
     use std::f64::consts::PI;
@@ -1158,6 +1164,49 @@ mod tests {
             let d = (c - p).norm();
             assert!(d < 1e-8);
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_check_edges() -> Result<()> {
+        let mut mesh = test_mesh_2d();
+        mesh.fix().unwrap();
+        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts()];
+        let topo = MeshTopology::new(&mesh);
+        let new_remesher = || Remesher::new(&mesh, &topo, &h, &NoGeometry());
+        new_remesher()?.check()?;
+
+        // an edge that is not contained in any element
+        let mut r = new_remesher()?;
+        let missing = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
+            .into_iter()
+            .map(|(i, j)| Edge::new(i, j).sorted())
+            .find(|e| !r.edges.contains_key(e))
+            .unwrap();
+        r.edges.insert(missing, 1);
+        assert!(r.check().is_err());
+
+        // an edge with a wrong element count
+        let mut r = new_remesher()?;
+        *r.edges.values_mut().next().unwrap() += 1;
+        assert!(r.check().is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_insert_elem_missing_vertex() -> Result<()> {
+        let mut mesh = test_mesh_2d();
+        mesh.fix().unwrap();
+        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts()];
+        let topo = MeshTopology::new(&mesh);
+        let mut remesher = Remesher::new(&mesh, &topo, &h, &NoGeometry())?;
+
+        assert!(remesher.insert_elem(Triangle::new(0, 1, 10), 1).is_err());
+        assert_eq!(remesher.n_elems(), 2);
+        assert_eq!(remesher.n_edges(), 5);
+        remesher.check()?;
 
         Ok(())
     }
@@ -1250,6 +1299,48 @@ mod tests {
         remesher.check()?;
 
         let _mesh = remesher.to_mesh(true);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_swap_ordered_ignores_q() -> Result<()> {
+        // the quality of both elements is > 0.8 (default value of SwapParams::q),
+        // but swapping the diagonal still improves the min. quality by ~5.5%
+        let coords = vec![
+            Vert2d::new(0., 0.),
+            Vert2d::new(1., 0.),
+            Vert2d::new(1.1, 1.1),
+            Vert2d::new(0., 1.),
+        ];
+        let elems = vec![Triangle::<usize>::new(0, 1, 2), Triangle::new(0, 2, 3)];
+        let faces = vec![
+            Edge::new(0, 1),
+            Edge::new(1, 2),
+            Edge::new(2, 3),
+            Edge::new(3, 0),
+        ];
+        let mesh = GenericMesh::from_vecs(coords, elems, vec![1, 1], faces, vec![1, 2, 3, 4]);
+
+        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts()];
+        let geom = NoGeometry();
+        let topo = MeshTopology::new(&mesh);
+        let mut remesher = Remesher::new(&mesh, &topo, &h, &geom)?;
+        let q_min = remesher.qualities_iter().fold(f64::MAX, f64::min);
+        assert!(q_min > 0.8);
+
+        let params = SwapParams {
+            ordered: true,
+            ..Default::default()
+        };
+        remesher.swap(&params, &geom, true)?;
+        let q_min_new = remesher.qualities_iter().fold(f64::MAX, f64::min);
+        assert!(q_min_new > 1.05 * q_min);
+
+        let Some(StepStats::Swap(stats)) = remesher.stats.last() else {
+            unreachable!()
+        };
+        assert_eq!(stats.n_swaps, 1);
 
         Ok(())
     }
@@ -1560,8 +1651,8 @@ mod tests {
             if iter == 4 {
                 let (mini, maxi, _) =
                     remesher.check_edge_lengths_analytical(|x| IsoMetric::<2>::from(h_2d(x)));
-                assert_delta!(mini, 0.5, 0.01);
-                assert_delta!(maxi, 1.42, 0.01);
+                assert_delta!(mini, 0.66, 0.01);
+                assert_delta!(maxi, 1.46, 0.01);
             }
         }
 
@@ -1595,7 +1686,7 @@ mod tests {
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
             if iter == 2 {
                 assert_delta!(mini, 0.7, 0.01);
-                assert_delta!(maxi, 1.39, 0.01);
+                assert_delta!(maxi, 1.38, 0.01);
             }
         }
 
@@ -1635,8 +1726,8 @@ mod tests {
                 remesher.check_edge_lengths_analytical(|x| IsoMetric::<2>::from(h_2d(x)));
 
             if iter == 9 {
-                assert_delta!(mini, 0.71, 0.01);
-                assert_delta!(maxi, 1.4, 0.01);
+                assert_delta!(mini, 0.69, 0.01);
+                assert_delta!(maxi, 1.51, 0.01);
             }
         }
 
@@ -1766,7 +1857,7 @@ mod tests {
         let m = remesher.to_mesh(false);
         println!("{}", m.n_elems());
         assert!(m.n_elems() > 1000);
-        assert!(m.n_elems() < 1100);
+        assert!(m.n_elems() < 1120);
         Ok(())
     }
 
@@ -1853,8 +1944,8 @@ mod tests {
                 remesher.check_edge_lengths_analytical(|x| IsoMetric::<3>::from(h_3d(x)));
 
             if iter == 2 {
-                assert_delta!(mini, 0.52, 0.01);
-                assert_delta!(maxi, 1.62, 0.01);
+                assert_delta!(mini, 0.41, 0.01);
+                assert_delta!(maxi, 1.60, 0.01);
             }
         }
 
@@ -1901,8 +1992,8 @@ mod tests {
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
 
             if iter == 1 {
-                assert_delta!(mini, 0.6, 0.01);
-                assert_delta!(maxi, 1.52, 0.01);
+                assert_delta!(mini, 0.53, 0.01);
+                assert_delta!(maxi, 1.45, 0.01);
             }
         }
 
@@ -1946,8 +2037,8 @@ mod tests {
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
 
             if iter == 1 {
-                assert_delta!(mini, 0.48, 0.01);
-                assert_delta!(maxi, 1.61, 0.01);
+                assert_delta!(mini, 0.44, 0.01);
+                assert_delta!(maxi, 1.52, 0.01);
             }
 
             // let fname = format!("sphere_{}.vtu", iter + 1);
@@ -1998,8 +2089,8 @@ mod tests {
             let (mini, maxi, _) = remesher.check_edge_lengths_analytical(|x| mfunc(*x));
 
             if iter == 1 {
-                assert_delta!(mini, 0.44, 0.01);
-                assert_delta!(maxi, 1.50, 0.01);
+                assert_delta!(mini, 0.46, 0.01);
+                assert_delta!(maxi, 1.70, 0.01);
             }
 
             // let fname = format!("sphere_{}.vtu", iter + 1);
@@ -2052,8 +2143,8 @@ mod tests {
             if iter == 1 {
                 #[cfg(not(feature = "argmin"))]
                 {
-                    assert_delta!(mini, 0.42, 0.01);
-                    assert_delta!(maxi, 1.77, 0.01);
+                    assert_delta!(mini, 0.44, 0.01);
+                    assert_delta!(maxi, 1.52, 0.01);
                 }
                 #[cfg(feature = "argmin")]
                 {
@@ -2204,7 +2295,7 @@ mod tests {
         remesher.remesh(&RemesherParams::default(), &geom)?;
         let mesh = remesher.to_mesh(false);
         // mesh.write_meshb("iso3d.meshb")?;
-        assert_eq!(mesh.n_verts(), 615);
+        assert_eq!(mesh.n_verts(), 613);
 
         Ok(())
     }
@@ -2247,7 +2338,7 @@ mod tests {
         remesher.remesh(&RemesherParams::default(), &geom)?;
         let mesh = remesher.to_mesh(false);
         // mesh.write_meshb("aniso3d.meshb")?;
-        assert_eq!(mesh.n_verts(), 52);
+        assert_eq!(mesh.n_verts(), 53);
 
         Ok(())
     }
@@ -2340,8 +2431,8 @@ mod tests {
 
         let (mini, maxi, _) = remesher.check_edge_lengths_analytical(m_func);
 
-        assert_delta!(mini, 0.49, 0.01);
-        assert_delta!(maxi, 2.16, 0.01);
+        assert_delta!(mini, 0.59, 0.01);
+        assert_delta!(maxi, 2.27, 0.01);
 
         let _mesh = remesher.to_mesh(true);
         // mesh.write_vtk("sphere_surf_iso.vtu")?;
@@ -2396,14 +2487,21 @@ mod tests {
 
         let mut remesher = Remesher::new(&mesh, &topo, &m, &geom)?;
 
-        let params = RemesherParams::new(20.0, 12);
+        let mut params = RemesherParams::new(20.0, 12);
+        // splitting edges across the thin direction of the metric creates
+        // elements with a lower quality: relax the absolute threshold
+        for step in &mut params.steps {
+            if let RemeshingStep::Split(p) = step {
+                p.min_q_abs = 0.2;
+            }
+        }
 
         remesher.remesh(&params, &geom)?;
         remesher.check()?;
 
         let (mini, maxi, _) = remesher.check_edge_lengths_analytical(m_func);
-        assert_delta!(mini, 0.44, 0.01);
-        assert_delta!(maxi, 1.89, 0.01);
+        assert_delta!(mini, 0.56, 0.01);
+        assert_delta!(maxi, 1.60, 0.01);
 
         let _mesh = remesher.to_mesh(true);
         // mesh.write_vtk("sphere_surf_aniso.vtu")?;
@@ -2442,8 +2540,8 @@ mod tests {
         remesher.remesh(&params, &geom)?;
         remesher.check()?;
         let (mini, maxi, _) = remesher.check_edge_lengths_analytical(m_func);
-        assert_delta!(mini, 0.45, 0.01);
-        assert_delta!(maxi, 1.66, 0.01);
+        assert_delta!(mini, 0.43, 0.01);
+        assert_delta!(maxi, 1.62, 0.01);
         Ok(())
     }
 }

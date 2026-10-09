@@ -97,15 +97,18 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         Ok(())
     }
     /// Loop over the edges and collapse them if
-    /// - their length is smaller that 1/sqrt(2)
+    /// - their length is smaller that `params.l`
     /// - no edge larger than
-    ///   max(sqrt(2), min(params.collapse_max_l_abs, params.collapse_max_l_rel * max(l)))
+    ///   max(params.max_l_abs, params.max_l_rel * max(l))
+    ///   is created
     /// - no new boundary face is created if its normal forms an angle > than
     ///   params.max_angle with the normal of the geometry at the face center
     /// - no element with a quality lower than
-    ///   max(params.collapse_min_q_abs, params.collapse_min_q_rel * min(q))
+    ///   min(params.min_q_abs, params.min_q_rel * min(q))
+    ///   is created
     ///
-    /// where max(l) and min(q) as the max edge length and min quality over the entire mesh
+    /// where max(l) and min(q) are the max edge length and min quality in the
+    /// cavity of the collapsed edge
     pub fn collapse<G: Geometry<D>>(
         &mut self,
         params: &CollapseParams,
@@ -207,10 +210,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                 }
             }
 
-            debug!(
-                "Iteration {}: {n_collapses} edges collapsed, {n_fails} fails",
-                n_iter + 1,
-            );
+            debug!("Iteration {n_iter}: {n_collapses} edges collapsed, {n_fails} fails");
             self.stats.push(StepStats::Collapse(CollapseStats::new(
                 n_collapses,
                 n_fails,

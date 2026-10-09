@@ -456,8 +456,9 @@ macro_rules! create_remesher {
                 };
 
                 for m_v in m.iter_mut() {
-                    let scale = libm::pow(m_v.vol(), exponent);
-                    if !scale.is_nan() {
+                    // M <- vol^exponent M, i.e. h <- vol^(-exponent / 2) h
+                    let scale = libm::pow(m_v.vol(), -0.5 * exponent);
+                    if scale.is_finite() {
                         m_v.scale(scale);
                     }
                     res.extend(m_v.into_iter());

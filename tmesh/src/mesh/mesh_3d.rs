@@ -274,7 +274,7 @@ mod tests {
             GradientMethod::QuadraticLeastSquares(1),
             GradientMethod::L2Projection,
         ] {
-            let gradient = msh.gradient(method, &f);
+            let gradient = msh.gradient(method, &f).unwrap();
 
             for x in gradient.chunks(3) {
                 let x = Vert3d::from_row_slice(x);
@@ -295,6 +295,7 @@ mod tests {
             .collect::<Vec<_>>();
         let res = mesh
             .gradient(method, &f)
+            .unwrap()
             .chunks(3)
             .map(Vert3d::from_column_slice)
             .collect::<Vec<_>>();
@@ -346,7 +347,7 @@ mod tests {
             GradientMethod::QuadraticLeastSquares(1),
             GradientMethod::L2Projection,
         ] {
-            let res = mesh.hessian(method, &f);
+            let res = mesh.hessian(method, &f).unwrap();
             for i_vert in 0..mesh.n_verts() {
                 if matches!(method, GradientMethod::L2Projection)
                     && v2v.row(i_vert).iter().any(|&j| flg[j])
@@ -393,7 +394,7 @@ mod tests {
                 ]
             })
             .collect::<Vec<_>>();
-        let res = mesh.hessian(method, &f);
+        let res = mesh.hessian(method, &f).unwrap();
 
         let err = hess
             .iter()
@@ -483,6 +484,42 @@ mod tests {
         msh.check_equals(&new_msh, 1e-12).unwrap();
 
         std::fs::remove_file(fname).unwrap();
+    }
+
+    #[test]
+    fn test_meshb_quadratic() {
+        let msh: QuadraticMesh3d = quadratic_ball_mesh(1.0, 1);
+        assert!(msh.n_faces() > 0);
+        let fname = "qball3d.meshb";
+        msh.write_meshb(fname).unwrap();
+        let new_msh = QuadraticMesh3d::from_meshb(fname).unwrap();
+        std::fs::remove_file(fname).unwrap();
+
+        msh.check_equals(&new_msh, 1e-12).unwrap();
+    }
+
+    #[test]
+    fn test_meshb_large_tag() {
+        let fname = "large_tag.meshb";
+        let mut writer = minimeshb::writer::MeshbWriter::new(fname, 3, 3).unwrap();
+        writer
+            .write_vertices::<3, _, _>(
+                [[0., 0., 0.], [1., 0., 0.], [0., 1., 0.], [0., 0., 1.]].into_iter(),
+                [1; 4].into_iter(),
+            )
+            .unwrap();
+        writer
+            .write_tetrahedra(std::iter::once([0, 1, 2, 3]), std::iter::once(i32::MAX))
+            .unwrap();
+        writer.close();
+
+        let res = Mesh3d::from_meshb(fname);
+        std::fs::remove_file(fname).unwrap();
+        if Tag::try_from(i32::MAX).is_ok() {
+            assert_eq!(res.unwrap().etag(0), Tag::try_from(i32::MAX).unwrap());
+        } else {
+            assert!(res.is_err());
+        }
     }
 
     #[test]
@@ -736,7 +773,7 @@ mod tests {
                 (r0 - 0.25) * (r1 - 0.25)
             })
             .collect::<Vec<f64>>();
-        let (res, split_edgs): (Mesh3d, _) = msh.split_isosurface(&f);
+        let (res, split_edgs): (Mesh3d, _) = msh.split_isosurface(&f).unwrap();
 
         res.check(&res.all_faces()).unwrap();
 

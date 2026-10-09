@@ -3,17 +3,13 @@ use crate::{
     Dim, Result,
     geometry::Geometry,
     metric::Metric,
-    min_iter,
     remesher::{
         cavity::{Cavity, CavityCheckStatus, FilledCavity, FilledCavityType, Seed},
         stats::{SmoothStats, StepStats},
     },
 };
 use log::{debug, trace};
-use tmesh::{
-    Vertex,
-    mesh::{GSimplex, Simplex},
-};
+use tmesh::{Vertex, mesh::Simplex};
 
 /// Defines available smoothing algorithms for mesh vertices.
 ///
@@ -23,11 +19,11 @@ use tmesh::{
 /// edge length in metric space):
 ///  - for `Laplacian`
 /// ```math
-/// \tilde v_i = v_i + \sum_{j \in N(i)} (v_j - v_i)
+/// \tilde v_i = v_i + \frac{1}{|N(i)|}\sum_{j \in N(i)} (v_j - v_i)
 /// ```
 ///  - for `Laplacian2`
 /// ```math
-/// \tilde v_i = \frac{\sum_{j \in N(i)} ||v_j - v_i||_M (v_j + v_i)}{2 \sum_{j \in N(i)} ||v_j - v_i||_M}
+/// \tilde v_i = \frac{\sum_{j \in N(i)} ||v_j - v_i||_M v_j}{\sum_{j \in N(i)} ||v_j - v_i||_M}
 /// ```
 ///  - for `Avro`
 /// ```math
@@ -205,7 +201,6 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             let m0 = &cavity.metrics[i0_local];
             let t0 = &cavity.tags[i0_local];
 
-            let mut h0_new = Default::default();
             let p0_smoothed = match params.method {
                 SmoothingMethod::Laplacian => Self::smooth_laplacian(cavity, &neighbors),
                 SmoothingMethod::Laplacian2 => Self::smooth_laplacian_2(cavity, &neighbors),
@@ -249,22 +244,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             }
 
             // Smoothing is valid, interpolate the metric at the new vertex location
-            let mut best = f64::NEG_INFINITY;
-            for i_elem in 0..cavity.n_elems() {
-                let ge = cavity.gelem(i_elem);
-                let x = ge.ge().bcoords(&p0_new);
-                let cmin = min_iter(x.into_iter());
-                if cmin > best {
-                    let elem = &cavity.elems[i_elem];
-                    let metrics = elem.into_iter().map(|i| &cavity.metrics[i]);
-                    let wm = x.into_iter().zip(metrics);
-                    h0_new = M::interpolate(wm);
-                    best = cmin;
-                    if best > 0.0 {
-                        break;
-                    }
-                }
-            }
+            let h0_new = cavity.interpolate_metric(&p0_new);
 
             trace!("Smooth, update vertex");
             {
@@ -274,10 +254,11 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                 vert.m = h0_new;
             }
 
-            for (i_local, i_global) in cavity.global_elem_ids.iter().enumerate() {
-                // update the quality
-                let ge = cavity.gelem(i_local); // todo: precompute all ge
-                self.elems.get_mut(i_global).unwrap().q = ge.quality();
+            // update the quality; the cavity still holds the old vertex location
+            // and metric, so the elements are rebuilt from the updated vertices
+            for i_global in &cavity.global_elem_ids {
+                let q = self.gelem(&self.elems[i_global].el).quality();
+                self.elems.get_mut(i_global).unwrap().q = q;
             }
             n_smooth += 1;
         }
@@ -312,6 +293,45 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             self.check()?;
         }
 
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        Result,
+        geometry::NoGeometry,
+        mesh::{MeshTopology, test_meshes::test_mesh_2d},
+        metric::IsoMetric,
+        remesher::{Remesher, SmoothParams},
+    };
+    use tmesh::mesh::Mesh;
+
+    #[test]
+    fn test_smooth_updates_cached_quality() -> Result<()> {
+        let mut mesh = test_mesh_2d().split().split().split();
+        mesh.fix()?;
+
+        // perturb the interior vertices so that smoothing moves them
+        let flg = mesh.boundary_flag();
+        for (k, (v, f)) in mesh.verts_mut().zip(flg).enumerate() {
+            if !f {
+                v[0] += 0.015 * ((k * 7 % 5) as f64 - 2.0);
+                v[1] += 0.015 * ((k * 3 % 5) as f64 - 2.0);
+            }
+        }
+
+        let h = vec![IsoMetric::<2>::from(0.125); mesh.n_verts()];
+        let topo = MeshTopology::new(&mesh);
+        let geom = NoGeometry();
+        let mut remesher = Remesher::new(&mesh, &topo, &h, &geom)?;
+        remesher.smooth(&SmoothParams::default(), &geom, false)?;
+
+        for e in remesher.elems.values() {
+            let q = remesher.gelem(&e.el).quality();
+            assert!((q - e.q).abs() < 1e-12, "cached quality {} != {q}", e.q);
+        }
         Ok(())
     }
 }

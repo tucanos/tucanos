@@ -51,6 +51,10 @@ impl<const D: usize> Metric<D> for IsoMetric<D> {
     fn length_sqr(&self, e: &Vertex<D>) -> f64 {
         e.norm_squared() / self.0.powi(2)
     }
+
+    fn dual_length(&self, n: &Vertex<D>) -> f64 {
+        n.norm() * self.0
+    }
     /// For an isotropic metric in $`d`$ dimensions, the volume is
     /// ```math
     /// V(\mathcal M) = h^d
@@ -137,6 +141,35 @@ mod tests {
     use super::IsoMetric;
     use nalgebra::SVector;
     use tmesh::Vert2d;
+
+    #[test]
+    fn test_edge_length_close_sizes() {
+        let p0 = Vert2d::new(0.0, 0.0);
+        let p1 = Vert2d::new(1.0, 0.0);
+        let m0 = IsoMetric::<2>::from(1.0);
+        for h1 in [
+            1.0 / 1.02,
+            1.0 / 1.009,
+            1.0 / 1.001,
+            1.0,
+            1.001,
+            1.009,
+            1.02,
+        ] {
+            let m1 = IsoMetric::<2>::from(h1);
+            // logarithmic mean of the lengths
+            let (l0, l1) = (1.0, 1.0 / h1);
+            let expected = if f64::abs(l1 - l0) < f64::EPSILON {
+                l0
+            } else {
+                (l1 - l0) / f64::ln(l1 / l0)
+            };
+            let l = IsoMetric::edge_length(&p0, &m0, &p1, &m1);
+            assert!(f64::abs(l - expected) < 1e-9, "{h1}: {l} vs {expected}");
+            let l_rev = IsoMetric::edge_length(&p1, &m1, &p0, &m0);
+            assert!(f64::abs(l - l_rev) < 1e-9, "{h1}: {l} vs {l_rev}");
+        }
+    }
 
     #[test]
     fn test_intersection_2d_iso() {

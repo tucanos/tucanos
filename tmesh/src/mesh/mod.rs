@@ -141,6 +141,20 @@ pub enum GradientMethod {
     L2Projection,
 }
 
+/// Convert the elements and tags read from a `.meshb` file, checking that the tags
+/// fit in `Tag`
+#[allow(clippy::useless_conversion)]
+fn meshb_elems<E: Simplex, const N: usize>(
+    iter: impl ExactSizeIterator<Item = ([usize; N], i32)>,
+) -> Result<Vec<(E, Tag)>> {
+    iter.map(|(e, t)| {
+        let tag = Tag::try_from(t)
+            .map_err(|_| Error::from(&format!("Tag {t} is too large for the tag type")))?;
+        Ok((E::from_iter(e), tag))
+    })
+    .collect()
+}
+
 pub type FixedTags = (FxHashMap<Tag, Tag>, FxHashMap<Tag, twovec::Vec<Tag>>);
 pub type FaceConnectivity<S> = FxHashMap<S, (usize, twovec::Vec<usize>)>;
 /// D-dimensional simplex mesh
@@ -343,11 +357,10 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     /// Computes the connectivity graph of the mesh faces.
     ///
     /// Returns a map where the keys are the sorted faces, and the values are a tuple:
-    /// `(face_index, element_out, element_in)`.
+    /// `(face_index, elements)`.
     ///
     /// * `face_index`: A unique, sequential index for the face.
-    /// * `element_out`: The index of the element where the face orientation matches the canonical sort.
-    /// * `element_in`: The index of the element where the face orientation is flipped.
+    /// * `elements`: The indices of the elements containing the face.
     fn all_faces(&self) -> FaceConnectivity<<Self::C as Simplex>::FACE> {
         let approx_n_faces = self.n_elems() + self.n_verts();
         let mut res: FaceConnectivity<<Self::C as Simplex>::FACE> =
@@ -391,7 +404,9 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     /// and validates the result.
     fn fix(&mut self) -> Result<FixedTags> {
         let n = self.fix_elems_orientation();
-        assert_eq!(n, 0);
+        if n > 0 {
+            debug!("{n} elements reoriented");
+        }
         let all_faces = self.all_faces();
         let btags = self.tag_boundary_faces(&all_faces);
         let itags = self.tag_internal_faces(&all_faces);
@@ -534,7 +549,9 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
 
         let mut used_tags = self.ftags().collect();
 
-        // check tagged internal faces
+        // check that the tagged internal faces with the same tag separate the
+        // same element tags
+        let mut existing: FxHashMap<Tag, twovec::Vec<Tag>> = FxHashMap::with_hasher(FxBuildHasher);
         for (f, (_, ids)) in all_faces {
             if ids.len() > 1 {
                 let tags = ids.iter().map(|&i| self.etag(i)).collect::<FxHashSet<_>>();
@@ -547,8 +564,18 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                     for t in tmp {
                         tags.push(t);
                     }
-                    if let Some(tmp) = res.get(tag) {
-                        assert!(tmp.iter().zip(tags.iter()).all(|(&a, &b)| a == b));
+                    if let Some(tmp) = existing.get(tag) {
+                        if tmp.len() != tags.len()
+                            || tmp.iter().zip(tags.iter()).any(|(&a, &b)| a != b)
+                        {
+                            warn!(
+                                "Internal faces tagged {tag} separate elements with tags {:?} and {:?}",
+                                tmp.iter().collect::<Vec<_>>(),
+                                tags.iter().collect::<Vec<_>>()
+                            );
+                        }
+                    } else {
+                        existing.insert(*tag, tags);
                     }
                 }
             }
@@ -790,32 +817,32 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         }
     }
 
-    fn gradient(&self, method: GradientMethod, f: &[f64]) -> Vec<f64> {
+    fn gradient(&self, method: GradientMethod, f: &[f64]) -> Result<Vec<f64>> {
         match method {
             GradientMethod::LinearLeastSquares(weight) => {
-                least_squares::gradient(self, &self.vertex_to_vertices(), 1, weight, f).unwrap()
+                least_squares::gradient(self, &self.vertex_to_vertices(), 1, weight, f)
             }
             GradientMethod::QuadraticLeastSquares(weight) => {
-                least_squares::gradient(self, &self.vertex_to_vertices(), 2, weight, f).unwrap()
+                least_squares::gradient(self, &self.vertex_to_vertices(), 2, weight, f)
             }
             GradientMethod::L2Projection => {
-                l2proj::gradient_l2proj(self, &self.vertex_to_elems(), f)
+                Ok(l2proj::gradient_l2proj(self, &self.vertex_to_elems(), f))
             }
         }
     }
 
-    fn hessian(&self, method: GradientMethod, f: &[f64]) -> Vec<f64> {
+    fn hessian(&self, method: GradientMethod, f: &[f64]) -> Result<Vec<f64>> {
         match method {
-            GradientMethod::LinearLeastSquares(_) => {
-                unreachable!("Cannot use LinearLeastSquares to compute the hessian")
-            }
+            GradientMethod::LinearLeastSquares(_) => Err(Error::from(
+                "Cannot use LinearLeastSquares to compute the hessian",
+            )),
             GradientMethod::QuadraticLeastSquares(weight) => {
-                least_squares::hessian(self, &self.vertex_to_vertices(), weight, f).unwrap()
+                least_squares::hessian(self, &self.vertex_to_vertices(), weight, f)
             }
             GradientMethod::L2Projection => {
                 let v2e = self.vertex_to_elems();
                 let grad = l2proj::gradient_l2proj(self, &v2e, f);
-                l2proj::hessian_l2proj(self, &v2e, &grad)
+                Ok(l2proj::hessian_l2proj(self, &v2e, &grad))
             }
         }
     }
@@ -990,28 +1017,23 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                 .map(|(x, _)| Vertex::<D>::from_column_slice(&x)),
         );
 
+        // Missing sections are allowed (e.g. a mesh without faces)
         match <Self::C as Simplex>::order() {
             1 => {
                 match <Self::C as Simplex>::N_VERTS {
                     4 => {
                         if let Ok(iter) = reader.read_tetrahedra() {
-                            res.add_elems_and_tags(
-                                iter.map(|(e, t)| (<Self::C as Simplex>::from_iter(e), t as Tag)),
-                            );
+                            res.add_elems_and_tags(meshb_elems(iter)?.into_iter());
                         }
                     }
                     3 => {
                         if let Ok(iter) = reader.read_triangles() {
-                            res.add_elems_and_tags(
-                                iter.map(|(e, t)| (<Self::C as Simplex>::from_iter(e), t as Tag)),
-                            );
+                            res.add_elems_and_tags(meshb_elems(iter)?.into_iter());
                         }
                     }
                     2 => {
                         if let Ok(iter) = reader.read_edges() {
-                            res.add_elems_and_tags(
-                                iter.map(|(e, t)| (<Self::C as Simplex>::from_iter(e), t as Tag)),
-                            );
+                            res.add_elems_and_tags(meshb_elems(iter)?.into_iter());
                         }
                     }
                     _ => unimplemented!(),
@@ -1020,16 +1042,12 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                 match <Self::C as Simplex>::FACE::N_VERTS {
                     3 => {
                         if let Ok(iter) = reader.read_triangles() {
-                            res.add_faces_and_tags(iter.map(|(e, t)| {
-                                (<Self::C as Simplex>::FACE::from_iter(e), t as Tag)
-                            }));
+                            res.add_faces_and_tags(meshb_elems(iter)?.into_iter());
                         }
                     }
                     2 => {
                         if let Ok(iter) = reader.read_edges() {
-                            res.add_faces_and_tags(iter.map(|(e, t)| {
-                                (<Self::C as Simplex>::FACE::from_iter(e), t as Tag)
-                            }));
+                            res.add_faces_and_tags(meshb_elems(iter)?.into_iter());
                         }
                     }
                     1 => warn!("not reading faces when elements are edges"),
@@ -1038,29 +1056,33 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
             }
             2 => {
                 match <Self::C as Simplex>::N_VERTS {
+                    10 => {
+                        if let Ok(iter) = reader.read_quadratic_tetrahedra() {
+                            res.add_elems_and_tags(meshb_elems(iter)?.into_iter());
+                        }
+                    }
                     6 => {
                         if let Ok(iter) = reader.read_quadratic_triangles() {
-                            res.add_elems_and_tags(
-                                iter.map(|(e, t)| (<Self::C as Simplex>::from_iter(e), t as Tag)),
-                            );
+                            res.add_elems_and_tags(meshb_elems(iter)?.into_iter());
                         }
                     }
                     3 => {
                         if let Ok(iter) = reader.read_quadratic_edges() {
-                            res.add_elems_and_tags(
-                                iter.map(|(e, t)| (<Self::C as Simplex>::from_iter(e), t as Tag)),
-                            );
+                            res.add_elems_and_tags(meshb_elems(iter)?.into_iter());
                         }
                     }
                     _ => unimplemented!(),
                 }
 
                 match <Self::C as Simplex>::FACE::N_VERTS {
+                    6 => {
+                        if let Ok(iter) = reader.read_quadratic_triangles() {
+                            res.add_faces_and_tags(meshb_elems(iter)?.into_iter());
+                        }
+                    }
                     3 => {
                         if let Ok(iter) = reader.read_quadratic_edges() {
-                            res.add_faces_and_tags(iter.map(|(e, t)| {
-                                (<Self::C as Simplex>::FACE::from_iter(e), t as Tag)
-                            }));
+                            res.add_faces_and_tags(meshb_elems(iter)?.into_iter());
                         }
                     }
                     1 => warn!("not reading faces when elements are edges"),
@@ -1218,12 +1240,29 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     }
 
     fn write_solb(&self, arr: &[f64], file_name: &str, loc: SolutionLocation) -> Result<()> {
-        let n_comp = match loc {
-            SolutionLocation::Vertices => arr.len() / self.n_verts(),
-            SolutionLocation::Elements => arr.len() / self.n_elems(),
-            SolutionLocation::Faces => arr.len() / self.n_faces(),
-            SolutionLocation::Edges => 1, // assume scalar data for edges
+        let n = match loc {
+            SolutionLocation::Vertices => self.n_verts(),
+            SolutionLocation::Elements => self.n_elems(),
+            SolutionLocation::Faces => self.n_faces(),
+            SolutionLocation::Edges => arr.len(), // assume scalar data for edges
         };
+        if n == 0 || !arr.len().is_multiple_of(n) {
+            return Err(Error::from(&format!(
+                "Invalid solution size {} for {n} entities",
+                arr.len()
+            )));
+        }
+        let n_comp = arr.len() / n;
+        let valid = match D {
+            2 => [1, 2, 3].contains(&n_comp),
+            3 => [1, 3, 6].contains(&n_comp),
+            _ => false,
+        };
+        if !valid {
+            return Err(Error::from(&format!(
+                "Solutions with {n_comp} components are not supported in {D}D"
+            )));
+        }
         match D {
             2 => match n_comp {
                 1 => self.write_solb_it::<1, _>(arr, file_name, |x| [x[0]], loc)?,
@@ -1259,8 +1298,22 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     fn read_solb(file_name: &str) -> Result<(Vec<f64>, usize)> {
         let mut reader = MeshbReader::new(file_name)?;
         let d = reader.dimension();
-        assert_eq!(d, D as u8);
+        if d != D as u8 {
+            return Err(Error::from(&format!(
+                "Invalid dimension {d} in {file_name} (expected {D})"
+            )));
+        }
         let m = reader.get_solution_size("SolAtVertices")?;
+        let valid = match d {
+            2 => [1, 2, 3].contains(&m),
+            3 => [1, 3, 6].contains(&m),
+            _ => false,
+        };
+        if !valid {
+            return Err(Error::from(&format!(
+                "Solutions with {m} components are not supported in {d}D"
+            )));
+        }
 
         let res = match d {
             2 => match m {
@@ -1325,7 +1378,7 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
             .for_each(|(i, &j)| verts[j] = self.vert(i));
         self.faces()
             .zip(self.ftags())
-            .filter(|(f, _)| f.into_iter().all(|i| new_ids[i] != usize::MAX))
+            .filter(|(_, t)| filter(*t))
             .for_each(|(f, t)| {
                 faces.push(<Self::C as Simplex>::FACE::from_iter(
                     f.into_iter().map(|i| new_ids[i]),
@@ -1340,7 +1393,8 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         (res, vert_ids)
     }
 
-    /// Build a `Mesh<D>` mesh containing the boundary faces
+    /// Build a `Mesh<D>` mesh containing all the faces stored in the mesh (including
+    /// internal faces, if any). Use `extract_faces` to select the faces by tag.
     /// The returned mesh element type is `C::FACE`.
     fn boundary<M: Mesh<D, C = <Self::C as Simplex>::FACE>>(&self) -> (M, Vec<usize>) {
         self.extract_faces(|_| true)
@@ -1842,10 +1896,12 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     /// Split the mesh along the 0.0 isosurface of a field defined on the edges
     /// The input mesh should have element tag 1, and >0 face tags
     /// The output mesh will have tag 1 in the >0 region, -1 in the <0 region. Interface faces will be tagged with Tag::MAX
+    /// The exact zeros of `f` are replaced by a small positive value, relative to max(|f|).
+    /// An error is returned if `f` contains non finite values or is identically zero.
     fn split_isosurface<M: Mesh<D, C = Self::C>>(
         &self,
         f: &[f64],
-    ) -> (M, SplitEdgeData<<Self::C as Simplex>::T>) {
+    ) -> Result<(M, SplitEdgeData<<Self::C as Simplex>::T>)> {
         iso::split_isosurface(self, f)
     }
 }

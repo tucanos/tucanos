@@ -26,6 +26,12 @@ pub trait Metric<const D: usize>:
     fn length_sqr(&self, e: &Vertex<D>) -> f64;
     /// Compute the length of an edge in metric space
     fn length(&self, e: &Vertex<D>) -> f64;
+    /// Compute the length of a vector `n` using the inverse metric, i.e.
+    /// ```math
+    /// \sqrt{n^T \mathcal M^{-1} n}
+    /// ```
+    /// For a unit normal `n`, this is the size prescribed by the metric in direction `n`
+    fn dual_length(&self, n: &Vertex<D>) -> f64;
     /// Compute the volume associated with the metric
     fn vol(&self) -> f64;
     /// Interpolate between different metrics to return a valid metric
@@ -34,9 +40,11 @@ pub trait Metric<const D: usize>:
         Self: 'a;
     /// Return the D characteristic sizes of the metric (sorted)
     fn sizes(&self) -> [f64; D];
-    /// Scale the metric
+    /// Scale the characteristic sizes of the metric by `s`, i.e. $`h \leftarrow s h`$
+    /// (or $`\mathcal M \leftarrow \mathcal M / s^2`$)
     fn scale(&mut self, s: f64);
-    /// Scale the metric, applying bounds on the characteristic sizes
+    /// Scale the characteristic sizes of the metric by `s`, applying bounds on the
+    /// characteristic sizes
     fn scale_with_bounds(&mut self, s: f64, h_min: f64, h_max: f64);
     /// Intersect with another metric, i.e. return the "largest" metric that is both "smaller" that self and other
     #[must_use]
@@ -69,9 +77,9 @@ pub trait Metric<const D: usize>:
     /// ```math
     /// l_\mathcal M(e) = l_0 \frac{a - 1} { a \ln(a)}
     /// ```
-    /// with $`l_0 = \sqrt{e^T \mathcal M_0 e}`$, $`l_1 = \sqrt{e^T \mathcal M_1 e}`$ and $`a = l_1 / l_0`$
+    /// with $`l_0 = \sqrt{e^T \mathcal M_0 e}`$, $`l_1 = \sqrt{e^T \mathcal M_1 e}`$ and $`a = l_0 / l_1`$
     ///
-    /// NB: this is consistent with metric interpolation, but a linear variation of the sizes, $`h(t) = (1 - t) h_0^{1 - t} + th_1`$ is assumed
+    /// NB: this is consistent with metric interpolation, but a linear variation of the sizes, $`h(t) = (1 - t) h_0 + th_1`$ is assumed
     /// when it comes to gradation. With this assumtion, the metric-space length would be
     /// ```math
     /// l_\mathcal M(e) = l_0 \frac{\ln(a)} { a  - 1}
@@ -87,7 +95,10 @@ pub trait Metric<const D: usize>:
         if f64::abs(r - 1.0) > 0.01 {
             l0 * (r - 1.0) / r / libm::log(r)
         } else {
-            l0
+            // second order expansion of the logarithmic mean (l1 - l0) / ln(l1 / l0),
+            // which is continuous with the expression above and symmetric in (l0, l1)
+            let m = f64::midpoint(l0, l1);
+            m - (l1 - l0).powi(2) / (12.0 * m)
         }
     }
     /// Find the metric with the minimum volume
@@ -113,7 +124,8 @@ pub trait Metric<const D: usize>:
     /// where
     ///  - $`|K|_{\mathcal M}`$ is the volume element in metric space. It is computed
     ///    on a discrete mesh as the ratio of the volume in physical space to the minimum
-    ///    of the volumes of the metrics at each vertex
+    ///    of the volumes of the metrics at each vertex. For elements with a normal $`n`$
+    ///    (codimension 1), it is multiplied by $`\sqrt{n^T \mathcal M^{-1} n}`$
     ///  - the sum on the denominator is performed over all the edges of the element
     ///  - $`\beta_d`$ is a normalization factor such that $`q = 1`$ of equilateral elements
     ///     - $`\beta_2 = 1 / (6\sqrt{2}) `$
@@ -134,8 +146,9 @@ pub trait Metric<const D: usize>:
         let l = l / G::TOPO::N_EDGES as f64;
 
         let fac = if G::has_normal() {
+            // |K|_M = |K| sqrt(det(M)) sqrt(n^T M^-1 n)
             let n = ge.normal(None).normalize();
-            m.length(&n)
+            1.0 / m.dual_length(&n)
         } else {
             assert_eq!(D, G::TOPO::DIM);
             1.0

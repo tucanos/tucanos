@@ -333,29 +333,33 @@ impl CSRGraph {
     /// Extract a sub-graph
     #[must_use]
     pub fn subgraph(&self, ids: impl IntoIterator<Item = usize>) -> Self {
+        let ids = ids.into_iter().collect::<Vec<_>>();
         let mut new_ids = vec![usize::MAX; self.n()];
-        let mut m = 0;
-        for (i, j) in ids.into_iter().enumerate() {
+        for (i, &j) in ids.iter().enumerate() {
             new_ids[j] = i;
-            m += 1;
         }
+        let m = ids.len();
         let mut ptr = vec![0];
         let mut indices = Vec::new();
         let mut values = Vec::new();
-        for (old_i, &new_i) in new_ids.iter().enumerate() {
-            if new_i != usize::MAX {
-                for k in self.row_ptr(old_i) {
-                    let old_j = self.indices[k];
-                    let new_j = new_ids[old_j];
-                    if new_j != usize::MAX {
-                        indices.push(new_j);
-                        if let Some(v) = &self.values {
-                            values.push(v[k]);
-                        }
-                    }
+        // the rows are created in the order of `ids`, with sorted columns
+        let mut row = Vec::new();
+        for &old_i in &ids {
+            row.clear();
+            for k in self.row_ptr(old_i) {
+                let new_j = new_ids[self.indices[k]];
+                if new_j != usize::MAX {
+                    row.push((new_j, k));
                 }
-                ptr.push(indices.len());
             }
+            row.sort_unstable();
+            for &(new_j, k) in &row {
+                indices.push(new_j);
+                if let Some(v) = &self.values {
+                    values.push(v[k]);
+                }
+            }
+            ptr.push(indices.len());
         }
         let values = if self.values.is_none() {
             None
@@ -426,6 +430,22 @@ impl ConnectedComponents {
 #[cfg(test)]
 mod tests {
     use crate::graph::{CSRGraph, reindex};
+
+    #[test]
+    fn test_subgraph_unsorted_ids() {
+        // path 0 - 1 - 2
+        let g = CSRGraph::from_edges([[0, 1], [1, 2]].into_iter(), None);
+        let rows = |h: &CSRGraph| (0..h.n()).map(|i| h.row(i).to_vec()).collect::<Vec<_>>();
+
+        let sub = g.subgraph([1, 2]);
+        assert_eq!(rows(&sub), [[1], [0]]);
+
+        let sub = g.subgraph([2, 1]);
+        assert_eq!(rows(&sub), [[1], [0]]);
+
+        let sub = g.subgraph([2, 0, 1]);
+        assert_eq!(rows(&sub), vec![vec![2], vec![2], vec![0, 1]]);
+    }
 
     #[test]
     fn test_reindex() {

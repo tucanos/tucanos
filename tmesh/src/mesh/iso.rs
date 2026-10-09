@@ -1,7 +1,7 @@
 use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use super::{Edge, Mesh, Prism, Quadrangle, Simplex, pri2tets, qua2tris};
-use crate::{Tag, Vertex};
+use crate::{Error, Result, Tag, Vertex};
 
 pub type SplitEdgeData<T> = FxHashMap<Edge<T>, T>;
 type SplitElemData<C> = (Vec<C>, Vec<Tag>, Vec<<C as Simplex>::FACE>, Vec<Tag>);
@@ -197,7 +197,7 @@ fn split_isosurface_tet<C: Simplex>(
     }
 
     unreachable!(
-        "Exact zeros encountered. Ensure f is perturbed slightly (e.g., v = 1e-12 if v == 0.0) before the element loop."
+        "Exact zeros encountered. Ensure f is perturbed slightly before the element loop."
     );
 }
 
@@ -348,16 +348,30 @@ fn split_isosurface_faces<const D: usize, M: Mesh<D>>(
 pub(super) fn split_isosurface<const D: usize, M: Mesh<D>, M2: Mesh<D, C = M::C>>(
     mesh: &M,
     f: &[f64],
-) -> (M2, SplitEdgeData<<M::C as Simplex>::T>) {
+) -> Result<(M2, SplitEdgeData<<M::C as Simplex>::T>)> {
     assert!(mesh.etags().all(|t| t == 1));
     assert!(mesh.ftags().all(|t| t > 0));
     assert_eq!(M::C::order(), 1);
 
-    // Perturb exact zeros to avoid complex topological singularities.
-    let f: Vec<f64> = f
-        .iter()
-        .map(|&v| if v == 0.0 { 1e-12 } else { v })
-        .collect();
+    if f.len() != mesh.n_verts() {
+        return Err(Error::from(&format!(
+            "Invalid field size {} (expected {})",
+            f.len(),
+            mesh.n_verts()
+        )));
+    }
+    if f.iter().any(|v| !v.is_finite()) {
+        return Err(Error::from("The field contains non finite values"));
+    }
+    let f_max = f.iter().fold(0.0, |a: f64, &b| a.max(b.abs()));
+    if f_max == 0.0 {
+        return Err(Error::from("The field is identically zero"));
+    }
+
+    // Perturb exact zeros to avoid complex topological singularities. The
+    // perturbation is relative to the magnitude of the field
+    let eps = 1e-12 * f_max;
+    let f: Vec<f64> = f.iter().map(|&v| if v == 0.0 { eps } else { v }).collect();
 
     let (new_verts, split_edgs) = split_isosurface_edges(mesh, &f);
     let (new_elems, new_etags, mut new_faces, mut new_ftags) =
@@ -369,8 +383,8 @@ pub(super) fn split_isosurface<const D: usize, M: Mesh<D>, M2: Mesh<D, C = M::C>
 
     // Explicit split routines now generate required boundary/interface faces.
 
-    (
+    Ok((
         M2::new(&new_verts, &new_elems, &new_etags, &new_faces, &new_ftags),
         split_edgs,
-    )
+    ))
 }
