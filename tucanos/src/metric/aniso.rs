@@ -1,8 +1,8 @@
-use crate::Result;
 use crate::metric::{
     IsoMetric, Metric,
     reduction::{control_step, simultaneous_reduction, step},
 };
+use crate::{Error, Result};
 use crate::{S_MAX, S_MIN, S_RATIO_MAX};
 use nalgebra::allocator::Allocator;
 use nalgebra::{Const, DefaultAllocator, SMatrix, SVector};
@@ -150,15 +150,25 @@ where
         let mut s_min: f64 = S_MAX;
 
         for s in eig.eigenvalues.iter().copied() {
-            assert!(s > (1.0 - eps) * S_MIN, "s < S_MIN");
-            assert!(s < (1.0 + eps) * S_MAX, "s > S_MAX");
+            if s <= (1.0 - eps) * S_MIN {
+                return Err(Error::from(&format!(
+                    "Invalid metric: eigenvalue {s:e} < S_MIN"
+                )));
+            }
+            if s >= (1.0 + eps) * S_MAX {
+                return Err(Error::from(&format!(
+                    "Invalid metric: eigenvalue {s:e} > S_MAX"
+                )));
+            }
             s_max = s_max.max(s);
             s_min = s_min.min(s);
         }
-        assert!(
-            s_max / s_min < (1.0 + eps) * S_RATIO_MAX,
-            "aniso > ANISO_MAX"
-        );
+        if s_max / s_min >= (1.0 + eps) * S_RATIO_MAX {
+            return Err(Error::from(&format!(
+                "Invalid metric: anisotropy ratio {:e} > S_RATIO_MAX",
+                s_max / s_min
+            )));
+        }
         Ok(())
     }
 
@@ -324,7 +334,7 @@ impl AnisoMetric2d {
         let n1 = s1.norm();
         let s0 = s0 / n0;
         let s1 = s1 / n1;
-        assert!(s0.dot(&s1) < 1e-12);
+        assert!(s0.dot(&s1).abs() < 1e-12, "non orthogonal vectors");
 
         let mut eigvals = SVector::<f64, 2>::new(1. / n0.powi(2), 1. / n1.powi(2));
         Self::bound_eigenvalues(&mut eigvals);
@@ -487,7 +497,7 @@ impl AnisoMetric3d {
         ]
     }
 
-    /// Create a metric from 2 orthogonal vectors
+    /// Create a metric from 3 orthogonal vectors
     /// The length of the vectors will be the characteric length along this direction
     #[must_use]
     pub fn from_sizes(s0: &Vertex<3>, s1: &Vertex<3>, s2: &Vertex<3>) -> Self {
@@ -497,9 +507,9 @@ impl AnisoMetric3d {
         let s0 = s0 / n0;
         let s1 = s1 / n1;
         let s2 = s2 / n2;
-        assert!(s0.dot(&s1) < 1e-12);
-        assert!(s0.dot(&s2) < 1e-12);
-        assert!(s1.dot(&s2) < 1e-12);
+        assert!(s0.dot(&s1).abs() < 1e-12, "non orthogonal vectors");
+        assert!(s0.dot(&s2).abs() < 1e-12, "non orthogonal vectors");
+        assert!(s1.dot(&s2).abs() < 1e-12, "non orthogonal vectors");
 
         let mut eigvals = SVector::<f64, 3>::new(1. / n0.powi(2), 1. / n1.powi(2), 1. / n2.powi(2));
         Self::bound_eigenvalues(&mut eigvals);
@@ -624,6 +634,38 @@ mod tests {
     use crate::{Result, S_RATIO_MAX, metric::IsoMetric};
     use nalgebra::SMatrix;
     use tmesh::{Vert2d, Vert3d};
+
+    #[test]
+    #[should_panic(expected = "non orthogonal vectors")]
+    fn test_from_sizes_non_orthogonal_2d() {
+        let _ = AnisoMetric2d::from_sizes(&Vert2d::new(1.0, 0.0), &Vert2d::new(-1.0, 1.0));
+    }
+
+    #[test]
+    #[should_panic(expected = "non orthogonal vectors")]
+    fn test_from_sizes_non_orthogonal_3d() {
+        let _ = AnisoMetric3d::from_sizes(
+            &Vert3d::new(1.0, 0.0, 0.0),
+            &Vert3d::new(0.0, 1.0, 0.0),
+            &Vert3d::new(-1.0, 0.0, 1.0),
+        );
+    }
+
+    #[test]
+    fn test_check_invalid() {
+        let m = AnisoMetric2d::from_mat(SMatrix::<f64, 2, 2>::new(1.0, 0.0, 0.0, 2.0));
+        assert!(m.check().is_ok());
+
+        // negative eigenvalue
+        let mat = SMatrix::<f64, 2, 2>::new(1.0, 0.0, 0.0, -2.0);
+        let m = AnisoMetric2d::from_mat_and_vol(mat, 1.0);
+        assert!(m.check().is_err());
+
+        // too anisotropic
+        let mat = SMatrix::<f64, 2, 2>::new(1.0, 0.0, 0.0, 2.0 * S_RATIO_MAX);
+        let m = AnisoMetric2d::from_mat_and_vol(mat, 1.0);
+        assert!(m.check().is_err());
+    }
 
     #[test]
     fn test_scale_consistent_with_iso() {
