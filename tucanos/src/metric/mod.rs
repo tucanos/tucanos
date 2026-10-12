@@ -77,9 +77,9 @@ pub trait Metric<const D: usize>:
     /// ```math
     /// l_\mathcal M(e) = l_0 \frac{a - 1} { a \ln(a)}
     /// ```
-    /// with $`l_0 = \sqrt{e^T \mathcal M_0 e}`$, $`l_1 = \sqrt{e^T \mathcal M_1 e}`$ and $`a = l_1 / l_0`$
+    /// with $`l_0 = \sqrt{e^T \mathcal M_0 e}`$, $`l_1 = \sqrt{e^T \mathcal M_1 e}`$ and $`a = l_0 / l_1`$
     ///
-    /// NB: this is consistent with metric interpolation, but a linear variation of the sizes, $`h(t) = (1 - t) h_0^{1 - t} + th_1`$ is assumed
+    /// NB: this is consistent with metric interpolation, but a linear variation of the sizes, $`h(t) = (1 - t) h_0 + th_1`$ is assumed
     /// when it comes to gradation. With this assumtion, the metric-space length would be
     /// ```math
     /// l_\mathcal M(e) = l_0 \frac{\ln(a)} { a  - 1}
@@ -95,7 +95,10 @@ pub trait Metric<const D: usize>:
         if f64::abs(r - 1.0) > 0.01 {
             l0 * (r - 1.0) / r / libm::log(r)
         } else {
-            l0
+            // second order expansion of the logarithmic mean (l1 - l0) / ln(l1 / l0),
+            // which is continuous with the expression above and symmetric in (l0, l1)
+            let m = f64::midpoint(l0, l1);
+            m - (l1 - l0).powi(2) / (12.0 * m)
         }
     }
     /// Find the metric with the minimum volume
