@@ -1,5 +1,5 @@
 use crate::{
-    Result, Tag,
+    Error, Result, Tag,
     geometry::Geometry,
     mesh::MeshTopology,
     metric::Metric,
@@ -135,6 +135,8 @@ pub struct ParallelRemesher<const D: usize, M: Mesh<D>, P: Partitioner> {
 }
 
 type MeshAndMetric<T, const D: usize, C> = (GenericMesh<D, C>, Vec<T>);
+/// Meshes and metrics of the interior and of the interfaces of the partitions
+type InteriorAndInterface<T, const D: usize, C> = (MeshAndMetric<T, D, C>, MeshAndMetric<T, D, C>);
 
 impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
     /// Create a new parallel remesher based on domain decomposition.
@@ -288,7 +290,7 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
         params: &RemesherParams,
         dd_params: &ParallelRemesherParams,
         info: &Mutex<ParallelRemeshingInfo>,
-    ) -> (MeshAndMetric<T, D, M::C>, MeshAndMetric<T, D, M::C>) {
+    ) -> Result<InteriorAndInterface<T, D, M::C>> {
         let res = Mutex::new(GenericMesh::empty());
         let res_m = Mutex::new(Vec::new());
         let ifc = Mutex::new(GenericMesh::empty());
@@ -297,10 +299,10 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
         let level = dd_params.level();
         self.par_partitions()
             .enumerate()
-            .for_each(|(i_part, submesh)| {
+            .try_for_each(|(i_part, submesh)| -> Result<()> {
                 if self.debug {
                     let fname = format!("level_{level}_part_{i_part}.vtu");
-                    submesh.mesh.write_vtk(&fname).unwrap();
+                    submesh.mesh.write_vtk(&fname)?;
                 }
 
                 // Remesh the partition
@@ -309,9 +311,9 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
                 let now = Instant::now();
                 let (mut local_mesh, local_m) = self
                     .remesh_submesh(metric, geom, params, submesh)
-                    .unwrap_or_else(|e| {
-                        panic!("Failed to remesh partition {i_part}.\n{e}");
-                    });
+                    .map_err(|e| {
+                        Error::from(&format!("Failed to remesh partition {i_part}.\n{e}"))
+                    })?;
                 let time = now.elapsed().as_secs_f64();
 
                 // Get the info
@@ -377,13 +379,16 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
                     ifc.write_vtk(&fname).unwrap();
                 }
                 drop(ifc);
-                let mut ifc_m = ifc_m.lock().unwrap();
-                ifc_m.extend(ids.iter().map(|&i| local_m[i]));
-            });
-        (
+                ifc_m
+                    .lock()
+                    .unwrap()
+                    .extend(ids.iter().map(|&i| local_m[i]));
+                Ok(())
+            })?;
+        Ok((
             (res.into_inner().unwrap(), res_m.into_inner().unwrap()),
             (ifc.into_inner().unwrap(), ifc_m.into_inner().unwrap()),
-        )
+        ))
     }
 
     fn remesh_interface<T: Metric<D>, G: Geometry<D>>(
@@ -488,7 +493,7 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
 
         let now = Instant::now();
         let ((mut res, mut res_m), (ifc, ifc_m)) =
-            self.remesh_partitions(m, geom, &params, dd_params, &info);
+            self.remesh_partitions(m, geom, &params, dd_params, &info)?;
         let ((mut ifc, ifc_m), interface_info) =
             self.remesh_interface((ifc, ifc_m), geom, params, dd_params)?;
         let mut info = info.into_inner().unwrap();
