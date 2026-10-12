@@ -719,8 +719,8 @@ macro_rules! impl_mesh {
                 PyArray::from_vec(py, res).reshape([self.0.n_verts(), $dim * ($dim + 1) / 2])
             }
 
-            /// Compute the hessian of a field defined at the mesh vertices using a 2nd order
-            /// least-square approximation
+            /// Compute the hessian of a field defined at the mesh vertices using a double
+            /// L2 projection
             #[pyo3(signature = (arr))]
             pub fn hessian_l2proj<'py>(
                 &self,
