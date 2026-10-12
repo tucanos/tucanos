@@ -273,7 +273,7 @@ where
     fn differs_from(&self, other: &Self, tol: f64) -> bool {
         self.into_iter()
             .zip(*other)
-            .any(|(x, y)| f64::abs(x - y) > tol * x)
+            .any(|(x, y)| f64::abs(x - y) > tol * x.abs())
     }
 
     fn step(&self, other: &Self) -> (f64, f64) {
