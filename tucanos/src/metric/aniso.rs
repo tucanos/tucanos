@@ -128,6 +128,11 @@ where
         AnisoMetric::length_sqr(self, e)
     }
 
+    fn dual_length(&self, n: &Vertex<D>) -> f64 {
+        let inv = self.as_mat().try_inverse().unwrap();
+        n.dot(&(inv * n)).sqrt()
+    }
+
     /// For an anisotropic metric, the volume is
     /// ```math
     /// V(\mathcal M) =  \frac{1}{\sqrt{\det(\mathcal M)}}
@@ -615,6 +620,30 @@ mod tests {
     use crate::{Result, S_RATIO_MAX};
     use nalgebra::SMatrix;
     use tmesh::{Vert2d, Vert3d};
+
+    #[test]
+    fn test_quality_edge_aniso_2d() {
+        use crate::metric::MetricElem;
+        use tmesh::mesh::Edge;
+
+        // edges of unit length in metric space must have a unit quality,
+        // whatever their orientation
+        let m = AnisoMetric2d::from_mat(SMatrix::<f64, 2, 2>::new(1.0, 0.0, 0.0, 100.0));
+        for t in [
+            Vert2d::new(1.0, 0.0),
+            Vert2d::new(1.0, 1.0).normalize(),
+            Vert2d::new(1.0, 3.0).normalize(),
+        ] {
+            let p1 = t / m.length(&t);
+            let me: MetricElem<2, Edge<usize>, AnisoMetric2d> =
+                [(Vert2d::zeros(), m), (p1, m)].into_iter().collect();
+            assert!(
+                f64::abs(me.quality() - 1.0) < 1e-10,
+                "{t:?}: {}",
+                me.quality()
+            );
+        }
+    }
 
     #[test]
     fn test_aniso_2d() -> Result<()> {
