@@ -4,15 +4,19 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIter
 pub trait FromNativePointer: Send + Sync {
     type PointerType: std::fmt::Debug;
     const SIZE: usize;
-    fn from_ptr(ptr: *const Self::PointerType) -> Self;
+    /// Read a value from a raw pointer
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must be valid for reading `Self::SIZE` values of type `Self::PointerType`
+    unsafe fn from_ptr(ptr: *const Self::PointerType) -> Self;
 }
 
 impl FromNativePointer for Tag {
     type PointerType = Self;
     const SIZE: usize = 1;
 
-    #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    fn from_ptr(ptr: *const Self::PointerType) -> Self {
+    unsafe fn from_ptr(ptr: *const Self::PointerType) -> Self {
         unsafe { *ptr }
     }
 }
@@ -21,8 +25,7 @@ impl<E: Simplex> FromNativePointer for E {
     type PointerType = E::T;
     const SIZE: usize = E::N_VERTS;
 
-    #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    fn from_ptr(ptr: *const Self::PointerType) -> Self {
+    unsafe fn from_ptr(ptr: *const Self::PointerType) -> Self {
         let pts = unsafe { std::slice::from_raw_parts(ptr, E::N_VERTS) };
         E::from_iter(pts.iter().map(|&x| x.try_into().unwrap()))
     }
@@ -32,8 +35,7 @@ impl<const D: usize> FromNativePointer for Vertex<D> {
     type PointerType = f64;
     const SIZE: usize = D;
 
-    #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    fn from_ptr(ptr: *const Self::PointerType) -> Self {
+    unsafe fn from_ptr(ptr: *const Self::PointerType) -> Self {
         let s = unsafe { std::slice::from_raw_parts(ptr, D) };
         Self::from_row_slice(s)
     }
@@ -74,7 +76,8 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.len() > 0 {
-            let r = T::from_ptr(self.cur);
+            // SAFETY: cur is within the array given to `Vector::from_raw_parts`
+            let r = unsafe { T::from_ptr(self.cur) };
             unsafe { self.cur = self.cur.add(T::SIZE) };
             Some(r)
         } else {
@@ -213,9 +216,13 @@ where
         match &self.data {
             VectorImpl::Std(x) => x[i],
             VectorImpl::Native((p, s)) => {
-                debug_assert!(i < *s);
-                let p = unsafe { p.add(i * T::SIZE) };
-                T::from_ptr(p)
+                assert!(
+                    i < *s,
+                    "index out of bounds: the len is {s} but the index is {i}"
+                );
+                // SAFETY: i < s, and the array given to `Vector::from_raw_parts` contains
+                // s * T::SIZE values
+                unsafe { T::from_ptr(p.add(i * T::SIZE)) }
             }
         }
     }
@@ -282,10 +289,36 @@ impl<T: FromNativePointer> From<Vec<T>> for Vector<T> {
     }
 }
 
-impl<T: FromNativePointer> From<(*const T::PointerType, usize)> for Vector<T> {
-    fn from(value: (*const T::PointerType, usize)) -> Self {
+impl<T: FromNativePointer> Vector<T> {
+    /// Create a vector backed by a native array of `len * T::SIZE` values, without
+    /// copying it
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must be valid for reading `len * T::SIZE` values of type `T::PointerType`
+    /// and the array must not be modified or freed while the vector (or any object
+    /// built from it) is in use
+    #[must_use]
+    pub const unsafe fn from_raw_parts(ptr: *const T::PointerType, len: usize) -> Self {
         Self {
-            data: VectorImpl::Native(value),
+            data: VectorImpl::Native((ptr, len)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Vector;
+    use crate::Vert3d;
+
+    #[test]
+    #[should_panic(expected = "index out of bounds")]
+    fn test_native_index_out_of_bounds() {
+        // the array is larger than the vector, so that reading out of bounds
+        // would not crash
+        let data = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0];
+        let v = unsafe { Vector::<Vert3d>::from_raw_parts(data.as_ptr(), 1) };
+        assert_eq!(v.index(0), Vert3d::new(0.0, 1.0, 2.0));
+        let _ = v.index(1);
     }
 }

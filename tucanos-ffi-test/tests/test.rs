@@ -61,3 +61,30 @@ fn aniso3d() {
         tucanos_mesh33_delete(mesh);
     }
 }
+
+#[test]
+fn mesh2d_verts_elems() {
+    let vertices = [0., 0., 1., 0., 0., 1.];
+    let elems = [0, 1, 2];
+    let faces = [0, 1, 1, 2, 2, 0];
+    unsafe {
+        let mesh = tucanos_mesh22_new(
+            3,
+            vertices.as_ptr(),
+            1,
+            elems.as_ptr(),
+            [1].as_ptr(),
+            3,
+            faces.as_ptr(),
+            [1, 2, 3].as_ptr(),
+        );
+        assert_eq!(tucanos_mesh22_num_verts(mesh), 3);
+        let mut out = [-1.0; 6];
+        tucanos_mesh22_verts(mesh, out.as_mut_ptr(), 0, 3);
+        assert_eq!(out, vertices);
+        let mut out = [0; 3];
+        tucanos_mesh22_elems(mesh, out.as_mut_ptr(), 0, 1);
+        assert_eq!(out, elems);
+        tucanos_mesh22_delete(mesh);
+    }
+}
