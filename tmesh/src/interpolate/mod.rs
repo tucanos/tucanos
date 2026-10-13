@@ -9,7 +9,11 @@ use crate::{
 pub enum InterpolationMethod {
     /// Nearest neighbor interpolation
     Nearest,
-    /// Linear interpolation
+    /// Linear interpolation in the nearest element. If the barycentric coordinates
+    /// of a point are within $`[-tol, 1 + tol]`$, they are used as is (i.e. the field
+    /// is linearly extrapolated); otherwise the point is outside of the mesh and
+    /// its negative barycentric coordinates are clamped to 0, which interpolates at
+    /// a point of the nearest element
     Linear(f64),
 }
 
@@ -71,13 +75,18 @@ impl<'a, const D: usize, M: Mesh<D> + Clone> Interpolator<'a, D, M> {
                         let i_elem = index.nearest_elem(&v);
                         let e = self.mesh.elem(i_elem);
                         let ge = self.mesh.gelem(&e);
-                        let x = ge.bcoords(&v);
-                        assert!(
-                            x.into_iter().all(|c| (-tol..1.0 + tol).contains(&c)),
-                            "{x:?}, bcoords = {x:?}"
-                        );
+                        let mut x = ge.bcoords(&v).into_iter().collect::<Vec<_>>();
+                        if !x.iter().all(|c| (-tol..1.0 + tol).contains(c)) {
+                            for c in &mut x {
+                                *c = c.max(0.0);
+                            }
+                            let sum = x.iter().sum::<f64>();
+                            for c in &mut x {
+                                *c /= sum;
+                            }
+                        }
                         (0..m).map(move |j| {
-                            let iter = e.into_iter().zip(x);
+                            let iter = e.into_iter().zip(x.iter().copied());
                             iter.fold(T::default(), |a, (i, w)| a + f[m * i + j] * w)
                         })
                     })
@@ -91,12 +100,29 @@ impl<'a, const D: usize, M: Mesh<D> + Clone> Interpolator<'a, D, M> {
 mod tests {
     use crate::{
         Vert2d, Vert3d,
-        mesh::{Mesh, Mesh2d, Mesh3d, box_mesh, rectangle_mesh},
+        mesh::{Mesh, Mesh2d, Mesh3d, Simplex, box_mesh, disk_mesh, rectangle_mesh},
     };
     use nalgebra::{Rotation2, Rotation3};
     use std::f64::consts::FRAC_PI_4;
 
     use super::{InterpolationMethod, Interpolator};
+
+    #[test]
+    fn test_interpolate_2d_outside() {
+        let mesh = disk_mesh::<Mesh2d>(2);
+        let interp = Interpolator::new(&mesh, InterpolationMethod::Linear(1e-3));
+        let f: Vec<f64> = mesh.verts().map(|p| p[0]).collect();
+
+        // a point on the exact circle, outside of the polygonal disk
+        let fc = mesh.face(0);
+        let c: Vert2d = 0.5 * (mesh.vert(fc.get(0)) + mesh.vert(fc.get(1)));
+        let p: Vert2d = 0.5 * c / c.norm();
+        assert!(p.norm() - c.norm() > 1e-3);
+
+        // the value is interpolated at a point of the nearest element, close to c
+        let res = interp.interpolate(&f, std::iter::once(p));
+        assert!(f64::abs(res[0] - c[0]) < 1e-2, "{} vs {}", res[0], c[0]);
+    }
 
     #[test]
     fn test_interpolate_2d() {
