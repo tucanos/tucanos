@@ -728,7 +728,7 @@ macro_rules! impl_mesh {
                         )));
                     }
                 };
-                let res = self.0.gradient(method, $crate::as_c_slice(&arr)?);
+                let res = to_py_err(self.0.gradient(method, $crate::as_c_slice(&arr)?))?;
                 PyArray::from_vec(py, res).reshape([self.0.n_verts(), $dim])
             }
 
@@ -748,10 +748,10 @@ macro_rules! impl_mesh {
                     return Err(PyValueError::new_err("Invalid dimension 1"));
                 }
 
-                let res = self.0.hessian(
+                let res = to_py_err(self.0.hessian(
                     GradientMethod::QuadraticLeastSquares(weight_exp),
                     $crate::as_c_slice(&arr)?,
-                );
+                ))?;
 
                 PyArray::from_vec(py, res).reshape([self.0.n_verts(), $dim * ($dim + 1) / 2])
             }
@@ -771,9 +771,10 @@ macro_rules! impl_mesh {
                     return Err(PyValueError::new_err("Invalid dimension 1"));
                 }
 
-                let res = self
-                    .0
-                    .hessian(GradientMethod::L2Projection, $crate::as_c_slice(&arr)?);
+                let res = to_py_err(
+                    self.0
+                        .hessian(GradientMethod::L2Projection, $crate::as_c_slice(&arr)?),
+                )?;
 
                 PyArray::from_vec(py, res).reshape([self.0.n_verts(), $dim * ($dim + 1) / 2])
             }
