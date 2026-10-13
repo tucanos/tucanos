@@ -6,7 +6,7 @@ use crate::{
     geometry::{LinearGeometry2d, LinearGeometry3d, QuadraticGeometry2d, QuadraticGeometry3d},
     mesh::{PyMesh2d, PyMesh3d},
     remesher::PyRemesherParams,
-    to_numpy_1d, to_numpy_2d,
+    to_numpy_1d, to_numpy_2d, to_py_err,
 };
 use numpy::{PyArray1, PyArray2, PyReadonlyArray2, PyUntypedArrayMethods};
 use pyo3::{
@@ -123,11 +123,10 @@ macro_rules! create_parallel_remesher {
                     .map(|x| $metric::from_slice(x))
                     .collect();
 
-                let (mesh, info, m) = py.detach(|| {
+                let (mesh, info, m) = to_py_err(py.detach(|| {
                     self.dd
                         .remesh(&m, &geometry.geom, params.to(), &parallel_params.to())
-                        .unwrap()
-                });
+                }))?;
 
                 let mesh = $pymesh(mesh);
 

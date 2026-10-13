@@ -23,11 +23,11 @@ use tmesh::{
 /// edge length in metric space):
 ///  - for `Laplacian`
 /// ```math
-/// \tilde v_i = v_i + \sum_{j \in N(i)} (v_j - v_i)
+/// \tilde v_i = v_i + \frac{1}{|N(i)|}\sum_{j \in N(i)} (v_j - v_i)
 /// ```
 ///  - for `Laplacian2`
 /// ```math
-/// \tilde v_i = \frac{\sum_{j \in N(i)} ||v_j - v_i||_M (v_j + v_i)}{2 \sum_{j \in N(i)} ||v_j - v_i||_M}
+/// \tilde v_i = \frac{\sum_{j \in N(i)} ||v_j - v_i||_M v_j}{\sum_{j \in N(i)} ||v_j - v_i||_M}
 /// ```
 ///  - for `Avro`
 /// ```math
@@ -252,7 +252,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             let mut best = f64::NEG_INFINITY;
             for i_elem in 0..cavity.n_elems() {
                 let ge = cavity.gelem(i_elem);
-                let x = ge.ge().bcoords(&p0_new);
+                let (x, _) = ge.ge().project_inside(&p0_new);
                 let cmin = min_iter(x.into_iter());
                 if cmin > best {
                     let elem = &cavity.elems[i_elem];
@@ -274,10 +274,11 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                 vert.m = h0_new;
             }
 
-            for (i_local, i_global) in cavity.global_elem_ids.iter().enumerate() {
-                // update the quality
-                let ge = cavity.gelem(i_local); // todo: precompute all ge
-                self.elems.get_mut(i_global).unwrap().q = ge.quality();
+            // update the quality; the cavity still holds the old vertex location
+            // and metric, so the elements are rebuilt from the updated vertices
+            for i_global in &cavity.global_elem_ids {
+                let q = self.gelem(&self.elems[i_global].el).quality();
+                self.elems.get_mut(i_global).unwrap().q = q;
             }
             n_smooth += 1;
         }

@@ -178,6 +178,28 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_faces_filter() {
+        // 2 triangles, boundary edges tagged 1 to 4
+        let msh = rectangle_mesh::<Mesh2d>(1.0, 2, 1.0, 2);
+        let (bdy, ids): (BoundaryMesh2d, _) = msh.extract_faces(|t| t == 1 || t == 3);
+        assert_eq!(bdy.n_elems(), 2);
+        assert_eq!(ids.len(), 4);
+        let mut tags = bdy.etags().collect::<Vec<_>>();
+        tags.sort_unstable();
+        assert_eq!(tags, [1, 3]);
+    }
+
+    #[test]
+    fn test_fix_inverted_element() {
+        let mut msh = rectangle_mesh::<Mesh2d>(1.0, 3, 1.0, 3);
+        msh.invert_elem(0);
+        assert!(msh.gelem(&msh.elem(0)).vol() < 0.0);
+
+        msh.fix().unwrap();
+        assert!(msh.gelems().all(|ge| ge.vol() > 0.0));
+    }
+
+    #[test]
     fn test_2d_rect() {
         let msh = rectangle_mesh::<Mesh2d>(1.0, 10, 2.0, 15).random_shuffle();
 
@@ -252,6 +274,25 @@ mod tests {
                 let nrm = run_gradient(method, n);
                 assert!(nrm < 0.5 * prev, "{method:?}, {nrm:.2e} {prev:.2e}");
                 prev = nrm;
+            }
+        }
+    }
+
+    #[test]
+    fn test_hessian_quadratic_small_domain() {
+        // the result must not depend on the mesh size
+        for scale in [1.0, 1e-3, 1e-6] {
+            let mesh = rectangle_mesh::<Mesh2d>(scale, 10, scale, 10);
+            let f: Vec<_> = mesh
+                .verts()
+                .map(|p| (p[0] / scale).powi(2) + (p[0] / scale) * (p[1] / scale))
+                .collect();
+            let res = mesh.hessian(GradientMethod::QuadraticLeastSquares(1), &f);
+            let s2 = scale * scale;
+            for h in res.chunks(3) {
+                assert!(f64::abs(h[0] * s2 - 2.) < 1e-6, "scale = {scale}: {h:?}");
+                assert!(f64::abs(h[1] * s2) < 1e-6, "scale = {scale}: {h:?}");
+                assert!(f64::abs(h[2] * s2 - 1.) < 1e-6, "scale = {scale}: {h:?}");
             }
         }
     }
@@ -515,6 +556,31 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::float_cmp)]
+    fn test_isosurface_scale() {
+        // f has exact zeros on x = 0.5
+        let msh: Mesh2d = rectangle_mesh::<Mesh2d>(1.0, 3, 1.0, 3);
+        assert!(msh.verts().any(|p| p[0] == 0.5));
+        for scale in [1.0, 1e-14] {
+            let f = msh
+                .verts()
+                .map(|p| scale * (p[0] - 0.5))
+                .collect::<Vec<_>>();
+            let (res, _): (Mesh2d, _) = msh.split_isosurface(&f).unwrap();
+            let msh_pos = SubMesh::new(&res, |t| t == 1).mesh;
+            assert_delta!(msh_pos.vol(), 0.5, 1e-10);
+        }
+
+        let mut f = msh.verts().map(|p| p[0] - 0.5).collect::<Vec<_>>();
+        f[0] = f64::NAN;
+        assert!(msh.split_isosurface::<Mesh2d>(&f).is_err());
+        assert!(
+            msh.split_isosurface::<Mesh2d>(&vec![0.0; msh.n_verts()])
+                .is_err()
+        );
+    }
+
+    #[test]
     fn test_isosurface() {
         let msh: Mesh2d = rectangle_mesh::<Mesh2d>(1.0, 20, 1.0, 20).random_shuffle();
         let f = msh
@@ -525,7 +591,7 @@ mod tests {
                 (r0 - 0.25) * (r1 - 0.25)
             })
             .collect::<Vec<f64>>();
-        let (res, _): (Mesh2d, _) = msh.split_isosurface(&f);
+        let (res, _): (Mesh2d, _) = msh.split_isosurface(&f).unwrap();
 
         res.check(&res.all_faces()).unwrap();
 

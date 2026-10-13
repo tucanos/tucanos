@@ -54,7 +54,7 @@ where
     let m = MetricField::implied_metric(msh);
     let mut m = m.metric().to_vec();
 
-    let (mut split_msh, split_edgs) = msh.split_isosurface::<GenericMesh<D, M::C>>(f);
+    let (mut split_msh, split_edgs) = msh.split_isosurface::<GenericMesh<D, M::C>>(f)?;
     let n = msh.n_verts();
     let n2 = split_msh.n_verts();
     m.resize(n2, T::default());
