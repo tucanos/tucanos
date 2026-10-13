@@ -9,8 +9,8 @@ use crate::{
 pub enum InterpolationMethod {
     /// Nearest neighbor interpolation
     Nearest,
-    /// Linear interpolation
-    Linear(f64),
+    /// Linear interpolation. No extrapolation is performed; points outside projected before interpolation.
+    Linear,
 }
 
 /// Interpolator
@@ -30,7 +30,7 @@ impl<'a, const D: usize, M: Mesh<D> + Clone> Interpolator<'a, D, M> {
     pub fn new(mesh: &'a M, method: InterpolationMethod) -> Self {
         let (point_index, elem_index) = match method {
             InterpolationMethod::Nearest => (Some(PointIndex::new(mesh.verts())), None),
-            InterpolationMethod::Linear(_) => (None, Some(ObjectIndex::new((*mesh).clone()))),
+            InterpolationMethod::Linear => (None, Some(ObjectIndex::new((*mesh).clone()))),
         };
         Self {
             mesh,
@@ -63,19 +63,14 @@ impl<'a, const D: usize, M: Mesh<D> + Clone> Interpolator<'a, D, M> {
                     })
                     .collect()
             }
-            InterpolationMethod::Linear(tol) => {
-                let tol = tol.max(1e-8);
+            InterpolationMethod::Linear => {
                 let index = self.elem_index.as_ref().unwrap();
                 verts
                     .flat_map(|v| {
                         let i_elem = index.nearest_elem(&v);
                         let e = self.mesh.elem(i_elem);
                         let ge = self.mesh.gelem(&e);
-                        let x = ge.bcoords(&v);
-                        assert!(
-                            x.into_iter().all(|c| (-tol..1.0 + tol).contains(&c)),
-                            "{x:?}, bcoords = {x:?}"
-                        );
+                        let (x, _) = ge.project_inside(&v);
                         (0..m).map(move |j| {
                             let iter = e.into_iter().zip(x);
                             iter.fold(T::default(), |a, (i, w)| a + f[m * i + j] * w)
@@ -101,7 +96,7 @@ mod tests {
     #[test]
     fn test_interpolate_2d() {
         let mesh = rectangle_mesh::<Mesh2d>(1.0, 9, 1.0, 9);
-        let interp = Interpolator::new(&mesh, InterpolationMethod::Linear(0.0));
+        let interp = Interpolator::new(&mesh, InterpolationMethod::Linear);
 
         let fun = |p: Vert2d| 1.0 * p[0] + 2.0 * p[1];
         let f: Vec<f64> = mesh.verts().map(fun).collect();
@@ -150,7 +145,7 @@ mod tests {
     #[test]
     fn test_interpolate_3d() {
         let mesh = box_mesh::<Mesh3d>(1.0, 9, 1.0, 9, 1.0, 9);
-        let interp = Interpolator::new(&mesh, InterpolationMethod::Linear(0.0));
+        let interp = Interpolator::new(&mesh, InterpolationMethod::Linear);
 
         let fun = |p: Vert3d| 1.0 * p[0] + 2.0 * p[1] + 3.0 * p[2];
 
@@ -175,7 +170,7 @@ mod tests {
     #[test]
     fn test_interpolate_3d_nearest() {
         let mesh = box_mesh::<Mesh3d>(1.0, 9, 1.0, 9, 1.0, 9);
-        let interp = Interpolator::new(&mesh, InterpolationMethod::Linear(0.0));
+        let interp = Interpolator::new(&mesh, InterpolationMethod::Linear);
 
         let fun = |p: Vert3d| 1.0 * p[0] + 2.0 * p[1] + 3.0 * p[2];
 

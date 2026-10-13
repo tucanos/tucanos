@@ -596,13 +596,12 @@ macro_rules! impl_mesh {
             }
 
             /// Split and add prisms
-            #[pyo3(signature = (data, verts, tol=1e-3, nearest=false))]
+            #[pyo3(signature = (data, verts, nearest=false))]
             fn interpolate<'py>(
                 &mut self,
                 py: Python<'py>,
                 data: PyReadonlyArray2<f64>,
                 verts: PyReadonlyArray2<f64>,
-                tol: f64,
                 nearest: bool,
             ) -> PyResult<Bound<'py, PyArray2<f64>>> {
                 if data.shape()[0] != self.n_verts() {
@@ -617,7 +616,7 @@ macro_rules! impl_mesh {
                 let method = if nearest {
                     InterpolationMethod::Nearest
                 } else {
-                    InterpolationMethod::Linear(tol)
+                    InterpolationMethod::Linear
                 };
 
                 let interp = Interpolator::new(&self.0, method);
