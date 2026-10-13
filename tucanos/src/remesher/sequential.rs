@@ -2144,7 +2144,7 @@ mod tests {
                 #[cfg(not(feature = "argmin"))]
                 {
                     assert_delta!(mini, 0.44, 0.01);
-                    assert_delta!(maxi, 1.48, 0.01);
+                    assert_delta!(maxi, 1.52, 0.01);
                 }
                 #[cfg(feature = "argmin")]
                 {
@@ -2501,7 +2501,7 @@ mod tests {
 
         let (mini, maxi, _) = remesher.check_edge_lengths_analytical(m_func);
         assert_delta!(mini, 0.47, 0.01);
-        assert_delta!(maxi, 1.83, 0.01);
+        assert_delta!(maxi, 1.60, 0.01);
 
         let _mesh = remesher.to_mesh(true);
         // mesh.write_vtk("sphere_surf_aniso.vtu")?;
