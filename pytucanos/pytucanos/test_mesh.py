@@ -149,6 +149,51 @@ class TestMeshes(unittest.TestCase):
         msh = Mesh2d(coords, np.ascontiguousarray(flipped), etags, faces, ftags)
         self.assertTrue(np.array_equal(msh.get_elems(), flipped))
 
+    def test_init_invalid_index_fail(self):
+        coords, elems, etags, faces, ftags = get_square()
+
+        elems = elems.copy()
+        elems[0, 2] = coords.shape[0]
+        with self.assertRaises(ValueError):
+            _msh = Mesh2d(coords, elems, etags, faces, ftags)
+
+    def test_add_elems_fail(self):
+        coords, elems, etags, faces, ftags = get_square()
+        msh = Mesh2d(coords, elems, etags, faces, ftags)
+
+        # the number of tags must match the number of elements / faces
+        with self.assertRaises(ValueError):
+            msh.add_elems(elems, etags[:1])
+        with self.assertRaises(ValueError):
+            msh.add_faces(faces, ftags[:1])
+        # the vertex indices must be valid
+        with self.assertRaises(ValueError):
+            msh.add_elems(elems + coords.shape[0], etags)
+        self.assertEqual(msh.n_elems(), elems.shape[0])
+        self.assertEqual(msh.n_faces(), faces.shape[0])
+
+    def test_gradient_order(self):
+        msh = Mesh2d.rectangle_mesh(np.linspace(0, 1, 10), np.linspace(0, 1, 10))
+        # perturb the interior vertices
+        x = msh.get_verts()
+        interior = (x[:, 0] > 0) & (x[:, 0] < 1) & (x[:, 1] > 0) & (x[:, 1] < 1)
+        rng = np.random.default_rng(0)
+        x[interior] += 0.02 * rng.uniform(-1, 1, (interior.sum(), 2))
+        msh = Mesh2d(
+            x, msh.get_elems(), msh.get_etags(), msh.get_faces(), msh.get_ftags()
+        )
+
+        # the 2nd order gradient is exact for quadratic fields at interior vertices
+        f = (x[:, 0] ** 2 + x[:, 0] * x[:, 1]).reshape((-1, 1))
+        expected = np.stack([2 * x[:, 0] + x[:, 1], x[:, 0]], axis=1)
+        grad = msh.gradient(f, order=1)
+        self.assertFalse(np.allclose(grad[interior], expected[interior]))
+        grad = msh.gradient(f, order=2)
+        self.assertTrue(np.allclose(grad[interior], expected[interior]))
+
+        with self.assertRaises(ValueError):
+            msh.gradient(f, order=3)
+
     def test_meshb_2d(self):
         coords, elems, etags, faces, ftags = get_square()
         msh = Mesh2d(coords, elems, etags, faces, ftags)
