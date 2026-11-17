@@ -391,7 +391,9 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     /// and validates the result.
     fn fix(&mut self) -> Result<FixedTags> {
         let n = self.fix_elems_orientation();
-        assert_eq!(n, 0);
+        if n > 0 {
+            debug!("{n} elements reoriented");
+        }
         let all_faces = self.all_faces();
         let btags = self.tag_boundary_faces(&all_faces);
         let itags = self.tag_internal_faces(&all_faces);
