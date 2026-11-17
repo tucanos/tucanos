@@ -40,9 +40,11 @@ pub trait Metric<const D: usize>:
         Self: 'a;
     /// Return the D characteristic sizes of the metric (sorted)
     fn sizes(&self) -> [f64; D];
-    /// Scale the metric
+    /// Scale the characteristic sizes of the metric by `s`, i.e. $`h \leftarrow s h`$
+    /// (or $`\mathcal M \leftarrow \mathcal M / s^2`$)
     fn scale(&mut self, s: f64);
-    /// Scale the metric, applying bounds on the characteristic sizes
+    /// Scale the characteristic sizes of the metric by `s`, applying bounds on the
+    /// characteristic sizes
     fn scale_with_bounds(&mut self, s: f64, h_min: f64, h_max: f64);
     /// Intersect with another metric, i.e. return the "largest" metric that is both "smaller" that self and other
     #[must_use]
