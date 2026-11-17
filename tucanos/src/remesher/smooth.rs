@@ -274,10 +274,11 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                 vert.m = h0_new;
             }
 
-            for (i_local, i_global) in cavity.global_elem_ids.iter().enumerate() {
-                // update the quality
-                let ge = cavity.gelem(i_local); // todo: precompute all ge
-                self.elems.get_mut(i_global).unwrap().q = ge.quality();
+            // update the quality; the cavity still holds the old vertex location
+            // and metric, so the elements are rebuilt from the updated vertices
+            for i_global in &cavity.global_elem_ids {
+                let q = self.gelem(&self.elems[i_global].el).quality();
+                self.elems.get_mut(i_global).unwrap().q = q;
             }
             n_smooth += 1;
         }
