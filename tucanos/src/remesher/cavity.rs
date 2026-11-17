@@ -266,7 +266,10 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Cavity<D, C, M> {
                                 for i_bdy in 0..<C::FACE as Simplex>::N_FACES {
                                     let b = face.face(i_bdy);
                                     if !b.contains(i)
-                                        && !self.tagged_bdys.iter().any(|(f, _)| f.sorted() == b)
+                                        && !self
+                                            .tagged_bdys
+                                            .iter()
+                                            .any(|(f, _)| f.sorted() == b.sorted())
                                     {
                                         self.tagged_bdys.push((b, face_tag));
                                         self.tagged_bdys_flg.push(C::N_VERTS == 3 && i_bdy == 1);
@@ -287,7 +290,10 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Cavity<D, C, M> {
                                 for i_bdy in 0..<C::FACE as Simplex>::N_FACES {
                                     let b = face.face(i_bdy);
                                     if !b.contains_edge(&edg)
-                                        && !self.tagged_bdys.iter().any(|(f, _)| f.sorted() == b)
+                                        && !self
+                                            .tagged_bdys
+                                            .iter()
+                                            .any(|(f, _)| f.sorted() == b.sorted())
                                     {
                                         self.tagged_bdys.push((b, face_tag));
                                         self.tagged_bdys_flg.push(C::N_VERTS == 3 && i_bdy == 1);
