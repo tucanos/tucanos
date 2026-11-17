@@ -22,7 +22,7 @@ pub fn autotag_3d<'py>(
 
     let dict = PyDict::new(py);
     for (k, v) in res {
-        dict.set_item(k, to_numpy_1d(py, v.clone()))?;
+        dict.set_item(k, to_numpy_1d(py, v))?;
     }
     Ok(dict)
 }
@@ -52,7 +52,7 @@ pub fn autotag_2d<'py>(
 
     let dict = PyDict::new(py);
     for (k, v) in res {
-        dict.set_item(k, to_numpy_1d(py, v.clone()))?;
+        dict.set_item(k, to_numpy_1d(py, v))?;
     }
     Ok(dict)
 }
