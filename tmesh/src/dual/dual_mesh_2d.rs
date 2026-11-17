@@ -263,7 +263,7 @@ impl<T: Idx> DualMesh2d<T> {
                 state.n_empty_faces += 1;
             } else {
                 let gf = GEdge::new(&vb.verts[f1.get(0)], &vb.verts[f1.get(1)]);
-                state.bdy_faces.push((f.get(0), tag, gf.normal(None)));
+                state.bdy_faces.push((f.get(1), tag, gf.normal(None)));
                 let id = state.faces.len();
                 state.faces.push(f1);
                 state.ftags.push(tag);
@@ -410,13 +410,14 @@ impl<T: Idx> DualMesh<2> for DualMesh2d<T> {
             ftags: Vec::with_capacity(n_poly_faces),
             poly_to_face: vec![(usize::MAX, true); poly_to_face_ptr[msh.n_verts()]],
             edge_normals: vec![Vert2d::zeros(); all_edges.len()],
-            bdy_faces: Vec::with_capacity(msh.n_faces() * 3),
+            bdy_faces: Vec::with_capacity(msh.n_faces() * 2),
             n_empty_faces: 0,
         };
 
         Self::build_internal_faces(msh, &all_edges, &vb, &poly_to_face_ptr, &mut state);
         Self::build_boundary_faces(msh, &all_edges, &vb, &poly_to_face_ptr, &mut state);
 
+        assert_eq!(state.bdy_faces.len(), msh.n_faces() * 2);
         assert_eq!(state.faces.len(), n_poly_faces - state.n_empty_faces);
         assert_eq!(state.ftags.len(), n_poly_faces - state.n_empty_faces);
 
