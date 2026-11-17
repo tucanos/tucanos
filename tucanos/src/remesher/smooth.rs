@@ -252,7 +252,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             let mut best = f64::NEG_INFINITY;
             for i_elem in 0..cavity.n_elems() {
                 let ge = cavity.gelem(i_elem);
-                let x = ge.ge().bcoords(&p0_new);
+                let (x, _) = ge.ge().project_inside(&p0_new);
                 let cmin = min_iter(x.into_iter());
                 if cmin > best {
                     let elem = &cavity.elems[i_elem];
