@@ -350,7 +350,8 @@ impl Default for AnisoMetric2d {
     fn default() -> Self {
         Self {
             m: [S_MIN, S_MIN, 0.],
-            v: (S_MIN.powi(2)),
+            // 1 / sqrt(det(M))
+            v: 1.0 / S_MIN,
         }
     }
 }
@@ -527,7 +528,8 @@ impl Default for AnisoMetric3d {
     fn default() -> Self {
         Self {
             m: [S_MIN, S_MIN, S_MIN, 0.0, 0.0, 0.0],
-            v: (S_MIN.powi(3)),
+            // 1 / sqrt(det(M))
+            v: 1.0 / S_MIN.powi(3).sqrt(),
         }
     }
 }
@@ -620,6 +622,17 @@ mod tests {
     use crate::{Result, S_RATIO_MAX};
     use nalgebra::SMatrix;
     use tmesh::{Vert2d, Vert3d};
+
+    #[test]
+    fn test_default_vol() {
+        let m = AnisoMetric2d::default();
+        let expected = 1.0 / m.as_mat().determinant().sqrt();
+        assert!(f64::abs(m.vol() / expected - 1.0) < 1e-12);
+
+        let m = AnisoMetric3d::default();
+        let expected = 1.0 / m.as_mat().determinant().sqrt();
+        assert!(f64::abs(m.vol() / expected - 1.0) < 1e-12);
+    }
 
     #[test]
     fn test_quality_edge_aniso_2d() {
