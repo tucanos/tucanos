@@ -279,6 +279,25 @@ mod tests {
     }
 
     #[test]
+    fn test_hessian_quadratic_small_domain() {
+        // the result must not depend on the mesh size
+        for scale in [1.0, 1e-3, 1e-6] {
+            let mesh = rectangle_mesh::<Mesh2d>(scale, 10, scale, 10);
+            let f: Vec<_> = mesh
+                .verts()
+                .map(|p| (p[0] / scale).powi(2) + (p[0] / scale) * (p[1] / scale))
+                .collect();
+            let res = mesh.hessian(GradientMethod::QuadraticLeastSquares(1), &f);
+            let s2 = scale * scale;
+            for h in res.chunks(3) {
+                assert!(f64::abs(h[0] * s2 - 2.) < 1e-6, "scale = {scale}: {h:?}");
+                assert!(f64::abs(h[1] * s2) < 1e-6, "scale = {scale}: {h:?}");
+                assert!(f64::abs(h[2] * s2 - 1.) < 1e-6, "scale = {scale}: {h:?}");
+            }
+        }
+    }
+
+    #[test]
     fn test_hessian_quadratic() {
         let mesh = rectangle_mesh::<Mesh2d>(1.0, 10, 1.0, 10).random_shuffle();
         let flg = mesh.boundary_flag();
