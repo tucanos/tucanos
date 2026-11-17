@@ -411,8 +411,8 @@ impl AnisoMetric<2> for AnisoMetric2d {
     }
 
     fn scale_aniso(&mut self, s: f64) {
-        for i in 0..3 {
-            self.m[i] *= s;
+        for value in &mut self.m {
+            *value *= s;
         }
         self.v /= f64::sqrt(f64::powi(s, 2));
     }
@@ -590,8 +590,8 @@ impl AnisoMetric<3> for AnisoMetric3d {
     }
 
     fn scale_aniso(&mut self, s: f64) {
-        for i in 0..6 {
-            self.m[i] *= s;
+        for value in &mut self.m {
+            *value *= s;
         }
         self.v /= f64::sqrt(f64::powi(s, 3));
     }
