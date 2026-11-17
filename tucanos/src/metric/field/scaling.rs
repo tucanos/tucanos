@@ -141,40 +141,33 @@ impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
             };
 
             // Get an upper bound for the bisection
-            let mut scale_high = 1.5 * scale;
-            for iter in 0..max_iter {
-                let tmp_m = m_iter(scale_high);
-                let c = self.complexity_iter(tmp_m, h_min, h_max);
-                debug!("Iteration {iter}: scale_high = {scale_high:.2e}, complexity = {c:.2e}");
-
-                if iter == max_iter - 1 {
-                    return Err(Error::from("Unable to scale the metric (bisection)"));
-                }
-
-                if c < n_elems as f64 {
-                    break;
-                }
-                scale_high *= 1.5;
-            }
+            let scale_high = find_bound(
+                1.5 * scale,
+                |s| s * 1.5,
+                max_iter,
+                |s| {
+                    let c = self.complexity_iter(m_iter(s), h_min, h_max);
+                    debug!("scale_high = {s:.2e}, complexity = {c:.2e}");
+                    c < n_elems as f64
+                },
+            )
+            .ok_or_else(|| Error::from("Unable to scale the metric (bisection)"))?;
 
             // Get an lower bound for the bisection
-            let mut scale_low = scale / 1.5;
-            for iter in 0..max_iter {
-                let tmp_m = m_iter(scale_low);
-                let c = self.complexity_iter(tmp_m, h_min, h_max);
-                debug!("Iteration {iter}: scale_low = {scale_low:.2e}, complexity = {c:.2e}");
-
-                if iter == max_iter - 1 {
-                    return Err(Error::from("Unable to scale the metric (bisection)"));
-                }
-
-                if c > n_elems as f64 {
-                    break;
-                }
-                scale_low /= 1.5;
-            }
+            let scale_low = find_bound(
+                scale / 1.5,
+                |s| s / 1.5,
+                max_iter,
+                |s| {
+                    let c = self.complexity_iter(m_iter(s), h_min, h_max);
+                    debug!("scale_low = {s:.2e}, complexity = {c:.2e}");
+                    c > n_elems as f64
+                },
+            )
+            .ok_or_else(|| Error::from("Unable to scale the metric (bisection)"))?;
 
             // bisection
+            let (mut scale_low, mut scale_high) = (scale_low, scale_high);
             for iter in 0..max_iter {
                 scale = f64::midpoint(scale_low, scale_high);
                 let tmp_m = m_iter(scale);
@@ -264,14 +257,42 @@ impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
     }
 }
 
+/// Starting from `s`, update `s` with `next` until `accept(s)` is true, with at
+/// most `max_iter` evaluations of `accept`. Return `None` if no value is accepted
+fn find_bound<N: Fn(f64) -> f64, F: FnMut(f64) -> bool>(
+    mut s: f64,
+    next: N,
+    max_iter: u32,
+    mut accept: F,
+) -> Option<f64> {
+    for _ in 0..max_iter {
+        if accept(s) {
+            return Some(s);
+        }
+        s = next(s);
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
+    use super::find_bound;
     use crate::{
         Result,
         mesh::test_meshes::{test_mesh_2d, test_mesh_3d},
         metric::{AnisoMetric2d, AnisoMetric3d, IsoMetric, MetricField},
     };
     use tmesh::{Vert2d, Vert3d, mesh::Mesh};
+
+    #[test]
+    fn test_find_bound() {
+        // the bound is found at the last allowed iteration
+        let next = |s: f64| 2.0 * s;
+        assert_eq!(find_bound(1.0, next, 1, |_| true), Some(1.0));
+        assert_eq!(find_bound(1.0, next, 3, |s| s > 3.0), Some(4.0));
+        assert_eq!(find_bound(1.0, next, 2, |s| s > 3.0), None);
+        assert_eq!(find_bound(1.0, next, 0, |_| true), None);
+    }
 
     #[test]
     fn test_scaling_2d() {
