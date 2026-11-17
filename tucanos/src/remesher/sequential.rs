@@ -343,22 +343,28 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             vert.m.check()?;
         }
 
-        for edg in self.edges.keys() {
+        for (edg, &count) in &self.edges {
             // Check that the edge vertices are ok
+            let mut verts = Vec::with_capacity(2);
             for i in edg.into_iter() {
                 // Does the vertex exist ?
-                let vert = self.verts.get(&i);
-                if vert.is_none() {
+                let Some(vert) = self.verts.get(&i) else {
                     return Err(Error::from("Invalid edge (missing vertex)"));
-                }
+                };
+                verts.push(vert);
+            }
 
-                // Do all the elements contain the edge ?
-                for i_elem in &vert.unwrap().els {
-                    let e = &self.elems.get(i_elem).unwrap().el;
-                    if !e.contains_edge(edg) && vert.is_none() {
-                        return Err(Error::from("Invalid edge"));
-                    }
-                }
+            // Is the number of elements containing the edge consistent?
+            let n = verts[0]
+                .els
+                .iter()
+                .filter(|i_elem| verts[1].els.contains(i_elem))
+                .filter(|i_elem| self.elems[i_elem].el.contains_edge(edg))
+                .count();
+            if n == 0 || i64::from(count) != n as i64 {
+                return Err(Error::from(&format!(
+                    "Invalid edge {edg:?}: counted in {count} elements, found in {n}"
+                )));
             }
         }
 
