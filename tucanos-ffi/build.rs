@@ -1,4 +1,8 @@
-use std::{env, path::PathBuf};
+use std::{
+    env,
+    ffi::OsStr,
+    path::{Path, PathBuf},
+};
 #[cfg(feature = "64bit-tags")]
 const TUCANOS_TAG: &str = "#define TUCANOS_TAG_64";
 #[cfg(feature = "32bit-tags")]
@@ -10,6 +14,16 @@ const TUCANOS_INT: &str = "#define TUCANOS_INT_32";
 #[cfg(not(feature = "32bit-ints"))]
 const TUCANOS_INT: &str = "";
 
+fn target_profile_dir() -> PathBuf {
+    let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is not set"));
+    out_dir
+        .ancestors()
+        .find(|path| path.file_name() == Some(OsStr::new("build")))
+        .and_then(Path::parent)
+        .expect("OUT_DIR does not contain a `build` ancestor directory")
+        .to_path_buf()
+}
+
 fn main() {
     println!("cargo:rerun-if-env-changed=DEP_TUCANOS_RPATH");
     println!("cargo:rerun-if-changed=src");
@@ -17,11 +31,7 @@ fn main() {
     if let Ok(rpath) = env::var("DEP_TUCANOS_RPATH") {
         println!("cargo:rustc-link-arg=-Wl,-rpath,{rpath}");
     }
-    let mut out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
-    for _ in 0..3 {
-        out_path.pop();
-    }
-    let out_file = out_path.join("tucanos.h");
+    let out_file = target_profile_dir().join("tucanos.h");
 
     let tmp = TUCANOS_TAG.to_string() + "\n" + TUCANOS_INT;
 
