@@ -24,10 +24,11 @@ jobs:
         lfs: false
     - name: Configure Fast APT Mirror
       uses: vegardit/fast-apt-mirror.sh@v1
+    # Not using  eclipse-score/apt-install@main because of caching issue
     - name: Install dependencies
-      uses: eclipse-score/apt-install@main
-      with:
-        packages: libmetis-dev gmsh
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends libmetis-dev gmsh
     - id: toolchain
       uses: dtolnay/rust-toolchain@master
       with:
