@@ -1,4 +1,5 @@
 mod aniso;
+mod fast_math;
 mod field;
 mod iso;
 mod reduction;
@@ -85,7 +86,7 @@ pub trait Metric<const D: usize>:
         let r = l0 / l1;
 
         if f64::abs(r - 1.0) > 0.01 {
-            l0 * (r - 1.0) / r / libm::log(r)
+            l0 * (r - 1.0) / r / fast_math::fast_ln(r)
         } else {
             l0
         }

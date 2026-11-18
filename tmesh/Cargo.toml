@@ -23,6 +23,7 @@ argmin-math = { git = "https://github.com/tucanos/argmin.git", tag = "tucanos-0.
 argmin-observer-slog = {version = "0.2.0", optional=true}
 libm.workspace = true
 tucanos-vtkio = { path = "../tucanos-vtkio" }
+rust-hdf5 = { version = "0.6.0"}
 
 [features]
 32bit-tags = []

@@ -23,21 +23,22 @@ use tmesh::{
 /// edge length in metric space):
 ///  - for `Laplacian`
 /// ```math
-/// \tilde v_i = v_i + \sum_{j \in N(i)} (v_j - v_i)
+/// v_i^* = \frac{1}{|N(i)|} \sum_{j \in N(i)} v_j
 /// ```
 ///  - for `Laplacian2`
 /// ```math
-/// \tilde v_i = \frac{\sum_{j \in N(i)} ||v_j - v_i||_M (v_j + v_i)}{2 \sum_{j \in N(i)} ||v_j - v_i||_M}
+/// v_i^* = \frac{\sum_{j \in N(i)} ||v_j - v_i||_M v_j}{\sum_{j \in N(i)} ||v_j - v_i||_M}
 /// ```
 ///  - for `Avro`
 /// ```math
 /// \tilde v_i = v_i + \omega \sum_{j \in N(i)} (1 − ||v_j - v_i||_M^4) \exp(−||v_j - v_i||_M^4)(v_j - v_i)
 /// ```
-/// - another:
+/// For `Laplacian` and `Laplacian2`, the accepted candidate is searched with outer relaxation:
 /// ```math
-/// \tilde v_i = (1 - \omega) v_i + \omega \frac{\sum_{j \in N(i)} ||v_j - v_i||_M v_j}{\sum_{j \in N(i)} ||v_j - v_i||_M}
+/// v_i^{new} = (1 - \omega) v_i + \omega \tilde v_i
 /// ```
-/// with $`\omega = {1, 1/2, 1/4, ...}`$
+/// with $`\omega \in`$ `relax`.
+/// `Avro` does not use this outer relaxation because it already includes an internal damping factor.
 #[derive(Clone, Copy, Debug)]
 pub enum SmoothingMethod {
     Laplacian,
@@ -158,6 +159,9 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             let e = p0 - p1;
             let omega = 0.2;
             let l = m0.length(&e);
+            if l <= f64::EPSILON {
+                continue;
+            }
             let l4 = l.powi(4);
             let fac = omega * (1.0 - l4) * libm::exp(-l4) / l;
             p0_new += fac * e;
@@ -180,11 +184,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             let Seed::Vertex(i0_local) = cavity.seed else {
                 unreachable!()
             };
-            if cavity.tags[i0_local].0 == 0 {
-                continue;
-            }
-
-            if cavity.tags[i0_local].1 < 0 {
+            if cavity.tags[i0_local].0 == 0 || cavity.tags[i0_local].1 < 0 {
                 continue;
             }
 
@@ -215,31 +215,43 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
             let mut p0_new = Vertex::<D>::zeros();
             let mut valid = false;
 
-            for omega in params.relax.iter().copied() {
-                p0_new = (1.0 - omega) * p0 + omega * p0_smoothed;
-
+            let mut try_candidate = |mut candidate: Vertex<D>| {
                 if t0.0 < D as Dim {
-                    geom.project(&mut p0_new, t0);
+                    geom.project(&mut candidate, t0);
                 }
 
                 trace!(
-                    "Smooth, vertex moved by {} -> {p0_new:?}",
-                    (p0 - p0_new).norm()
+                    "Smooth, vertex moved by {} -> {candidate:?}",
+                    (p0 - candidate).norm()
                 );
 
-                let ftype = FilledCavityType::MovedVertex((i0_local, p0_new, *m0));
+                let ftype = FilledCavityType::MovedVertex((i0_local, candidate, *m0));
                 let filled_cavity = FilledCavity::new(cavity, ftype);
 
                 if !filled_cavity.check_normals(&self.topo, geom, params.max_angle) {
                     trace!("Cannot smooth, would create a non smooth surface");
-                    continue;
+                    return false;
                 }
 
                 if let CavityCheckStatus::Ok(_) = filled_cavity.check(0.0, f64::MAX, cavity.q_min) {
-                    valid = true;
-                    break;
+                    p0_new = candidate;
+                    return true;
                 }
-                trace!("Smooth, quality would decrease for omega={omega}");
+
+                false
+            };
+
+            if matches!(params.method, SmoothingMethod::Avro) {
+                valid = try_candidate(p0_smoothed);
+            } else {
+                for omega in params.relax.iter().copied() {
+                    let candidate = (1.0 - omega) * p0 + omega * p0_smoothed;
+                    if try_candidate(candidate) {
+                        valid = true;
+                        break;
+                    }
+                    trace!("Smooth, quality would decrease for omega={omega}");
+                }
             }
 
             if !valid {

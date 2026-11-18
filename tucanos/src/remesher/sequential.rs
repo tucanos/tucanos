@@ -1433,6 +1433,55 @@ mod tests {
     }
 
     #[test]
+    fn test_smooth_laplacian2_2d() -> Result<()> {
+        let coords = vec![
+            Vert2d::new(0., 0.),
+            Vert2d::new(1., 0.),
+            Vert2d::new(1., 1.0),
+            Vert2d::new(0., 1.0),
+            Vert2d::new(0.1, 0.1),
+        ];
+        let elems = vec![
+            Triangle::<u32>::new(0, 1, 4),
+            Triangle::new(1, 2, 4),
+            Triangle::new(2, 3, 4),
+            Triangle::new(3, 0, 4),
+        ];
+        let etags = vec![1, 1, 1, 1];
+        let faces = vec![
+            Edge::new(0, 1),
+            Edge::new(1, 2),
+            Edge::new(2, 3),
+            Edge::new(3, 0),
+        ];
+        let ftags = vec![1, 2, 3, 4];
+
+        let mesh = GenericMesh::from_vecs(coords, elems, etags, faces, ftags);
+        let topo = MeshTopology::new(&mesh);
+
+        let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts()];
+        let geom = NoGeometry();
+        let mut remesher = Remesher::new(&mesh, &topo, &h, &geom)?;
+
+        let params = SmoothParams {
+            method: SmoothingMethod::Laplacian2,
+            n_iter: 1,
+            relax: vec![1.0],
+            ..Default::default()
+        };
+        remesher.smooth(&params, &geom, true)?;
+        let pt = remesher.verts.get(&4).unwrap().vx;
+        let target = Vert2d::new(0.6753905297, 0.6753905297);
+        assert!((pt - target).norm() < 1e-8);
+
+        remesher.check()?;
+
+        let _mesh = remesher.to_mesh(true);
+
+        Ok(())
+    }
+
+    #[test]
     fn test_smooth_omega_2d() -> Result<()> {
         let coords = vec![
             Vert2d::new(0., 0.),

@@ -141,7 +141,8 @@ impl<T: Idx> Simplex for QuadraticEdge<T> {
     }
 
     fn face(&self, i: usize) -> Self::FACE {
-        Self::FACE::from_iter(QUADRATICEDGE2FACES[i].into_iter().map(|j| self.get(j)))
+        let Node([i0]) = QUADRATICEDGE2FACES[i];
+        Node([self.0[i0]])
     }
 
     fn set(&mut self, i: usize, v: usize) {
@@ -197,7 +198,8 @@ impl<const D: usize> GSimplex<D> for QuadraticGEdge<D> {
     }
 
     fn face(&self, i: usize) -> Self::FACE {
-        Self::FACE::from_iter(QUADRATICEDGE2FACES[i].into_iter().map(|j| self[j]))
+        let Node([i0]) = QUADRATICEDGE2FACES[i];
+        GNode::new(&self[i0])
     }
 
     fn set(&mut self, i: usize, v: Vertex<D>) {

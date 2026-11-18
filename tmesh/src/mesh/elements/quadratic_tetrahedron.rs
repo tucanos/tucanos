@@ -177,11 +177,10 @@ impl<T: Idx> Simplex for QuadraticTetrahedron<T> {
     }
 
     fn face(&self, i: usize) -> Self::FACE {
-        Self::FACE::from_iter(
-            QUADRATICTETRAHEDRON2FACE[i]
-                .into_iter()
-                .map(|j| self.get(j)),
-        )
+        let QuadraticTriangle([i0, i1, i2, i3, i4, i5]) = QUADRATICTETRAHEDRON2FACE[i];
+        QuadraticTriangle([
+            self.0[i0], self.0[i1], self.0[i2], self.0[i3], self.0[i4], self.0[i5],
+        ])
     }
 
     fn set(&mut self, i: usize, v: usize) {
@@ -233,7 +232,10 @@ impl<const D: usize> GSimplex<D> for QuadraticGTetrahedron<D> {
     }
 
     fn face(&self, i: usize) -> Self::FACE {
-        Self::FACE::from_iter(QUADRATICTETRAHEDRON2FACE[i].into_iter().map(|j| self[j]))
+        let QuadraticTriangle([i0, i1, i2, i3, i4, i5]) = QUADRATICTETRAHEDRON2FACE[i];
+        QuadraticGTriangle::new(
+            &self[i0], &self[i1], &self[i2], &self[i3], &self[i4], &self[i5], self.1,
+        )
     }
 
     fn set(&mut self, i: usize, v: Vertex<D>) {
