@@ -62,9 +62,9 @@ impl<'a> HyperTreeGridWriter<'a> {
         self.0.sections.insert(
             "Grid",
             vec![
-                DataArray::new("XCoordinates", 1, nx, itx),
-                DataArray::new("YCoordinates", 1, ny, ity),
-                DataArray::new("ZCoordinates", 1, nz, itz),
+                DataArray::new("XCoordinates", nx, itx),
+                DataArray::new("YCoordinates", ny, ity),
+                DataArray::new("ZCoordinates", nz, itz),
             ],
         );
     }
@@ -90,9 +90,9 @@ impl<'a> HyperTreeGridWriter<'a> {
             "Trees",
             vec![
                 DataArray::new_bits("Descriptors", 1, num_descriptor, descriptor),
-                DataArray::new("NumberOfVerticesPerDepth", 1, n, num_verts_per_depth),
-                DataArray::new("TreeIds", 1, n, tree_ids),
-                DataArray::new("DepthPerTree", 1, n, depth_per_tree),
+                DataArray::new("NumberOfVerticesPerDepth", n, num_verts_per_depth),
+                DataArray::new("TreeIds", n, tree_ids),
+                DataArray::new("DepthPerTree", n, depth_per_tree),
             ],
         );
     }
@@ -107,10 +107,10 @@ impl<'a> HyperTreeGridWriter<'a> {
             .sections
             .entry("CellData")
             .or_default()
-            .push(DataArray::new(
+            .push(DataArray::from_tuples(
                 label,
                 num_components,
-                num_cells * num_components,
+                num_cells,
                 values,
             ));
     }

@@ -18,10 +18,10 @@ impl<'a> UnstructuredGridWriter<'a> {
     {
         self.0.sections.insert(
             "Points",
-            vec![DataArray::new(
+            vec![DataArray::from_tuples(
                 "Points",
                 3,
-                self.0.file_type.number_of_points * 3,
+                self.0.file_type.number_of_points,
                 iterator,
             )],
         );
@@ -43,9 +43,9 @@ impl<'a> UnstructuredGridWriter<'a> {
         self.0.sections.insert(
             "Cells",
             vec![
-                DataArray::new("connectivity", 1, num_conn, connectivity),
-                DataArray::new("offsets", 1, self.0.file_type.number_of_cells, offsets),
-                DataArray::new("types", 1, self.0.file_type.number_of_cells, types),
+                DataArray::new("connectivity", num_conn, connectivity),
+                DataArray::new("offsets", self.0.file_type.number_of_cells, offsets),
+                DataArray::new("types", self.0.file_type.number_of_cells, types),
             ],
         );
     }
@@ -67,8 +67,8 @@ impl<'a> UnstructuredGridWriter<'a> {
             .sections
             .get_mut("Cells")
             .expect("add_polyhedron_faces must be called after add_cells");
-        s.push(DataArray::new("faces", 1, num_conn, faces));
-        s.push(DataArray::new("faceoffsets", 1, num_faces, faceoffsets));
+        s.push(DataArray::new("faces", num_conn, faces));
+        s.push(DataArray::new("faceoffsets", num_faces, faceoffsets));
     }
 
     pub fn add_polyhedron_faces_v23<T, ITFC, ITFO>(
@@ -90,11 +90,10 @@ impl<'a> UnstructuredGridWriter<'a> {
             .expect("add_polyhedron_faces must be called after add_cells");
         s.push(DataArray::new(
             "face_connectivity",
-            1,
             num_conn,
             face_connectivity,
         ));
-        s.push(DataArray::new("face_offsets", 1, num_faces, face_offsets));
+        s.push(DataArray::new("face_offsets", num_faces, face_offsets));
     }
 
     pub fn add_polyhedron_face_map_v23<T, ITPF, ITPO>(
@@ -116,13 +115,11 @@ impl<'a> UnstructuredGridWriter<'a> {
             .expect("add_polyhedron_faces must be called after add_cells");
         s.push(DataArray::new(
             "polyhedron_to_faces",
-            1,
             num_p_faces,
             polyhedron_to_faces,
         ));
         s.push(DataArray::new(
             "polyhedron_offsets",
-            1,
             num_cells,
             polyhedron_offsets,
         ));
@@ -138,7 +135,12 @@ impl<'a> UnstructuredGridWriter<'a> {
             .sections
             .entry("CellData")
             .or_default()
-            .push(DataArray::new(label, num_components, num_cells, values));
+            .push(DataArray::from_tuples(
+                label,
+                num_components,
+                num_cells,
+                values,
+            ));
     }
 
     pub fn add_point_data<T, IT>(&mut self, label: &str, num_components: usize, values: IT)
@@ -146,7 +148,7 @@ impl<'a> UnstructuredGridWriter<'a> {
         T: Scalar + 'a,
         IT: IntoIterator<Item = T> + 'a,
     {
-        let d = DataArray::new(
+        let d = DataArray::from_tuples(
             label,
             num_components,
             self.0.file_type.number_of_points,
@@ -165,9 +167,12 @@ impl<'a> UnstructuredGridWriter<'a> {
         T: Scalar + 'a,
         IT: IntoIterator<Item = T> + 'a,
     {
-        self.0
-            .field_data
-            .push(DataArray::new(label, num_components, num_tuples, values));
+        self.0.field_data.push(DataArray::from_tuples(
+            label,
+            num_components,
+            num_tuples,
+            values,
+        ));
     }
 
     /// Appends string field data to the grid using a clonable iterator over scalar strings.
