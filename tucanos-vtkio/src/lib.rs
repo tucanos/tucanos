@@ -281,14 +281,47 @@ impl<'a> DataArray<'a> {
         r
     }
 
-    fn new<IT>(name: &str, number_of_components: usize, len: usize, data: IT) -> Self
+    /// Creates a new VTK XML `DataArray` from a known number of scalars.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The `Name` attribute of the VTK `<DataArray>` element.
+    /// * `num_scalars` - The number of values in the array.
+    /// * `data` - An iterator yielding `num_scalars` values
+    fn new<IT>(name: &str, num_scalars: usize, data: IT) -> Self
     where
         IT: IntoIterator + 'a,
         IT::Item: Scalar,
     {
-        let number_of_tuples = len / number_of_components;
-        let byte_len = len * std::mem::size_of::<IT::Item>();
-        Self::with_byte_len(name, number_of_tuples, number_of_components, byte_len, data)
+        Self::from_tuples(name, 1, num_scalars, data)
+    }
+
+    /// Creates a new VTK XML `DataArray` from a known number of multi-component tuples.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The `Name` attribute of the VTK `<DataArray>` element.
+    /// * `num_components` - The number of scalar components per tuple (typically `1` for scalars
+    ///   or `3` for 3D vectors).
+    /// * `num_tuples` - The number of tuples in the array.
+    /// * `data` - An iterator yielding `num_tuples * num_components` scalar values in tuple-major
+    ///   order.
+    #[track_caller]
+    fn from_tuples<IT>(name: &str, num_components: usize, num_tuples: usize, data: IT) -> Self
+    where
+        IT: IntoIterator + 'a,
+        IT::Item: Scalar,
+    {
+        assert!(num_components > 0, "num_components must be greater than 0");
+
+        let num_scalars = num_tuples
+            .checked_mul(num_components)
+            .expect("DataArray scalar count overflow");
+        let byte_len = num_scalars
+            .checked_mul(std::mem::size_of::<IT::Item>())
+            .expect("DataArray byte length overflow");
+
+        Self::with_byte_len(name, num_tuples, num_components, byte_len, data)
     }
 
     fn with_byte_len<IT>(

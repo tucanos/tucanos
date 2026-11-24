@@ -58,10 +58,10 @@ impl<'a> PolyDataWriter<'a> {
     {
         self.0.sections.insert(
             "Points",
-            vec![DataArray::new(
+            vec![DataArray::from_tuples(
                 "Points",
                 3,
-                self.0.file_type.points * 3,
+                self.0.file_type.points,
                 iterator,
             )],
         );
@@ -81,8 +81,8 @@ impl<'a> PolyDataWriter<'a> {
         self.0.sections.insert(
             section,
             vec![
-                DataArray::new("connectivity", 1, num_conn, connectivity),
-                DataArray::new("offsets", 1, num, offsets),
+                DataArray::new("connectivity", num_conn, connectivity),
+                DataArray::new("offsets", num, offsets),
             ],
         );
     }
@@ -184,7 +184,12 @@ impl<'a> PolyDataWriter<'a> {
             .sections
             .entry("CellData")
             .or_default()
-            .push(DataArray::new(label, num_components, num_cells, values));
+            .push(DataArray::from_tuples(
+                label,
+                num_components,
+                num_cells,
+                values,
+            ));
     }
 
     /// Adds a `PointData` array to this PolyData.
@@ -198,7 +203,7 @@ impl<'a> PolyDataWriter<'a> {
         T: Scalar + 'a,
         IT: IntoIterator<Item = T> + 'a,
     {
-        let d = DataArray::new(label, num_components, self.0.file_type.points, values);
+        let d = DataArray::from_tuples(label, num_components, self.0.file_type.points, values);
         self.0.sections.entry("PointData").or_default().push(d);
     }
 
