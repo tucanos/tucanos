@@ -271,7 +271,10 @@ impl Topology {
         self.parents.get(&(topo0, topo1)).copied()
     }
 
-    /// Remove all the tags for which `filter` returns true, and all their children.
+    /// Remove all the nodes for which `filter` returns true. The removed tags are also removed
+    /// from the parents and children of the remaining nodes, but these nodes are kept (the children
+    /// of a removed node are not removed). `filter` is called with the dimension and the tag, and
+    /// tags are only unique per dimension, so the dimension should be checked by `filter`.
     pub fn clear<F: FnMut(TopoTag) -> bool>(&mut self, mut filter: F) {
         let mut new_entities = vec![Vec::new(); self.dim as usize + 1];
         for dim in 0..=self.dim {
@@ -677,6 +680,41 @@ mod tests {
 
         let p = t.parents.get(&((0, 2), (1, 3)));
         assert!(p.is_none());
+    }
+
+    #[test]
+    fn test_clear_same_tag_other_dim() {
+        // Faces -4 and -5 are removed (e.g. partition interfaces) but edges -4 and -5 share their
+        // tag values. The vertices must keep their parents so that they can still be distinguished.
+        let mut t = Topology::new(3);
+        t.insert((3, 1), []);
+        t.insert((2, 1), [1]);
+        t.insert((2, 2), [1]);
+        t.insert((2, 3), [1]);
+        t.insert((2, -4), [1]);
+        t.insert((2, -5), [1]);
+        t.insert((1, -1), [1, 2]);
+        t.insert((1, -4), [1, 3]);
+        t.insert((1, -5), [2, 3]);
+        t.insert((0, -1), [-1, -4]);
+        t.insert((0, -2), [-1, -5]);
+
+        let is_removed = |tag: Tag| tag == -4 || tag == -5;
+
+        // Filtering on the tag only also removes edges -4 and -5: both vertices are left with the
+        // parents {-1} and cannot be distinguished anymore
+        let mut t0 = t.clone();
+        t0.clear(|(_, tag)| is_removed(tag));
+        assert!(t0.get_from_parents_or_create(0, [-1]).is_err());
+
+        // Filtering on the face dimension only removes the faces
+        t.clear(|(dim, tag)| dim == 2 && is_removed(tag));
+        assert!(t.get((2, -4)).is_none());
+        assert!(t.get((2, -5)).is_none());
+        assert!(t.get((1, -4)).is_some());
+        assert!(t.get((1, -5)).is_some());
+        assert_eq!(t.get_from_parents_or_create(0, [-1, -4]).unwrap(), -1);
+        assert_eq!(t.get_from_parents_or_create(0, [-1, -5]).unwrap(), -2);
     }
 
     #[test]

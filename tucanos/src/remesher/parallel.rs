@@ -1,5 +1,5 @@
 use crate::{
-    Error, Result, Tag,
+    Dim, Error, Result, Tag,
     geometry::Geometry,
     mesh::MeshTopology,
     metric::Metric,
@@ -260,7 +260,12 @@ impl<const D: usize, M: Mesh<D>, P: Partitioner> ParallelRemesher<D, M, P> {
         // to be consistent with the base topology
         local_mesh.etags_mut().for_each(|t| *t = 1);
         let mut topo = self.topo.topo().clone();
-        topo.clear(|(_, t)| self.is_partition_bdy(t));
+        // Only remove the partition interface faces: tags are unique per dimension only, so an
+        // edge or a vertex of the topology may carry the same (negative) value as an interface
+        // face tag. Removing it would leave its children with incomplete parents, and several
+        // of them could end up with the same parents ("Multiple nodes with parents" error).
+        let face_dim = M::C::DIM as Dim - 1;
+        topo.clear(|(dim, t)| dim == face_dim && self.is_partition_bdy(t));
 
         let local_topo = MeshTopology::new_from(&local_mesh, topo);
 
