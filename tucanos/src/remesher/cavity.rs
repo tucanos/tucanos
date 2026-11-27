@@ -859,12 +859,14 @@ impl<'a, const D: usize, C: Simplex, M: Metric<D>> FilledCavity<'a, D, C, M> {
     ///
     /// * `topo` - The mesh topology structure.
     /// * `geom` - The geometric data provider.
-    /// * `max_angle` - The maximum allowable deviation in degrees.
+    /// * `min_cos` - The minimum allowable cosine of the angle between the mesh normal
+    ///   and the geometry normal (i.e., `cos(max_angle)`).
     ///
     /// # Returns
     ///
-    /// Returns `true` if the angle difference is strictly less than `max_angle`.
-    pub fn check_normals<G>(&self, topo: &Topology, geom: &G, max_angle: f64) -> bool
+    /// Returns `true` if all checked normals have a cosine greater than to `min_cos`, and
+    /// `false` if any normal falls below `min_cos`.
+    pub fn check_normals<G>(&self, topo: &Topology, geom: &G, min_cos: f64) -> bool
     where
         G: Geometry<D>,
     {
@@ -875,8 +877,7 @@ impl<'a, const D: usize, C: Simplex, M: Metric<D>> FilledCavity<'a, D, C, M> {
                 let ge = C::GEOM::from_vert_and_face(&p0, &gf);
                 let center = ge.center();
                 let normal = ge.normal(None).normalize();
-                let a = geom.angle(&center, &normal, &(C::DIM as Dim, tag));
-                if a > max_angle {
+                if geom.cos_angle(&center, &normal, &(C::DIM as Dim, tag)) < min_cos {
                     return false;
                 }
             }
@@ -904,8 +905,7 @@ impl<'a, const D: usize, C: Simplex, M: Metric<D>> FilledCavity<'a, D, C, M> {
             if s {
                 normal = -normal;
             }
-            let a = geom.angle(&center, &normal, &(C::DIM as Dim - 1, tag));
-            if a > max_angle {
+            if geom.cos_angle(&center, &normal, &(C::DIM as Dim - 1, tag)) < min_cos {
                 return false;
             }
         }

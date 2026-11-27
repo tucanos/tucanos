@@ -105,6 +105,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         cavity: &Cavity<D, C, M>,
         geom: &G,
     ) -> TrySwapResult {
+        let min_cosine = libm::cos(params.max_angle.to_radians());
         let dbg = self.debug_edge(edg);
 
         trace_if!(dbg, "Try to swap edge {edg:?}");
@@ -208,7 +209,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                 continue;
             }
 
-            if !filled_cavity.check_normals(&self.topo, geom, params.max_angle) {
+            if !filled_cavity.check_normals(&self.topo, geom, min_cosine) {
                 trace_if!(dbg, "Cannot swap, would create a non smooth surface");
                 continue;
             }
@@ -255,10 +256,10 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                 let gf = cavity.gface(f);
                 let c = gf.center();
                 let n = gf.normal(None).normalize();
-                geom.angle(&c, &n, &(2, tag))
+                geom.cos_angle(&c, &n, &(2, tag))
             });
 
-            if a0.max(a1) > a2.max(a3) {
+            if a0.min(a1) < a2.min(a3) {
                 let [f0, f1, f2, f3] = [f0, f1, &f2, &f3].map(|f| cavity.global_elem(f).sorted());
                 // Check if f2 or f3 are already tagged, in which case we cannot remove the element
                 if self.face_tag(&f2.sorted()).is_some() || self.face_tag(&f3.sorted()).is_some() {

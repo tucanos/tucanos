@@ -27,8 +27,9 @@ pub trait Geometry<const D: usize>: Send + Sync {
     /// The distance between the original vertex and its projection if returned
     fn project(&self, pt: &mut Vertex<D>, tag: &TopoTag) -> f64;
 
-    /// Compute the angle between a vector n and the normal at the projection of pt onto the geometry
-    fn angle(&self, pt: &Vertex<D>, n: &Vertex<D>, tag: &TopoTag) -> f64;
+    /// Compute the cosine of the angle between a vector n and the normal at the projection of pt
+    /// onto the geometry
+    fn cos_angle(&self, pt: &Vertex<D>, n: &Vertex<D>, tag: &TopoTag) -> f64;
 
     /// Compute the max distance between the face centers and the geometry normals
     fn project_vertices<M: Mesh<D>>(&self, mesh: &mut M, topo: &MeshTopology) -> f64 {
@@ -65,58 +66,58 @@ pub trait Geometry<const D: usize>: Send + Sync {
         }
     }
 
-    /// Compute the max angle between the face normals and the geometry normals
-    fn max_normal_angle<M: Mesh<D>>(&self, mesh: &M) -> f64 {
-        let mut a_max = 0.0;
+    /// Compute the cosine of the maximum angle between face normals and geometry normals.
+    fn max_normal_angle_cos<M: Mesh<D>>(&self, mesh: &M) -> f64 {
+        let mut min_cos = 1_f64;
+        let mut update = |c, n, tag| {
+            min_cos = min_cos.min(self.cos_angle(&c, &n, &((D - 1) as Dim, tag)));
+        };
+
         if M::C::DIM == D {
-            for (gf, tag) in mesh.gfaces().zip(mesh.ftags()) {
-                if tag > 0 {
-                    let c = gf.center();
-                    let n = gf.normal(None).normalize();
-                    let a = self.angle(&c, &n, &(<M::C as Simplex>::FACE::DIM as Dim, tag));
-                    a_max = f64::max(a_max, a);
-                }
-            }
+            mesh.gfaces()
+                .zip(mesh.ftags())
+                .filter(|&(_, tag)| tag > 0)
+                .for_each(|(g, t)| update(g.center(), g.normal(None).normalize(), t));
         } else if M::C::DIM == D - 1 {
-            for (gf, tag) in mesh.gelems().zip(mesh.etags()) {
-                if tag > 0 {
-                    let c = gf.center();
-                    let n = gf.normal(None).normalize();
-                    let a = self.angle(&c, &n, &(M::C::DIM as Dim, tag));
-                    a_max = f64::max(a_max, a);
-                }
-            }
+            mesh.gelems()
+                .zip(mesh.etags())
+                .filter(|&(_, tag)| tag > 0)
+                .for_each(|(g, t)| update(g.center(), g.normal(None).normalize(), t));
         } else {
-            unreachable!();
+            unreachable!("Unsupported simplex dimension: {} for D = {D}", M::C::DIM);
         }
 
-        a_max
+        min_cos.clamp(-1., 1.)
     }
 
-    /// Get the angle between the mesh face normals and the geometry normals for all faces in the mesh
+    /// Compute the angle (in degrees) between the mesh face normals and the geometry normals
+    /// for all faces in the mesh
     fn normal_angle<M: Mesh<D>>(&self, mesh: &M) -> Vec<f64> {
-        if M::C::DIM == D {
-            let mut a = Vec::with_capacity(mesh.n_faces());
-            for (gf, tag) in mesh.gfaces().zip(mesh.ftags()) {
-                if tag > 0 {
-                    let c = gf.center();
-                    let n = gf.normal(None).normalize();
-                    a.push(self.angle(&c, &n, &(<M::C as Simplex>::FACE::DIM as Dim, tag)));
-                }
-            }
-            a
-        } else if M::C::DIM == D - 1 {
-            let mut a = Vec::with_capacity(mesh.n_elems());
-            for (gf, tag) in mesh.gelems().zip(mesh.etags()) {
-                if tag > 0 {
-                    let c = gf.center();
-                    let n = gf.normal(None).normalize();
-                    a.push(self.angle(&c, &n, &(M::C::DIM as Dim, tag)));
-                }
-            }
-            a
-        } else {
-            unreachable!();
+        let angle = |c, n, tag| {
+            let cos = self
+                .cos_angle(&c, &n, &((D - 1) as Dim, tag))
+                .clamp(-1.0, 1.0);
+            libm::acos(cos).to_degrees()
+        };
+
+        match M::C::DIM {
+            d if d == D => mesh
+                .gfaces()
+                .zip(mesh.ftags())
+                .filter(|&(_, tag)| tag > 0)
+                .map(|(gf, tag)| angle(gf.center(), gf.normal(None).normalize(), tag))
+                .collect(),
+            d if d == D - 1 => mesh
+                .gelems()
+                .zip(mesh.etags())
+                .filter(|&(_, tag)| tag > 0)
+                .map(|(gf, tag)| angle(gf.center(), gf.normal(None).normalize(), tag))
+                .collect(),
+            _ => unreachable!(
+                "expected mesh dimension {D} or {}, got {}",
+                D - 1,
+                M::C::DIM
+            ),
         }
     }
 
@@ -157,9 +158,9 @@ impl<const D: usize> Geometry<D> for NoGeometry<D> {
         0.
     }
 
-    fn angle(&self, _pt: &Vertex<D>, _n: &Vertex<D>, tag: &TopoTag) -> f64 {
+    fn cos_angle(&self, _pt: &Vertex<D>, _n: &Vertex<D>, tag: &TopoTag) -> f64 {
         assert_eq!(tag.0, D as Dim - 1);
-        0.
+        1.
     }
 }
 
@@ -361,7 +362,7 @@ impl<const D: usize, M: Mesh<D>> Geometry<D> for MeshedGeometry<D, M> {
         dist
     }
 
-    fn angle(&self, pt: &Vertex<D>, n: &Vertex<D>, tag: &TopoTag) -> f64 {
+    fn cos_angle(&self, pt: &Vertex<D>, n: &Vertex<D>, tag: &TopoTag) -> f64 {
         assert_eq!(tag.0, D as Dim - 1);
 
         let patch = self.patches.get(&tag.1).unwrap_or_else(|| {
@@ -377,8 +378,7 @@ impl<const D: usize, M: Mesh<D>> Geometry<D> for MeshedGeometry<D, M> {
             .gelem(&patch.tree.mesh().elem(idx))
             .normal(None)
             .normalize();
-        let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
-        libm::acos(cos_a).to_degrees()
+        n.dot(&n_ref).clamp(-1.0, 1.0)
     }
 }
 

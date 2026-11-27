@@ -30,11 +30,11 @@ impl<const D: usize, M: Mesh<D>> Geometry<D> for IsoGeometry<D, M> {
         }
     }
 
-    fn angle(&self, pt: &tmesh::Vertex<D>, n: &tmesh::Vertex<D>, tag: &crate::TopoTag) -> f64 {
+    fn cos_angle(&self, pt: &tmesh::Vertex<D>, n: &tmesh::Vertex<D>, tag: &crate::TopoTag) -> f64 {
         if *tag == (<M::C as Simplex>::DIM as Dim, Tag::MAX) {
-            0.0
+            1.0
         } else {
-            self.geom.angle(pt, n, tag)
+            self.geom.cos_angle(pt, n, tag)
         }
     }
 }

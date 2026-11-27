@@ -155,8 +155,8 @@ impl Geometry<2> for GeomHalfCircle2d {
         (*pt - p).norm()
     }
 
-    fn angle(&self, _pt: &Vert2d, _n: &Vert2d, _tag: &TopoTag) -> f64 {
-        0.0
+    fn cos_angle(&self, _pt: &Vert2d, _n: &Vert2d, _tag: &TopoTag) -> f64 {
+        1.
     }
 }
 
@@ -370,10 +370,8 @@ impl Geometry<3> for SphereGeometry {
         nrm - 1.0
     }
 
-    fn angle(&self, pt: &Vert3d, n: &Vert3d, _tag: &TopoTag) -> f64 {
-        let n_ref = pt.normalize();
-        let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
-        libm::acos(cos_a).to_degrees()
+    fn cos_angle(&self, pt: &Vert3d, n: &Vert3d, _tag: &TopoTag) -> f64 {
+        n.dot(&pt.normalize()).clamp(-1.0, 1.0)
     }
 }
 
@@ -398,7 +396,7 @@ impl Geometry<2> for ConcentricCircles {
         }
     }
 
-    fn angle(&self, pt: &Vert2d, n: &Vert2d, tag: &TopoTag) -> f64 {
+    fn cos_angle(&self, pt: &Vert2d, n: &Vert2d, tag: &TopoTag) -> f64 {
         assert_eq!(tag.0, 1);
         let mut n_ref = pt.normalize();
         match tag.1 {
@@ -408,8 +406,7 @@ impl Geometry<2> for ConcentricCircles {
             2 => {}
             _ => unreachable!(),
         }
-        let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
-        libm::acos(cos_a).to_degrees()
+        n.dot(&n_ref).clamp(-1.0, 1.0)
     }
 }
 
@@ -471,7 +468,7 @@ impl Geometry<3> for ConcentricSpheres {
         }
     }
 
-    fn angle(&self, pt: &Vert3d, n: &Vert3d, tag: &TopoTag) -> f64 {
+    fn cos_angle(&self, pt: &Vert3d, n: &Vert3d, tag: &TopoTag) -> f64 {
         assert_eq!(tag.0, 2);
         let mut n_ref = pt.normalize();
         match tag.1 {
@@ -481,8 +478,7 @@ impl Geometry<3> for ConcentricSpheres {
             2 => {}
             _ => unreachable!(),
         }
-        let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
-        libm::acos(cos_a).to_degrees()
+        n.dot(&n_ref).clamp(-1.0, 1.0)
     }
 }
 
@@ -603,7 +599,7 @@ impl Geometry<3> for CylinderGeometry {
         }
     }
 
-    fn angle(&self, pt: &Vert3d, n: &Vert3d, tag: &TopoTag) -> f64 {
+    fn cos_angle(&self, pt: &Vert3d, n: &Vert3d, tag: &TopoTag) -> f64 {
         let n_ref = match tag.0 {
             2 => match tag.1 {
                 1 => Vert3d::new(0.0, 0.0, -1.0),
@@ -618,8 +614,7 @@ impl Geometry<3> for CylinderGeometry {
             },
             _ => unreachable!(),
         };
-        let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
-        libm::acos(cos_a).to_degrees()
+        n.dot(&n_ref).clamp(-1.0, 1.0)
     }
 }
 
