@@ -173,6 +173,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         cavity: &mut Cavity<D, C, M>,
         verts: &[usize],
     ) -> (usize, usize, usize) {
+        let min_cosine = libm::cos(params.max_angle.to_radians());
         let (mut n_fails, mut n_min, mut n_smooth) = (0, 0, 0);
         for i0 in verts.iter().copied() {
             trace!("Try to smooth vertex {i0}");
@@ -230,7 +231,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                 let ftype = FilledCavityType::MovedVertex((i0_local, p0_new, *m0));
                 let filled_cavity = FilledCavity::new(cavity, ftype);
 
-                if !filled_cavity.check_normals(&self.topo, geom, params.max_angle) {
+                if !filled_cavity.check_normals(&self.topo, geom, min_cosine) {
                     trace!("Cannot smooth, would create a non smooth surface");
                     continue;
                 }

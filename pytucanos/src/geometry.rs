@@ -56,7 +56,7 @@ macro_rules! create_geometry {
             /// Compute the max angle between the face normals and the geometry normals
             #[must_use]
             pub fn max_normal_angle(&self, mesh: &$mesh) -> f64 {
-                self.geom.max_normal_angle(&mesh.0)
+                libm::acos(self.geom.max_normal_angle_cos(&mesh.0)).to_degrees()
             }
 
             ///Get the angle between the mesh face normals and the geometry normals for all faces in the mesh
@@ -126,15 +126,14 @@ macro_rules! create_geometry {
                 py: Python<'py>,
                 mesh: &$mesh,
             ) -> PyResult<Bound<'py, PyArray1<f64>>> {
-
                 let res = mesh.0.gfaces().zip(mesh.0.ftags()).map(|(gf, tag)| {
                     let c = gf.center();
                     let n = gf.normal(None).normalize();
-                    self.geom.angle(
+                    libm::acos(self.geom.cos_angle(
                         &c,
                         &n,
                         &(<$etype::<Idx> as Simplex>::DIM as Dim, tag)
-                    )
+                    ).clamp(-1., 1.)).to_degrees()
                 }).collect();
 
                 Ok(to_numpy_1d(py, res))

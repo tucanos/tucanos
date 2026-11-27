@@ -117,7 +117,7 @@ impl Geometry<3> for CubeCylinderGeometry {
         (*pt - old).norm()
     }
 
-    fn angle(&self, pt: &Vert3d, n: &Vert3d, tag: &TopoTag) -> f64 {
+    fn cos_angle(&self, pt: &Vert3d, n: &Vert3d, tag: &TopoTag) -> f64 {
         let n_ref = match tag.1 {
             XMIN_TAG => Vert3d::new(-1.0, 0.0, 0.0),
             XMAX_TAG => Vert3d::new(1.0, 0.0, 0.0),
@@ -131,8 +131,7 @@ impl Geometry<3> for CubeCylinderGeometry {
             }
             _ => unreachable!(),
         };
-        let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
-        f64::acos(cos_a).to_degrees()
+        n.dot(&n_ref).clamp(-1.0, 1.0)
     }
 }
 
@@ -280,7 +279,7 @@ fn main() -> Result<()> {
     for i_step in 0..n_steps {
         let topo = MeshTopology::new(&mesh);
         let geom = CubeCylinderGeometry::new(topo.topo().clone());
-        let max_angle = geom.max_normal_angle(&mesh);
+        let max_angle = libm::acos(geom.max_normal_angle_cos(&mesh)).to_degrees();
         let d = geom.project_vertices(&mut mesh, &topo);
         assert!(d < 1e-12);
         println!("geometry: d = {d:.2e}, max_angle = {max_angle:.2}");

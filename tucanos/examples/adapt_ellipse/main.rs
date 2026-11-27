@@ -151,16 +151,14 @@ impl Geometry<3> for Simple3dGeometry {
         (*pt - old).norm()
     }
 
-    fn angle(&self, pt: &Vert3d, n: &Vert3d, tag: &TopoTag) -> f64 {
-        let n_ref = self.normal(pt, *tag);
-        let cos_a = n.dot(&n_ref).clamp(-1.0, 1.0);
-        f64::acos(cos_a).to_degrees()
+    fn cos_angle(&self, pt: &Vert3d, n: &Vert3d, tag: &TopoTag) -> f64 {
+        n.dot(&self.normal(pt, *tag)).clamp(-1.0, 1.0)
     }
 }
 
 fn check_geom(mesh: &Mesh3d, geom: &Simple3dGeometry) {
     let mut max_dist = FxHashMap::<Tag, f64>::default();
-    let mut max_angle = FxHashMap::<Tag, f64>::default();
+    let mut min_cos = FxHashMap::<Tag, f64>::default();
 
     for ((face, tag), gface) in mesh.faces().zip(mesh.ftags()).zip(mesh.gfaces()) {
         for i in 0..3 {
@@ -172,18 +170,20 @@ fn check_geom(mesh: &Mesh3d, geom: &Simple3dGeometry) {
                 max_dist.insert(tag, dist);
             }
         }
-        let angle = geom.angle(&gface.center(), &gface.normal(None).normalize(), &(2, tag));
-        if let Some(v) = max_angle.get_mut(&tag) {
-            *v = v.max(angle);
-        } else {
-            max_angle.insert(tag, angle);
-        }
+        let cos = geom
+            .cos_angle(&gface.center(), &gface.normal(None).normalize(), &(2, tag))
+            .clamp(-1., 1.);
+        min_cos
+            .entry(tag)
+            .and_modify(|v| *v = v.min(cos))
+            .or_insert(cos);
     }
     for (&name, &tag) in FACE_NAMES.iter().zip(FACE_TAGS.iter()) {
         if max_dist.contains_key(&tag) {
+            let max_angle = libm::acos(*min_cos.get(&tag).unwrap()).to_degrees();
             println!("{name} (tag = {tag})");
             println!("  max. distance: {:.1e}", max_dist.get(&tag).unwrap());
-            println!("  max. angle: {:.1}", max_angle.get(&tag).unwrap());
+            println!("  max. angle: {max_angle:.1}");
         }
     }
 }
@@ -336,7 +336,7 @@ fn main() -> Result<()> {
     let bdy: BoundaryMesh3d = mesh.boundary().0;
     bdy.write_vtk("ellipse_remeshed_bdy.vtu")?;
 
-    let max_angle = geom.max_normal_angle(&mesh);
+    let max_angle = libm::acos(geom.max_normal_angle_cos(&mesh)).to_degrees();
     println!("max angle : {max_angle:.1}");
 
     Ok(())
