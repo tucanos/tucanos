@@ -148,6 +148,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         cavity: &mut Cavity<D, C, M>,
         num_ops: &mut NumSplitOps,
     ) -> Result<()> {
+        let min_cosine = libm::cos(params.max_angle.to_radians());
         let l_min = params.min_l_abs;
         let q_min = params.min_q_abs;
         if !self.edges.contains_key(&edg) {
@@ -202,7 +203,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
         );
         match status {
             CavityCheckStatus::Ok(_) => {
-                if filled_cavity.check_normals(&self.topo, geom, params.max_angle) {
+                if filled_cavity.check_normals(&self.topo, geom, min_cosine) {
                     trace_if!(dbg, "Edge split");
                     self.edge_split(
                         edg,
@@ -226,7 +227,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                     let filled_cavity = FilledCavity::new(cavity, ftype);
                     let status = filled_cavity.check(l_min, f64::MAX, q_min);
                     if let CavityCheckStatus::Ok(_) = status {
-                        if filled_cavity.check_normals(&self.topo, geom, params.max_angle) {
+                        if filled_cavity.check_normals(&self.topo, geom, min_cosine) {
                             trace_if!(dbg, "Edge split");
                             self.edge_split(
                                 edg,

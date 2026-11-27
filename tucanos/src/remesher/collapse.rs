@@ -124,6 +124,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
 
         let mut n_iter = 0;
         let mut cavity = Cavity::default();
+        let min_cosine = libm::cos(params.max_angle.to_radians());
         loop {
             n_iter += 1;
 
@@ -186,7 +187,7 @@ impl<const D: usize, C: Simplex, M: Metric<D>> Remesher<D, C, M> {
                         continue;
                     }
 
-                    if !filled_cavity.check_normals(&self.topo, geom, params.max_angle) {
+                    if !filled_cavity.check_normals(&self.topo, geom, min_cosine) {
                         trace_if!(
                             dbg,
                             "Cannot collapse, would create a non smooth surface on tag {tag:?}"
