@@ -11,7 +11,7 @@ use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::ops::Index;
-use tmesh::Vertex;
+use tmesh::{Vert2d, Vert3d, Vertex};
 
 pub trait AnisoMetric<const D: usize>: Metric<D> + Index<usize, Output = f64> + Default
 where
@@ -329,7 +329,9 @@ impl AnisoMetric2d {
     /// Create a metric from 2 orthogonal vectors
     /// The length of the vectors will be the characteric length along this direction
     #[must_use]
-    pub fn from_sizes(s0: &Vertex<2>, s1: &Vertex<2>) -> Self {
+    pub fn from_sizes<T: Into<Vert2d>>(s0: T, s1: T) -> Self {
+        let s0 = s0.into();
+        let s1 = s1.into();
         let n0 = s0.norm();
         let n1 = s1.norm();
         let s0 = s0 / n0;
@@ -500,7 +502,10 @@ impl AnisoMetric3d {
     /// Create a metric from 3 orthogonal vectors
     /// The length of the vectors will be the characteric length along this direction
     #[must_use]
-    pub fn from_sizes(s0: &Vertex<3>, s1: &Vertex<3>, s2: &Vertex<3>) -> Self {
+    pub fn from_sizes<T: Into<Vert3d>>(s0: T, s1: T, s2: T) -> Self {
+        let s0 = s0.into();
+        let s1 = s1.into();
+        let s2 = s2.into();
         let n0 = s0.norm();
         let n1 = s1.norm();
         let n2 = s2.norm();
@@ -638,17 +643,13 @@ mod tests {
     #[test]
     #[should_panic(expected = "non orthogonal vectors")]
     fn test_from_sizes_non_orthogonal_2d() {
-        let _ = AnisoMetric2d::from_sizes(&Vert2d::new(1.0, 0.0), &Vert2d::new(-1.0, 1.0));
+        let _ = AnisoMetric2d::from_sizes([1.0, 0.0], [-1.0, 1.0]);
     }
 
     #[test]
     #[should_panic(expected = "non orthogonal vectors")]
     fn test_from_sizes_non_orthogonal_3d() {
-        let _ = AnisoMetric3d::from_sizes(
-            &Vert3d::new(1.0, 0.0, 0.0),
-            &Vert3d::new(0.0, 1.0, 0.0),
-            &Vert3d::new(-1.0, 0.0, 1.0),
-        );
+        let _ = AnisoMetric3d::from_sizes([1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 1.0]);
     }
 
     #[test]
@@ -727,9 +728,7 @@ mod tests {
 
     #[test]
     fn test_aniso_2d() -> Result<()> {
-        let v0 = Vert2d::new(1.0, 0.);
-        let v1 = Vert2d::new(0., 0.1);
-        let m = AnisoMetric2d::from_sizes(&v0, &v1);
+        let m = AnisoMetric2d::from_sizes([1.0, 0.0], [0.0, 0.1]);
 
         m.check()?;
         assert!(f64::abs(m.vol() - 0.1) < 1e-12);
@@ -779,10 +778,7 @@ mod tests {
 
     #[test]
     fn test_aniso_3d() -> Result<()> {
-        let v0 = Vert3d::new(1.0, 0., 0.);
-        let v1 = Vert3d::new(0., 0.1, 0.);
-        let v2 = Vert3d::new(0., 0., 0.01);
-        let m = AnisoMetric3d::from_sizes(&v0, &v1, &v2);
+        let m = AnisoMetric3d::from_sizes([1.0, 0.0, 0.0], [0.0, 0.1, 0.0], [0.0, 0.0, 0.01]);
 
         m.check()?;
         assert!(f64::abs(m.vol() - 0.001) < 1e-12);
@@ -871,9 +867,7 @@ mod tests {
 
     #[test]
     fn test_span_2d_aniso() {
-        let v0 = Vert2d::new(1.0, 0.);
-        let v1 = Vert2d::new(0., 0.1);
-        let m = AnisoMetric2d::from_sizes(&v0, &v1);
+        let m = AnisoMetric2d::from_sizes([1.0, 0.0], [0.0, 0.1]);
 
         let e = Vert2d::new(1.0, 0.);
         let m2 = m.span(&e, 1.2, 1.0);
@@ -911,10 +905,7 @@ mod tests {
 
     #[test]
     fn test_span_3d_aniso() {
-        let v0 = Vert3d::new(1.0, 0.0, 0.0);
-        let v1 = Vert3d::new(0.0, 0.1, 0.0);
-        let v2 = Vert3d::new(0.0, 0.0, 0.01);
-        let m = AnisoMetric3d::from_sizes(&v0, &v1, &v2);
+        let m = AnisoMetric3d::from_sizes([1.0, 0.0, 0.0], [0.0, 0.1, 0.0], [0.0, 0.0, 0.01]);
 
         let e = Vert3d::new(1.0, 0.0, 0.0);
         let m2 = m.span(&e, 1.2, 1.0);
@@ -963,17 +954,14 @@ mod tests {
 
     #[test]
     fn test_limit_aniso_2d() {
-        let ex = Vert2d::new(1.0, 0.0);
-        let ey = Vert2d::new(0.0, 1.0);
-
-        let mut m0 = AnisoMetric2d::from_sizes(&ex, &ey);
-        let m1 = AnisoMetric2d::from_sizes(&(10.0 * ex), &(10.0 * ey));
+        let mut m0 = AnisoMetric2d::from_sizes([1.0, 0.0], [0.0, 1.0]);
+        let m1 = AnisoMetric2d::from_sizes([10.0, 0.0], [0.0, 10.0]);
 
         let (a, b) = m0.step(&m1);
         assert!(f64::abs(a - 0.1) < 1e-12);
         assert!(f64::abs(b - 0.1) < 1e-12);
 
-        let m1 = AnisoMetric2d::from_sizes(&(10.0 * ex), &(0.1 * ey));
+        let m1 = AnisoMetric2d::from_sizes([10.0, 0.0], [0.0, 0.1]);
 
         let (a, b) = m0.step(&m1);
         assert!(f64::abs(a - 0.1) < 1e-12);
@@ -991,12 +979,8 @@ mod tests {
 
     #[test]
     fn test_limit_aniso_3d() {
-        let ex = Vert3d::new(1.0, 0.0, 0.0);
-        let ey = Vert3d::new(0.0, 1.0, 0.0);
-        let ez = Vert3d::new(0.0, 0.0, 1.0);
-
-        let mut m0 = AnisoMetric3d::from_sizes(&ex, &ey, &ez);
-        let m1 = AnisoMetric3d::from_sizes(&(10.0 * ex), &(0.1 * ey), &(0.001 * ez));
+        let mut m0 = AnisoMetric3d::from_sizes([1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]);
+        let m1 = AnisoMetric3d::from_sizes([10.0, 0.0, 0.0], [0.0, 0.1, 0.0], [0.0, 0.0, 0.001]);
 
         let (a, b) = m0.step(&m1);
         assert!(f64::abs(a - 0.1) < 1e-12);

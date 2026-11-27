@@ -472,7 +472,7 @@ mod tests {
     use crate::{
         Vert2d, assert_delta,
         dual::{DualMesh, DualMesh2d, DualType, PolyMesh},
-        mesh::{Edge, GSimplex, Mesh, Mesh2d, Triangle, rectangle_mesh},
+        mesh::{Edge, GSimplex, Mesh, Mesh2d, rectangle_mesh},
     };
     use rayon::iter::ParallelIterator;
 
@@ -514,16 +514,17 @@ mod tests {
             .count();
         assert_eq!(n_empty_faces, 0);
 
-        let mut res = HashMap::new();
-        res.insert(Edge::new(0, 1), Vert2d::new(1. / 3., -1. / 6.));
-        res.insert(Edge::new(0, 4), Vert2d::new(1. / 3., 1. / 3.));
-        res.insert(Edge::new(0, 3), Vert2d::new(-1. / 6., 1. / 3.));
-        res.insert(Edge::new(3, 4), Vert2d::new(1. / 3., -1. / 6.));
-        res.insert(Edge::new(1, 4), Vert2d::new(-1. / 3., 2. / 3.));
-        res.insert(Edge::new(1, 2), Vert2d::new(1. / 3., -1. / 6.));
-        res.insert(Edge::new(1, 5), Vert2d::new(1. / 3., 1. / 3.));
-        res.insert(Edge::new(4, 5), Vert2d::new(1. / 3., -1. / 6.));
-        res.insert(Edge::new(2, 5), Vert2d::new(-1. / 6., 1. / 3.));
+        let res = HashMap::from([
+            (Edge::new(0, 1), Vert2d::new(1. / 3., -1. / 6.)),
+            (Edge::new(0, 4), Vert2d::new(1. / 3., 1. / 3.)),
+            (Edge::new(0, 3), Vert2d::new(-1. / 6., 1. / 3.)),
+            (Edge::new(3, 4), Vert2d::new(1. / 3., -1. / 6.)),
+            (Edge::new(1, 4), Vert2d::new(-1. / 3., 2. / 3.)),
+            (Edge::new(1, 2), Vert2d::new(1. / 3., -1. / 6.)),
+            (Edge::new(1, 5), Vert2d::new(1. / 3., 1. / 3.)),
+            (Edge::new(4, 5), Vert2d::new(1. / 3., -1. / 6.)),
+            (Edge::new(2, 5), Vert2d::new(-1. / 6., 1. / 3.)),
+        ]);
 
         dual.par_edges_and_normals().for_each(|(e, n)| {
             let n_res = *res.get(&e).unwrap();
@@ -550,16 +551,17 @@ mod tests {
 
         assert!((dual.par_vols().sum::<f64>() - 2.0) < 1e-10);
 
-        let mut res = HashMap::new();
-        res.insert(Edge::new(0, 1), Vert2d::new(0.5, 0.0));
-        res.insert(Edge::new(0, 4), Vert2d::new(0.0, 0.0));
-        res.insert(Edge::new(0, 3), Vert2d::new(0.0, 0.5));
-        res.insert(Edge::new(3, 4), Vert2d::new(0.5, 0.0));
-        res.insert(Edge::new(1, 4), Vert2d::new(0.0, 1.0));
-        res.insert(Edge::new(1, 2), Vert2d::new(0.5, 0.0));
-        res.insert(Edge::new(1, 5), Vert2d::new(0.0, 0.0));
-        res.insert(Edge::new(4, 5), Vert2d::new(0.5, 0.0));
-        res.insert(Edge::new(2, 5), Vert2d::new(0.0, 0.5));
+        let res = HashMap::from([
+            (Edge::new(0, 1), Vert2d::new(0.5, 0.0)),
+            (Edge::new(0, 4), Vert2d::new(0.0, 0.0)),
+            (Edge::new(0, 3), Vert2d::new(0.0, 0.5)),
+            (Edge::new(3, 4), Vert2d::new(0.5, 0.0)),
+            (Edge::new(1, 4), Vert2d::new(0.0, 1.0)),
+            (Edge::new(1, 2), Vert2d::new(0.5, 0.0)),
+            (Edge::new(1, 5), Vert2d::new(0.0, 0.0)),
+            (Edge::new(4, 5), Vert2d::new(0.5, 0.0)),
+            (Edge::new(2, 5), Vert2d::new(0.0, 0.5)),
+        ]);
 
         dual.par_edges_and_normals().for_each(|(e, n)| {
             let n_res = *res.get(&e).unwrap();
@@ -581,27 +583,25 @@ mod tests {
         // L-shape from a 2x2 grid with the top-right square removed.
         // It is triangulated into 6 triangles.
         let verts = [
-            Vert2d::new(0.0, 0.0),
-            Vert2d::new(1.0, 0.0),
-            Vert2d::new(4.0, 0.0),
-            Vert2d::new(0.0, 1.0),
-            Vert2d::new(1.0, 1.0),
-            Vert2d::new(4.0, 1.0),
-            Vert2d::new(0.0, 4.0),
-            Vert2d::new(1.0, 4.0),
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [4.0, 0.0],
+            [0.0, 1.0],
+            [1.0, 1.0],
+            [4.0, 1.0],
+            [0.0, 4.0],
+            [1.0, 4.0],
         ];
         let elems = [
-            Triangle::new(0, 1, 4),
-            Triangle::new(0, 4, 3),
-            Triangle::new(1, 2, 5),
-            Triangle::new(1, 5, 4),
-            Triangle::new(3, 4, 7),
-            Triangle::new(3, 7, 6),
+            [0, 1, 4],
+            [0, 4, 3],
+            [1, 2, 5],
+            [1, 5, 4],
+            [3, 4, 7],
+            [3, 7, 6],
         ];
 
-        let mut msh = Mesh2d::empty();
-        msh.add_verts(verts.into_iter());
-        msh.add_elems(elems.into_iter(), (0..elems.len()).map(|_| 1));
+        let mut msh = Mesh2d::from_slices::<_, _, Edge<usize>>(&verts, &elems, &[1; 6], &[], &[]);
         msh.fix().unwrap();
         for _ in 0..3 {
             msh = msh.split();

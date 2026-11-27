@@ -120,7 +120,7 @@ impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
 
 #[cfg(test)]
 mod tests {
-    use tmesh::{Vert2d, Vert3d, mesh::Mesh};
+    use tmesh::mesh::Mesh;
 
     use crate::{
         mesh::test_meshes::{test_mesh_2d, test_mesh_3d},
@@ -147,11 +147,7 @@ mod tests {
     fn test_complexity_2d_aniso() {
         let mesh = test_mesh_2d().split().split();
 
-        let mfunc = |_p| {
-            let v0 = Vert2d::new(0.5, 0.);
-            let v1 = Vert2d::new(0.0, 4.0);
-            AnisoMetric2d::from_sizes(&v0, &v1)
-        };
+        let mfunc = |_p| AnisoMetric2d::from_sizes([0.5, 0.0], [0.0, 4.0]);
 
         let m: Vec<_> = mesh.verts().map(mfunc).collect();
         let m = MetricField::new(&mesh, m);
@@ -182,12 +178,8 @@ mod tests {
     fn test_complexity_3d_aniso() {
         let mesh = test_mesh_3d().split().split();
 
-        let mfunc = |_p| {
-            let v0 = Vert3d::new(0.5, 0., 0.);
-            let v1 = Vert3d::new(0.0, 4.0, 0.);
-            let v2 = Vert3d::new(0.0, 0., 6.0);
-            AnisoMetric3d::from_sizes(&v0, &v1, &v2)
-        };
+        let mfunc =
+            |_p| AnisoMetric3d::from_sizes([0.5, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 6.0]);
 
         let m: Vec<_> = mesh.verts().map(mfunc).collect();
         let m = MetricField::new(&mesh, m);

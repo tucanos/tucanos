@@ -70,7 +70,7 @@ impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
 
 #[cfg(test)]
 mod tests {
-    use tmesh::{Vert2d, Vert3d, mesh::Mesh};
+    use tmesh::mesh::Mesh;
 
     use crate::{
         mesh::test_meshes::{test_mesh_2d, test_mesh_3d},
@@ -105,20 +105,13 @@ mod tests {
         let mesh = test_mesh_2d().split().split();
         let v2v = mesh.vertex_to_vertices();
 
-        let v0 = Vert2d::new(0.5, 0.);
-        let v1 = Vert2d::new(0.0, 4.0);
-
         let mut m: Vec<_> = (0..mesh.n_verts())
-            .map(|_| AnisoMetric2d::from_sizes(&v0, &v1))
+            .map(|_| AnisoMetric2d::from_sizes([0.5, 0.0], [0.0, 4.0]))
             .collect();
 
-        let v0 = Vert2d::new(0.05, 0.);
-        let v1 = Vert2d::new(0.0, 4.0);
-        m[2] = AnisoMetric2d::from_sizes(&v0, &v1);
+        m[2] = AnisoMetric2d::from_sizes([0.05, 0.0], [0.0, 4.0]);
 
-        let v0 = Vert2d::new(0.5, 0.);
-        let v1 = Vert2d::new(0.0, 40.0);
-        m[5] = AnisoMetric2d::from_sizes(&v0, &v1);
+        m[5] = AnisoMetric2d::from_sizes([0.5, 0.0], [0.0, 40.0]);
 
         let mut m = MetricField::new(&mesh, m);
         m.smooth(&v2v);
@@ -157,23 +150,13 @@ mod tests {
         let mesh = test_mesh_3d().split().split();
         let v2v = mesh.vertex_to_vertices();
 
-        let v0 = Vert3d::new(0.5, 0.0, 0.0);
-        let v1 = Vert3d::new(0.0, 4.0, 0.0);
-        let v2 = Vert3d::new(0.0, 0.0, 0.1);
-
         let mut m: Vec<_> = (0..mesh.n_verts())
-            .map(|_| AnisoMetric3d::from_sizes(&v0, &v1, &v2))
+            .map(|_| AnisoMetric3d::from_sizes([0.5, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 0.1]))
             .collect();
 
-        let v0 = Vert3d::new(0.05, 0.0, 0.0);
-        let v1 = Vert3d::new(0.0, 4.0, 0.0);
-        let v2 = Vert3d::new(0.0, 0.0, 0.1);
-        m[2] = AnisoMetric3d::from_sizes(&v0, &v1, &v2);
+        m[2] = AnisoMetric3d::from_sizes([0.05, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 0.1]);
 
-        let v0 = Vert3d::new(0.5, 0.0, 0.0);
-        let v1 = Vert3d::new(0.0, 4.0, 0.0);
-        let v2 = Vert3d::new(0.0, 0.0, 1.0);
-        m[5] = AnisoMetric3d::from_sizes(&v0, &v1, &v2);
+        m[5] = AnisoMetric3d::from_sizes([0.5, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 1.0]);
 
         let mut m = MetricField::new(&mesh, m);
         m.smooth(&v2v);

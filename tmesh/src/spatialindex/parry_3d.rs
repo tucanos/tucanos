@@ -223,7 +223,7 @@ pub mod tests {
     use crate::{
         Vert3d, Vertex, assert_delta,
         mesh::{
-            BoundaryMesh3d, GSimplex, Mesh, Mesh3d, QuadraticBoundaryMesh3d, Triangle, box_mesh,
+            BoundaryMesh3d, GSimplex, Mesh, Mesh3d, QuadraticBoundaryMesh3d, box_mesh,
             quadratic_sphere_mesh, sphere_mesh,
         },
         spatialindex::parry_3d::ObjectIndex3d,
@@ -319,29 +319,23 @@ pub mod tests {
         let mut coords = Vec::with_capacity(2 * n * dim);
         for i in 0..n {
             let theta = 2.0 * PI * i as f64 / n as f64;
-            coords.push(Vert3d::new(
-                r_in * libm::cos(theta),
-                r_in * libm::sin(theta),
-                0.0,
-            ));
-            coords.push(Vert3d::new(
-                r_out * libm::cos(theta),
-                r_out * libm::sin(theta),
-                0.0,
-            ));
+            coords.push([r_in * libm::cos(theta), r_in * libm::sin(theta), 0.0]);
+            coords.push([r_out * libm::cos(theta), r_out * libm::sin(theta), 0.0]);
         }
 
         let mut tris = Vec::with_capacity(2 * n);
         for i in 0..n - 1 {
-            tris.push(Triangle::new(2 * i, 2 * i + 1, 2 * i + 2));
-            tris.push(Triangle::new(2 * i + 2, 2 * i + 1, 2 * i + 3));
+            tris.push([2 * i, 2 * i + 1, 2 * i + 2]);
+            tris.push([2 * i + 2, 2 * i + 1, 2 * i + 3]);
         }
-        tris.push(Triangle::new(2 * n - 2, 2 * n - 1, 0));
-        tris.push(Triangle::new(0, 2 * n - 1, 1));
+        tris.push([2 * n - 2, 2 * n - 1, 0]);
+        tris.push([0, 2 * n - 1, 1]);
 
         let tri_tags = vec![1; 2 * n];
 
-        let msh = BoundaryMesh3d::from_vecs(coords, tris, tri_tags, Vec::new(), Vec::new());
+        let faces: Vec<crate::mesh::Edge<usize>> = Vec::new();
+        let ftags: Vec<crate::Tag> = Vec::new();
+        let msh = BoundaryMesh3d::from_slices(&coords, &tris, &tri_tags, &faces, &ftags);
         // msh.write_vtk("dbg.vtu", None, None);
 
         let tree = ObjectIndex3d::new(msh);

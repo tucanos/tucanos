@@ -635,9 +635,9 @@ impl<T: Idx> DualMesh<3> for DualMesh3d<T> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        Vert3d, assert_delta,
+        assert_delta,
         dual::{DualMesh, DualMesh3d, DualType, PolyMesh},
-        mesh::{Hexahedron, Mesh, Mesh3d, Triangle, box_mesh},
+        mesh::{Mesh, Mesh3d, Triangle, box_mesh},
     };
     use rayon::iter::ParallelIterator;
 
@@ -684,34 +684,34 @@ mod tests {
         // L-shape extruded on z in [0, 1] with no top-right block.
         // Coordinates are in {0,1,4} x {0,1,4} x {0,1} minus vertices at x=4,y=4.
         let verts = [
-            Vert3d::new(0.0, 0.0, 0.0),
-            Vert3d::new(1.0, 0.0, 0.0),
-            Vert3d::new(4.0, 0.0, 0.0),
-            Vert3d::new(0.0, 1.0, 0.0),
-            Vert3d::new(1.0, 1.0, 0.0),
-            Vert3d::new(4.0, 1.0, 0.0),
-            Vert3d::new(0.0, 4.0, 0.0),
-            Vert3d::new(1.0, 4.0, 0.0),
-            Vert3d::new(0.0, 0.0, 1.0),
-            Vert3d::new(1.0, 0.0, 1.0),
-            Vert3d::new(4.0, 0.0, 1.0),
-            Vert3d::new(0.0, 1.0, 1.0),
-            Vert3d::new(1.0, 1.0, 1.0),
-            Vert3d::new(4.0, 1.0, 1.0),
-            Vert3d::new(0.0, 4.0, 1.0),
-            Vert3d::new(1.0, 4.0, 1.0),
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [4.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [4.0, 1.0, 0.0],
+            [0.0, 4.0, 0.0],
+            [1.0, 4.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+            [4.0, 0.0, 1.0],
+            [0.0, 1.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [4.0, 1.0, 1.0],
+            [0.0, 4.0, 1.0],
+            [1.0, 4.0, 1.0],
         ];
         msh.add_verts(verts.into_iter());
 
         let hexas = [
             // lower-left block: x in [0,1], y in [0,1]
-            Hexahedron::new([0, 1, 4, 3, 8, 9, 12, 11]),
+            [0, 1, 4, 3, 8, 9, 12, 11],
             // lower-right block: x in [1,4], y in [0,1]
-            Hexahedron::new([1, 2, 5, 4, 9, 10, 13, 12]),
+            [1, 2, 5, 4, 9, 10, 13, 12],
             // upper-left block: x in [0,1], y in [1,4]
-            Hexahedron::new([3, 4, 7, 6, 11, 12, 15, 14]),
+            [3, 4, 7, 6, 11, 12, 15, 14],
         ];
-        msh.add_hexahedra(hexas.iter().copied(), (0..hexas.len()).map(|_| 1));
+        msh.add_hexahedra(hexas.into_iter(), (0..hexas.len()).map(|_| 1));
         msh.fix().unwrap();
 
         assert_delta!(msh.vol(), 7.0, 1e-10);

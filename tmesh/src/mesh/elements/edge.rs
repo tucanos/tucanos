@@ -16,6 +16,12 @@ impl<T: Idx> Edge<T> {
     }
 }
 
+impl<T: Idx> From<[T; 2]> for Edge<T> {
+    fn from(array: [T; 2]) -> Self {
+        Self(array)
+    }
+}
+
 impl<T: Idx> From<Edge<T>> for [usize; 2] {
     fn from(val: Edge<T>) -> Self {
         val.0.map(|x| x.try_into().unwrap())

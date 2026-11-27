@@ -37,6 +37,12 @@ impl<T: Idx> QuadraticTriangle<T> {
     }
 }
 
+impl<T: Idx> From<[T; 6]> for QuadraticTriangle<T> {
+    fn from(array: [T; 6]) -> Self {
+        Self(array)
+    }
+}
+
 impl<T: Idx> IntoIterator for QuadraticTriangle<T> {
     type Item = usize;
     type IntoIter = std::iter::Map<std::array::IntoIter<T, 6>, fn(T) -> usize>;
@@ -699,22 +705,20 @@ mod tests {
     use crate::{
         Vert2d, Vert3d, assert_delta,
         mesh::{
-            BoundaryMesh3d, GSimplex, GTriangle, Mesh, QuadraticGTriangle, Triangle,
+            BoundaryMesh3d, GSimplex, GTriangle, Mesh, QuadraticGTriangle,
             elements::{ho_simplex::HOType, quadratic_triangle::AdativeBoundsQuadraticTriangle},
         },
     };
 
     fn to_linear_mesh(ge: &QuadraticGTriangle<3>, n_splits: u32) -> BoundaryMesh3d {
-        let mut msh = BoundaryMesh3d::from_vecs(
-            vec![
-                Vert3d::new(0.0, 0.0, 0.0),
-                Vert3d::new(1.0, 0.0, 0.0),
-                Vert3d::new(0.0, 1.0, 0.0),
-            ],
-            vec![Triangle::<usize>::new(0, 1, 2)],
-            vec![1],
-            Vec::new(),
-            Vec::new(),
+        let faces: [crate::mesh::Edge<usize>; 0] = [];
+        let ftags: [crate::Tag; 0] = [];
+        let mut msh = BoundaryMesh3d::from_slices(
+            &[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            &[[0, 1, 2]],
+            &[1],
+            &faces,
+            &ftags,
         );
         for _ in 0..n_splits {
             msh = msh.split();

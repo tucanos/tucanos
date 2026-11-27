@@ -218,7 +218,7 @@ mod tests {
     use crate::{
         Vert2d, Vertex, assert_delta,
         mesh::{
-            BoundaryMesh2d, Edge, GSimplex, Mesh, Mesh2d, QuadraticBoundaryMesh2d, circle_mesh,
+            BoundaryMesh2d, GSimplex, Mesh, Mesh2d, QuadraticBoundaryMesh2d, circle_mesh,
             quadratic_circle_mesh, rectangle_mesh,
         },
         spatialindex::{ObjectIndex, parry_2d::ObjectIndex2d},
@@ -308,23 +308,13 @@ mod tests {
 
     #[test]
     fn test_edgs() {
-        let coords = vec![
-            Vert2d::new(0., 0.),
-            Vert2d::new(1., 0.),
-            Vert2d::new(1., 1.),
-            Vert2d::new(0., 1.),
-        ];
-        let elems = vec![
-            Edge::new(0, 1),
-            Edge::new(1, 2),
-            Edge::new(2, 3),
-            Edge::new(3, 0),
-        ];
-        let etags = vec![1, 2, 3, 4];
-        let faces = Vec::new();
-        let ftags = Vec::new();
+        let coords = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+        let elems = [[0, 1], [1, 2], [2, 3], [3, 0]];
+        let etags = [1, 2, 3, 4];
+        let faces: [crate::mesh::Node<usize>; 0] = [];
+        let ftags: [crate::Tag; 0] = [];
 
-        let mesh = BoundaryMesh2d::from_vecs(coords, elems, etags, faces, ftags);
+        let mesh = BoundaryMesh2d::from_slices(&coords, &elems, &etags, &faces, &ftags);
 
         let tree = ObjectIndex::new(mesh);
 

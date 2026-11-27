@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Topology Graph</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: "Segoe UI", Arial, sans-serif;
+            background: #f5f7fb;
+            color: #1d2733;
+        }
+
+        .bar {
+            padding: 10px 14px;
+            border-bottom: 1px solid #d6deea;
+            background: #fff;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .hint {
+            color: #5c6e83;
+            font-size: 13px;
+        }
+
+        .canvas {
+            padding: 8px;
+            overflow: auto;
+            height: calc(100vh - 52px);
+        }
+
+        svg {
+            background: #fff;
+            border: 1px solid #d6deea;
+            border-radius: 10px;
+        }
+
+        .edge {
+            stroke: #b7c0cc;
+            stroke-width: 1.2;
+            fill: none;
+            opacity: 0.6;
+        }
+
+        .node circle {
+            fill: #e8eef8;
+            stroke: #52657d;
+            stroke-width: 1;
+        }
+
+        .node text {
+            font-size: 11px;
+            text-anchor: middle;
+            dominant-baseline: middle;
+            fill: #223246;
+            pointer-events: none;
+        }
+
+        .node {
+            cursor: pointer;
+        }
+
+        button {
+            border: 1px solid #ccd6e3;
+            background: #fff;
+            border-radius: 8px;
+            padding: 6px 10px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="bar">
+        <button id="reset">Reset highlight</button>
+        <span class="hint">Click a node to highlight all ancestors and descendants</span>
+    </div>
+    <div class="canvas" id="canvas"></div>
+    <script>
+        const data = __TOPOLOGY_PAYLOAD__;
+        const byDim = new Map();
+        for (const n of data.nodes) {
+            if (!byDim.has(n.dim)) byDim.set(n.dim, []);
+            byDim.get(n.dim).push(n);
+        }
+        for (const [_, arr] of byDim) arr.sort((a, b) => a.tag - b.tag);
+
+        const dims = [...byDim.keys()].sort((a, b) => a - b);
+        const colWidth = 250;
+        const rowHeight = 42;
+        const padX = 120;
+        const padY = 60;
+        const maxRows = Math.max(...[...byDim.values()].map(v => v.length));
+        const width = padX * 2 + Math.max(1, dims.length - 1) * colWidth;
+        const height = padY * 2 + Math.max(1, maxRows - 1) * rowHeight;
+
+        const pos = new Map();
+        for (const dim of dims) {
+            const x = padX + (data.maxDim - dim) * colWidth;
+            const arr = byDim.get(dim);
+            for (let i = 0; i < arr.length; i++) pos.set(arr[i].key, { x, y: padY + i * rowHeight });
+        }
+
+        const outAdj = new Map();
+        const inAdj = new Map();
+        for (const n of data.nodes) { outAdj.set(n.key, new Set()); inAdj.set(n.key, new Set()); }
+        for (const e of data.edges) {
+            if (outAdj.has(e.source) && inAdj.has(e.target)) {
+                outAdj.get(e.source).add(e.target);
+                inAdj.get(e.target).add(e.source);
+            }
+        }
+
+        const canvas = document.getElementById("canvas");
+        const svgNS = "http://www.w3.org/2000/svg";
+        const svg = document.createElementNS(svgNS, "svg");
+        svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+        svg.setAttribute("width", String(Math.max(1000, width + 60)));
+        svg.setAttribute("height", String(Math.max(700, height + 60)));
+        canvas.appendChild(svg);
+
+        const defs = document.createElementNS(svgNS, "defs");
+        const marker = document.createElementNS(svgNS, "marker");
+        marker.setAttribute("id", "arrow");
+        marker.setAttribute("viewBox", "0 0 10 10");
+        marker.setAttribute("refX", "8"); marker.setAttribute("refY", "5");
+        marker.setAttribute("markerWidth", "5"); marker.setAttribute("markerHeight", "5");
+        marker.setAttribute("orient", "auto-start-reverse");
+        const arrow = document.createElementNS(svgNS, "path");
+        arrow.setAttribute("d", "M 0 0 L 10 5 L 0 10 z"); arrow.setAttribute("fill", "#8c98a8");
+        marker.appendChild(arrow); defs.appendChild(marker); svg.appendChild(defs);
+
+        const edgeElems = [];
+        for (const e of data.edges) {
+            const p1 = pos.get(e.source), p2 = pos.get(e.target);
+            if (!p1 || !p2) continue;
+            const path = document.createElementNS(svgNS, "path");
+            const dx = (p2.x - p1.x) * 0.35;
+            const d = `M ${p1.x} ${p1.y} C ${p1.x + dx} ${p1.y}, ${p2.x - dx} ${p2.y}, ${p2.x} ${p2.y}`;
+            path.setAttribute("d", d); path.setAttribute("class", "edge"); path.setAttribute("marker-end", "url(#arrow)");
+            svg.appendChild(path);
+            edgeElems.push({ source: e.source, target: e.target, el: path });
+        }
+
+        const nodeElems = new Map();
+        for (const n of data.nodes) {
+            const p = pos.get(n.key); if (!p) continue;
+            const g = document.createElementNS(svgNS, "g");
+            g.setAttribute("class", "node"); g.setAttribute("transform", `translate(${p.x},${p.y})`); g.dataset.key = n.key;
+            const c = document.createElementNS(svgNS, "circle"); c.setAttribute("r", "15");
+            const t = document.createElementNS(svgNS, "text"); t.textContent = n.label; t.setAttribute("y", "-21");
+            g.appendChild(c); g.appendChild(t); svg.appendChild(g); nodeElems.set(n.key, g);
+        }
+
+        function closure(start, adj) {
+            const seen = new Set();
+            const q = [start];
+            while (q.length) {
+                const cur = q.pop();
+                for (const nxt of (adj.get(cur) || [])) {
+                    if (!seen.has(nxt)) { seen.add(nxt); q.push(nxt); }
+                }
+            }
+            return seen;
+        }
+
+        let selected = null;
+        function setNodeStyle(group, fillColor, opacity) {
+            group.querySelector("circle").setAttribute("fill", fillColor);
+            group.style.opacity = String(opacity);
+        }
+
+        function resetStyles() {
+            for (const [_, g] of nodeElems) setNodeStyle(g, "#e8eef8", 1.0);
+            for (const e of edgeElems) { e.el.style.opacity = "0.6"; e.el.style.stroke = "#b7c0cc"; e.el.style.strokeWidth = "1.2"; }
+        }
+
+        function applyHighlight() {
+            if (!selected) return resetStyles();
+            const descendants = closure(selected, outAdj);
+            const ancestors = closure(selected, inAdj);
+            for (const [key, g] of nodeElems) {
+                if (key === selected) setNodeStyle(g, "#ffc980", 1.0);
+                else if (ancestors.has(key)) setNodeStyle(g, "#b8d0ff", 1.0);
+                else if (descendants.has(key)) setNodeStyle(g, "#bfe9cf", 1.0);
+                else setNodeStyle(g, "#e8eef8", 0.2);
+            }
+            for (const e of edgeElems) {
+                const onDesc = (e.source === selected || descendants.has(e.source)) && descendants.has(e.target);
+                const onAnc = (e.target === selected || ancestors.has(e.target)) && ancestors.has(e.source);
+                if (onDesc) { e.el.style.opacity = "1.0"; e.el.style.stroke = "#2f9e63"; e.el.style.strokeWidth = "2.2"; }
+                else if (onAnc) { e.el.style.opacity = "1.0"; e.el.style.stroke = "#3e6fb6"; e.el.style.strokeWidth = "2.2"; }
+                else { e.el.style.opacity = "0.1"; e.el.style.stroke = "#b7c0cc"; e.el.style.strokeWidth = "1.0"; }
+            }
+        }
+
+        for (const [key, g] of nodeElems) {
+            g.addEventListener("click", () => { selected = selected === key ? null : key; applyHighlight(); });
+        }
+        document.getElementById("reset").addEventListener("click", () => { selected = null; applyHighlight(); });
+        applyHighlight();
+    </script>
+</body>
+
+</html>

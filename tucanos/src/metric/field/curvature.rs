@@ -79,7 +79,7 @@ impl<'a, T: Idx, M: Mesh<3, C = Tetrahedron<T>>> MetricField<'a, 3, M, AnisoMetr
                     u *= hu;
                     v *= hv;
 
-                    curvature_metric[i_vert] = AnisoMetric3d::from_sizes(&n, &u, &v);
+                    curvature_metric[i_vert] = AnisoMetric3d::from_sizes(n, u, v);
                     flg[i_vert] = true;
                 });
         }
@@ -154,7 +154,7 @@ impl<'a, T: Idx, M: Mesh<2, C = Triangle<T>>> MetricField<'a, 2, M, AnisoMetric2
                     let n = hn * Vert2d::new(-u[1], u[0]);
                     u *= hu;
 
-                    curvature_metric[i_vert] = AnisoMetric2d::from_sizes(&n, &u);
+                    curvature_metric[i_vert] = AnisoMetric2d::from_sizes(n, u);
                     flg[i_vert] = true;
                 });
         }
@@ -315,12 +315,8 @@ mod tests {
         assert_prescribed_normal_sizes(m, &bdy_ids, &bdy_flg, r_in, r_out, h_0);
 
         // test metric
-        let mfunc = |_p| {
-            let v0 = Vert3d::new(0.2, 0., 0.);
-            let v1 = Vert3d::new(0.0, 0.1, 0.);
-            let v2 = Vert3d::new(0., 0.0, 1e-4);
-            AnisoMetric3d::from_sizes(&v0, &v1, &v2)
-        };
+        let mfunc =
+            |_p| AnisoMetric3d::from_sizes([0.2, 0.0, 0.0], [0.0, 0.1, 0.0], [0.0, 0.0, 1e-4]);
         let m: Vec<_> = mesh.verts().map(mfunc).collect();
         let mut m = MetricField::new(&mesh, m);
 

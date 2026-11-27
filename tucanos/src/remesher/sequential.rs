@@ -1085,9 +1085,8 @@ mod tests {
     use tmesh::{
         Vert2d, Vert3d, assert_delta,
         mesh::{
-            BoundaryMesh2d, BoundaryMesh3d, Edge, GSimplex, GenericMesh, Mesh, Mesh3d,
-            QuadraticBoundaryMesh3d, Simplex, Tetrahedron, Triangle, ball_mesh,
-            quadratic_sphere_mesh, sphere_mesh,
+            BoundaryMesh2d, BoundaryMesh3d, GSimplex, Mesh, Mesh2d, Mesh3d,
+            QuadraticBoundaryMesh3d, Triangle, ball_mesh, quadratic_sphere_mesh, sphere_mesh,
         },
     };
 
@@ -1350,29 +1349,13 @@ mod tests {
 
     #[test]
     fn test_smooth_laplacian_2d() -> Result<()> {
-        let coords = vec![
-            Vert2d::new(0., 0.),
-            Vert2d::new(1., 0.),
-            Vert2d::new(1., 1.0),
-            Vert2d::new(0., 1.0),
-            Vert2d::new(0.1, 0.1),
-        ];
-        let elems = vec![
-            Triangle::<u32>::new(0, 1, 4),
-            Triangle::new(1, 2, 4),
-            Triangle::new(2, 3, 4),
-            Triangle::new(3, 0, 4),
-        ];
-        let etags = vec![1, 1, 1, 1];
-        let faces = vec![
-            Edge::new(0, 1),
-            Edge::new(1, 2),
-            Edge::new(2, 3),
-            Edge::new(3, 0),
-        ];
-        let ftags = vec![1, 2, 3, 4];
+        let coords = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.1, 0.1]];
+        let elems = [[0, 1, 4], [1, 2, 4], [2, 3, 4], [3, 0, 4]];
+        let etags = [1, 1, 1, 1];
+        let faces = [[0, 1], [1, 2], [2, 3], [3, 0]];
+        let ftags = [1, 2, 3, 4];
 
-        let mesh = GenericMesh::from_vecs(coords, elems, etags, faces, ftags);
+        let mesh = Mesh2d::from_slices(&coords, &elems, &etags, &faces, &ftags);
         let topo = MeshTopology::new(&mesh);
 
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts()];
@@ -1399,29 +1382,13 @@ mod tests {
 
     #[test]
     fn test_smooth_laplacian_2d_aniso() -> Result<()> {
-        let coords = vec![
-            Vert2d::new(0., 0.),
-            Vert2d::new(1., 0.),
-            Vert2d::new(1., 0.1),
-            Vert2d::new(0., 0.1),
-            Vert2d::new(0.01, 0.01),
-        ];
-        let elems = vec![
-            Triangle::<usize>::new(0, 1, 4),
-            Triangle::new(1, 2, 4),
-            Triangle::new(2, 3, 4),
-            Triangle::new(3, 0, 4),
-        ];
-        let etags = vec![1, 1, 1, 1];
-        let faces = vec![
-            Edge::new(0, 1),
-            Edge::new(1, 2),
-            Edge::new(2, 3),
-            Edge::new(3, 0),
-        ];
-        let ftags = vec![1, 2, 3, 4];
+        let coords = [[0.0, 0.0], [1.0, 0.0], [1.0, 0.1], [0.0, 0.1], [0.01, 0.01]];
+        let elems = [[0, 1, 4], [1, 2, 4], [2, 3, 4], [3, 0, 4]];
+        let etags = [1, 1, 1, 1];
+        let faces = [[0, 1], [1, 2], [2, 3], [3, 0]];
+        let ftags = [1, 2, 3, 4];
 
-        let mesh = GenericMesh::from_vecs(coords, elems, etags, faces, ftags);
+        let mesh = Mesh2d::from_slices(&coords, &elems, &etags, &faces, &ftags);
 
         let h = vec![
             AnisoMetric2d::from_slice(&[1., 100., 0.]),
@@ -1455,29 +1422,13 @@ mod tests {
 
     #[test]
     fn test_smooth_omega_2d() -> Result<()> {
-        let coords = vec![
-            Vert2d::new(0., 0.),
-            Vert2d::new(1., 0.),
-            Vert2d::new(1., 1.),
-            Vert2d::new(0., 1.),
-            Vert2d::new(0.1, 0.1),
-        ];
-        let elems = vec![
-            Triangle::<usize>::new(0, 1, 4),
-            Triangle::new(1, 2, 4),
-            Triangle::new(2, 3, 4),
-            Triangle::new(3, 0, 4),
-        ];
-        let etags = vec![1, 1, 1, 1];
-        let faces = vec![
-            Edge::new(0, 1),
-            Edge::new(1, 2),
-            Edge::new(2, 3),
-            Edge::new(3, 0),
-        ];
-        let ftags = vec![1, 2, 3, 4];
+        let coords = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.1, 0.1]];
+        let elems = [[0, 1, 4], [1, 2, 4], [2, 3, 4], [3, 0, 4]];
+        let etags = [1, 1, 1, 1];
+        let faces = [[0, 1], [1, 2], [2, 3], [3, 0]];
+        let ftags = [1, 2, 3, 4];
 
-        let mesh = GenericMesh::from_vecs(coords, elems, etags, faces, ftags);
+        let mesh = Mesh2d::from_slices(&coords, &elems, &etags, &faces, &ftags);
 
         let h = vec![IsoMetric::<2>::from(1.); mesh.n_verts()];
         let geom = NoGeometry();
@@ -1505,29 +1456,13 @@ mod tests {
 
     #[test]
     fn test_smooth_omega_2d_aniso() -> Result<()> {
-        let coords = vec![
-            Vert2d::new(0., 0.),
-            Vert2d::new(1., 0.),
-            Vert2d::new(1., 0.1),
-            Vert2d::new(0., 0.1),
-            Vert2d::new(0.01, 0.01),
-        ];
-        let elems = vec![
-            Triangle::<u32>::new(0, 1, 4),
-            Triangle::new(1, 2, 4),
-            Triangle::new(2, 3, 4),
-            Triangle::new(3, 0, 4),
-        ];
-        let etags = vec![1, 1, 1, 1];
-        let faces = vec![
-            Edge::new(0, 1),
-            Edge::new(1, 2),
-            Edge::new(2, 3),
-            Edge::new(3, 0),
-        ];
-        let ftags = vec![1, 2, 3, 4];
+        let coords = [[0.0, 0.0], [1.0, 0.0], [1.0, 0.1], [0.0, 0.1], [0.01, 0.01]];
+        let elems = [[0, 1, 4], [1, 2, 4], [2, 3, 4], [3, 0, 4]];
+        let etags = [1, 1, 1, 1];
+        let faces = [[0, 1], [1, 2], [2, 3], [3, 0]];
+        let ftags = [1, 2, 3, 4];
 
-        let mesh = GenericMesh::from_vecs(coords, elems, etags, faces, ftags);
+        let mesh = Mesh2d::from_slices(&coords, &elems, &etags, &faces, &ftags);
 
         let h = vec![
             AnisoMetric2d::from_slice(&[1., 100., 0.]),
@@ -1596,9 +1531,7 @@ mod tests {
 
         let mfunc = |pt: Vert2d| {
             let y = pt[1];
-            let v0 = Vert2d::new(0.5, 0.);
-            let v1 = Vert2d::new(0., 0.05 + 0.15 * y);
-            AnisoMetric2d::from_sizes(&v0, &v1)
+            AnisoMetric2d::from_sizes([0.5, 0.0], [0.0, 0.05 + 0.15 * y])
         };
 
         let geom = NoGeometry();
@@ -1893,12 +1826,8 @@ mod tests {
     fn test_adapt_aniso_3d() -> Result<()> {
         let mut mesh = test_mesh_3d();
 
-        let mfunc = |_p| {
-            let v0 = Vert3d::new(0.5, 0., 0.);
-            let v1 = Vert3d::new(0.0, 0.5, 0.);
-            let v2 = Vert3d::new(0., 0.0, 0.2);
-            AnisoMetric3d::from_sizes(&v0, &v1, &v2)
-        };
+        let mfunc =
+            |_p| AnisoMetric3d::from_sizes([0.5, 0.0, 0.0], [0.0, 0.5, 0.0], [0.0, 0.0, 0.2]);
 
         let geom = NoGeometry();
 
@@ -1935,12 +1864,8 @@ mod tests {
     fn test_adapt_aniso_3d_geom() -> Result<()> {
         let mut mesh: Mesh3d = ball_mesh(1.0, 3);
 
-        let mfunc = |_p| {
-            let v0 = Vert3d::new(0.5, 0., 0.);
-            let v1 = Vert3d::new(0.0, 0.5, 0.);
-            let v2 = Vert3d::new(0., 0.0, 0.1);
-            AnisoMetric3d::from_sizes(&v0, &v1, &v2)
-        };
+        let mfunc =
+            |_p| AnisoMetric3d::from_sizes([0.5, 0.0, 0.0], [0.0, 0.5, 0.0], [0.0, 0.0, 0.1]);
 
         let geom = SphereGeometry;
 
@@ -1983,12 +1908,8 @@ mod tests {
     fn test_adapt_aniso_3d_linear_geom() -> Result<()> {
         let mut mesh: Mesh3d = ball_mesh(1.0, 3);
 
-        let mfunc = |_p| {
-            let v0 = Vert3d::new(0.5, 0., 0.);
-            let v1 = Vert3d::new(0.0, 0.5, 0.);
-            let v2 = Vert3d::new(0., 0.0, 0.1);
-            AnisoMetric3d::from_sizes(&v0, &v1, &v2)
-        };
+        let mfunc =
+            |_p| AnisoMetric3d::from_sizes([0.5, 0.0, 0.0], [0.0, 0.5, 0.0], [0.0, 0.0, 0.1]);
 
         let mut bdy: BoundaryMesh3d = sphere_mesh(1.0, 4);
         bdy.fix()?;
@@ -2035,12 +1956,8 @@ mod tests {
     fn test_adapt_aniso_3d_quadratic_geom() -> Result<()> {
         let mut mesh: Mesh3d = ball_mesh(1.0, 3);
 
-        let mfunc = |_p| {
-            let v0 = Vert3d::new(0.5, 0., 0.);
-            let v1 = Vert3d::new(0.0, 0.5, 0.);
-            let v2 = Vert3d::new(0., 0.0, 0.1);
-            AnisoMetric3d::from_sizes(&v0, &v1, &v2)
-        };
+        let mfunc =
+            |_p| AnisoMetric3d::from_sizes([0.5, 0.0, 0.0], [0.0, 0.5, 0.0], [0.0, 0.0, 0.1]);
 
         let mut bdy: QuadraticBoundaryMesh3d = quadratic_sphere_mesh(1.0, 3);
         bdy.fix()?;
@@ -2096,11 +2013,7 @@ mod tests {
         mesh.fix().unwrap();
         let topo = MeshTopology::new(&mesh);
 
-        let mfunc = |_p| {
-            let v0 = Vert2d::new(0.1, 0.);
-            let v1 = Vert2d::new(0.0, 0.01);
-            AnisoMetric2d::from_sizes(&v0, &v1)
-        };
+        let mfunc = |_p| AnisoMetric2d::from_sizes([0.1, 0.0], [0.0, 0.01]);
         let c_ref = 4. / f64::sqrt(3.0) / (0.1 * 0.01);
 
         let h: Vec<_> = mesh.verts().map(mfunc).collect();
@@ -2121,12 +2034,8 @@ mod tests {
         let mesh = test_mesh_3d().split().split();
         let topo = MeshTopology::new(&mesh);
 
-        let mfunc = |_p| {
-            let v0 = Vert3d::new(0.1, 0., 0.);
-            let v1 = Vert3d::new(0.0, 0.01, 0.);
-            let v2 = Vert3d::new(0., 0.0, 2.);
-            AnisoMetric3d::from_sizes(&v0, &v1, &v2)
-        };
+        let mfunc =
+            |_p| AnisoMetric3d::from_sizes([0.1, 0.0, 0.0], [0.0, 0.01, 0.0], [0.0, 0.0, 2.0]);
         let c_ref = 6. * f64::sqrt(2.0) / (0.1 * 0.01 * 2.0);
 
         let h: Vec<_> = mesh.verts().map(mfunc).collect();
@@ -2149,30 +2058,18 @@ mod tests {
     #[test]
     fn test_iso2d() -> Result<()> {
         // test used in tucanos-ffi-test
-        let verts = [0., 0., 1., 0., 0., 1.];
-        let elems = [0, 1, 2];
-        let faces = [0, 1, 1, 2, 2, 0];
+        let verts = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+        let elems = [[0, 1, 2]];
+        let faces = [[0, 1], [1, 2], [2, 0]];
         let metric = [0.1; 3];
 
-        let verts = verts
-            .chunks(2)
-            .map(Vert2d::from_column_slice)
-            .collect::<Vec<_>>();
-        let elems = elems
-            .chunks(Triangle::<u32>::N_VERTS)
-            .map(|x| Triangle::<usize>::from_iter(x.iter().copied()))
-            .collect::<Vec<_>>();
-        let etags = vec![1; elems.len()];
-        let faces = faces
-            .chunks(Edge::<u32>::N_VERTS)
-            .map(|x| Edge::<usize>::from_iter(x.iter().copied()))
-            .collect::<Vec<_>>();
-        let ftags = vec![1, 2, 3];
+        let etags = [1; 1];
+        let ftags = [1, 2, 3];
         let metric = metric
             .iter()
             .map(|&x| IsoMetric::<2>::from(x))
             .collect::<Vec<_>>();
-        let mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
+        let mesh = Mesh2d::from_slices(&verts, &elems, &etags, &faces, &ftags);
         let mut bdy: BoundaryMesh2d = mesh.boundary().0;
         bdy.fix().unwrap();
 
@@ -2191,30 +2088,23 @@ mod tests {
     #[test]
     fn test_iso3d() -> Result<()> {
         // test used in tucanos-ffi-test
-        let verts = [0., 0., 0., 1., 0., 0., 0., 1., 0., 0., 0., 1.];
-        let elems = [0, 1, 2, 3];
-        let faces = [0, 2, 1, 0, 1, 3, 1, 2, 3, 2, 0, 3];
+        let verts = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ];
+        let elems = [[0, 1, 2, 3]];
+        let faces = [[0, 2, 1], [0, 1, 3], [1, 2, 3], [2, 0, 3]];
         let metric = [0.1; 4];
 
-        let verts = verts
-            .chunks(3)
-            .map(Vert3d::from_column_slice)
-            .collect::<Vec<_>>();
-        let elems = elems
-            .chunks(Tetrahedron::<u32>::N_VERTS)
-            .map(|x| Tetrahedron::<usize>::from_iter(x.iter().copied()))
-            .collect::<Vec<_>>();
-        let etags = vec![1; elems.len()];
-        let faces = faces
-            .chunks(Triangle::<u32>::N_VERTS)
-            .map(|x| Triangle::<usize>::from_iter(x.iter().copied()))
-            .collect::<Vec<_>>();
-        let ftags = vec![1, 2, 3, 4];
+        let etags = [1; 1];
+        let ftags = [1, 2, 3, 4];
         let metric = metric
             .iter()
             .map(|&x| IsoMetric::<3>::from(x))
             .collect::<Vec<_>>();
-        let mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
+        let mesh = Mesh3d::from_slices(&verts, &elems, &etags, &faces, &ftags);
         let mut bdy: BoundaryMesh3d = mesh.boundary().0;
         bdy.fix().unwrap();
 
@@ -2233,31 +2123,24 @@ mod tests {
     #[test]
     fn test_aniso3d() -> Result<()> {
         // test used in tucanos-ffi-test
-        let verts = [0., 0., 0., 1., 0., 0., 0., 1., 0., 0., 0., 1.];
-        let elems = [0, 1, 2, 3];
-        let faces = [0, 2, 1, 0, 1, 3, 1, 2, 3, 2, 0, 3];
+        let verts = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ];
+        let elems = [[0, 1, 2, 3]];
+        let faces = [[0, 2, 1], [0, 1, 3], [1, 2, 3], [2, 0, 3]];
         let metric = [[10., 20., 15., 0., 0., 0.]; 4];
 
-        let verts = verts
-            .chunks(3)
-            .map(Vert3d::from_column_slice)
-            .collect::<Vec<_>>();
-        let elems = elems
-            .chunks(Tetrahedron::<usize>::N_VERTS)
-            .map(|x| Tetrahedron::from_iter(x.iter().copied()))
-            .collect::<Vec<_>>();
-        let etags = vec![1; elems.len()];
-        let faces = faces
-            .chunks(Triangle::<usize>::N_VERTS)
-            .map(|x| Triangle::from_iter(x.iter().copied()))
-            .collect::<Vec<_>>();
-        let ftags = vec![1, 2, 3, 4];
+        let etags = [1; 1];
+        let ftags = [1, 2, 3, 4];
         let metric = metric
             .iter()
             .map(|x| AnisoMetric3d::from_slice(x))
             .collect::<Vec<_>>();
 
-        let mesh = Mesh3d::from_vecs(verts, elems, etags, faces, ftags);
+        let mesh = Mesh3d::from_slices(&verts, &elems, &etags, &faces, &ftags);
         let mut bdy: BoundaryMesh3d = mesh.boundary().0;
         bdy.fix().unwrap();
 
@@ -2401,12 +2284,12 @@ mod tests {
                 let e_r = h_r * e_r;
                 let e_theta = h_theta * e_theta;
                 let e_phi = h_phi * e_phi;
-                AnisoMetric3d::from_sizes(&e_r, &e_theta, &e_phi)
+                AnisoMetric3d::from_sizes(e_r, e_theta, e_phi)
             } else {
-                let e_x = Vert3d::new(h_max, 0.0, 0.0);
-                let e_y = Vert3d::new(0.0, h_max, 0.0);
-                let e_z = Vert3d::new(0.0, 0.0, h_max);
-                AnisoMetric3d::from_sizes(&e_x, &e_y, &e_z)
+                let e_x = [h_max, 0.0, 0.0];
+                let e_y = [0.0, h_max, 0.0];
+                let e_z = [0.0, 0.0, h_max];
+                AnisoMetric3d::from_sizes(e_x, e_y, e_z)
             }
         };
 

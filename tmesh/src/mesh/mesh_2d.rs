@@ -158,6 +158,41 @@ mod tests {
     }
 
     #[test]
+    fn test_from_slices_array_literals_2d() {
+        let verts = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
+        let elems = [[0, 1, 2], [1, 3, 2]];
+        let etags = [1, 1];
+        let faces = [[0, 1], [1, 3], [3, 2], [2, 0]];
+        let ftags = [1, 2, 3, 4];
+
+        let msh = Mesh2d::from_slices(&verts, &elems, &etags, &faces, &ftags);
+        assert_eq!(msh.n_verts(), 4);
+        assert_eq!(msh.n_elems(), 2);
+        assert_eq!(msh.n_faces(), 4);
+    }
+
+    #[test]
+    fn test_from_slices_array_literals_quadratic_2d() {
+        let verts = [
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [0.0, 1.0],
+            [0.5, 0.0],
+            [0.5, 0.5],
+            [0.0, 0.5],
+        ];
+        let elems = [[0, 1, 2, 3, 4, 5]];
+        let etags = [1];
+        let faces = [[0, 1, 3], [1, 2, 4], [2, 0, 5]];
+        let ftags = [1, 2, 3];
+
+        let msh = QuadraticMesh2d::from_slices(&verts, &elems, &etags, &faces, &ftags);
+        assert_eq!(msh.n_verts(), 6);
+        assert_eq!(msh.n_elems(), 1);
+        assert_eq!(msh.n_faces(), 3);
+    }
+
+    #[test]
     fn test_2d_simple_2() {
         let msh = rectangle_mesh::<Mesh2d>(1.0, 3, 1.0, 2);
 

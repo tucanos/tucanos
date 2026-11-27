@@ -151,11 +151,7 @@ fn get_metric(mesh: &Mesh3d, btype: &BenchmarkType, step: Option<f64>) -> Vec<An
                 let h_y = 0.1;
                 let h0 = 0.001;
                 let h_z = h0 + 2.0 * (0.1 - h0) * (v[2] - 0.5).abs();
-                AnisoMetric3d::from_sizes(
-                    &Vert3d::new(h_x, 0.0, 0.0),
-                    &Vert3d::new(0.0, h_y, 0.0),
-                    &Vert3d::new(0.0, 0.0, h_z),
-                )
+                AnisoMetric3d::from_sizes([h_x, 0.0, 0.0], [0.0, h_y, 0.0], [0.0, 0.0, h_z])
             }
             BenchmarkType::Polar1 => {
                 let r = v[0].hypot(v[1]);

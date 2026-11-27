@@ -44,6 +44,12 @@ impl<T: Idx> QuadraticTetrahedron<T> {
     }
 }
 
+impl<T: Idx> From<[T; 10]> for QuadraticTetrahedron<T> {
+    fn from(array: [T; 10]) -> Self {
+        Self(array)
+    }
+}
+
 impl<T: Idx> IntoIterator for QuadraticTetrahedron<T> {
     type Item = usize;
     type IntoIter = std::iter::Map<std::array::IntoIter<T, 10>, fn(T) -> usize>;

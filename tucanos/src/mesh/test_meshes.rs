@@ -1,8 +1,8 @@
 use tmesh::{
     Vert2d, Vert3d,
     mesh::{
-        BoundaryMesh3d, Edge, GenericMesh, Mesh, Mesh2d, Mesh3d, Prism, Quadrangle, Simplex,
-        Tetrahedron, Triangle, pri2tets, sphere_mesh,
+        BoundaryMesh3d, GenericMesh, Mesh, Mesh2d, Mesh3d, Prism, Quadrangle, Simplex, Triangle,
+        pri2tets, sphere_mesh,
     },
 };
 
@@ -19,63 +19,38 @@ use std::{fs::File, io::Write};
 /// two different element tags not is not tagged
 #[must_use]
 pub fn test_mesh_2d() -> Mesh2d {
-    let coords = vec![
-        Vert2d::new(0., 0.),
-        Vert2d::new(1., 0.),
-        Vert2d::new(1., 1.),
-        Vert2d::new(0., 1.),
-    ];
-    let elems = vec![Triangle::new(0, 1, 2), Triangle::new(0, 2, 3)];
-    let etags = vec![1, 2];
-    let faces = vec![
-        Edge::new(0, 1),
-        Edge::new(1, 2),
-        Edge::new(2, 3),
-        Edge::new(3, 0),
-    ];
-    let ftags = vec![1, 2, 3, 4];
+    let coords = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+    let elems = [[0, 1, 2], [0, 2, 3]];
+    let etags = [1, 2];
+    let faces = [[0, 1], [1, 2], [2, 3], [3, 0]];
+    let ftags = [1, 2, 3, 4];
 
-    GenericMesh::from_vecs(coords, elems, etags, faces, ftags)
+    GenericMesh::from_slices(&coords, &elems, &etags, &faces, &ftags)
 }
 
 /// Build a 2d mesh of a square with 2 triangles tagged differently
 /// Boundaries are not defined
 #[must_use]
 pub fn test_mesh_2d_nobdy() -> Mesh2d {
-    let coords = vec![
-        Vert2d::new(0., 0.),
-        Vert2d::new(1., 0.),
-        Vert2d::new(1., 1.),
-        Vert2d::new(0., 1.),
-    ];
-    let elems = vec![Triangle::new(0, 1, 2), Triangle::new(0, 2, 3)];
-    let etags = vec![1, 2];
-    let faces = vec![];
-    let ftags = vec![];
+    let coords = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+    let elems = [[0, 1, 2], [0, 2, 3]];
+    let etags = [1, 2];
+    let faces: [[usize; 2]; 0] = [];
+    let ftags: [crate::Tag; 0] = [];
 
-    GenericMesh::from_vecs(coords, elems, etags, faces, ftags)
+    GenericMesh::from_slices(&coords, &elems, &etags, &faces, &ftags)
 }
 
 /// Build a 2d mesh with 2 flat triangles with the same tag
 #[must_use]
 pub fn test_mesh_2d_two_tris() -> Mesh2d {
-    let coords = vec![
-        Vert2d::new(0., 0.),
-        Vert2d::new(1., 0.5),
-        Vert2d::new(0., 1.),
-        Vert2d::new(-1., 0.5),
-    ];
-    let elems = vec![Triangle::new(0, 1, 3), Triangle::new(3, 1, 2)];
-    let etags = vec![1, 1];
-    let faces = vec![
-        Edge::new(0, 1),
-        Edge::new(1, 2),
-        Edge::new(2, 3),
-        Edge::new(3, 0),
-    ];
-    let ftags = vec![1, 1, 2, 2];
+    let coords = [[0.0, 0.0], [1.0, 0.5], [0.0, 1.0], [-1.0, 0.5]];
+    let elems = [[0, 1, 3], [3, 1, 2]];
+    let etags = [1, 1];
+    let faces = [[0, 1], [1, 2], [2, 3], [3, 0]];
+    let ftags = [1, 1, 2, 2];
 
-    GenericMesh::from_vecs(coords, elems, etags, faces, ftags)
+    GenericMesh::from_slices(&coords, &elems, &etags, &faces, &ftags)
 }
 
 /// Gaussian size field in 2d
@@ -93,23 +68,13 @@ pub fn h_2d(p: &Vert2d) -> f64 {
 /// Build a 2d mesh with 2 triangles corresponding to the geometry `GeomHalfCircle2d`
 #[must_use]
 pub fn test_mesh_moon_2d() -> Mesh2d {
-    let coords = vec![
-        Vert2d::new(-1., 0.),
-        Vert2d::new(0., 0.5),
-        Vert2d::new(1., 0.),
-        Vert2d::new(0., 1.),
-    ];
-    let elems = vec![Triangle::new(0, 1, 3), Triangle::new(1, 2, 3)];
-    let etags = vec![1, 1];
-    let faces = vec![
-        Edge::new(0, 1),
-        Edge::new(1, 2),
-        Edge::new(2, 3),
-        Edge::new(3, 0),
-    ];
-    let ftags = vec![1, 1, 2, 2];
+    let coords = [[-1.0, 0.0], [0.0, 0.5], [1.0, 0.0], [0.0, 1.0]];
+    let elems = [[0, 1, 3], [1, 2, 3]];
+    let etags = [1, 1];
+    let faces = [[0, 1], [1, 2], [2, 3], [3, 0]];
+    let ftags = [1, 1, 2, 2];
 
-    GenericMesh::from_vecs(coords, elems, etags, faces, ftags)
+    GenericMesh::from_slices(&coords, &elems, &etags, &faces, &ftags)
 }
 
 /// Analytical geometry of a 2d domain bounded by two circle arcs
@@ -163,71 +128,66 @@ impl Geometry<2> for GeomHalfCircle2d {
 /// Build a 3d mesh with 1 single tetrahedron
 #[must_use]
 pub fn test_mesh_3d_single_tet() -> Mesh3d {
-    let coords = vec![
-        Vert3d::new(0., 0., 0.),
-        Vert3d::new(1., 0., 0.),
-        Vert3d::new(0., 1., 0.),
-        Vert3d::new(0., 0., 1.),
+    let coords = [
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
     ];
-    let elems = vec![Tetrahedron::new(0, 1, 2, 3)];
-    let etags = vec![1];
-    let faces = vec![
-        Triangle::new(0, 1, 2),
-        Triangle::new(0, 1, 3),
-        Triangle::new(1, 2, 3),
-        Triangle::new(2, 0, 3),
-    ];
-    let ftags = vec![1, 2, 3, 4];
+    let elems = [[0usize, 1, 2, 3]];
+    let etags = [1];
+    let faces = [[0usize, 1, 2], [0, 1, 3], [1, 2, 3], [2, 0, 3]];
+    let ftags = [1, 2, 3, 4];
 
-    GenericMesh::from_vecs(coords, elems, etags, faces, ftags)
+    GenericMesh::from_slices(&coords, &elems, &etags, &faces, &ftags)
 }
 
 /// Build a 3d mesh with two flat tetrahedra
 #[must_use]
 pub fn test_mesh_3d_two_tets() -> Mesh3d {
-    let coords = vec![
-        Vert3d::new(0., 0., 0.),
-        Vert3d::new(1., 0., 0.),
-        Vert3d::new(0.5, 0.1, 0.),
-        Vert3d::new(0., 0., 1.),
-        Vert3d::new(0.5, -0.1, 0.),
+    let coords = [
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.5, 0.1, 0.0],
+        [0.0, 0.0, 1.0],
+        [0.5, -0.1, 0.0],
     ];
-    let elems = vec![Tetrahedron::new(0, 1, 2, 3), Tetrahedron::new(0, 4, 1, 3)];
-    let etags = vec![1, 1];
-    let faces = vec![
-        Triangle::new(0, 1, 2),
-        Triangle::new(1, 2, 3),
-        Triangle::new(2, 0, 3),
-        Triangle::new(0, 4, 1),
-        Triangle::new(4, 1, 3),
-        Triangle::new(0, 4, 3),
+    let elems = [[0, 1, 2, 3], [0, 4, 1, 3]];
+    let etags = [1, 1];
+    let faces = [
+        [0, 1, 2],
+        [1, 2, 3],
+        [2, 0, 3],
+        [0, 4, 1],
+        [4, 1, 3],
+        [0, 4, 3],
     ];
-    let ftags = vec![1, 2, 3, 1, 2, 3];
+    let ftags = [1, 2, 3, 1, 2, 3];
 
-    GenericMesh::from_vecs(coords, elems, etags, faces, ftags)
+    GenericMesh::from_slices(&coords, &elems, &etags, &faces, &ftags)
 }
 
 /// Build a 3d mesh of a cube with 5 tetrahedra
 #[must_use]
 pub fn test_mesh_3d() -> Mesh3d {
-    let coords = vec![
-        Vert3d::new(0., 0., 0.),
-        Vert3d::new(1., 0., 0.),
-        Vert3d::new(1., 1., 0.),
-        Vert3d::new(0., 1., 0.),
-        Vert3d::new(0., 0., 1.),
-        Vert3d::new(1., 0., 1.),
-        Vert3d::new(1., 1., 1.),
-        Vert3d::new(0., 1., 1.),
+    let coords = [
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [1.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [1.0, 0.0, 1.0],
+        [1.0, 1.0, 1.0],
+        [0.0, 1.0, 1.0],
     ];
-    let elems = vec![
-        Tetrahedron::new(0, 1, 2, 5),
-        Tetrahedron::new(0, 2, 7, 5),
-        Tetrahedron::new(0, 2, 3, 7),
-        Tetrahedron::new(0, 5, 7, 4),
-        Tetrahedron::new(2, 7, 5, 6),
+    let elems = [
+        [0, 1, 2, 5],
+        [0, 2, 7, 5],
+        [0, 2, 3, 7],
+        [0, 5, 7, 4],
+        [2, 7, 5, 6],
     ];
-    let etags = vec![1, 1, 1, 1, 1];
+    let etags = [1, 1, 1, 1, 1];
     let faces = [
         [0, 2, 1],
         [0, 3, 2],
@@ -241,12 +201,10 @@ pub fn test_mesh_3d() -> Mesh3d {
         [2, 6, 5],
         [0, 7, 3],
         [0, 4, 7],
-    ]
-    .map(Triangle::from)
-    .to_vec();
-    let ftags = vec![1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6];
+    ];
+    let ftags = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6];
 
-    GenericMesh::from_vecs(coords, elems, etags, faces, ftags)
+    GenericMesh::from_slices(&coords, &elems, &etags, &faces, &ftags)
 }
 
 /// Gaussian size field in 3d
@@ -417,10 +375,10 @@ pub fn concentric_circles_mesh(nr: usize) -> Mesh2d {
     let mut verts = Vec::new();
     for i in 0..nr {
         let r = 0.5 + (i as f64) * dr;
-        verts.push(Vert2d::new(r, 0.0));
-        verts.push(Vert2d::new(0.0, r));
-        verts.push(Vert2d::new(-r, 0.0));
-        verts.push(Vert2d::new(0.0, -r));
+        verts.push([r, 0.0]);
+        verts.push([0.0, r]);
+        verts.push([-r, 0.0]);
+        verts.push([0.0, -r]);
     }
 
     let idx = |i, j| 4 * i + j;
@@ -428,9 +386,9 @@ pub fn concentric_circles_mesh(nr: usize) -> Mesh2d {
     let mut etags = Vec::new();
     for i in 0..nr - 1 {
         for (j0, j1) in [(0, 1), (1, 2), (2, 3), (3, 0)] {
-            elems.push(Triangle::new(idx(i, j0), idx(i + 1, j0), idx(i, j1)));
+            elems.push([idx(i, j0), idx(i + 1, j0), idx(i, j1)]);
             etags.push(1);
-            elems.push(Triangle::new(idx(i, j1), idx(i + 1, j0), idx(i + 1, j1)));
+            elems.push([idx(i, j1), idx(i + 1, j0), idx(i + 1, j1)]);
             etags.push(1);
         }
     }
@@ -438,13 +396,13 @@ pub fn concentric_circles_mesh(nr: usize) -> Mesh2d {
     let mut faces = Vec::new();
     let mut ftags = Vec::new();
     for (j0, j1) in [(0, 1), (1, 2), (2, 3), (3, 0)] {
-        faces.push(Edge::new(idx(0, j0), idx(0, j1)));
+        faces.push([idx(0, j0), idx(0, j1)]);
         ftags.push(1);
-        faces.push(Edge::new(idx(nr - 1, j0), idx(nr - 1, j1)));
+        faces.push([idx(nr - 1, j0), idx(nr - 1, j1)]);
         ftags.push(2);
     }
 
-    GenericMesh::from_vecs(verts, elems, etags, faces, ftags)
+    GenericMesh::from_slices(&verts, &elems, &etags, &faces, &ftags)
 }
 
 pub struct ConcentricSpheres;
