@@ -271,36 +271,137 @@ impl Topology {
         self.parents.get(&(topo0, topo1)).copied()
     }
 
-    /// Remove all the nodes for which `filter` returns true. The removed tags are also removed
-    /// from the parents and children of the remaining nodes, but these nodes are kept (the children
-    /// of a removed node are not removed). `filter` is called with the dimension and the tag, and
-    /// tags are only unique per dimension, so the dimension should be checked by `filter`.
-    pub fn clear<F: FnMut(TopoTag) -> bool>(&mut self, mut filter: F) {
-        let mut new_entities = vec![Vec::new(); self.dim as usize + 1];
-        for dim in 0..=self.dim {
+    /// Check internal hierarchy consistency.
+    ///
+    /// Every node below the top layer must have at least one parent and all parent
+    /// references must exist in the layer above. For inferred layers
+    /// (dimensions `< self.dim - 1`), no two nodes may share exactly the same parent
+    /// set.
+    pub fn check(&self) -> Result<()> {
+        for dim in 0..self.dim {
             for node in &self.entities[dim as usize] {
-                if !filter(node.tag) {
-                    let dim = node.tag.0;
-                    let new_node = TopoNode {
-                        tag: node.tag,
-                        children: node
-                            .children
-                            .iter()
-                            .copied()
-                            .filter(|&n| !filter((dim - 1, n)))
-                            .collect(),
-                        parents: node
-                            .parents
-                            .iter()
-                            .copied()
-                            .filter(|&n| !filter((dim + 1, n)))
-                            .collect(),
-                    };
-                    new_entities[dim as usize].push(new_node);
+                let mut parents = node.parents.iter().copied().collect::<Vec<_>>();
+                if parents.is_empty() {
+                    return Err(Error::from(&format!(
+                        "Invalid parents for tag {:?}: empty parent set",
+                        node.tag
+                    )));
+                }
+                parents.sort_unstable();
+
+                for &p in &parents {
+                    let parent = (dim + 1, p);
+                    if self.get(parent).is_none() {
+                        return Err(Error::from(&format!("TopoTag {parent:?} not present")));
+                    }
+                }
+
+                // Face tags (dimension self.dim - 1) may share parent element tags.
+                // The uniqueness rule only applies to inferred lower-dimensional tags.
+                if dim + 1 < self.dim {
+                    let nodes = self.get_from_parents(dim, parents.iter().copied());
+                    if nodes.len() > 1 {
+                        return Err(Error::from(&format!(
+                            "Multiple nodes with parents {parents:?}: {nodes:?}"
+                        )));
+                    }
                 }
             }
         }
+
+        Ok(())
+    }
+
+    /// Remove all nodes for which `filter` returns true, then prune orphan nodes.
+    ///
+    /// A node is orphaned if all its parents were removed. Orphan pruning is applied
+    /// from top to bottom so lower-dimensional descendants that lose every parent are
+    /// removed as well. For inferred layers (`dim < self.dim - 1`), if two surviving
+    /// nodes end up with the exact same surviving parent set, only the first one is
+    /// kept. `filter` is called with `(dim, tag)`, and tags are only unique per
+    /// dimension, so the dimension should be checked by `filter`.
+    pub fn clear<F: FnMut(TopoTag) -> bool>(&mut self, mut filter: F) {
+        let n_dims = self.dim as usize + 1;
+
+        let mut removed = FxHashSet::with_hasher(FxBuildHasher);
+        for dim in 0..=self.dim {
+            for node in &self.entities[dim as usize] {
+                if filter(node.tag) {
+                    removed.insert(node.tag);
+                }
+            }
+        }
+
+        let mut kept = vec![FxHashSet::with_hasher(FxBuildHasher); n_dims];
+        for node in &self.entities[self.dim as usize] {
+            if !removed.contains(&node.tag) {
+                kept[self.dim as usize].insert(node.tag.1);
+            }
+        }
+
+        for dim in (0..self.dim).rev() {
+            let mut seen_parent_sets = FxHashSet::with_hasher(FxBuildHasher);
+            for node in &self.entities[dim as usize] {
+                if removed.contains(&node.tag) {
+                    continue;
+                }
+                let mut surviving_parents = node
+                    .parents
+                    .iter()
+                    .copied()
+                    .filter(|p| kept[(dim + 1) as usize].contains(p))
+                    .collect::<Vec<_>>();
+                if surviving_parents.is_empty() {
+                    continue;
+                }
+
+                // Face tags (dimension self.dim - 1) may share parent element tags.
+                // The uniqueness rule only applies to inferred lower-dimensional tags.
+                if dim + 1 < self.dim {
+                    surviving_parents.sort_unstable();
+                    if !seen_parent_sets.insert(surviving_parents) {
+                        continue;
+                    }
+                }
+
+                kept[dim as usize].insert(node.tag.1);
+            }
+        }
+
+        let mut new_entities = vec![Vec::new(); n_dims];
+        for dim in 0..=self.dim {
+            for node in &self.entities[dim as usize] {
+                if !kept[dim as usize].contains(&node.tag.1) {
+                    continue;
+                }
+
+                let new_node = TopoNode {
+                    tag: node.tag,
+                    children: if dim > 0 {
+                        node.children
+                            .iter()
+                            .copied()
+                            .filter(|c| kept[(dim - 1) as usize].contains(c))
+                            .collect()
+                    } else {
+                        FxHashSet::with_hasher(FxBuildHasher)
+                    },
+                    parents: if dim < self.dim {
+                        node.parents
+                            .iter()
+                            .copied()
+                            .filter(|p| kept[(dim + 1) as usize].contains(p))
+                            .collect()
+                    } else {
+                        FxHashSet::with_hasher(FxBuildHasher)
+                    },
+                };
+
+                new_entities[dim as usize].push(new_node);
+            }
+        }
         self.entities = new_entities;
+        self.compute_parents();
     }
 
     fn update_tags<C: Simplex>(
@@ -603,11 +704,10 @@ impl MeshTopology {
     /// Check that the topology hierarchy is valid for `mesh`.
     ///
     /// The element and face layers must match the unique element and face tags in
-    /// `mesh`. Every node in a lower layer must have a non-empty set of parents that
-    /// reference existing nodes in the layer above, and no two inferred edge or node
-    /// tags may share the same parent set. The parents stored on each tagged face must
-    /// match the element tags adjacent to that face. Finally, every vertex must have
-    /// a tag that names an existing hierarchy node.
+    /// `mesh`. Parent/child hierarchy consistency is validated by
+    /// `Topology::check`. The parents stored on each tagged face must match the
+    /// element tags adjacent to that face. Finally, every vertex must have a tag
+    /// that names an existing hierarchy node.
     pub fn check<const D: usize, M: Mesh<D>>(&self, mesh: &M) -> Result<()> {
         let d = M::C::DIM as Dim;
 
@@ -646,35 +746,7 @@ impl MeshTopology {
         check_layer(d, mesh.etags().collect())?;
         check_layer(d - 1, mesh.ftags().collect())?;
 
-        for dim in 0..d {
-            for node in &self.topo.entities[dim as usize] {
-                let mut parents = node.parents.iter().copied().collect::<Vec<_>>();
-                if parents.is_empty() {
-                    return Err(Error::from(&format!(
-                        "Invalid parents for tag {:?}: empty parent set",
-                        node.tag
-                    )));
-                }
-                parents.sort_unstable();
-                for &p in &parents {
-                    let parent = (dim + 1, p);
-                    if self.topo.get(parent).is_none() {
-                        return Err(Error::from(&format!("TopoTag {parent:?} not present")));
-                    }
-                }
-                // Face tags (dimension d - 1) are provided by the mesh and may share
-                // their parent element tag set; the uniqueness rule only applies to
-                // the inferred edge and node tags.
-                if dim + 1 < d {
-                    let nodes = self.topo.get_from_parents(dim, parents.iter().copied());
-                    if nodes.len() > 1 {
-                        return Err(Error::from(&format!(
-                            "Multiple nodes with parents {parents:?}: {nodes:?}"
-                        )));
-                    }
-                }
-            }
-        }
+        self.topo.check()?;
 
         let face2elems = get_face_to_elem(mesh.elems());
         for (f, t) in mesh.faces().zip(mesh.ftags()) {
@@ -889,10 +961,12 @@ mod tests {
         let is_removed = |tag: Tag| tag == -4 || tag == -5;
 
         // Filtering on the tag only also removes edges -4 and -5: both vertices are left with the
-        // parents {-1} and cannot be distinguished anymore
+        // parents {-1}. After clear deduplication, only one of these nodes is kept.
         let mut t0 = t.clone();
         t0.clear(|(_, tag)| is_removed(tag));
-        assert!(t0.get_from_parents_or_create(0, [-1]).is_err());
+        assert_eq!(t0.get_from_parents_or_create(0, [-1]).unwrap(), -1);
+        assert!(t0.get((0, -1)).is_some());
+        assert!(t0.get((0, -2)).is_none());
 
         // Filtering on the face dimension only removes the faces
         t.clear(|(dim, tag)| dim == 2 && is_removed(tag));
@@ -917,6 +991,144 @@ mod tests {
     fn test_insert_invalid_parent() {
         let mut t = Topology::new(3);
         t.insert((2, 1), [1]);
+    }
+
+    #[test]
+    fn test_clear_2d_1() {
+        let mut t = Topology::new(2);
+        t.insert((2, 1), []);
+        t.insert((1, 1), [1]);
+        t.insert((1, 2), [1]);
+        t.insert((1, 3), [1]);
+        t.insert((0, 1), [1]);
+        t.insert((0, 2), [1, 2]);
+        t.insert((0, 3), [2, 3]);
+        t.insert((0, 4), [3]);
+
+        t.clear(|(dim, tag)| dim == 1 && tag == 3);
+        println!("{t}");
+        t.check().unwrap();
+    }
+
+    #[test]
+    fn test_clear_2d_2() {
+        let mut t = Topology::new(2);
+        t.insert((2, 1), []);
+        t.insert((1, 1), [1]);
+        t.insert((1, 2), [1]);
+        t.insert((1, 3), [1]);
+        t.insert((0, 1), [1]);
+        t.insert((0, 2), [1, 2]);
+        t.insert((0, 3), [2, 3]);
+        t.insert((0, 4), [3]);
+        t.insert((0, 5), [1, 2, 3]);
+
+        t.clear(|(dim, tag)| dim == 1 && tag == 3);
+        println!("{t}");
+        t.check().unwrap();
+        assert!(t.get((0, 2)).is_some());
+        assert!(t.get((0, 5)).is_none());
+    }
+
+    #[test]
+    fn test_clear_3d_faces() {
+        // A single volume with four faces, six edges and four nodes.
+        let mut t = Topology::new(3);
+        t.insert((3, 1), []);
+
+        for f in 1..=4 {
+            t.insert((2, f), [1]);
+        }
+
+        // Keep one face untouched so edges/nodes attached to it survive.
+        t.insert((1, 1), [1, 2]);
+        t.insert((1, 2), [1, 3]);
+        t.insert((1, 3), [1, 4]);
+        t.insert((1, 4), [2, 3]);
+        t.insert((1, 5), [2, 4]);
+        t.insert((1, 6), [3, 4]);
+
+        t.insert((0, 1), [1, 2, 3]);
+        t.insert((0, 2), [1, 4, 5]);
+        t.insert((0, 3), [2, 4, 6]);
+        t.insert((0, 4), [3, 5, 6]);
+
+        t.check().unwrap();
+
+        // Remove faces 3 and 4. Edges/nodes that only depend on them must be pruned.
+        t.clear(|(dim, tag)| dim == 2 && (tag == 3 || tag == 4));
+
+        t.check().unwrap();
+
+        assert!(t.get((2, 1)).is_some());
+        assert!(t.get((2, 2)).is_some());
+        assert!(t.get((2, 3)).is_none());
+        assert!(t.get((2, 4)).is_none());
+
+        // Edge (2,3) survives, (2,4), (3,4) are removed as orphans.
+        assert!(t.get((1, 1)).is_some());
+        assert!(t.get((1, 4)).is_some());
+        assert!(t.get((1, 5)).is_none());
+        assert!(t.get((1, 6)).is_none());
+
+        // Nodes touching removed orphan edges are pruned too.
+        assert!(t.get((0, 1)).is_some());
+        assert!(t.get((0, 2)).is_some());
+        assert!(t.get((0, 3)).is_some());
+        assert!(t.get((0, 4)).is_none());
+    }
+
+    #[test]
+    fn test_clear_3d_edges() {
+        // Same tetrahedral hierarchy as above.
+        let mut t = Topology::new(3);
+        t.insert((3, 1), []);
+
+        for f in 1..=4 {
+            t.insert((2, f), [1]);
+        }
+
+        t.insert((1, 1), [1, 2]);
+        t.insert((1, 2), [1, 3]);
+        t.insert((1, 3), [1, 4]);
+        t.insert((1, 4), [2, 3]);
+        t.insert((1, 5), [2, 4]);
+        t.insert((1, 6), [3, 4]);
+
+        t.insert((0, 1), [1, 2, 3]);
+        t.insert((0, 2), [1, 4, 5]);
+        t.insert((0, 3), [2, 4, 6]);
+        t.insert((0, 4), [3, 5, 6]);
+
+        // Remove one edge. Nodes depending on this edge only should be pruned if orphaned,
+        // others should remain with updated parent sets.
+        t.clear(|(dim, tag)| dim == 1 && tag == 6);
+
+        t.check().unwrap();
+
+        assert!(t.get((1, 6)).is_none());
+        assert!(t.get((1, 1)).is_some());
+        assert!(t.get((1, 2)).is_some());
+
+        // Node 4 had parents [3,5,6] and should survive as [3,5], while node 3 keeps [2,4].
+        assert!(t.get((0, 4)).is_some());
+        let p4 = t
+            .get((0, 4))
+            .unwrap()
+            .parents
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(p4, [3, 5].into_iter().collect());
+
+        let p3 = t
+            .get((0, 3))
+            .unwrap()
+            .parents
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(p3, [2, 4].into_iter().collect());
     }
 
     #[test]
