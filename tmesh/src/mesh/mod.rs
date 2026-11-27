@@ -88,7 +88,7 @@ pub(crate) fn sort_elem_min_ids<C: Simplex>(elems: impl ExactSizeIterator<Item =
 pub fn bandwidth<C: Simplex>(elems: impl ExactSizeIterator<Item = C>) -> (usize, f64) {
     let n_elems = elems.len();
 
-    let (bmax, bmean) = elems.fold((0_usize, 0_usize), |a, e| {
+    let (bmax, bmean) = elems.fold((0, 0), |a, e| {
         let max_id = e.into_iter().max().unwrap();
         let min_id = e.into_iter().min().unwrap();
         let tmp = max_id - min_id;
@@ -192,8 +192,8 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     /// Sequential iterator over the vertices
     fn verts(&self) -> impl ExactSizeIterator<Item = Vertex<D>> + Clone + '_;
 
-    /// Add vertices to the mesh
-    fn add_verts(&mut self, v: impl ExactSizeIterator<Item = Vertex<D>>);
+    /// Add vertices to the mesh.
+    fn add_verts<V: Into<Vertex<D>>>(&mut self, v: impl ExactSizeIterator<Item = V>);
 
     /// Number of elements
     fn n_elems(&self) -> usize;
@@ -1453,8 +1453,9 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
 
     /// Split hexahedra and add them to the mesh (C == 4)
     fn add_hexahedra<
-        I1: ExactSizeIterator<Item = Hexahedron<<Self::C as Simplex>::T>>,
+        I1: ExactSizeIterator<Item = H>,
         I2: ExactSizeIterator<Item = Tag>,
+        H: Into<Hexahedron<<Self::C as Simplex>::T>>,
     >(
         &mut self,
         hexs: I1,
@@ -1464,6 +1465,7 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
             let mut tmp = Vec::with_capacity(6 * hexs.len());
             let mut ids = Vec::with_capacity(6 * hexs.len());
             hexs.zip(tags).enumerate().for_each(|(i, (q, t))| {
+                let q = q.into();
                 let (tets, last_tet) = hex2tets(&q);
                 for tet in tets {
                     tmp.push((<Self::C as Simplex>::from_iter(tet), t));
@@ -1936,6 +1938,32 @@ pub struct GenericMesh<const D: usize, C: Simplex> {
 }
 
 impl<const D: usize, C: Simplex> GenericMesh<D, C> {
+    /// Create a mesh from slices of types convertible into the mesh storage types.
+    #[must_use]
+    pub fn from_slices<V, E, F>(
+        verts: &[V],
+        elems: &[E],
+        etags: &[Tag],
+        faces: &[F],
+        ftags: &[Tag],
+    ) -> Self
+    where
+        V: Copy + Into<Vertex<D>>,
+        E: Copy + Into<C>,
+        F: Copy + Into<C::FACE>,
+    {
+        assert_eq!(elems.len(), etags.len());
+        assert_eq!(faces.len(), ftags.len());
+
+        Self::from_vecs(
+            verts.iter().copied().map(Into::into).collect(),
+            elems.iter().copied().map(Into::into).collect(),
+            etags.to_vec(),
+            faces.iter().copied().map(Into::into).collect(),
+            ftags.to_vec(),
+        )
+    }
+
     #[must_use]
     pub fn from_vecs(
         verts: Vec<Vertex<D>>,
@@ -1999,8 +2027,8 @@ impl<const D: usize, C: Simplex> Mesh<D> for GenericMesh<D, C> {
         self.verts.par_iter()
     }
 
-    fn add_verts(&mut self, v: impl ExactSizeIterator<Item = Vertex<D>>) {
-        self.verts.extend(v);
+    fn add_verts<V: Into<Vertex<D>>>(&mut self, v: impl ExactSizeIterator<Item = V>) {
+        self.verts.extend(v.map(Into::into));
     }
 
     fn n_elems(&self) -> usize {

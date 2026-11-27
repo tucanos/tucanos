@@ -365,7 +365,7 @@ mod tests {
         Vert3d, Vertex, assert_delta,
         mesh::{
             BoundaryMesh2d, Edge, GSimplex, GenericMesh, Mesh, Node, QuadraticBoundaryMesh2d,
-            QuadraticBoundaryMesh3d, quadratic_circle_mesh, quadratic_sphere_mesh,
+            QuadraticBoundaryMesh3d, Triangle, quadratic_circle_mesh, quadratic_sphere_mesh,
         },
     };
 
@@ -499,24 +499,23 @@ mod tests {
 
         let mesh = test_mesh_2d().split().split().split().split().split();
 
-        let verts = mesh
+        let verts: Vec<_> = mesh
             .verts()
             .map(|p| {
                 let z = p[0];
                 let theta = 3.0 * p[1];
                 let x = radius * libm::cos(theta);
                 let y = radius * libm::sin(theta);
-                Vertex::<3>::new(x, y, z)
+                [x, y, z]
             })
             .collect();
 
-        let mut surf = GenericMesh::from_vecs(
-            verts,
-            mesh.elems().collect::<Vec<_>>(),
-            mesh.etags().collect::<Vec<_>>(),
-            Vec::new(),
-            Vec::new(),
-        );
+        let elems = mesh.elems().collect::<Vec<_>>();
+        let etags = mesh.etags().collect::<Vec<_>>();
+        let faces: [Edge<usize>; 0] = [];
+        let ftags: [crate::Tag; 0] = [];
+        let mut surf: GenericMesh<3, Triangle<usize>> =
+            GenericMesh::from_slices(&verts, &elems, &etags, &faces, &ftags);
         // Get the indices of boundary vertices
         surf.fix().unwrap();
         let mut bdy_flag = vec![false; surf.n_verts()];
@@ -562,24 +561,23 @@ mod tests {
 
         let mesh = test_mesh_2d().split().split().split().split().split();
 
-        let verts = mesh
+        let verts: Vec<_> = mesh
             .verts()
             .map(|p| {
                 let z = p[0];
                 let theta = 3.0 * p[1];
                 let x = radius * libm::cos(theta);
                 let y = radius * libm::sin(theta);
-                Vertex::<3>::new(x, y, z)
+                [x, y, z]
             })
             .collect();
 
-        let mut surf = GenericMesh::from_vecs(
-            verts,
-            mesh.elems().collect::<Vec<_>>(),
-            mesh.etags().collect::<Vec<_>>(),
-            Vec::new(),
-            Vec::new(),
-        );
+        let elems = mesh.elems().collect::<Vec<_>>();
+        let etags = mesh.etags().collect::<Vec<_>>();
+        let faces: [Edge<usize>; 0] = [];
+        let ftags: [crate::Tag; 0] = [];
+        let mut surf: GenericMesh<3, Triangle<usize>> =
+            GenericMesh::from_slices(&verts, &elems, &etags, &faces, &ftags);
         surf.fix().unwrap();
 
         for weight in [
@@ -618,24 +616,23 @@ mod tests {
 
         let mesh = test_mesh_2d().split().split().split().split().split();
 
-        let verts = mesh
+        let verts: Vec<_> = mesh
             .verts()
             .map(|p| {
                 let z = p[0];
                 let theta = 2.0 * p[1];
                 let x = radius * libm::cos(theta);
                 let y = radius * libm::sin(theta);
-                Vertex::<3>::new(x, y, z)
+                [x, y, z]
             })
             .collect();
 
-        let mut surf = GenericMesh::from_vecs(
-            verts,
-            mesh.elems().collect::<Vec<_>>(),
-            mesh.etags().collect::<Vec<_>>(),
-            Vec::new(),
-            Vec::new(),
-        );
+        let elems = mesh.elems().collect::<Vec<_>>();
+        let etags = mesh.etags().collect::<Vec<_>>();
+        let faces: [Edge<usize>; 0] = [];
+        let ftags: [crate::Tag; 0] = [];
+        let mut surf: GenericMesh<3, Triangle<usize>> =
+            GenericMesh::from_slices(&verts, &elems, &etags, &faces, &ftags);
         surf.fix().unwrap();
 
         let geom = MeshedGeometry::new(&surf).unwrap();

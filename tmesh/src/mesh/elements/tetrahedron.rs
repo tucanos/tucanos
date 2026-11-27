@@ -22,6 +22,12 @@ impl<T: Idx> Tetrahedron<T> {
     }
 }
 
+impl<T: Idx> From<[T; 4]> for Tetrahedron<T> {
+    fn from(array: [T; 4]) -> Self {
+        Self(array)
+    }
+}
+
 impl<T: Idx> IntoIterator for Tetrahedron<T> {
     type Item = usize;
     type IntoIter = std::iter::Map<std::array::IntoIter<T, 4>, fn(T) -> usize>;

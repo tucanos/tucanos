@@ -219,7 +219,7 @@ fn get_bl_metric(
             let h1 = h_max * u.column(1);
             let h2 = h_max * u.column(2);
 
-            AnisoMetric3d::from_sizes(&h0, &h1, &h2)
+            AnisoMetric3d::from_sizes(h0, h1, h2)
         })
         .collect::<Vec<_>>()
 }

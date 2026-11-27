@@ -260,6 +260,55 @@ mod tests {
     }
 
     #[test]
+    fn test_from_slices_array_literals_3d() {
+        let verts = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ];
+        let elems = [[0, 1, 2, 3]];
+        let etags = [1];
+        let faces = [[1, 2, 3], [2, 0, 3], [0, 1, 3], [0, 2, 1]];
+        let ftags = [1, 2, 3, 4];
+
+        let msh = Mesh3d::from_slices(&verts, &elems, &etags, &faces, &ftags);
+        assert_eq!(msh.n_verts(), 4);
+        assert_eq!(msh.n_elems(), 1);
+        assert_eq!(msh.n_faces(), 4);
+    }
+
+    #[test]
+    fn test_from_slices_array_literals_quadratic_3d() {
+        let verts = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [0.5, 0.0, 0.0],
+            [0.5, 0.5, 0.0],
+            [0.0, 0.5, 0.0],
+            [0.0, 0.0, 0.5],
+            [0.5, 0.0, 0.5],
+            [0.0, 0.5, 0.5],
+        ];
+        let elems = [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]];
+        let etags = [1];
+        let faces = [
+            [1, 2, 3, 5, 9, 8],
+            [2, 0, 3, 6, 7, 9],
+            [0, 1, 3, 4, 8, 7],
+            [0, 2, 1, 6, 5, 4],
+        ];
+        let ftags = [1, 2, 3, 4];
+
+        let msh = QuadraticMesh3d::from_slices(&verts, &elems, &etags, &faces, &ftags);
+        assert_eq!(msh.n_verts(), 10);
+        assert_eq!(msh.n_elems(), 1);
+        assert_eq!(msh.n_faces(), 4);
+    }
+
+    #[test]
     fn test_gradient_linear() {
         let grad = Vert3d::new(9.8, 7.6, 5.4);
         let msh = box_mesh::<Mesh3d>(1.0, 10, 1.0, 15, 1.0, 20).random_shuffle();
@@ -761,7 +810,7 @@ mod tests {
         }
         let split_verts = split_edgs.values().copied().collect::<FxHashSet<usize>>();
         for (elem, tag) in res.elems().zip(res.etags()) {
-            let (mut n_pos, mut n_neg) = (0_usize, 0_usize);
+            let (mut n_pos, mut n_neg) = (0, 0);
             for i in elem {
                 if split_verts.contains(&i) {
                     continue;

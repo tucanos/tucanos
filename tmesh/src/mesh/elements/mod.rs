@@ -96,6 +96,12 @@ impl<T: Idx> TryFrom<&[T]> for Hexahedron<T> {
     }
 }
 
+impl<T: Idx> From<[T; 8]> for Hexahedron<T> {
+    fn from(array: [T; 8]) -> Self {
+        Self(array)
+    }
+}
+
 /// Prism
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Prism<T: Idx>([T; 6]);

@@ -501,7 +501,7 @@ macro_rules! impl_mesh {
                 let ids = self.0.add_hexahedra(
                     $crate::as_c_slice(&elems)?
                         .chunks(8)
-                        .map(|x| x.try_into().unwrap()),
+                        .map(|x| tmesh::mesh::Hexahedron::try_from(x).unwrap()),
                     etags.as_slice()?.iter().cloned(),
                 );
                 Ok(PyArray1::from_vec(py, ids))

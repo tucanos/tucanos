@@ -32,7 +32,7 @@ impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
     pub fn gradation(&self, target: f64) -> Result<(f64, f64)> {
         let edges = self.msh.edges();
 
-        let (count, max_gradation) = edges
+        let (count, max_gradation): (usize, f64) = edges
             .par_iter()
             .map(|(e, _)| {
                 let m0 = &self.metric[e.get(0)];
@@ -41,7 +41,7 @@ impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
                 Self::edge_gradation(m0, m1, &e)
             })
             .fold(
-                || (0_usize, 0.0_f64),
+                || (0, 0.0_f64),
                 |mut a, b| {
                     if b > target {
                         a.0 += 1;
@@ -50,7 +50,7 @@ impl<const D: usize, M: Mesh<D>, T: Metric<D>> MetricField<'_, D, M, T> {
                     a
                 },
             )
-            .reduce(|| (0_usize, 0.0), |a, b| (a.0 + b.0, a.1.max(b.1)));
+            .reduce(|| (0, 0.0), |a, b| (a.0 + b.0, a.1.max(b.1)));
 
         Ok((max_gradation, count as f64 / edges.len() as f64))
     }
