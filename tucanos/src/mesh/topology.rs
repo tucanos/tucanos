@@ -105,6 +105,92 @@ impl Topology {
         Ok(())
     }
 
+    fn node_id(tag: TopoTag) -> String {
+        let sign = if tag.1 < 0 { "n" } else { "p" };
+        format!("d{}_{}_{}", tag.0, sign, tag.1.abs())
+    }
+
+    /// Save the topology as a Graphviz DOT graph.
+    pub fn to_dot(&self, fname: &str) -> Result<()> {
+        let mut file = File::create(fname)?;
+        writeln!(file, "digraph topology {{")?;
+        writeln!(file, "  rankdir=TB;")?;
+        writeln!(file, "  graph [overlap=false, splines=true];")?;
+        writeln!(file, "  node [shape=box, style=rounded];")?;
+
+        for dim in 0..=self.dim {
+            writeln!(file, "  subgraph cluster_dim_{dim} {{")?;
+            writeln!(file, "    color=\"#cccccc\";")?;
+            for node in &self.entities[dim as usize] {
+                let id = Self::node_id(node.tag);
+                writeln!(
+                    file,
+                    "    \"{id}\" [label=\"({}, {})\"];",
+                    node.tag.0, node.tag.1
+                )?;
+            }
+            writeln!(file, "  }}")?;
+        }
+
+        for dim in 1..=self.dim {
+            for node in &self.entities[dim as usize] {
+                let src = Self::node_id(node.tag);
+                for &child in &node.children {
+                    if self.get((dim - 1, child)).is_some() {
+                        let dst = Self::node_id((dim - 1, child));
+                        writeln!(file, "  \"{src}\" -> \"{dst}\";")?;
+                    }
+                }
+            }
+        }
+
+        writeln!(file, "}}")?;
+        Ok(())
+    }
+
+    /// Save the topology as an interactive HTML graph.
+    ///
+    /// Clicking a node highlights all its ancestors and descendants (transitively).
+    pub fn to_html(&self, fname: &str) -> Result<()> {
+        let mut nodes = Vec::new();
+        let mut edges = Vec::new();
+
+        for dim in 0..=self.dim {
+            for node in &self.entities[dim as usize] {
+                nodes.push(serde_json::json!({
+                        "key": format!("{}:{}", node.tag.0, node.tag.1),
+                        "dim": node.tag.0,
+                        "tag": node.tag.1,
+                        "label": format!("({}, {})", node.tag.0, node.tag.1),
+                }));
+                if dim > 0 {
+                    for &child in &node.children {
+                        if self.get((dim - 1, child)).is_some() {
+                            edges.push(serde_json::json!({
+                                    "source": format!("{}:{}", node.tag.0, node.tag.1),
+                                    "target": format!("{}:{}", dim - 1, child),
+                            }));
+                        }
+                    }
+                }
+            }
+        }
+
+        let payload = serde_json::json!({
+                "maxDim": self.dim,
+                "nodes": nodes,
+                "edges": edges,
+        });
+        let payload = serde_json::to_string(&payload).unwrap();
+        let template = include_str!("topo.html");
+        let (prefix, suffix) = template.split_once("__TOPOLOGY_PAYLOAD__").unwrap();
+        let html = format!("{prefix}{payload}{suffix}");
+
+        let mut file = File::create(fname)?;
+        file.write_all(html.as_bytes())?;
+        Ok(())
+    }
+
     /// Return the number of tags for the given dimension
     #[must_use]
     pub fn ntags(&self, dim: Dim) -> usize {
@@ -753,19 +839,17 @@ impl MeshTopology {
             if t == 0 {
                 continue;
             }
-            let node = match self.topo.get((d - 1, t)) {
-                Some(node) => node,
-                None => return Err(Error::from(&format!("Tag {:?} not present", (d - 1, t)))),
+            let Some(node) = self.topo.get((d - 1, t)) else {
+                return Err(Error::from(&format!("Tag {:?} not present", (d - 1, t))));
             };
             let etags = face2elems
                 .get(&f.sorted())
-                .map(|elems| {
+                .map_or_else(FxHashSet::default, |elems| {
                     elems
                         .iter()
                         .map(|&i| mesh.etag(i))
                         .collect::<FxHashSet<_>>()
-                })
-                .unwrap_or_default();
+                });
             if etags != node.parents {
                 let mut inferred = etags.into_iter().collect::<Vec<_>>();
                 inferred.sort_unstable();
@@ -800,10 +884,7 @@ impl MeshTopology {
 
 #[cfg(test)]
 mod tests {
-    use tmesh::{
-        Vert2d, Vert3d,
-        mesh::{Edge, GenericMesh, Mesh, Simplex, Tetrahedron, Triangle},
-    };
+    use tmesh::mesh::{GenericMesh, Mesh, Simplex, Tetrahedron, Triangle};
 
     use crate::{
         Tag, TopoTag,
@@ -829,47 +910,58 @@ mod tests {
     }
 
     fn conflicting_tags_square() -> GenericMesh<2, Triangle<u32>> {
-        let verts = vec![
-            Vert2d::new(0.0, 0.0),
-            Vert2d::new(1.0, 0.0),
-            Vert2d::new(1.0, 1.0),
-            Vert2d::new(0.0, 1.0),
-        ];
-        let elems = vec![Triangle::<u32>::new(0, 1, 2), Triangle::new(0, 2, 3)];
-        let faces = vec![
-            Edge::new(0, 1),
-            Edge::new(1, 2),
-            Edge::new(2, 3),
-            Edge::new(3, 0),
-        ];
-        GenericMesh::from_vecs(verts, elems, vec![1, 1], faces, vec![1, 2, 3, 4])
+        let verts = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+        let elems = [[0u32, 1, 2], [0, 2, 3]];
+        let faces = [[0u32, 1], [1, 2], [2, 3], [3, 0]];
+        GenericMesh::from_slices(&verts, &elems, &[1, 1], &faces, &[1, 2, 3, 4])
     }
 
     /// Three tetrahedra share edge `(0, 1)` and a fourth one touches vertex `0` only.
     fn pinched_tets_mesh() -> GenericMesh<3, Tetrahedron<u32>> {
-        let verts = vec![
-            Vert3d::new(0.0, 0.0, 0.0),
-            Vert3d::new(1.0, 0.0, 0.0),
-            Vert3d::new(0.0, 1.0, 0.0),
-            Vert3d::new(0.0, 0.0, 1.0),
-            Vert3d::new(0.0, -1.0, 0.0),
-            Vert3d::new(0.0, 0.0, -1.0),
-            Vert3d::new(0.0, 1.0, -1.0),
-            Vert3d::new(0.0, -1.0, 1.0),
-            Vert3d::new(2.0, 2.0, 0.0),
-            Vert3d::new(2.0, 0.0, 2.0),
-            Vert3d::new(0.0, 2.0, 2.0),
+        let verts = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [0.0, -1.0, 0.0],
+            [0.0, 0.0, -1.0],
+            [0.0, 1.0, -1.0],
+            [0.0, -1.0, 1.0],
+            [2.0, 2.0, 0.0],
+            [2.0, 0.0, 2.0],
+            [0.0, 2.0, 2.0],
         ];
-        let elems = vec![
-            Tetrahedron::<u32>::new(0, 1, 2, 3),
-            Tetrahedron::new(0, 1, 4, 5),
-            Tetrahedron::new(0, 1, 6, 7),
-            Tetrahedron::new(0, 8, 9, 10),
-        ];
-        let mut mesh = GenericMesh::from_vecs(verts, elems, vec![1; 4], vec![], vec![]);
+        let elems = [[0u32, 1, 2, 3], [0, 1, 4, 5], [0, 1, 6, 7], [0, 8, 9, 10]];
+        let faces: [[u32; 3]; 0] = [];
+        let ftags: [Tag; 0] = [];
+        let mut mesh = GenericMesh::from_slices(&verts, &elems, &[1; 4], &faces, &ftags);
         mesh.fix().unwrap();
         mesh.ftags_mut().for_each(|t| *t = 1);
         mesh
+    }
+
+    fn corner_2d_mesh(etags: [Tag; 2]) -> GenericMesh<2, Triangle<u32>> {
+        let verts = [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [0.0, 1.0], [2.0, 1.0]];
+        let elems = [[0u32, 1, 3], [1, 2, 4]];
+        let faces: [[u32; 2]; 0] = [];
+        let ftags: [Tag; 0] = [];
+        GenericMesh::from_slices(&verts, &elems, &etags, &faces, &ftags)
+    }
+
+    fn corner_3d_mesh(etags: [Tag; 2]) -> GenericMesh<3, Tetrahedron<u32>> {
+        let verts = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+            [0.0, 1.0, 1.0],
+            [0.0, 0.0, 0.5],
+        ];
+        let elems = [[0u32, 1, 2, 6], [3, 5, 4, 6]];
+        let faces: [[u32; 3]; 0] = [];
+        let ftags: [Tag; 0] = [];
+        GenericMesh::from_slices(&verts, &elems, &etags, &faces, &ftags)
     }
 
     #[test]
@@ -1132,6 +1224,39 @@ mod tests {
     }
 
     #[test]
+    fn test_to_dot_and_to_html() {
+        let mut t = Topology::new(2);
+        t.insert((2, 1), []);
+        t.insert((1, 1), [1]);
+        t.insert((1, 2), [1]);
+        t.insert((0, 1), [1]);
+        t.insert((0, 2), [1, 2]);
+
+        let tmp = std::env::temp_dir();
+        let dot = tmp.join(format!("tucanos_topology_{}.dot", std::process::id()));
+        let html = tmp.join(format!("tucanos_topology_{}.html", std::process::id()));
+
+        t.to_dot(dot.to_str().unwrap()).unwrap();
+        t.to_html(html.to_str().unwrap()).unwrap();
+
+        let dot_s = std::fs::read_to_string(&dot).unwrap();
+        assert!(dot_s.contains("digraph topology"), "{dot_s}");
+        assert!(dot_s.contains("cluster_dim_2"), "{dot_s}");
+        assert!(dot_s.contains("->"), "{dot_s}");
+
+        let html_s = std::fs::read_to_string(&html).unwrap();
+        assert!(
+            html_s.contains("highlight all ancestors and descendants"),
+            "{html_s}"
+        );
+        assert!(html_s.contains("const data ="), "{html_s}");
+        assert!(html_s.contains("closure(selected"), "{html_s}");
+
+        let _ = std::fs::remove_file(dot);
+        let _ = std::fs::remove_file(html);
+    }
+
+    #[test]
     #[should_panic]
     fn test_invalid_2d_1() {
         let mut mesh = test_mesh_2d();
@@ -1238,19 +1363,7 @@ mod tests {
 
     #[test]
     fn test_corner_2d_1() {
-        let verts = vec![
-            Vert2d::new(0.0, 0.0),
-            Vert2d::new(1.0, 0.0),
-            Vert2d::new(2.0, 0.0),
-            Vert2d::new(0.0, 1.0),
-            Vert2d::new(2.0, 1.0),
-        ];
-        let elems = vec![Triangle::<u32>::new(0, 1, 3), Triangle::new(1, 2, 4)];
-        let etags = vec![1, 1];
-        let faces = vec![];
-        let ftags = vec![];
-
-        let mut mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
+        let mut mesh = corner_2d_mesh([1, 1]);
         mesh.fix().unwrap();
         let mtopo = MeshTopology::new(&mesh);
         let topo = mtopo.topo();
@@ -1262,19 +1375,7 @@ mod tests {
 
     #[test]
     fn test_corner_2d_2() {
-        let verts = vec![
-            Vert2d::new(0.0, 0.0),
-            Vert2d::new(1.0, 0.0),
-            Vert2d::new(2.0, 0.0),
-            Vert2d::new(0.0, 1.0),
-            Vert2d::new(2.0, 1.0),
-        ];
-        let elems = vec![Triangle::<u32>::new(0, 1, 3), Triangle::new(1, 2, 4)];
-        let etags = vec![1, 2];
-        let faces = vec![];
-        let ftags = vec![];
-
-        let mut mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
+        let mut mesh = corner_2d_mesh([1, 2]);
         mesh.fix().unwrap();
         let mtopo = MeshTopology::new(&mesh);
         let topo = mtopo.topo();
@@ -1286,21 +1387,7 @@ mod tests {
 
     #[test]
     fn test_corner_2d_2_split() {
-        let verts = vec![
-            Vert2d::new(0.0, 0.0),
-            Vert2d::new(1.0, 0.0),
-            Vert2d::new(2.0, 0.0),
-            Vert2d::new(0.0, 1.0),
-            Vert2d::new(2.0, 1.0),
-        ];
-        let elems = vec![Triangle::<u32>::new(0, 1, 3), Triangle::new(1, 2, 4)];
-        let etags = vec![1, 2];
-        let faces = vec![];
-        let ftags = vec![];
-
-        let mut mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags)
-            .split()
-            .split();
+        let mut mesh = corner_2d_mesh([1, 2]).split().split();
         mesh.fix().unwrap();
         let mtopo = MeshTopology::new(&mesh);
         let topo = mtopo.topo();
@@ -1312,24 +1399,7 @@ mod tests {
 
     #[test]
     fn test_corner_3d_1() {
-        let verts = vec![
-            Vert3d::new(0.0, 0.0, 0.0),
-            Vert3d::new(1.0, 0.0, 0.0),
-            Vert3d::new(0.0, 1.0, 0.0),
-            Vert3d::new(0.0, 0.0, 1.0),
-            Vert3d::new(1.0, 0.0, 1.0),
-            Vert3d::new(0.0, 1.0, 1.0),
-            Vert3d::new(0.0, 0.0, 0.5),
-        ];
-        let elems = vec![
-            Tetrahedron::<u32>::new(0, 1, 2, 6),
-            Tetrahedron::new(3, 5, 4, 6),
-        ];
-        let etags = vec![1, 2];
-        let faces = vec![];
-        let ftags = vec![];
-
-        let mut mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
+        let mut mesh = corner_3d_mesh([1, 2]);
         mesh.fix().unwrap();
         let mtopo = MeshTopology::new(&mesh);
         let topo = mtopo.topo();
@@ -1342,24 +1412,7 @@ mod tests {
 
     #[test]
     fn test_corner_3d_1_split() {
-        let verts = vec![
-            Vert3d::new(0.0, 0.0, 0.0),
-            Vert3d::new(1.0, 0.0, 0.0),
-            Vert3d::new(0.0, 1.0, 0.0),
-            Vert3d::new(0.0, 0.0, 1.0),
-            Vert3d::new(1.0, 0.0, 1.0),
-            Vert3d::new(0.0, 1.0, 1.0),
-            Vert3d::new(0.0, 0.0, 0.5),
-        ];
-        let elems = vec![
-            Tetrahedron::<u32>::new(0, 1, 2, 6),
-            Tetrahedron::new(3, 5, 4, 6),
-        ];
-        let etags = vec![1, 2];
-        let faces = vec![];
-        let ftags = vec![];
-
-        let mut mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
+        let mut mesh = corner_3d_mesh([1, 2]);
         mesh.fix().unwrap();
 
         let mesh = mesh.split().split();
@@ -1374,24 +1427,7 @@ mod tests {
 
     #[test]
     fn test_corner_3d_2() {
-        let verts = vec![
-            Vert3d::new(0.0, 0.0, 0.0),
-            Vert3d::new(1.0, 0.0, 0.0),
-            Vert3d::new(0.0, 1.0, 0.0),
-            Vert3d::new(0.0, 0.0, 1.0),
-            Vert3d::new(1.0, 0.0, 1.0),
-            Vert3d::new(0.0, 1.0, 1.0),
-            Vert3d::new(0.0, 0.0, 0.5),
-        ];
-        let elems = vec![
-            Tetrahedron::<u32>::new(0, 1, 2, 6),
-            Tetrahedron::new(3, 5, 4, 6),
-        ];
-        let etags = vec![1, 2];
-        let faces = vec![];
-        let ftags = vec![];
-
-        let mut mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
+        let mut mesh = corner_3d_mesh([1, 2]);
         mesh.fix().unwrap();
         mesh.etags_mut().for_each(|t| *t = 1);
         let mtopo = MeshTopology::new(&mesh);
@@ -1405,24 +1441,7 @@ mod tests {
 
     #[test]
     fn test_corner_3d_2_split() {
-        let verts = vec![
-            Vert3d::new(0.0, 0.0, 0.0),
-            Vert3d::new(1.0, 0.0, 0.0),
-            Vert3d::new(0.0, 1.0, 0.0),
-            Vert3d::new(0.0, 0.0, 1.0),
-            Vert3d::new(1.0, 0.0, 1.0),
-            Vert3d::new(0.0, 1.0, 1.0),
-            Vert3d::new(0.0, 0.0, 0.5),
-        ];
-        let elems = vec![
-            Tetrahedron::<u32>::new(0, 1, 2, 6),
-            Tetrahedron::new(3, 5, 4, 6),
-        ];
-        let etags = vec![1, 2];
-        let faces = vec![];
-        let ftags = vec![];
-
-        let mut mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
+        let mut mesh = corner_3d_mesh([1, 2]);
         mesh.fix().unwrap();
         mesh.etags_mut().for_each(|t| *t = 1);
 
@@ -1438,24 +1457,7 @@ mod tests {
 
     #[test]
     fn test_corner_3d_3() {
-        let verts = vec![
-            Vert3d::new(0.0, 0.0, 0.0),
-            Vert3d::new(1.0, 0.0, 0.0),
-            Vert3d::new(0.0, 1.0, 0.0),
-            Vert3d::new(0.0, 0.0, 1.0),
-            Vert3d::new(1.0, 0.0, 1.0),
-            Vert3d::new(0.0, 1.0, 1.0),
-            Vert3d::new(0.0, 0.0, 0.5),
-        ];
-        let elems = vec![
-            Tetrahedron::<u32>::new(0, 1, 2, 6),
-            Tetrahedron::new(3, 5, 4, 6),
-        ];
-        let etags = vec![1, 1];
-        let faces = vec![];
-        let ftags = vec![];
-
-        let mut mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
+        let mut mesh = corner_3d_mesh([1, 1]);
         mesh.fix().unwrap();
 
         let mtopo = MeshTopology::new(&mesh);
@@ -1469,24 +1471,7 @@ mod tests {
 
     #[test]
     fn test_corner_3d_3_split() {
-        let verts = vec![
-            Vert3d::new(0.0, 0.0, 0.0),
-            Vert3d::new(1.0, 0.0, 0.0),
-            Vert3d::new(0.0, 1.0, 0.0),
-            Vert3d::new(0.0, 0.0, 1.0),
-            Vert3d::new(1.0, 0.0, 1.0),
-            Vert3d::new(0.0, 1.0, 1.0),
-            Vert3d::new(0.0, 0.0, 0.5),
-        ];
-        let elems = vec![
-            Tetrahedron::<u32>::new(0, 1, 2, 6),
-            Tetrahedron::new(3, 5, 4, 6),
-        ];
-        let etags = vec![1, 1];
-        let faces = vec![];
-        let ftags = vec![];
-
-        let mut mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
+        let mut mesh = corner_3d_mesh([1, 1]);
         mesh.fix().unwrap();
 
         let mesh = mesh.split().split();
@@ -1501,24 +1486,7 @@ mod tests {
 
     #[test]
     fn test_corner_3d_4() {
-        let verts = vec![
-            Vert3d::new(0.0, 0.0, 0.0),
-            Vert3d::new(1.0, 0.0, 0.0),
-            Vert3d::new(0.0, 1.0, 0.0),
-            Vert3d::new(0.0, 0.0, 1.0),
-            Vert3d::new(1.0, 0.0, 1.0),
-            Vert3d::new(0.0, 1.0, 1.0),
-            Vert3d::new(0.0, 0.0, 0.5),
-        ];
-        let elems = vec![
-            Tetrahedron::<u32>::new(0, 1, 2, 6),
-            Tetrahedron::new(3, 5, 4, 6),
-        ];
-        let etags = vec![1, 2];
-        let faces = vec![];
-        let ftags = vec![];
-
-        let mut mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
+        let mut mesh = corner_3d_mesh([1, 2]);
         mesh.fix().unwrap();
         mesh.ftags_mut().enumerate().for_each(|(i, t)| {
             if *t == 2 {
@@ -1537,24 +1505,7 @@ mod tests {
 
     #[test]
     fn test_corner_3d_4_split() {
-        let verts = vec![
-            Vert3d::new(0.0, 0.0, 0.0),
-            Vert3d::new(1.0, 0.0, 0.0),
-            Vert3d::new(0.0, 1.0, 0.0),
-            Vert3d::new(0.0, 0.0, 1.0),
-            Vert3d::new(1.0, 0.0, 1.0),
-            Vert3d::new(0.0, 1.0, 1.0),
-            Vert3d::new(0.0, 0.0, 0.5),
-        ];
-        let elems = vec![
-            Tetrahedron::<u32>::new(0, 1, 2, 6),
-            Tetrahedron::new(3, 5, 4, 6),
-        ];
-        let etags = vec![1, 2];
-        let faces = vec![];
-        let ftags = vec![];
-
-        let mut mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
+        let mut mesh = corner_3d_mesh([1, 2]);
         mesh.fix().unwrap();
         mesh.ftags_mut().enumerate().for_each(|(i, t)| {
             if *t == 2 {
@@ -1574,24 +1525,7 @@ mod tests {
 
     #[test]
     fn test_corner_3d_5() {
-        let verts = vec![
-            Vert3d::new(0.0, 0.0, 0.0),
-            Vert3d::new(1.0, 0.0, 0.0),
-            Vert3d::new(0.0, 1.0, 0.0),
-            Vert3d::new(0.0, 0.0, 1.0),
-            Vert3d::new(1.0, 0.0, 1.0),
-            Vert3d::new(0.0, 1.0, 1.0),
-            Vert3d::new(0.0, 0.0, 0.5),
-        ];
-        let elems = vec![
-            Tetrahedron::<u32>::new(0, 1, 2, 6),
-            Tetrahedron::new(3, 5, 4, 6),
-        ];
-        let etags = vec![1, 2];
-        let faces = vec![];
-        let ftags = vec![];
-
-        let mut mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
+        let mut mesh = corner_3d_mesh([1, 2]);
         mesh.fix().unwrap();
         mesh.etags_mut().for_each(|t| *t = 1);
         mesh.ftags_mut().enumerate().for_each(|(i, t)| {
@@ -1611,24 +1545,7 @@ mod tests {
 
     #[test]
     fn test_corner_3d_5_split() {
-        let verts = vec![
-            Vert3d::new(0.0, 0.0, 0.0),
-            Vert3d::new(1.0, 0.0, 0.0),
-            Vert3d::new(0.0, 1.0, 0.0),
-            Vert3d::new(0.0, 0.0, 1.0),
-            Vert3d::new(1.0, 0.0, 1.0),
-            Vert3d::new(0.0, 1.0, 1.0),
-            Vert3d::new(0.0, 0.0, 0.5),
-        ];
-        let elems = vec![
-            Tetrahedron::<u32>::new(0, 1, 2, 6),
-            Tetrahedron::new(3, 5, 4, 6),
-        ];
-        let etags = vec![1, 2];
-        let faces = vec![];
-        let ftags = vec![];
-
-        let mut mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
+        let mut mesh = corner_3d_mesh([1, 2]);
         mesh.fix().unwrap();
         mesh.etags_mut().for_each(|t| *t = 1);
         mesh.ftags_mut().enumerate().for_each(|(i, t)| {
@@ -1649,24 +1566,7 @@ mod tests {
 
     #[test]
     fn test_corner_3d_6() {
-        let verts = vec![
-            Vert3d::new(0.0, 0.0, 0.0),
-            Vert3d::new(1.0, 0.0, 0.0),
-            Vert3d::new(0.0, 1.0, 0.0),
-            Vert3d::new(0.0, 0.0, 1.0),
-            Vert3d::new(1.0, 0.0, 1.0),
-            Vert3d::new(0.0, 1.0, 1.0),
-            Vert3d::new(0.0, 0.0, 0.5),
-        ];
-        let elems = vec![
-            Tetrahedron::<u32>::new(0, 1, 2, 6),
-            Tetrahedron::new(3, 5, 4, 6),
-        ];
-        let etags = vec![1, 1];
-        let faces = vec![];
-        let ftags = vec![];
-
-        let mut mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
+        let mut mesh = corner_3d_mesh([1, 1]);
         mesh.fix().unwrap();
         mesh.etags_mut().for_each(|t| *t = 1);
         let faces = mesh.faces().collect::<Vec<_>>();
@@ -1691,24 +1591,7 @@ mod tests {
 
     #[test]
     fn test_corner_3d_6_split() {
-        let verts = vec![
-            Vert3d::new(0.0, 0.0, 0.0),
-            Vert3d::new(1.0, 0.0, 0.0),
-            Vert3d::new(0.0, 1.0, 0.0),
-            Vert3d::new(0.0, 0.0, 1.0),
-            Vert3d::new(1.0, 0.0, 1.0),
-            Vert3d::new(0.0, 1.0, 1.0),
-            Vert3d::new(0.0, 0.0, 0.5),
-        ];
-        let elems = vec![
-            Tetrahedron::<u32>::new(0, 1, 2, 6),
-            Tetrahedron::new(3, 5, 4, 6),
-        ];
-        let etags = vec![1, 1];
-        let faces = vec![];
-        let ftags = vec![];
-
-        let mut mesh = GenericMesh::from_vecs(verts, elems, etags, faces, ftags);
+        let mut mesh = corner_3d_mesh([1, 1]);
         mesh.fix().unwrap();
         mesh.etags_mut().for_each(|t| *t = 1);
         let faces = mesh.faces().collect::<Vec<_>>();
@@ -1800,24 +1683,26 @@ mod tests {
     fn test_edge_with_single_tagged_face_panics() {
         // The extra face (0, 1, 4) is not a tetrahedron face, but it is listed as a
         // tagged face. Edges (0, 4) and (1, 4) then belong to a single tagged face.
-        let verts = vec![
-            Vert3d::new(0.0, 0.0, 0.0),
-            Vert3d::new(1.0, 0.0, 0.0),
-            Vert3d::new(0.0, 1.0, 0.0),
-            Vert3d::new(0.0, 0.0, 1.0),
-            Vert3d::new(2.0, 0.0, 0.0),
-            Vert3d::new(3.0, 0.0, 0.0),
-            Vert3d::new(2.0, 1.0, 0.0),
-            Vert3d::new(2.0, 0.0, 1.0),
+        let verts = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [2.0, 0.0, 0.0],
+            [3.0, 0.0, 0.0],
+            [2.0, 1.0, 0.0],
+            [2.0, 0.0, 1.0],
         ];
-        let elems = vec![
-            Tetrahedron::<u32>::new(0, 1, 2, 3),
-            Tetrahedron::new(4, 5, 6, 7),
-        ];
-        let mut faces = elems.iter().flat_map(|e| e.faces()).collect::<Vec<_>>();
+        let elems = [[0u32, 1, 2, 3], [4, 5, 6, 7]];
+        let mut faces = Vec::new();
+        for &e in &elems {
+            let tet = Tetrahedron::<u32>::from(e);
+            faces.extend(tet.faces());
+        }
         faces.push(Triangle::new(0, 1, 4));
         let ftags = vec![1; faces.len()];
-        let mesh = GenericMesh::from_vecs(verts, elems, vec![1, 1], faces, ftags);
+        let mesh: GenericMesh<3, Tetrahedron<u32>> =
+            GenericMesh::from_slices(&verts, &elems, &[1, 1], &faces, &ftags);
 
         let _ = MeshTopology::new(&mesh);
     }
@@ -1838,23 +1723,17 @@ mod tests {
         // Two triangles in an ambient 3D mesh touch only at vertex 0. Their
         // opposite-edge rings are disconnected, so the surface-specific
         // single-vertex-contact repair must resolve that vertex.
-        let verts = vec![
-            Vert3d::new(0.0, 0.0, 0.0),
-            Vert3d::new(1.0, 0.0, 0.0),
-            Vert3d::new(0.0, 1.0, 0.0),
-            Vert3d::new(0.0, 0.0, 1.0),
-            Vert3d::new(0.0, 0.0, 2.0),
+        let verts = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [0.0, 0.0, 2.0],
         ];
-        let elems = vec![Triangle::<u32>::new(0, 1, 2), Triangle::new(0, 3, 4)];
-        let faces = vec![
-            Edge::new(0, 1),
-            Edge::new(1, 2),
-            Edge::new(2, 0),
-            Edge::new(0, 3),
-            Edge::new(3, 4),
-            Edge::new(4, 0),
-        ];
-        let mesh = GenericMesh::from_vecs(verts, elems, vec![1, 1], faces, vec![1, 2, 3, 4, 5, 6]);
+        let elems = [[0u32, 1, 2], [0, 3, 4]];
+        let faces = [[0u32, 1], [1, 2], [2, 0], [0, 3], [3, 4], [4, 0]];
+        let mesh: GenericMesh<3, Triangle<u32>> =
+            GenericMesh::from_slices(&verts, &elems, &[1, 1], &faces, &[1, 2, 3, 4, 5, 6]);
 
         let mtopo = MeshTopology::new(&mesh);
         let tag = mtopo.vtags()[0];
@@ -1919,7 +1798,7 @@ mod tests {
         let mut mtopo = MeshTopology::new(&mesh);
 
         let missing = mtopo.topo.get_available_tag(1);
-        mtopo.topo.entities[0][0].parents = [missing].into_iter().collect();
+        mtopo.topo.entities[0][0].parents = std::iter::once(missing).collect();
 
         let msg = mtopo.check(&mesh).unwrap_err().to_string();
         assert!(msg.contains("TopoTag"), "{msg}");
@@ -1950,7 +1829,7 @@ mod tests {
             .iter_mut()
             .find(|n| n.parents.len() == 1 && n.parents.contains(&1))
             .unwrap();
-        node.parents = [2].into_iter().collect();
+        node.parents = std::iter::once(2).collect();
 
         let msg = mtopo.check(&mesh).unwrap_err().to_string();
         assert!(msg.contains("Invalid parents for face tag"), "{msg}");
