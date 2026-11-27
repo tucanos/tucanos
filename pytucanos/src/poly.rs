@@ -7,11 +7,14 @@ use pyo3::{
     Bound, PyResult, Python,
     exceptions::{PyRuntimeError, PyValueError},
     pyclass, pymethods,
+    types::PyType,
 };
 use tmesh::{
     Tag, Vertex,
     dual::{PolyFaceType, PolyMesh, PolyMeshType, SimplePolyMesh},
 };
+
+use crate::mesh::{PyMesh2d, PyMesh3d};
 
 /// Type of poly cells (mapping of `tmesh::PolyMeshType`)
 #[pyclass(from_py_object, eq, eq_int)]
@@ -198,3 +201,19 @@ macro_rules! create_poly_mesh {
 
 create_poly_mesh!(PyPolyMesh2d, 2);
 create_poly_mesh!(PyPolyMesh3d, 3);
+
+#[pymethods]
+impl PyPolyMesh3d {
+    #[classmethod]
+    pub fn from_mesh(_cls: &Bound<'_, PyType>, msh: &PyMesh3d) -> Self {
+        Self(SimplePolyMesh::from_mesh(&msh.0))
+    }
+}
+
+#[pymethods]
+impl PyPolyMesh2d {
+    #[classmethod]
+    pub fn from_mesh(_cls: &Bound<'_, PyType>, msh: &PyMesh2d) -> Self {
+        Self(SimplePolyMesh::from_mesh(&msh.0))
+    }
+}
