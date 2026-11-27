@@ -532,6 +532,10 @@ impl Topology {
                 let mut edgtags = Vec::new();
                 let edge2faces = get_face_to_elem(mesh.faces());
                 for (&edge, faces) in &edge2faces {
+                    assert!(
+                        faces.len() != 1,
+                        "An edge cannot belong to a single tagged face for tetrahedra meshes: edge {edge:?}, faces {faces:?}"
+                    );
                     if let Some(t) =
                         self.update_tags(edge, None, faces, |i| mesh.ftag(i), &mut vtags)
                     {
@@ -595,13 +599,138 @@ impl MeshTopology {
     pub fn vtags(&self) -> &[TopoTag] {
         &self.vtags
     }
+
+    /// Check that the topology hierarchy is valid for `mesh`.
+    ///
+    /// The element and face layers must match the unique element and face tags in
+    /// `mesh`. Every node in a lower layer must have a non-empty set of parents that
+    /// reference existing nodes in the layer above, and no two inferred edge or node
+    /// tags may share the same parent set. The parents stored on each tagged face must
+    /// match the element tags adjacent to that face. Finally, every vertex must have
+    /// a tag that names an existing hierarchy node.
+    pub fn check<const D: usize, M: Mesh<D>>(&self, mesh: &M) -> Result<()> {
+        let d = M::C::DIM as Dim;
+
+        let check_layer = |dim: Dim, mesh_tags: FxHashSet<Tag>| -> Result<()> {
+            let node_tags = self.topo.entities[dim as usize]
+                .iter()
+                .map(|node| node.tag.1)
+                .collect::<FxHashSet<_>>();
+
+            let mut missing = mesh_tags
+                .difference(&node_tags)
+                .copied()
+                .collect::<Vec<_>>();
+            missing.sort_unstable();
+            if let Some(&t) = missing.first() {
+                return Err(Error::from(&format!(
+                    "Tag {:?} not present in the topology",
+                    (dim, t)
+                )));
+            }
+
+            let mut extra = node_tags
+                .difference(&mesh_tags)
+                .copied()
+                .collect::<Vec<_>>();
+            extra.sort_unstable();
+            if let Some(&t) = extra.first() {
+                return Err(Error::from(&format!(
+                    "Tag {:?} not present in the mesh",
+                    (dim, t)
+                )));
+            }
+            Ok(())
+        };
+
+        check_layer(d, mesh.etags().collect())?;
+        check_layer(d - 1, mesh.ftags().collect())?;
+
+        for dim in 0..d {
+            for node in &self.topo.entities[dim as usize] {
+                let mut parents = node.parents.iter().copied().collect::<Vec<_>>();
+                if parents.is_empty() {
+                    return Err(Error::from(&format!(
+                        "Invalid parents for tag {:?}: empty parent set",
+                        node.tag
+                    )));
+                }
+                parents.sort_unstable();
+                for &p in &parents {
+                    let parent = (dim + 1, p);
+                    if self.topo.get(parent).is_none() {
+                        return Err(Error::from(&format!("TopoTag {parent:?} not present")));
+                    }
+                }
+                // Face tags (dimension d - 1) are provided by the mesh and may share
+                // their parent element tag set; the uniqueness rule only applies to
+                // the inferred edge and node tags.
+                if dim + 1 < d {
+                    let nodes = self.topo.get_from_parents(dim, parents.iter().copied());
+                    if nodes.len() > 1 {
+                        return Err(Error::from(&format!(
+                            "Multiple nodes with parents {parents:?}: {nodes:?}"
+                        )));
+                    }
+                }
+            }
+        }
+
+        let face2elems = get_face_to_elem(mesh.elems());
+        for (f, t) in mesh.faces().zip(mesh.ftags()) {
+            if t == 0 {
+                continue;
+            }
+            let node = match self.topo.get((d - 1, t)) {
+                Some(node) => node,
+                None => return Err(Error::from(&format!("Tag {:?} not present", (d - 1, t)))),
+            };
+            let etags = face2elems
+                .get(&f.sorted())
+                .map(|elems| {
+                    elems
+                        .iter()
+                        .map(|&i| mesh.etag(i))
+                        .collect::<FxHashSet<_>>()
+                })
+                .unwrap_or_default();
+            if etags != node.parents {
+                let mut inferred = etags.into_iter().collect::<Vec<_>>();
+                inferred.sort_unstable();
+                let mut stored = node.parents.iter().copied().collect::<Vec<_>>();
+                stored.sort_unstable();
+                return Err(Error::from(&format!(
+                    "Invalid parents for face tag {t}: {inferred:?} != {stored:?}"
+                )));
+            }
+        }
+
+        if self.vtags.len() != mesh.n_verts() {
+            return Err(Error::from("Some vertices are not tagged"));
+        }
+        for (i, &tag) in self.vtags.iter().enumerate() {
+            if tag.1 == 0 {
+                return Err(Error::from(&format!(
+                    "Some vertices are not tagged: vertex {i}"
+                )));
+            }
+            if tag.0 < 0 || tag.0 > d {
+                return Err(Error::from(&format!("Invalid tag {tag:?} for vertex {i}")));
+            }
+            if self.topo.get(tag).is_none() {
+                return Err(Error::from(&format!("Tag {tag:?} not present")));
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use tmesh::{
         Vert2d, Vert3d,
-        mesh::{GenericMesh, Mesh, Simplex, Tetrahedron, Triangle},
+        mesh::{Edge, GenericMesh, Mesh, Simplex, Tetrahedron, Triangle},
     };
 
     use crate::{
@@ -1331,5 +1460,73 @@ mod tests {
         assert_eq!(topo.entities[1].len(), 2);
         assert_eq!(topo.entities[2].len(), 3);
         assert_eq!(topo.entities[3].len(), 1);
+    }
+
+    #[test]
+    fn test_check_empty_parent_ghost_edge_tag() {
+        // Three tetrahedra share edge (0, 1), and a fourth tetrahedron touches only
+        // vertex 0. All tags are 1, so edge (0, 1) gets an edge tag with parent {1},
+        // and the opposite-edge rings around vertex 0 are disconnected. At vertex 0
+        // the single-vertex-contact fix reaches the `dim == 0` branch with no missing
+        // face tags: it creates a ghost edge tag with an empty parent set.
+        let verts = vec![
+            Vert3d::new(0.0, 0.0, 0.0),  // 0
+            Vert3d::new(1.0, 0.0, 0.0),  // 1
+            Vert3d::new(0.0, 1.0, 0.0),  // 2
+            Vert3d::new(0.0, 0.0, 1.0),  // 3
+            Vert3d::new(0.0, -1.0, 0.0), // 4
+            Vert3d::new(0.0, 0.0, -1.0), // 5
+            Vert3d::new(0.0, 1.0, -1.0), // 6
+            Vert3d::new(0.0, -1.0, 1.0), // 7
+            Vert3d::new(2.0, 2.0, 0.0),  // 8
+            Vert3d::new(2.0, 0.0, 2.0),  // 9
+            Vert3d::new(0.0, 2.0, 2.0),  // 10
+        ];
+        let elems = vec![
+            Tetrahedron::<u32>::new(0, 1, 2, 3),
+            Tetrahedron::new(0, 1, 4, 5),
+            Tetrahedron::new(0, 1, 6, 7),
+            Tetrahedron::new(0, 8, 9, 10),
+        ];
+        let mut mesh = GenericMesh::from_vecs(verts, elems, vec![1; 4], vec![], vec![]);
+        mesh.fix().unwrap();
+        mesh.ftags_mut().for_each(|t| *t = 1);
+
+        let mtopo = MeshTopology::new(&mesh);
+        let msg = mtopo.check(&mesh).unwrap_err().to_string();
+        assert!(msg.contains("empty parent set"), "{msg}");
+        assert!(msg.contains("Invalid parents"), "{msg}");
+    }
+
+    #[test]
+    fn test_check_conflicting_vertex_tags() {
+        // A square made of two triangles with a single element tag. The four
+        // boundary edges carry four different tags, so each corner belongs to two
+        // tagged entities of dimension 1: construction first assigns the ambiguous
+        // (1, 0) sentinel, then resolves it into a node tag.
+        let verts = vec![
+            Vert2d::new(0.0, 0.0),
+            Vert2d::new(1.0, 0.0),
+            Vert2d::new(1.0, 1.0),
+            Vert2d::new(0.0, 1.0),
+        ];
+        let elems = vec![Triangle::<u32>::new(0, 1, 2), Triangle::new(0, 2, 3)];
+        let faces = vec![
+            Edge::new(0, 1),
+            Edge::new(1, 2),
+            Edge::new(2, 3),
+            Edge::new(3, 0),
+        ];
+        let mesh = GenericMesh::from_vecs(verts, elems, vec![1, 1], faces, vec![1, 2, 3, 4]);
+
+        let mut mtopo = MeshTopology::new(&mesh);
+        assert_eq!(mtopo.vtags()[1].0, 0);
+        assert_ne!(mtopo.vtags()[1].1, 0);
+        mtopo.check(&mesh).unwrap();
+
+        // An unresolved (1, 0) sentinel is rejected by the validity check.
+        mtopo.vtags[1] = (1, 0);
+        let msg = mtopo.check(&mesh).unwrap_err().to_string();
+        assert!(msg.contains("Some vertices are not tagged"), "{msg}");
     }
 }
