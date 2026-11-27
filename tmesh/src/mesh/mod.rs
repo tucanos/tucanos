@@ -651,6 +651,7 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         self.check_sizes()?;
         self.check_all_vertices_used()?;
         self.check_elem_and_face_indices(all_faces)?;
+        self.check_volumes()?;
         let tagged_faces = self
             .par_faces()
             .map(|f| f.sorted())
@@ -714,6 +715,16 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
         Ok(())
     }
 
+    fn check_volumes(&self) -> Result<()> {
+        for e in self.elems() {
+            let ge = self.gelem(&e);
+            if ge.vol() < 0.0 {
+                return Err(Error::from(&format!("Elem {e:?} has a <0 volume")));
+            }
+        }
+        Ok(())
+    }
+
     fn check_required_tagged_faces(
         &self,
         all_faces: &FaceConnectivity<<Self::C as Simplex>::FACE>,
@@ -745,7 +756,16 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
     ) -> Result<()> {
         for (f, t) in self.faces().zip(self.ftags()) {
             let (_, ids) = all_faces.get(&f.sorted()).unwrap();
-            // boundary face : check orientation if possible
+            if ids.len() == 1 && self.elem(ids[0]).faces().all(|f2| !f.is_same(&f2)) {
+                let e = &self.elem(ids[0]);
+                let m = format!(
+                    "Invalid face orientation (topological): elem = {e:?}, \
+                                face = {f:?}, tag = {t}",
+                );
+                return Err(Error::from(&m));
+            }
+
+            // boundary face : check orientation (geometric) if possible
             if ids.len() == 1 && Self::faces_are_oriented() && Self::C::order() == 1 {
                 let gf = self.gface(&f);
                 let fc = gf.center();
@@ -753,7 +773,7 @@ pub trait Mesh<const D: usize>: Send + Sync + Sized {
                 let n = gf.normal(None);
                 if n.dot(&(fc - ec)) < 0.0 {
                     let m = format!(
-                        "Invalid face orientation: center = {fc:?}, normal = {n:?}, \
+                        "Invalid face orientation (geometric): center = {fc:?}, normal = {n:?}, \
                                 face = {f:?}, tag = {t}"
                     );
                     return Err(Error::from(&m));
